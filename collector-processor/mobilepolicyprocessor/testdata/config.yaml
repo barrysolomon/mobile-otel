@@ -1,0 +1,54 @@
+processors:
+  mobilepolicy:
+    policies:
+      - id: ui-freeze-handler
+        enabled: true
+        match:
+          logical_operator: and
+          attributes:
+            event.name:
+              equals: "ui.freeze"
+            duration_ms:
+              gt: 2000.0
+        actions:
+          - type: annotate
+            parameters:
+              trigger_id: "ui-freeze-handler"
+              reason: "UI freeze detected over 2 seconds"
+              flush_window_minutes: 2
+
+      - id: crash-recovery
+        enabled: true
+        match:
+          logical_operator: and
+          attributes:
+            event.name:
+              equals: "crash.detected"
+        actions:
+          - type: annotate
+            parameters:
+              trigger_id: "crash-recovery"
+              reason: "Crash detected on app restart"
+              flush_window_minutes: 5
+
+      - id: network-error-handler
+        enabled: true
+        match:
+          logical_operator: and
+          attributes:
+            event.name:
+              equals: "http.error"
+            http.status_code:
+              gte: 500.0
+            http.route:
+              contains: "/appointments"
+        actions:
+          - type: annotate
+            parameters:
+              trigger_id: "network-error-handler"
+              reason: "Server error on critical endpoint"
+              flush_window_minutes: 2
+          - type: sample
+            parameters:
+              sample_rate: 1.0
+              duration_minutes: 10

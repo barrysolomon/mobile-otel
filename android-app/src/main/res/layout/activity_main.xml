@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://tools.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+
+    <TextView
+        android:id="@+id/titleText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mobile Observability Demo"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/scenarioALabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Scenario A: UI Issues"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/titleText"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="24dp" />
+
+    <Button
+        android:id="@+id/btnUiFreeze"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Trigger UI Freeze"
+        app:layout_constraintTop_toBottomOf="@id/scenarioALabel"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/btnUiJank"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Trigger UI Jank (>2000ms)"
+        app:layout_constraintTop_toBottomOf="@id/btnUiFreeze"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/scenarioBLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Scenario B: Crash Recovery"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/btnUiJank"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="24dp" />
+
+    <Button
+        android:id="@+id/btnSimulateCrash"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Write Crash Marker (Restart App)"
+        app:layout_constraintTop_toBottomOf="@id/scenarioBLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/scenarioCLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Scenario C: Network Errors"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/btnSimulateCrash"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="24dp" />
+
+    <Button
+        android:id="@+id/btnNetworkError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Trigger Network Errors (503 /appointments)"
+        app:layout_constraintTop_toBottomOf="@id/scenarioCLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/otherLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Other"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/btnNetworkError"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="24dp" />
+
+    <Button
+        android:id="@+id/btnNormalTraffic"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Generate Normal Traffic"
+        app:layout_constraintTop_toBottomOf="@id/otherLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ready"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:background="#E0E0E0"
+        app:layout_constraintTop_toBottomOf="@id/btnNormalTraffic"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginTop="24dp" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

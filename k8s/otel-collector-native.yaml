@@ -1,0 +1,266 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-demo
+
+---
+# ConfigMap containing the OTEL Collector configuration with Mobile Policy Processor
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: otel-demo
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      # Mobile Policy Processor - NEW!
+      # This replaces the custom gateway
+      mobilepolicy:
+        policies:
+          # UI Freeze Handler
+          - id: ui-freeze-handler
+            enabled: true
+            match:
+              logical_operator: and
+              attributes:
+                event.name:
+                  equals: "ui.freeze"
+                duration_ms:
+                  gt: 2000.0
+            actions:
+              - type: annotate
+                parameters:
+                  trigger_id: "ui-freeze-handler"
+                  reason: "UI freeze detected over 2 seconds"
+                  flush_window_minutes: 2
+
+          # Crash Recovery Handler
+          - id: crash-recovery
+            enabled: true
+            match:
+              logical_operator: and
+              attributes:
+                event.name:
+                  equals: "crash.detected"
+            actions:
+              - type: annotate
+                parameters:
+                  trigger_id: "crash-recovery"
+                  reason: "Crash detected on app restart"
+                  flush_window_minutes: 5
+
+          # Network Error Handler
+          - id: network-error-handler
+            enabled: true
+            match:
+              logical_operator: and
+              attributes:
+                event.name:
+                  equals: "http.error"
+                http.status_code:
+                  gte: 500.0
+                http.route:
+                  contains: "/appointments"
+            actions:
+              - type: annotate
+                parameters:
+                  trigger_id: "network-error-handler"
+                  reason: "Server error on critical endpoint"
+                  flush_window_minutes: 2
+              - type: sample
+                parameters:
+                  sample_rate: 1.0
+                  duration_minutes: 10.0
+
+      # Add resource attributes for better observability
+      resource:
+        attributes:
+          - key: service.name
+            value: mobile-observability-demo
+            action: upsert
+          - key: deployment.environment
+            value: demo
+            action: upsert
+
+    exporters:
+      debug:
+        verbosity: detailed
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+      logging:
+        verbosity: detailed
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+    service:
+      pipelines:
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, mobilepolicy, batch, resource]
+          exporters: [debug, logging]
+
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resource]
+          exporters: [debug, logging]
+
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resource]
+          exporters: [debug, logging]
+
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+
+---
+# Deployment for the OTEL Collector with Custom Processor
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+    component: collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        component: collector
+    spec:
+      containers:
+      - name: otel-collector
+        # NOTE: Use custom collector image with mobile policy processor
+        # Build with: cd collector-processor && ocb --config=builder-config.yaml
+        # For now, use standard collector (processor not included yet)
+        image: otel/opentelemetry-collector-contrib:0.93.0
+        command:
+          - "/otelcol-contrib"
+          - "--config=/conf/collector.yaml"
+        ports:
+        - name: otlp-grpc
+          containerPort: 4317
+          protocol: TCP
+        - name: otlp-http
+          containerPort: 4318
+          protocol: TCP
+        - name: metrics
+          containerPort: 8888
+          protocol: TCP
+        - name: health
+          containerPort: 13133
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /conf
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: otel-collector-config
+          items:
+          - key: collector.yaml
+            path: collector.yaml
+
+---
+# Service to expose the OTEL Collector
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+spec:
+  type: ClusterIP
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+    protocol: TCP
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    protocol: TCP
+  - name: metrics
+    port: 8888
+    targetPort: 8888
+    protocol: TCP
+  - name: health
+    port: 13133
+    targetPort: 13133
+    protocol: TCP
+  selector:
+    app: otel-collector
+
+---
+# Service to expose collector externally (for Android app)
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-external
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+spec:
+  type: NodePort
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+    nodePort: 30317
+    protocol: TCP
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    nodePort: 30318
+    protocol: TCP
+  selector:
+    app: otel-collector

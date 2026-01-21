@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go list:*)",
+      "Bash(go build:*)",
+      "Bash(go version:*)",
+      "Bash(go test:*)",
+      "Bash(./verify.sh:*)",
+      "Bash(ls:*)",
+      "Bash(./verify-setup.sh:*)",
+      "Bash(tree:*)"
+    ]
+  }
+}
