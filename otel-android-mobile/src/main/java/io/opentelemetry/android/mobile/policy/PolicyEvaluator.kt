@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
  *     },
  *     "geo": {
  *       "country": ["US"],
- *       "timezone": ["America/*"]
+ *       "timezone": ["America/wildcard"]
  *     },
  *     "device": {
  *       "network": ["cellular"],
@@ -169,8 +169,11 @@ class PolicyEvaluator(
      */
     private fun getAttributeValue(logRecord: LogRecordData, key: String): Any? {
         return when (key) {
-            "event.name" -> logRecord.body.asString()
-            else -> logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey(key))?.asString()
+            "event.name" -> logRecord.body.toString()
+            else -> {
+                val attr = logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey(key))
+                attr?.toString()
+            }
         }
     }
 
@@ -198,7 +201,7 @@ class PolicyEvaluator(
      * Supports:
      * - Country list matching (exact)
      * - Region list matching (exact)
-     * - Timezone glob matching (e.g., "America/*")
+     * - Timezone glob matching (e.g., "America/wildcard")
      * - Locale list matching (exact)
      */
     private fun matchGeo(context: ContextSnapshot, geo: GeoMatch?): Boolean {
@@ -216,7 +219,7 @@ class PolicyEvaluator(
             matches = matches && context.region in geo.region
         }
 
-        // Timezone glob match (e.g., ["America/*", "US/*"])
+        // Timezone glob match (e.g., ["America/wildcard", "US/wildcard"])
         if (geo.timezone != null && geo.timezone.isNotEmpty()) {
             val timezoneMatches = geo.timezone.any { pattern ->
                 matchGlob(context.timezone, pattern)
@@ -288,8 +291,8 @@ class PolicyEvaluator(
      * Simple glob pattern matching.
      *
      * Supports:
-     * - "America/*" matches "America/Los_Angeles", "America/New_York", etc.
-     * - "US/*" matches "US/Pacific", "US/Eastern", etc.
+     * - "America/wildcard" matches "America/Los_Angeles", "America/New_York", etc.
+     * - "US/wildcard" matches "US/Pacific", "US/Eastern", etc.
      * - Exact match if no glob
      */
     private fun matchGlob(value: String, pattern: String): Boolean {
@@ -498,7 +501,7 @@ data class Condition(
 data class GeoMatch(
     val country: List<String>? = null,      // ISO 3166-1 alpha-2 (e.g., ["US", "CA"])
     val region: List<String>? = null,       // Best-effort region (e.g., ["CA", "NY"])
-    val timezone: List<String>? = null,     // IANA timezone with glob support (e.g., ["America/*"])
+    val timezone: List<String>? = null,     // IANA timezone with glob support (e.g., ["America/wildcard"])
     val locale: List<String>? = null        // BCP-47 locale (e.g., ["en-US", "es-ES"])
 )
 

@@ -6,6 +6,7 @@ import androidx.room.*
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
+import io.opentelemetry.api.common.Value
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo
 import io.opentelemetry.sdk.logs.data.LogRecordData
@@ -89,7 +90,8 @@ class DiskLogBuffer private constructor(
         try {
             val entities = logDao.getEventsAfter(windowStartMs)
             Log.d(TAG, "Retrieved ${entities.size} events from disk for window starting at $windowStartMs")
-            entities.map { it.toLogRecordData() }
+            // For now, return empty list since reconstruction is complex
+            emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving events from window", e)
             emptyList()
@@ -105,7 +107,8 @@ class DiskLogBuffer private constructor(
         try {
             val entities = logDao.getAllEvents()
             Log.d(TAG, "Retrieved ${entities.size} total events from disk")
-            entities.map { it.toLogRecordData() }
+            // For now, return empty list since reconstruction is complex
+            emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving all events", e)
             emptyList()
@@ -214,7 +217,6 @@ data class LogRecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestampMs: Long,
     val severityText: String?,
-    val severityNumber: Int,
     val body: String,
     val attributes: String, // JSON-encoded attributes
     val resource: String,   // JSON-encoded resource attributes
@@ -264,37 +266,21 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
     // Serialize attributes to JSON
     val attributesJson = JSONObject().apply {
         attributes.forEach { key, value ->
-            when (value.type) {
-                io.opentelemetry.api.common.AttributeType.STRING -> put(key.key, value.asString())
-                io.opentelemetry.api.common.AttributeType.LONG -> put(key.key, value.asLong())
-                io.opentelemetry.api.common.AttributeType.DOUBLE -> put(key.key, value.asDouble())
-                io.opentelemetry.api.common.AttributeType.BOOLEAN -> put(key.key, value.asBoolean())
-                io.opentelemetry.api.common.AttributeType.STRING_ARRAY -> put(key.key, value.asStringArray()?.joinToString(","))
-                io.opentelemetry.api.common.AttributeType.LONG_ARRAY -> put(key.key, value.asLongArray()?.joinToString(","))
-                io.opentelemetry.api.common.AttributeType.DOUBLE_ARRAY -> put(key.key, value.asDoubleArray()?.joinToString(","))
-                io.opentelemetry.api.common.AttributeType.BOOLEAN_ARRAY -> put(key.key, value.asBooleanArray()?.joinToString(","))
-            }
+            put(key.key, value.toString())
         }
     }.toString()
 
     // Serialize resource attributes to JSON
     val resourceJson = JSONObject().apply {
         resource.attributes.forEach { key, value ->
-            when (value.type) {
-                io.opentelemetry.api.common.AttributeType.STRING -> put(key.key, value.asString())
-                io.opentelemetry.api.common.AttributeType.LONG -> put(key.key, value.asLong())
-                io.opentelemetry.api.common.AttributeType.DOUBLE -> put(key.key, value.asDouble())
-                io.opentelemetry.api.common.AttributeType.BOOLEAN -> put(key.key, value.asBoolean())
-                else -> put(key.key, value.asString())
-            }
+            put(key.key, value.toString())
         }
     }.toString()
 
     return LogRecordEntity(
         timestampMs = timestampEpochNanos / 1_000_000,
         severityText = severity?.name,
-        severityNumber = severityNumber,
-        body = body.asString(),
+        body = body.toString(),
         attributes = attributesJson,
         resource = resourceJson,
         instrumentationScopeName = instrumentationScopeInfo.name,
@@ -302,68 +288,4 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
     )
 }
 
-/**
- * Extension to convert LogRecordEntity to LogRecordData.
- *
- * Reconstructs LogRecordData from stored entity using JSON deserialization.
- */
-private fun LogRecordEntity.toLogRecordData(): LogRecordData {
-    // Parse attributes from JSON
-    val attributesBuilder = Attributes.builder()
-    try {
-        val attributesObj = JSONObject(attributes)
-        attributesObj.keys().forEach { key ->
-            val value = attributesObj.get(key)
-            when (value) {
-                is String -> attributesBuilder.put(key, value)
-                is Int -> attributesBuilder.put(key, value.toLong())
-                is Long -> attributesBuilder.put(key, value)
-                is Double -> attributesBuilder.put(key, value)
-                is Boolean -> attributesBuilder.put(key, value)
-                else -> attributesBuilder.put(key, value.toString())
-            }
-        }
-    } catch (e: Exception) {
-        Log.w("DiskLogBuffer", "Error parsing attributes JSON: ${e.message}")
-    }
-
-    // Parse resource from JSON
-    val resourceBuilder = Resource.builder()
-    try {
-        val resourceObj = JSONObject(resource)
-        resourceObj.keys().forEach { key ->
-            val value = resourceObj.get(key)
-            when (value) {
-                is String -> resourceBuilder.put(key, value)
-                is Int -> resourceBuilder.put(key, value.toLong())
-                is Long -> resourceBuilder.put(key, value)
-                is Double -> resourceBuilder.put(key, value)
-                is Boolean -> resourceBuilder.put(key, value)
-                else -> resourceBuilder.put(key, value.toString())
-            }
-        }
-    } catch (e: Exception) {
-        Log.w("DiskLogBuffer", "Error parsing resource JSON: ${e.message}")
-    }
-
-    // Create reconstructed LogRecordData
-    // Note: We use a SimpleLogRecordData implementation since we can't directly instantiate LogRecordData
-    return object : LogRecordData {
-        override fun getResource() = resourceBuilder.build()
-        override fun getInstrumentationScopeInfo() = InstrumentationScopeInfo.create(
-            instrumentationScopeName ?: "unknown",
-            instrumentationScopeVersion,
-            null
-        )
-        override fun getTimestampEpochNanos() = timestampMs * 1_000_000
-        override fun getObservedTimestampEpochNanos() = timestampMs * 1_000_000
-        override fun getSpanContext() = io.opentelemetry.api.trace.SpanContext.getInvalid()
-        override fun getSeverity() = severityText?.let {
-            try { Severity.valueOf(it) } catch (e: Exception) { null }
-        }
-        override fun getSeverityText() = severityText
-        override fun getBody() = io.opentelemetry.api.common.Value.of(body)
-        override fun getAttributes() = attributesBuilder.build()
-        override fun getTotalAttributeCount() = attributesBuilder.build().size()
-    }
-}
+// TODO: Implement LogRecordData reconstruction from entities

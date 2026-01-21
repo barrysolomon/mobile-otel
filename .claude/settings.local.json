@@ -10,7 +10,10 @@
       "Bash(./verify.sh:*)",
       "Bash(ls:*)",
       "Bash(./verify-setup.sh:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(./gradlew:*)",
+      "Bash(awk:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

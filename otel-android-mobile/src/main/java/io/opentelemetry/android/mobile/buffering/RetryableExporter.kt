@@ -66,7 +66,7 @@ class RetryableExporter(
             val exportResult = delegate.export(logs)
 
             exportResult.whenComplete {
-                if (it.isSuccess) {
+                if (exportResult.isSuccess) {
                     // Success - we're done
                     Log.d(TAG, "Export succeeded on attempt ${attempt + 1}")
                     result.succeed()
@@ -80,8 +80,8 @@ class RetryableExporter(
                         Thread {
                             Thread.sleep(delayMs)
                             val retryResult = exportWithRetry(logs, attempt + 1)
-                            retryResult.whenComplete { retrySuccess ->
-                                if (retrySuccess.isSuccess) {
+                            retryResult.whenComplete {
+                                if (retryResult.isSuccess) {
                                     result.succeed()
                                 } else {
                                     result.fail()
@@ -106,8 +106,8 @@ class RetryableExporter(
                 Thread {
                     Thread.sleep(delayMs)
                     val retryResult = exportWithRetry(logs, attempt + 1)
-                    retryResult.whenComplete { retrySuccess ->
-                        if (retrySuccess.isSuccess) {
+                    retryResult.whenComplete {
+                        if (retryResult.isSuccess) {
                             result.succeed()
                         } else {
                             result.fail()
@@ -137,6 +137,10 @@ class RetryableExporter(
     private fun calculateBackoff(attempt: Int): Long {
         val exponentialDelay = initialDelayMs * (2.0.pow(attempt.toDouble())).toLong()
         return min(exponentialDelay, maxDelayMs)
+    }
+
+    override fun flush(): CompletableResultCode {
+        return delegate.flush()
     }
 
     override fun shutdown(): CompletableResultCode {

@@ -5,6 +5,7 @@ import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.context.ContextSnapshot
 import io.opentelemetry.android.mobile.context.ContextSnapshotProvider
 import io.opentelemetry.sdk.common.CompletableResultCode
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 
@@ -127,7 +128,7 @@ private data class LogRecordDataImpl(
     private val spanContext: io.opentelemetry.api.trace.SpanContext,
     private val severity: io.opentelemetry.api.logs.Severity,
     private val severityText: String?,
-    private val body: io.opentelemetry.api.common.Value<*>,
+    private val body: Body,
     private val attributes: io.opentelemetry.api.common.Attributes,
     private val totalAttributeCount: Int
 ) : LogRecordData {

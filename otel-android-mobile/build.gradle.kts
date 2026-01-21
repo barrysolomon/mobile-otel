@@ -1,20 +1,26 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("maven-publish")
 }
 
 android {
     namespace = "io.opentelemetry.android.mobile"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
-        targetSdk = 34
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+    }
+
+    testOptions {
+        targetSdk = 36
+    }
+
+    lint {
+        targetSdk = 36
     }
 
     buildTypes {
@@ -32,8 +38,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     testOptions {
@@ -42,52 +50,61 @@ android {
             isReturnDefaultValues = true
         }
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }
 
 dependencies {
     // OpenTelemetry SDK - Core dependencies
-    api("io.opentelemetry:opentelemetry-api:1.34.1")
-    api("io.opentelemetry:opentelemetry-sdk:1.34.1")
-    api("io.opentelemetry:opentelemetry-sdk-logs:1.34.1-alpha")
+    api("io.opentelemetry:opentelemetry-api:1.58.0")
+    api("io.opentelemetry:opentelemetry-sdk:1.58.0")
+    api("io.opentelemetry:opentelemetry-sdk-logs:1.58.0")
 
     // OpenTelemetry Android Instrumentation
     api("io.opentelemetry.android:instrumentation:0.4.0-alpha")
 
-    // OTLP Exporter
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.34.1")
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp-logs:1.34.1-alpha")
+    // OTLP Exporter (includes logs, traces, and metrics)
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.58.0")
 
     // Semantic Conventions
-    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.23.1-alpha")
+    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.37.0")
 
     // Room for local persistence
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     // Android dependencies
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+
+    // HTTP client for policy fetching
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("io.mockk:mockk:1.13.8")
-    testImplementation("org.robolectric:robolectric:4.11.1")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("io.mockk:mockk:1.14.7")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
 
     // Testing - Android Instrumented Tests
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("androidx.test:rules:1.5.0")
-    androidTestImplementation("androidx.room:room-testing:2.6.1")
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.4")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
 publishing {

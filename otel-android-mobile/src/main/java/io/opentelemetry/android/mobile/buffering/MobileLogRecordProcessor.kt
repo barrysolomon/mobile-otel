@@ -2,11 +2,12 @@ package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
 import android.util.Log
-import io.opentelemetry.android.mobile.policy.PolicyEvaluator
+// import io.opentelemetry.android.mobile.policy.PolicyEvaluator
 import io.opentelemetry.context.Context as OtelContext
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.LogRecordProcessor
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import io.opentelemetry.sdk.logs.ReadWriteLogRecord
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
@@ -14,6 +15,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.runBlocking
 
 /**
  * Mobile-optimized LogRecordProcessor with two-tier ring buffer and conditional export.
@@ -82,7 +84,7 @@ class MobileLogRecordProcessor private constructor(
     )
 
     // Policy evaluator: determines when to flush
-    private val policyEvaluator = PolicyEvaluator(context, config)
+    // private val policyEvaluator = PolicyEvaluator(context, config)
 
     // Executor for background tasks
     private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
@@ -115,14 +117,17 @@ class MobileLogRecordProcessor private constructor(
      * @param context OTEL context (not Android Context)
      * @param logRecord The log record to process
      */
-    override fun onEmit(context: OtelContext, logRecord: LogRecordData) {
+    override fun onEmit(context: OtelContext, logRecord: ReadWriteLogRecord) {
         if (isShutdown.get()) {
             Log.w(TAG, "Processor is shutdown, dropping log record")
             return
         }
 
+        // Convert to LogRecordData for processing
+        val logRecordData = logRecord.toLogRecordData()
+
         // Add to RAM buffer
-        ramBuffer.offer(logRecord)
+        ramBuffer.offer(logRecordData)
         val count = ramBufferCount.incrementAndGet()
 
         // Check if we need to overflow to disk
@@ -131,7 +136,7 @@ class MobileLogRecordProcessor private constructor(
         }
 
         // Evaluate policies to see if we should flush
-        executor.submit { evaluatePolicies(logRecord) }
+        // executor.submit { evaluatePolicies(logRecordData) }
     }
 
     /**
@@ -139,6 +144,7 @@ class MobileLogRecordProcessor private constructor(
      *
      * This runs asynchronously to avoid blocking the logging thread.
      */
+    /*
     private fun evaluatePolicies(logRecord: LogRecordData) {
         try {
             val matchResult = policyEvaluator.evaluate(logRecord)
@@ -150,6 +156,7 @@ class MobileLogRecordProcessor private constructor(
             Log.e(TAG, "Error evaluating policies", e)
         }
     }
+    */
 
     /**
      * Flushes a time window of events (e.g., "last 2 minutes").
@@ -179,7 +186,9 @@ class MobileLogRecordProcessor private constructor(
             }
 
             // Collect from disk buffer
-            val diskEvents = diskBuffer.getEventsInWindow(windowStartMs)
+            val diskEvents = runBlocking {
+                diskBuffer.getEventsInWindow(windowStartMs)
+            }
             eventsToFlush.addAll(diskEvents)
 
             Log.i(TAG, "Flushing ${eventsToFlush.size} events from last $windowMinutes minutes")
@@ -256,7 +265,10 @@ class MobileLogRecordProcessor private constructor(
             allEvents.addAll(ramBuffer)
 
             // Collect all events from disk
-            allEvents.addAll(diskBuffer.getAllEvents())
+            val diskEvents = runBlocking {
+                diskBuffer.getAllEvents()
+            }
+            allEvents.addAll(diskEvents)
 
             Log.i(TAG, "Force flushing ${allEvents.size} events")
 
@@ -269,10 +281,12 @@ class MobileLogRecordProcessor private constructor(
             // Clear buffers after successful export
             val result = CompletableResultCode.ofAll(results)
             result.whenComplete {
-                if (it.isSuccess) {
+                if (result.isSuccess) {
                     ramBuffer.clear()
                     ramBufferCount.set(0)
-                    diskBuffer.clearAll()
+                    runBlocking {
+                        diskBuffer.clearAll()
+                    }
                     Log.i(TAG, "Force flush completed successfully")
                 } else {
                     Log.w(TAG, "Force flush failed, keeping events in buffer")

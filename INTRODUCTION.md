@@ -1,4 +1,4 @@
-# AI Notes - OpenTelemetry Mobile Observability Project
+# OpenTelemetry Mobile Observability Project
 
 **Last Updated**: 2026-01-21
 **Project Status**: Phase 4 (Testing) - 70% Complete
@@ -330,24 +330,96 @@ MobileConfig(
 
 ---
 
-## 📝 User Questions Answered
+## 📝 Frequently Asked Questions
 
-### "How can we still have that buffered for send on next run?"
-**Answer**: Disk buffer (Room database) persists through crashes. MobileLoggerProvider automatically:
+### Offline Resilience
+
+**Q: How can we still have that buffered for send on next run?**
+**A:** Disk buffer (Room database) persists through crashes. MobileLoggerProvider automatically:
 1. Detects crash on restart (checks `was_running` flag)
 2. Logs `app.crash_recovery` event
 3. Flushes last 5 minutes from disk buffer
 See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scenario-3-app-crashes)
 
-### "We need to deal with communication loss (tunnel, subway, airplane mode)"
-**Answer**: Three-layer defense:
+**Q: We need to deal with communication loss (tunnel, subway, airplane mode)**
+**A:** Three-layer defense:
 1. RetryableExporter with exponential backoff (3 attempts)
 2. Events move to disk buffer if all retries fail
 3. Automatic export when network restored
 See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scenario-4-network-unavailable-tunnel-subway-no-cell-service)
 
-### "What does the demo app do?"
-**Answer**: Generic telemetry generator with 3 scenarios (UI freeze, crash, network error) + manual flush button. Demonstrates OTEL SDK usage, export policies, and buffering. See: [examples/demo-app/android/MainActivity.kt](examples/demo-app/android/MainActivity.kt)
+**Q: What happens if the device runs out of storage?**
+**A:** The disk buffer has a configurable size limit (default 50MB) and TTL (default 24h). Oldest events are automatically evicted when limits are reached. The RAM buffer continues to function even if disk writes fail.
+
+### Performance & Battery
+
+**Q: Will this drain battery or use too much memory?**
+**A:** No. The RAM buffer is limited (default 5000 events), and disk writes are batched to minimize I/O. Export happens on policy triggers or manual flush, not continuously. Background processing uses Android WorkManager for battery-optimized scheduling.
+
+**Q: How much data will this transmit over cellular?**
+**A:** That's controlled by your export policies. You can configure policies to only flush on WiFi, only for critical events (crashes, errors), or on a scheduled basis. By default, nothing is sent unless you trigger a flush.
+
+**Q: Can I disable telemetry collection during low battery?**
+**A:** Yes. The MobileConfig allows runtime configuration changes. You can monitor battery state and pause collection or adjust buffer sizes dynamically.
+
+### OpenTelemetry Integration
+
+**Q: Is this compatible with standard OpenTelemetry tools?**
+**A:** Yes, 100%. It uses the official OTEL Android SDK, exports via OTLP/gRPC, and sends data to standard OTEL Collectors. Your existing OTEL backend (Jaeger, Tempo, custom) will work unchanged.
+
+**Q: Can I use this with other OTEL signals (traces, metrics)?**
+**A:** Currently focused on logs, but the architecture supports all signals. The two-tier buffering and export policies can be extended to traces and metrics using the same pattern.
+
+**Q: Do I need to modify my OTEL Collector configuration?**
+**A:** Optional. The basic setup works with any OTEL Collector. The `mobilepolicyprocessor` is an optional processor that enables server-side policy evaluation for additional control.
+
+### Configuration & Deployment
+
+**Q: What does the demo app do?**
+**A:** Generic telemetry generator with 3 scenarios (UI freeze, crash, network error) + manual flush button. Demonstrates OTEL SDK usage, export policies, and buffering. See: [examples/demo-app/android/MainActivity.kt](examples/demo-app/android/MainActivity.kt)
+
+**Q: How do I configure export policies?**
+**A:** Policies can be embedded in your app or fetched from a remote control plane. See the configuration examples in [MobileConfig.kt](otel-android-mobile/src/main/java/com/dash0/android/config/MobileConfig.kt).
+
+**Q: Can policies be updated without releasing a new app version?**
+**A:** Yes. Enable remote policy fetching by setting `configPollIntervalSeconds` in MobileConfig. Policies are pulled from your backend and applied at runtime.
+
+**Q: Is this production-ready?**
+**A:** The core implementation is production-ready. Testing is 70% complete (176+ tests). Integration and E2E tests are in progress. Use in production with appropriate testing for your specific use case.
+
+### Privacy & Security
+
+**Q: Does this collect any user data by default?**
+**A:** No. This is a framework - you control what events are logged and what attributes they contain. No PII is collected automatically.
+
+**Q: Can I filter sensitive data before it's buffered?**
+**A:** Yes. Implement attribute filtering in your log creation code before passing to OTEL. The library buffers exactly what you provide.
+
+**Q: Is the disk buffer encrypted?**
+**A:** The Room database uses standard Android SQLite. For encryption, enable Android's encrypted SharedPreferences/Database or implement custom encryption in the serialization layer.
+
+### Troubleshooting
+
+**Q: Events aren't being exported. What's wrong?**
+**A:** Check:
+1. Is a policy configured to trigger export? (Nothing sends automatically without a policy or manual flush)
+2. Is the collector endpoint reachable?
+3. Check logs for export failures or retry attempts
+4. Try manual flush to test connectivity
+
+**Q: I see "export failed" errors. What should I do?**
+**A:** Events remain in the buffer and retry automatically (3 attempts with exponential backoff). Check collector logs and network connectivity. Failed events stay buffered until successful export or TTL expiration.
+
+**Q: How do I debug policy matching?**
+**A:** Enable debug logging in MobileConfig. The PolicyEvaluator logs when policies match/don't match, helping you tune policy conditions.
+
+### Contributing
+
+**Q: Can I contribute to this project?**
+**A:** Absolutely! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. We especially welcome testing, documentation, and iOS implementation contributions.
+
+**Q: When will this be part of official OpenTelemetry?**
+**A:** Phase 6 (Contribution) involves submitting OTEPs to the OpenTelemetry specification. Timeline depends on community review and approval. This reference implementation helps prove the pattern works.
 
 ---
 

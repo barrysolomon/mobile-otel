@@ -12,7 +12,6 @@ import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
 import io.opentelemetry.sdk.resources.Resource
-import io.opentelemetry.semconv.ResourceAttributes
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -51,9 +50,9 @@ class MobileLoggerProvider private constructor(
     init {
         // Build resource with mobile-specific attributes
         val resource = Resource.builder()
-            .put(ResourceAttributes.SERVICE_NAME, config.serviceName)
-            .put(ResourceAttributes.SERVICE_VERSION, config.serviceVersion)
-            .put(ResourceAttributes.DEVICE_ID, deviceId)
+            .put("service.name", config.serviceName)
+            .put("service.version", config.serviceVersion)
+            .put("device.id", deviceId)
             .put("device.platform", "android")
             .put("device.os.version", android.os.Build.VERSION.RELEASE)
             .put("device.model", android.os.Build.MODEL)
@@ -80,10 +79,7 @@ class MobileLoggerProvider private constructor(
         // Create mobile log processor with ring buffer
         val mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
-            .setRamBufferSize(config.ramBufferSize)
-            .setDiskBufferMb(config.diskBufferMb)
-            .setDiskBufferTtlHours(config.diskBufferTtlHours)
-            .setCollectorEndpoint(config.collectorEndpoint)
+            .setConfig(config)
             .build()
 
         // Build SDK Logger Provider
