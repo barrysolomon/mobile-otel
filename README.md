@@ -7,23 +7,34 @@ Complete end-to-end mobile observability system with selective event capture, wo
 This system demonstrates intelligent mobile app observability:
 
 1. **Android App** captures events locally (RAM + SQLite ring buffer)
-2. **Workflow Engine** evaluates trigger conditions in real-time
+2. **Export Policy Engine** evaluates trigger conditions in real-time
 3. **Selective Flushing** sends only relevant event windows to backend
 4. **Gateway** converts events to OpenTelemetry Logs format
 5. **OTEL Collector** processes and exports to observability backends
-6. **Control Plane UI** provides visual workflow builder for creating triggers
+6. **Control Plane UI** provides visual policy builder for creating triggers
 
 **Result:** Dramatically reduce data egress costs by only sending events when specific conditions occur (crashes, errors, performance issues).
+
+### Terminology Note
+
+This project uses **export policies** instead of "workflows" and **selective flush** instead of "replay":
+
+| Old Term | New Term | Why |
+|----------|----------|-----|
+| Workflow | Export Policy | More accurate - these are conditional export rules, not orchestration workflows |
+| Replay | Selective Flush | More accurate - we're flushing buffered events, not replaying recorded sessions |
+
+Historical references to "workflows" in the codebase refer to export policies.
 
 ## 🚀 Quick Start
 
 ```bash
 # 1. Deploy to Kubernetes
 kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -l app=otel-collector -n otel-demo --timeout=60s
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
 
 # 2. Port forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # 3. Start Control Plane UI
 cd control-plane-ui && npm install && npm run dev &
@@ -213,13 +224,13 @@ Three pre-built scenarios demonstrate the system:
 
 ```bash
 # Check all pods running
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # Test gateway health
 curl http://localhost:8080/health
 
 # View collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 ```
 
 ### Test End-to-End Flow
@@ -234,8 +245,8 @@ open http://localhost:3000
 
 # 3. Verify events in logs
 adb logcat | grep "demo_run_id"
-kubectl logs -n otel-demo -l app=otel-gateway | grep "demo_run_id"
-kubectl logs -n otel-demo -l app=otel-collector | grep "demo_run_id"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "demo_run_id"
+kubectl logs -n mobile-observability -l app=otel-collector | grep "demo_run_id"
 ```
 
 ### Manual Event Injection
@@ -265,7 +276,7 @@ See [VERIFICATION_PACK.md](VERIFICATION_PACK.md) for comprehensive testing instr
 ```bash
 PORT=8080                        # HTTP server port
 DB_PATH=/data/gateway.db         # SQLite database location
-OTEL_COLLECTOR_ENDPOINT=otel-collector.otel-demo.svc.cluster.local:4317
+OTEL_COLLECTOR_ENDPOINT=otel-collector.mobile-observability.svc.cluster.local:4317
 ```
 
 ### Android App Configuration
@@ -335,13 +346,13 @@ server: {
 
 ```bash
 # Check collector is running
-kubectl get pods -n otel-demo -l app=otel-collector
+kubectl get pods -n mobile-observability -l app=otel-collector
 
 # Verify service
-kubectl get svc -n otel-demo otel-collector
+kubectl get svc -n mobile-observability otel-collector
 
 # Test connectivity
-kubectl exec -n otel-demo -it <gateway-pod> -- nc -zv otel-collector 4317
+kubectl exec -n mobile-observability -it <gateway-pod> -- nc -zv otel-collector 4317
 ```
 
 ### Android app connection refused
@@ -416,10 +427,10 @@ Apache 2.0 (for demo purposes)
 **Logs:**
 ```bash
 # Gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway --tail=100
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=100
 
 # Collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=100
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100
 
 # Android logs
 adb logcat | grep -E "ObservabilitySDK|WorkflowEvaluator"

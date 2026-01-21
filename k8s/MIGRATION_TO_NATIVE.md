@@ -24,9 +24,9 @@ Android App → OTLP/gRPC → Collector (with mobile processor)
 kubectl delete -f k8s/otel-gateway.yaml
 
 # Or delete specific resources
-kubectl delete deployment otel-gateway -n otel-demo
-kubectl delete service otel-gateway -n otel-demo
-kubectl delete pvc gateway-data -n otel-demo
+kubectl delete deployment otel-gateway -n mobile-observability
+kubectl delete service otel-gateway -n mobile-observability
+kubectl delete pvc gateway-data -n mobile-observability
 ```
 
 ### Step 2: Deploy OTEL-Native Collector
@@ -42,14 +42,14 @@ kubectl apply -f k8s/otel-collector-native.yaml
 
 ```bash
 # Check pods are running
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # Should see:
 # NAME                              READY   STATUS    RESTARTS   AGE
 # otel-collector-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
 
 # Check logs
-kubectl logs -n otel-demo -l app=otel-collector -f
+kubectl logs -n mobile-observability -l app=otel-collector -f
 ```
 
 ### Step 4: Get Collector Endpoint for Android App
@@ -83,14 +83,14 @@ val config = MobileConfig(
 
 ```bash
 # Check pod status
-kubectl describe pod -n otel-demo -l app=otel-collector
+kubectl describe pod -n mobile-observability -l app=otel-collector
 
 # Check events
-kubectl get events -n otel-demo --sort-by='.lastTimestamp'
+kubectl get events -n mobile-observability --sort-by='.lastTimestamp'
 ```
 
 **Common causes:**
-- ConfigMap not loaded (check: `kubectl get configmap -n otel-demo`)
+- ConfigMap not loaded (check: `kubectl get configmap -n mobile-observability`)
 - Resource limits too low
 - Invalid collector config
 
@@ -109,7 +109,7 @@ See: [REMAINING_WORK.md](../REMAINING_WORK.md) Phase 4 for details.
 
 ```bash
 # Test from inside cluster
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -n otel-demo -- sh
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -n mobile-observability -- sh
 curl -v http://otel-collector:4318/v1/logs
 
 # Test from outside cluster (NodePort)
@@ -125,10 +125,10 @@ curl -v http://<node-ip>:30318/v1/logs
 
 ```bash
 # Check collector logs for received data
-kubectl logs -n otel-demo -l app=otel-collector | grep -i received
+kubectl logs -n mobile-observability -l app=otel-collector | grep -i received
 
 # Check for errors
-kubectl logs -n otel-demo -l app=otel-collector | grep -i error
+kubectl logs -n mobile-observability -l app=otel-collector | grep -i error
 ```
 
 ## 📊 What's Different
@@ -147,14 +147,14 @@ kubectl logs -n otel-demo -l app=otel-collector | grep -i error
 
 ```bash
 # Update policies
-kubectl edit configmap otel-collector-config -n otel-demo
+kubectl edit configmap otel-collector-config -n mobile-observability
 
 # Or edit the file and reapply
 vi k8s/otel-collector-native.yaml
 kubectl apply -f k8s/otel-collector-native.yaml
 
 # Restart collector to pick up changes
-kubectl rollout restart deployment otel-collector -n otel-demo
+kubectl rollout restart deployment otel-collector -n mobile-observability
 ```
 
 ### Data Flow

@@ -69,7 +69,7 @@ Mobile Devices ─────────────┘                       
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐ │
-│  │              Namespace: otel-demo-prod                │ │
+│  │              Namespace: mobile-observability-prod                │ │
 │  │                                                       │ │
 │  │  ┌──────────────┐     ┌──────────────┐             │ │
 │  │  │  Gateway     │────►│  PostgreSQL  │             │ │
@@ -152,7 +152,7 @@ Node Pool:
 **Create cluster (GKE example):**
 
 ```bash
-gcloud container clusters create otel-demo-prod \
+gcloud container clusters create mobile-observability-prod \
   --zone=us-central1-a \
   --num-nodes=3 \
   --machine-type=n1-standard-4 \
@@ -190,7 +190,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   serviceName: postgres
   replicas: 1
@@ -263,7 +263,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: gateway-tls
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   secretName: gateway-tls-secret
   issuerRef:
@@ -282,18 +282,18 @@ spec:
 # PostgreSQL password
 kubectl create secret generic postgres-secret \
   --from-literal=password='your-secure-password' \
-  -n otel-demo-prod
+  -n mobile-observability-prod
 
 # API keys
 kubectl create secret generic gateway-api-keys \
   --from-literal=admin-key='admin-api-key-here' \
   --from-literal=device-key='device-api-key-here' \
-  -n otel-demo-prod
+  -n mobile-observability-prod
 
 # JWT signing key
 kubectl create secret generic jwt-secret \
   --from-literal=signing-key='your-jwt-signing-key' \
-  -n otel-demo-prod
+  -n mobile-observability-prod
 ```
 
 ### 3. Network Policies
@@ -306,7 +306,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: gateway-policy
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   podSelector:
     matchLabels:
@@ -349,13 +349,13 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: gateway-sa
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: gateway-role
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
@@ -365,7 +365,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: gateway-rolebinding
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 subjects:
 - kind: ServiceAccount
   name: gateway-sa
@@ -380,8 +380,8 @@ roleRef:
 ### 1. Create Namespace
 
 ```bash
-kubectl create namespace otel-demo-prod
-kubectl label namespace otel-demo-prod environment=production
+kubectl create namespace mobile-observability-prod
+kubectl label namespace mobile-observability-prod environment=production
 ```
 
 ### 2. Deploy Gateway
@@ -394,7 +394,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-gateway
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   replicas: 3
   strategy:
@@ -421,14 +421,14 @@ spec:
         - name: PORT
           value: "8080"
         - name: DB_CONNECTION_STRING
-          value: "host=postgres.otel-demo-prod.svc.cluster.local port=5432 user=gateway dbname=gateway sslmode=require"
+          value: "host=postgres.mobile-observability-prod.svc.cluster.local port=5432 user=gateway dbname=gateway sslmode=require"
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: postgres-secret
               key: password
         - name: OTEL_COLLECTOR_ENDPOINT
-          value: "otel-collector.otel-demo-prod.svc.cluster.local:4317"
+          value: "otel-collector.mobile-observability-prod.svc.cluster.local:4317"
         - name: API_KEY_REQUIRED
           value: "true"
         resources:
@@ -475,7 +475,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   replicas: 2
   selector:
@@ -520,7 +520,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: control-plane-ui
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   replicas: 2
   selector:
@@ -559,7 +559,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: otel-ingress
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -605,13 +605,13 @@ kubectl apply -f ingress.yaml
 
 ```bash
 # Check all pods
-kubectl get pods -n otel-demo-prod
+kubectl get pods -n mobile-observability-prod
 
 # Check services
-kubectl get svc -n otel-demo-prod
+kubectl get svc -n mobile-observability-prod
 
 # Check ingress
-kubectl get ingress -n otel-demo-prod
+kubectl get ingress -n mobile-observability-prod
 
 # Test gateway health
 curl https://gateway.yourcompany.com/health
@@ -630,7 +630,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: gateway-metrics
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   selector:
     matchLabels:
@@ -686,7 +686,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: gateway-alerts
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   groups:
   - name: gateway
@@ -733,7 +733,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: gateway-hpa
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -764,7 +764,7 @@ apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
   name: gateway-vpa
-  namespace: otel-demo-prod
+  namespace: mobile-observability-prod
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -784,7 +784,7 @@ spec:
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="gateway-db-$TIMESTAMP.sql"
 
-kubectl exec -n otel-demo-prod postgres-0 -- \
+kubectl exec -n mobile-observability-prod postgres-0 -- \
   pg_dump -U gateway gateway > $BACKUP_FILE
 
 # Upload to cloud storage
@@ -798,7 +798,7 @@ find . -name "gateway-db-*.sql" -mtime +30 -delete
 
 ```bash
 # Backup all configs
-kubectl get configmap,secret -n otel-demo-prod -o yaml > config-backup.yaml
+kubectl get configmap,secret -n mobile-observability-prod -o yaml > config-backup.yaml
 
 # Backup workflows
 curl https://gateway.yourcompany.com/admin/versions > workflows-backup.json
@@ -810,14 +810,14 @@ curl https://gateway.yourcompany.com/admin/versions > workflows-backup.json
 
 ```bash
 # 1. Restore PostgreSQL
-kubectl exec -n otel-demo-prod postgres-0 -- \
+kubectl exec -n mobile-observability-prod postgres-0 -- \
   psql -U gateway gateway < gateway-db-backup.sql
 
 # 2. Restore configurations
 kubectl apply -f config-backup.yaml
 
 # 3. Redeploy services
-kubectl rollout restart deployment/otel-gateway -n otel-demo-prod
+kubectl rollout restart deployment/otel-gateway -n mobile-observability-prod
 ```
 
 ## Operational Runbooks
@@ -831,13 +831,13 @@ kubectl rollout restart deployment/otel-gateway -n otel-demo-prod
 **Investigation:**
 ```bash
 # 1. Check gateway logs
-kubectl logs -n otel-demo-prod -l app=otel-gateway --tail=100 | grep ERROR
+kubectl logs -n mobile-observability-prod -l app=otel-gateway --tail=100 | grep ERROR
 
 # 2. Check collector connectivity
-kubectl exec -n otel-demo-prod -it <gateway-pod> -- nc -zv otel-collector 4317
+kubectl exec -n mobile-observability-prod -it <gateway-pod> -- nc -zv otel-collector 4317
 
 # 3. Check database connectivity
-kubectl exec -n otel-demo-prod -it <gateway-pod> -- nc -zv postgres 5432
+kubectl exec -n mobile-observability-prod -it <gateway-pod> -- nc -zv postgres 5432
 ```
 
 **Mitigation:**
@@ -854,13 +854,13 @@ kubectl exec -n otel-demo-prod -it <gateway-pod> -- nc -zv postgres 5432
 **Investigation:**
 ```bash
 # 1. Check resource usage
-kubectl top pods -n otel-demo-prod
+kubectl top pods -n mobile-observability-prod
 
 # 2. Check database queries
-kubectl logs -n otel-demo-prod -l app=otel-gateway | grep "slow query"
+kubectl logs -n mobile-observability-prod -l app=otel-gateway | grep "slow query"
 
 # 3. Check collector backpressure
-kubectl logs -n otel-demo-prod -l app=otel-collector | grep "queue full"
+kubectl logs -n mobile-observability-prod -l app=otel-collector | grep "queue full"
 ```
 
 **Mitigation:**
@@ -877,13 +877,13 @@ kubectl logs -n otel-demo-prod -l app=otel-collector | grep "queue full"
 **Investigation:**
 ```bash
 # 1. Check pod logs
-kubectl logs -n otel-demo-prod <pod-name> --previous
+kubectl logs -n mobile-observability-prod <pod-name> --previous
 
 # 2. Describe pod
-kubectl describe pod -n otel-demo-prod <pod-name>
+kubectl describe pod -n mobile-observability-prod <pod-name>
 
 # 3. Check events
-kubectl get events -n otel-demo-prod --sort-by='.lastTimestamp'
+kubectl get events -n mobile-observability-prod --sort-by='.lastTimestamp'
 ```
 
 **Mitigation:**

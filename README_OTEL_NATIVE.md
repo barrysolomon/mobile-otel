@@ -168,7 +168,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ```bash
 # Check collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 
 # Should see logs from mobile app with policy annotations
 ```
@@ -368,6 +368,13 @@ This is not an official OTEL project (yet), but it's designed to become one.
 ## ⛔ What This Is NOT
 
 To prevent scope creep and maintain OTEL alignment, here's what this project explicitly is **not**:
+
+### Quick Summary (5 Key Points)
+1. ❌ **Not introducing new telemetry formats** - 100% OTLP/gRPC logs using OTEL SDK
+2. ❌ **Not bypassing OTEL SDK APIs** - All telemetry via official `LogRecordProcessor`/`LogRecordExporter`
+3. ❌ **Not changing OTEL semantics** - Extensions add mobile patterns on top, don't modify core
+4. ❌ **Not collecting PII or precise location** - Coarse geo (country/timezone), no GPS/device IDs
+5. ❌ **Not adding major features** - This extension ONLY adds geo/device policy matching
 
 ### NOT a Full Observability Backend
 - ❌ Not a replacement for Loki, Prometheus, or Jaeger

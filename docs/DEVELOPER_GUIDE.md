@@ -51,14 +51,14 @@ cd ../android-app
 ```bash
 # Terminal 1: Kubernetes cluster
 kubectl apply -f k8s/
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Terminal 2: Control Plane UI
 cd control-plane-ui
 npm run dev
 
 # Terminal 3: Watch logs
-kubectl logs -n otel-demo -l app=otel-gateway -f
+kubectl logs -n mobile-observability -l app=otel-gateway -f
 
 # Terminal 4: Android development
 cd android-app
@@ -861,10 +861,10 @@ echo "Starting E2E test..."
 
 # 1. Deploy backend
 kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -n otel-demo --all --timeout=60s
+kubectl wait --for=condition=ready pod -n mobile-observability --all --timeout=60s
 
 # 2. Port forward
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 PF_PID=$!
 sleep 5
 
@@ -886,7 +886,7 @@ curl -X POST http://localhost:8080/ingest \
 
 # 4. Verify in collector logs
 sleep 2
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep "$DEMO_RUN_ID"
 
 # 5. Cleanup
 kill $PF_PID
@@ -924,7 +924,7 @@ echo "Sent 1000 events"
 
 # Check success rate
 sleep 5
-SUCCESS_COUNT=$(kubectl logs -n otel-demo -l app=otel-collector --tail=1000 | grep -c "load.test")
+SUCCESS_COUNT=$(kubectl logs -n mobile-observability -l app=otel-collector --tail=1000 | grep -c "load.test")
 echo "Collector received: $SUCCESS_COUNT events"
 ```
 
@@ -1060,7 +1060,7 @@ jobs:
         run: |
           kubectl set image deployment/otel-gateway \
             gateway=${{ secrets.REGISTRY }}/gateway:${{ github.sha }} \
-            -n otel-demo
+            -n mobile-observability
 ```
 
 ## Contributing

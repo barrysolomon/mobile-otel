@@ -24,11 +24,11 @@ kubectl apply -f k8s/otel-collector.yaml
 kubectl apply -f k8s/otel-gateway.yaml
 
 # Wait for ready
-kubectl wait --for=condition=available --timeout=60s deployment/otel-collector -n otel-demo
-kubectl wait --for=condition=available --timeout=60s deployment/otel-gateway -n otel-demo
+kubectl wait --for=condition=available --timeout=60s deployment/otel-collector -n mobile-observability
+kubectl wait --for=condition=available --timeout=60s deployment/otel-gateway -n mobile-observability
 
 # Port-forward
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # Send test event with correlation ID
 DEMO_RUN_ID="run-$(date +%s)"
@@ -40,7 +40,7 @@ curl -X POST http://localhost:8080/ingest \
 
 # Verify in collector logs (wait 2 seconds)
 sleep 2
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 10 "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep -A 10 "$DEMO_RUN_ID"
 ```
 
 **Expected:** See LogRecord with Body: Str(smoke.test) and demo_run_id attribute.
@@ -50,7 +50,7 @@ kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 10 "$DEMO_RU
 ## Kubernetes Status
 
 ```bash
-kubectl -n otel-demo get deploy,po,svc
+kubectl -n mobile-observability get deploy,po,svc
 ```
 
 **Expected:**
@@ -70,7 +70,7 @@ service/otel-gateway     ClusterIP   ...   8080/TCP
 ## Collector Proof
 
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | head -20
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | head -20
 ```
 
 **Look For:**
@@ -86,7 +86,7 @@ curl -X POST http://localhost:8080/ingest \
   -d '{"events":[{"eventName":"test.event","sessionId":"s1","deviceId":"d1","configVersion":1,"timestamp":1704067200000,"attributes":{"demo_run_id":"run-test-123"}}]}'
 
 # Check collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 15 "test.event"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep -A 15 "test.event"
 ```
 
 **Expected Output:**
@@ -129,7 +129,7 @@ Expected: `{"status":"ok","events_ingested":1}`
 ### Setup
 1. Open `android-app` in Android Studio
 2. Update `build.gradle.kts`: `buildConfigField("String", "GATEWAY_URL", "\"http://10.0.2.2:8080\"")`
-3. Port-forward gateway: `kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080`
+3. Port-forward gateway: `kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080`
 4. Run app on emulator
 
 ### Verify SDK Init
@@ -158,7 +158,7 @@ Expected: `Workflow ui-freeze triggered` and `Successfully ingested X events`
 
 **Verify in Collector:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep -A 10 "ui.freeze"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep -A 10 "ui.freeze"
 ```
 Expected: LogRecord with Body: Str(ui.freeze), trigger_id, duration_ms, screen attributes
 
@@ -185,7 +185,7 @@ adb logcat ObservabilitySDK:D *:S | grep "Demo Run ID"
 # Output: Demo Run ID: run-1704067200
 
 # Search collector logs for that ID
-kubectl logs -n otel-demo -l app=otel-collector --tail=200 | grep "run-1704067200"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=200 | grep "run-1704067200"
 ```
 
 **Expected:** Same run ID appears in collector logs under Attributes
@@ -208,7 +208,7 @@ These are acceptable for MVP demo. Production would need:
 
 | Component | Status | Proof |
 |-----------|--------|-------|
-| k8s Resources | ✅ | `kubectl get all -n otel-demo` |
+| k8s Resources | ✅ | `kubectl get all -n mobile-observability` |
 | Collector Receiving | ✅ | LogRecord in logs |
 | Gateway Health | ✅ | curl /health returns ok |
 | Gateway Ingestion | ✅ | curl /ingest succeeds |
@@ -262,10 +262,10 @@ Ready for **Step 4: React Control Plane UI**
 **Logs:**
 ```bash
 # Collector
-kubectl logs -n otel-demo -l app=otel-collector -f
+kubectl logs -n mobile-observability -l app=otel-collector -f
 
 # Gateway
-kubectl logs -n otel-demo -l app=otel-gateway -f
+kubectl logs -n mobile-observability -l app=otel-gateway -f
 
 # Android
 adb logcat ObservabilitySDK:D RingBufferManager:D WorkflowEvaluator:D GatewayClient:D *:S
@@ -274,7 +274,7 @@ adb logcat ObservabilitySDK:D RingBufferManager:D WorkflowEvaluator:D GatewayCli
 **Reset:**
 ```bash
 # Delete everything
-kubectl delete namespace otel-demo
+kubectl delete namespace mobile-observability
 
 # Redeploy
 kubectl apply -f k8s/otel-collector.yaml

@@ -104,17 +104,17 @@ k3s ctr images import <(docker save otel-gateway:latest)
 kubectl apply -f ../k8s/otel-gateway.yaml
 
 # Check status
-kubectl get pods -n otel-demo -l app=otel-gateway
+kubectl get pods -n mobile-observability -l app=otel-gateway
 
 # View logs
-kubectl logs -n otel-demo -l app=otel-gateway -f
+kubectl logs -n mobile-observability -l app=otel-gateway -f
 ```
 
 ### Verify Deployment
 
 ```bash
 # Port-forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Test health endpoint
 curl http://localhost:8080/health
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8080/ingest \
   }'
 
 # Check collector logs for received data
-kubectl logs -n otel-demo -l app=otel-collector | tail -20
+kubectl logs -n mobile-observability -l app=otel-collector | tail -20
 ```
 
 ## Configuration
@@ -151,7 +151,7 @@ Environment variables:
 
 * `PORT` - HTTP port (default: 8080)
 * `DB_PATH` - SQLite database path (default: ./data/gateway.db)
-* `OTEL_COLLECTOR_ENDPOINT` - Collector gRPC endpoint (default: otel-collector.otel-demo.svc.cluster.local:4317)
+* `OTEL_COLLECTOR_ENDPOINT` - Collector gRPC endpoint (default: otel-collector.mobile-observability.svc.cluster.local:4317)
 
 ## Database Schema
 
@@ -218,7 +218,7 @@ curl http://localhost:8080/admin/versions?limit=10
 Check service DNS resolution:
 
 ```bash
-kubectl exec -n otel-demo deploy/otel-gateway -- nslookup otel-collector.otel-demo.svc.cluster.local
+kubectl exec -n mobile-observability deploy/otel-gateway -- nslookup otel-collector.mobile-observability.svc.cluster.local
 ```
 
 ### Database locked errors
@@ -226,7 +226,7 @@ kubectl exec -n otel-demo deploy/otel-gateway -- nslookup otel-collector.otel-de
 Ensure only one replica is running (SQLite limitation):
 
 ```bash
-kubectl scale deployment -n otel-demo otel-gateway --replicas=1
+kubectl scale deployment -n mobile-observability otel-gateway --replicas=1
 ```
 
 ### Events not appearing in collector logs

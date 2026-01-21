@@ -20,7 +20,7 @@ func main() {
 	// Configuration
 	port := getEnv("PORT", "8080")
 	dbPath := getEnv("DB_PATH", "./data/gateway.db")
-	collectorEndpoint := getEnv("OTEL_COLLECTOR_ENDPOINT", "otel-collector.otel-demo.svc.cluster.local:4317")
+	collectorEndpoint := getEnv("OTEL_COLLECTOR_ENDPOINT", "otel-collector.mobile-observability.svc.cluster.local:4317")
 
 	log.Printf("Starting Mobile Observability Gateway")
 	log.Printf("Port: %s", port)

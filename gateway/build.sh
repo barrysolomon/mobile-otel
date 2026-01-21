@@ -6,7 +6,7 @@ echo "=== Building Mobile Observability Gateway ==="
 # Configuration
 IMAGE_NAME="otel-gateway"
 IMAGE_TAG="latest"
-NAMESPACE="otel-demo"
+NAMESPACE="mobile-observability"
 
 # Colors
 GREEN='\033[0;32m'

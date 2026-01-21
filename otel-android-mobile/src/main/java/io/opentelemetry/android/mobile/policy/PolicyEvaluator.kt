@@ -1,6 +1,10 @@
 package io.opentelemetry.android.mobile.policy
 
+import android.content.Context
 import android.util.Log
+import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.context.ContextSnapshot
+import io.opentelemetry.android.mobile.context.ContextSnapshotProvider
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -11,23 +15,32 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Evaluates workflow policies to determine when to flush events.
+ * Evaluates export policies to determine when to flush events.
  *
  * The PolicyEvaluator:
- * 1. Fetches workflow configurations from the collector/gateway
+ * 1. Fetches policy configurations from the collector/gateway
  * 2. Evaluates each log record against active policies
- * 3. Returns flush instructions when policies match
+ * 3. Evaluates geo and device context (privacy-safe)
+ * 4. Returns flush instructions when policies match
  *
- * **Policy Structure:**
+ * **Policy Structure (Extended with Geo/Device):**
  * ```json
  * {
- *   "id": "ui-freeze-handler",
+ *   "id": "ui-freeze-us-only",
  *   "enabled": true,
  *   "match": {
  *     "logical_operator": "and",
  *     "attributes": {
  *       "event.name": {"equals": "ui.freeze"},
  *       "duration_ms": {"gt": 2000.0}
+ *     },
+ *     "geo": {
+ *       "country": ["US"],
+ *       "timezone": ["America/*"]
+ *     },
+ *     "device": {
+ *       "network": ["cellular"],
+ *       "battery": ["normal", "charging"]
  *     }
  *   },
  *   "actions": {
@@ -39,18 +52,23 @@ import java.util.concurrent.atomic.AtomicReference
  * **Evaluation Process:**
  * 1. Check if policy is enabled
  * 2. Extract attributes from LogRecordData
- * 3. Apply match conditions (equals, gt, lt, contains, etc.)
- * 4. Combine with logical operator (and/or)
- * 5. Return flush action if matched
+ * 3. Get current device/geo context (ContextSnapshot)
+ * 4. Apply match conditions (attributes, geo, device)
+ * 5. Combine with logical operator (and/or)
+ * 6. Return flush action if matched
  *
  * Thread Safety: Uses atomic reference for policy config
  * Config Refresh: Polls for updates every 5 minutes (configurable)
  *
+ * @property context Android application context
+ * @property config Mobile configuration
  * @property collectorEndpoint Base URL for configuration endpoint
  */
 class PolicyEvaluator(
-    private val collectorEndpoint: String,
-    private val configPollIntervalSeconds: Long = 300
+    private val context: Context,
+    private val config: MobileConfig,
+    private val collectorEndpoint: String = config.collectorEndpoint,
+    private val configPollIntervalSeconds: Long = config.configPollIntervalSeconds
 ) {
     private val TAG = "PolicyEvaluator"
 
@@ -85,16 +103,20 @@ class PolicyEvaluator(
      * @return PolicyMatchResult if a policy matched, null otherwise
      */
     fun evaluate(logRecord: LogRecordData): PolicyMatchResult? {
-        val config = policyConfig.get() ?: return null
+        val policyConf = policyConfig.get() ?: return null
 
-        for (policy in config.policies) {
+        // Get current device/geo context
+        val contextSnapshot = ContextSnapshotProvider.getSnapshot(context, config)
+
+        for (policy in policyConf.policies) {
             if (!policy.enabled) continue
 
-            if (matchesPolicy(logRecord, policy)) {
+            if (matchesPolicy(logRecord, contextSnapshot, policy)) {
                 Log.i(TAG, "Policy matched: ${policy.id}")
                 return PolicyMatchResult(
                     policyId = policy.id,
-                    flushWindowMinutes = policy.actions.flushWindowMinutes
+                    flushWindowMinutes = policy.actions.flushWindowMinutes,
+                    contextSnapshot = contextSnapshot
                 )
             }
         }
@@ -104,16 +126,40 @@ class PolicyEvaluator(
 
     /**
      * Checks if a log record matches a policy's conditions.
+     *
+     * Evaluates three dimensions:
+     * 1. Attribute conditions (existing)
+     * 2. Geo conditions (new)
+     * 3. Device conditions (new)
+     *
+     * Combined using the policy's logical operator (and/or).
      */
-    private fun matchesPolicy(logRecord: LogRecordData, policy: Policy): Boolean {
-        val matchConditions = policy.match.attributes.map { (attrKey, condition) ->
-            val attrValue = getAttributeValue(logRecord, attrKey)
-            matchesCondition(attrValue, condition)
+    private fun matchesPolicy(
+        logRecord: LogRecordData,
+        contextSnapshot: ContextSnapshot,
+        policy: Policy
+    ): Boolean {
+        // 1. Check attribute conditions
+        val attributeMatch = if (policy.match.attributes.isNotEmpty()) {
+            val conditions = policy.match.attributes.map { (attrKey, condition) ->
+                val attrValue = getAttributeValue(logRecord, attrKey)
+                matchesCondition(attrValue, condition)
+            }
+            conditions.all { it }  // Attributes always use AND logic internally
+        } else {
+            true  // No attribute constraints = always match
         }
 
+        // 2. Check geo conditions
+        val geoMatch = matchGeo(contextSnapshot, policy.match.geo)
+
+        // 3. Check device conditions
+        val deviceMatch = matchDevice(contextSnapshot, policy.match.device)
+
+        // 4. Combine with logical operator
         return when (policy.match.logicalOperator) {
-            "and" -> matchConditions.all { it }
-            "or" -> matchConditions.any { it }
+            "and" -> attributeMatch && geoMatch && deviceMatch
+            "or" -> attributeMatch || geoMatch || deviceMatch
             else -> false
         }
     }
@@ -144,6 +190,114 @@ class PolicyEvaluator(
             condition.regex != null -> value.toString().matches(Regex(condition.regex))
             else -> false
         }
+    }
+
+    /**
+     * Checks if context matches geo conditions.
+     *
+     * Supports:
+     * - Country list matching (exact)
+     * - Region list matching (exact)
+     * - Timezone glob matching (e.g., "America/*")
+     * - Locale list matching (exact)
+     */
+    private fun matchGeo(context: ContextSnapshot, geo: GeoMatch?): Boolean {
+        if (geo == null) return true  // No geo constraint = always match
+
+        var matches = true
+
+        // Country list match (e.g., ["US", "CA"])
+        if (geo.country != null && geo.country.isNotEmpty()) {
+            matches = matches && context.country in geo.country
+        }
+
+        // Region list match (e.g., ["CA", "NY"])
+        if (geo.region != null && geo.region.isNotEmpty()) {
+            matches = matches && context.region in geo.region
+        }
+
+        // Timezone glob match (e.g., ["America/*", "US/*"])
+        if (geo.timezone != null && geo.timezone.isNotEmpty()) {
+            val timezoneMatches = geo.timezone.any { pattern ->
+                matchGlob(context.timezone, pattern)
+            }
+            matches = matches && timezoneMatches
+        }
+
+        // Locale list match (e.g., ["en-US", "es-ES"])
+        if (geo.locale != null && geo.locale.isNotEmpty()) {
+            matches = matches && context.locale in geo.locale
+        }
+
+        return matches
+    }
+
+    /**
+     * Checks if context matches device conditions.
+     *
+     * Supports:
+     * - Network type list matching
+     * - Battery state list matching
+     * - Device class list matching
+     * - Build channel list matching
+     * - OS version range matching
+     * - App version list matching (string comparison)
+     */
+    private fun matchDevice(context: ContextSnapshot, device: DeviceMatch?): Boolean {
+        if (device == null) return true  // No device constraint = always match
+
+        var matches = true
+
+        // Network type list match (e.g., ["wifi", "cellular"])
+        if (device.network != null && device.network.isNotEmpty()) {
+            matches = matches && context.networkType in device.network
+        }
+
+        // Battery state list match (e.g., ["normal", "charging"])
+        if (device.battery != null && device.battery.isNotEmpty()) {
+            matches = matches && context.batteryState in device.battery
+        }
+
+        // Device class list match (e.g., ["phone"])
+        if (device.deviceClass != null && device.deviceClass.isNotEmpty()) {
+            matches = matches && context.deviceClass in device.deviceClass
+        }
+
+        // Build channel list match (e.g., ["beta", "internal"])
+        if (device.buildChannel != null && device.buildChannel.isNotEmpty()) {
+            matches = matches && context.buildChannel in device.buildChannel
+        }
+
+        // OS version range match (e.g., minSdkInt >= 26)
+        if (device.osVersionMin != null) {
+            matches = matches && context.osVersion >= device.osVersionMin
+        }
+        if (device.osVersionMax != null) {
+            matches = matches && context.osVersion <= device.osVersionMax
+        }
+
+        // App version list match (e.g., ["1.2.3", "1.2.4"])
+        if (device.appVersion != null && device.appVersion.isNotEmpty()) {
+            matches = matches && context.appVersion in device.appVersion
+        }
+
+        return matches
+    }
+
+    /**
+     * Simple glob pattern matching.
+     *
+     * Supports:
+     * - "America/*" matches "America/Los_Angeles", "America/New_York", etc.
+     * - "US/*" matches "US/Pacific", "US/Eastern", etc.
+     * - Exact match if no glob
+     */
+    private fun matchGlob(value: String, pattern: String): Boolean {
+        if (pattern.endsWith("/*")) {
+            val prefix = pattern.removeSuffix("/*")
+            return value.startsWith(prefix + "/")
+        }
+        return value == pattern
     }
 
     /**
@@ -195,6 +349,7 @@ class PolicyEvaluator(
             val matchObj = triggerNode.getJSONObject("data").getJSONObject("match")
             val attributes = mutableMapOf<String, Condition>()
 
+            // Parse attribute conditions (existing)
             val attrsObj = matchObj.optJSONObject("attributes")
             attrsObj?.keys()?.forEach { key ->
                 val condObj = attrsObj.getJSONObject(key)
@@ -206,6 +361,47 @@ class PolicyEvaluator(
                     lte = condObj.optDouble("lte").takeIf { !it.isNaN() },
                     contains = condObj.optString("contains").takeIf { it.isNotEmpty() },
                     regex = condObj.optString("regex").takeIf { it.isNotEmpty() }
+                )
+            }
+
+            // Parse geo conditions (new)
+            val geoMatch = matchObj.optJSONObject("geo")?.let { geoObj ->
+                GeoMatch(
+                    country = geoObj.optJSONArray("country")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    region = geoObj.optJSONArray("region")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    timezone = geoObj.optJSONArray("timezone")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    locale = geoObj.optJSONArray("locale")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    }
+                )
+            }
+
+            // Parse device conditions (new)
+            val deviceMatch = matchObj.optJSONObject("device")?.let { deviceObj ->
+                DeviceMatch(
+                    network = deviceObj.optJSONArray("network")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    battery = deviceObj.optJSONArray("battery")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    deviceClass = deviceObj.optJSONArray("deviceClass")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    buildChannel = deviceObj.optJSONArray("buildChannel")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    },
+                    osVersionMin = deviceObj.optInt("osVersionMin").takeIf { it > 0 },
+                    osVersionMax = deviceObj.optInt("osVersionMax").takeIf { it > 0 },
+                    appVersion = deviceObj.optJSONArray("appVersion")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    }
                 )
             }
 
@@ -223,7 +419,9 @@ class PolicyEvaluator(
                     enabled = workflowObj.optBoolean("enabled", true),
                     match = Match(
                         logicalOperator = matchObj.optString("logical_operator", "and"),
-                        attributes = attributes
+                        attributes = attributes,
+                        geo = geoMatch,
+                        device = deviceMatch
                     ),
                     actions = Actions(
                         flushWindowMinutes = flushWindowMinutes
@@ -250,7 +448,8 @@ class PolicyEvaluator(
  */
 data class PolicyMatchResult(
     val policyId: String,
-    val flushWindowMinutes: Int
+    val flushWindowMinutes: Int,
+    val contextSnapshot: ContextSnapshot  // NEW: Include context for attribute enrichment
 )
 
 /**
@@ -275,7 +474,9 @@ data class Policy(
  */
 data class Match(
     val logicalOperator: String, // "and" or "or"
-    val attributes: Map<String, Condition>
+    val attributes: Map<String, Condition>,
+    val geo: GeoMatch? = null,  // NEW: Geo-based matching
+    val device: DeviceMatch? = null  // NEW: Device-based matching
 )
 
 /**
@@ -289,6 +490,29 @@ data class Condition(
     val lte: Double? = null,
     val contains: String? = null,
     val regex: String? = null
+)
+
+/**
+ * Geo-based match conditions (privacy-safe, coarse only).
+ */
+data class GeoMatch(
+    val country: List<String>? = null,      // ISO 3166-1 alpha-2 (e.g., ["US", "CA"])
+    val region: List<String>? = null,       // Best-effort region (e.g., ["CA", "NY"])
+    val timezone: List<String>? = null,     // IANA timezone with glob support (e.g., ["America/*"])
+    val locale: List<String>? = null        // BCP-47 locale (e.g., ["en-US", "es-ES"])
+)
+
+/**
+ * Device-based match conditions (non-PII only).
+ */
+data class DeviceMatch(
+    val network: List<String>? = null,      // wifi/cellular/offline/unknown
+    val battery: List<String>? = null,      // charging/low/normal/unknown
+    val deviceClass: List<String>? = null,  // phone/tablet/unknown
+    val buildChannel: List<String>? = null, // prod/beta/internal/unknown
+    val osVersionMin: Int? = null,          // Minimum SDK_INT
+    val osVersionMax: Int? = null,          // Maximum SDK_INT
+    val appVersion: List<String>? = null    // Specific app versions (string match)
 )
 
 /**

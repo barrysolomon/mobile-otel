@@ -30,6 +30,8 @@ package io.opentelemetry.android.mobile.config
  * @property configPollIntervalSeconds Interval for polling configuration updates (default: 300)
  * @property maxExportRetries Maximum number of retry attempts when export fails (default: 3)
  * @property headers Optional headers to include in OTLP requests (e.g., authentication)
+ * @property attachContextAttributes Whether to attach geo/device context attributes to exported logs (default: false)
+ * @property buildChannel Build channel for the app: prod/beta/internal/unknown (default: "unknown")
  */
 data class MobileConfig(
     val serviceName: String,
@@ -41,7 +43,9 @@ data class MobileConfig(
     val exportTimeoutSeconds: Long = 30,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
-    val headers: Map<String, String>? = null
+    val headers: Map<String, String>? = null,
+    val attachContextAttributes: Boolean = false,
+    val buildChannel: String? = null
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -79,6 +83,8 @@ data class MobileConfig(
         private var configPollIntervalSeconds: Long = 300
         private var maxExportRetries: Int = 3
         private var headers: Map<String, String>? = null
+        private var attachContextAttributes: Boolean = false
+        private var buildChannel: String? = null
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -90,6 +96,8 @@ data class MobileConfig(
         fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long) = apply { this.configPollIntervalSeconds = configPollIntervalSeconds }
         fun setMaxExportRetries(maxExportRetries: Int) = apply { this.maxExportRetries = maxExportRetries }
         fun setHeaders(headers: Map<String, String>) = apply { this.headers = headers }
+        fun setAttachContextAttributes(enabled: Boolean) = apply { this.attachContextAttributes = enabled }
+        fun setBuildChannel(channel: String) = apply { this.buildChannel = channel }
 
         fun build(): MobileConfig {
             return MobileConfig(
@@ -102,7 +110,9 @@ data class MobileConfig(
                 exportTimeoutSeconds = exportTimeoutSeconds,
                 configPollIntervalSeconds = configPollIntervalSeconds,
                 maxExportRetries = maxExportRetries,
-                headers = headers
+                headers = headers,
+                attachContextAttributes = attachContextAttributes,
+                buildChannel = buildChannel
             )
         }
     }

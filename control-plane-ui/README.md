@@ -465,7 +465,7 @@ npm install
 
 1. **Start Gateway:**
    ```bash
-   kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+   kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
    ```
 
 2. **Start UI:**
@@ -520,5 +520,5 @@ Apache 2.0 (for demo purposes)
 
 For issues or questions:
 * Check [E2E_VERIFICATION_CHECKLIST.md](../E2E_VERIFICATION_CHECKLIST.md)
-* Review gateway logs: `kubectl logs -n otel-demo -l app=otel-gateway`
+* Review gateway logs: `kubectl logs -n mobile-observability -l app=otel-gateway`
 * Check browser DevTools console for errors

@@ -27,10 +27,10 @@ cd /Users/barrysolomon/IdeaProjects/mobile-app
 kubectl apply -f k8s/
 
 # Wait for pods to be ready
-kubectl wait --for=condition=ready pod -n otel-demo --all --timeout=60s
+kubectl wait --for=condition=ready pod -n mobile-observability --all --timeout=60s
 
 # Verify deployment
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 ```
 
 **Expected output:**
@@ -44,7 +44,7 @@ otel-gateway-xxxxxxxxxx-xxxxx     1/1     Running   0          30s
 
 ```bash
 # Forward gateway port to localhost
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # Test gateway health
 curl http://localhost:8080/health
@@ -109,10 +109,10 @@ curl -X POST http://localhost:8080/ingest \
 
 ```bash
 # Check gateway received the event
-kubectl logs -n otel-demo -l app=otel-gateway --tail=20 | grep "quickstart.test"
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=20 | grep "quickstart.test"
 
 # Check collector processed the event
-kubectl logs -n otel-demo -l app=otel-collector --tail=20 | grep "quickstart.test"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=20 | grep "quickstart.test"
 ```
 
 **Expected output in collector logs:**
@@ -174,7 +174,7 @@ Launch the Android app and try:
 ```bash
 lsof -i :8080 | grep kubectl
 # If empty, restart port-forward:
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 ```
 
 ### UI won't start
@@ -194,7 +194,7 @@ npm run dev
 
 **Solution**: Check gateway logs first
 ```bash
-kubectl logs -n otel-demo -l app=otel-gateway --tail=50
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 # Look for "Exported event" messages
 ```
 
@@ -202,25 +202,25 @@ kubectl logs -n otel-demo -l app=otel-gateway --tail=50
 
 ```bash
 # Check all pods
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # Gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway -f
+kubectl logs -n mobile-observability -l app=otel-gateway -f
 
 # Collector logs
-kubectl logs -n otel-demo -l app=otel-collector -f
+kubectl logs -n mobile-observability -l app=otel-collector -f
 
 # Restart gateway
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 
 # Restart collector
-kubectl rollout restart deployment/otel-collector -n otel-demo
+kubectl rollout restart deployment/otel-collector -n mobile-observability
 
 # Stop port-forward
 pkill -f "kubectl port-forward"
 
 # Clean up everything
-kubectl delete namespace otel-demo
+kubectl delete namespace mobile-observability
 ```
 
 ## Learning Path

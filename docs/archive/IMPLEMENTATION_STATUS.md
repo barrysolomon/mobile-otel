@@ -57,7 +57,7 @@ Complete OTEL-based mobile observability system with local buffering, workflow-b
 
 ### Deployed Components
 
-* Namespace: `otel-demo`
+* Namespace: `mobile-observability`
 * Service: `otel-collector` (ClusterIP)
 * Deployment: 1 replica, 512MB RAM, 500m CPU
 
@@ -79,11 +79,11 @@ Complete OTEL-based mobile observability system with local buffering, workflow-b
 ### Verification
 
 ```bash
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 # NAME                              READY   STATUS
 # otel-collector-xxxxxxxxxx-xxxxx   1/1     Running
 
-kubectl logs -n otel-demo -l app=otel-collector --tail=20
+kubectl logs -n mobile-observability -l app=otel-collector --tail=20
 # Shows received OTLP logs
 ```
 
@@ -275,7 +275,7 @@ cd ../gateway
 ./build.sh
 
 # 3. Port-forward gateway for Android emulator
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # 4. Build Android app
 cd ../android-app
@@ -286,11 +286,11 @@ cd ../android-app
 # 6. Click "Trigger UI Freeze"
 
 # 7. Check gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway | tail -20
+kubectl logs -n mobile-observability -l app=otel-gateway | tail -20
 # Should see: "Successfully ingested N events"
 
 # 8. Check collector logs
-kubectl logs -n otel-demo -l app=otel-collector | tail -20
+kubectl logs -n mobile-observability -l app=otel-collector | tail -20
 # Should see OTEL logs with event details:
 # Body: ui.freeze
 # Attributes: {session_id, device_id, duration_ms, screen}
@@ -368,7 +368,7 @@ buildConfigField("String", "GATEWAY_URL", "\"http://10.0.2.2:8080\"")
 ```bash
 # gateway/k8s manifest
 - name: OTEL_COLLECTOR_ENDPOINT
-  value: "otel-collector.otel-demo.svc.cluster.local:4317"
+  value: "otel-collector.mobile-observability.svc.cluster.local:4317"
 ```
 
 ### Workflow DSL (Gateway → Android)
@@ -483,7 +483,7 @@ cd gateway && ./build.sh
 
 ```bash
 # Port-forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Open android-app in Android Studio
 # Update GATEWAY_URL in build.gradle.kts if needed
@@ -496,8 +496,8 @@ kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
 2. Click "Trigger UI Freeze"
 3. Check logs:
    ```bash
-   kubectl logs -n otel-demo -l app=otel-gateway | tail
-   kubectl logs -n otel-demo -l app=otel-collector | tail
+   kubectl logs -n mobile-observability -l app=otel-gateway | tail
+   kubectl logs -n mobile-observability -l app=otel-collector | tail
    ```
 
 ---

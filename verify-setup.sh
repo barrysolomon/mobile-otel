@@ -304,13 +304,13 @@ if command_exists kubectl; then
     if kubectl cluster-info >/dev/null 2>&1; then
         print_success "kubectl can connect to cluster"
 
-        # Check if otel-demo namespace exists
-        if kubectl get namespace otel-demo >/dev/null 2>&1; then
-            print_info "otel-demo namespace already exists"
+        # Check if mobile-observability namespace exists
+        if kubectl get namespace mobile-observability >/dev/null 2>&1; then
+            print_info "mobile-observability namespace already exists"
 
             # Check if pods are running
-            COLLECTOR_PODS=$(kubectl get pods -n otel-demo -l app=otel-collector --no-headers 2>/dev/null | wc -l)
-            GATEWAY_PODS=$(kubectl get pods -n otel-demo -l app=otel-gateway --no-headers 2>/dev/null | wc -l)
+            COLLECTOR_PODS=$(kubectl get pods -n mobile-observability -l app=otel-collector --no-headers 2>/dev/null | wc -l)
+            GATEWAY_PODS=$(kubectl get pods -n mobile-observability -l app=otel-gateway --no-headers 2>/dev/null | wc -l)
 
             if [ "$COLLECTOR_PODS" -gt 0 ]; then
                 print_info "OTEL Collector pod(s) found: $COLLECTOR_PODS"
@@ -320,7 +320,7 @@ if command_exists kubectl; then
                 print_info "Gateway pod(s) found: $GATEWAY_PODS"
             fi
         else
-            print_info "otel-demo namespace not found (will be created on deployment)"
+            print_info "mobile-observability namespace not found (will be created on deployment)"
         fi
     else
         print_error "kubectl cannot connect to cluster - verify cluster is running"
@@ -348,7 +348,7 @@ if [ $CHECKS_FAILED -eq 0 ]; then
     echo ""
     echo "Next steps:"
     echo "  1. Deploy to Kubernetes: kubectl apply -f k8s/"
-    echo "  2. Port forward gateway: kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080"
+    echo "  2. Port forward gateway: kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080"
     echo "  3. Start UI: cd control-plane-ui && npm install && npm run dev"
     echo "  4. Build Android app: cd android-app && ./gradlew installDebug"
     echo ""

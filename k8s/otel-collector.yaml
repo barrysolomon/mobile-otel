@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: otel-demo
+  name: mobile-observability
 
 ---
 # ConfigMap containing the OTEL Collector configuration
@@ -11,7 +11,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-collector-config
-  namespace: otel-demo
+  namespace: mobile-observability
 data:
   collector.yaml: |
     receivers:
@@ -84,7 +84,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
-  namespace: otel-demo
+  namespace: mobile-observability
   labels:
     app: otel-collector
     component: collector
@@ -151,7 +151,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: otel-collector
-  namespace: otel-demo
+  namespace: mobile-observability
   labels:
     app: otel-collector
 spec:

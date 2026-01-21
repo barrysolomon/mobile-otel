@@ -529,7 +529,7 @@ val config = MobileConfig(
 
 ```bash
 # Stop collector
-kubectl scale deployment otel-collector --replicas=0 -n otel-demo
+kubectl scale deployment otel-collector --replicas=0 -n mobile-observability
 
 # In Android app:
 # 1. Trigger event (UI freeze, etc.)
@@ -539,7 +539,7 @@ kubectl scale deployment otel-collector --replicas=0 -n otel-demo
 # 5. Check buffer stats: Events still in buffer
 
 # Start collector
-kubectl scale deployment otel-collector --replicas=1 -n otel-demo
+kubectl scale deployment otel-collector --replicas=1 -n mobile-observability
 
 # In Android app:
 # 1. Press "Flush Now" button

@@ -137,10 +137,10 @@ From `/Users/barrysolomon/IdeaProjects/mobile-app`:
 
 # 2. Deploy to Kubernetes
 kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -l app=otel-collector -n otel-demo --timeout=60s
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
 
 # 3. Port forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # 4. Start Control Plane UI
 cd control-plane-ui
@@ -161,7 +161,7 @@ cd ../android-app
 
 ```bash
 # 1. Check all components running
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 curl http://localhost:8080/health
 
 # 2. Publish workflow via UI
@@ -183,7 +183,7 @@ curl -X POST http://localhost:8080/ingest \
   }'
 
 # 4. Verify in collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep "test.event"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep "test.event"
 ```
 
 ## Documentation Navigation
@@ -237,8 +237,8 @@ If you encounter issues:
 - **Troubleshooting**: See DEPLOYMENT_GUIDE.md section
 - **Component logs**:
   ```bash
-  kubectl logs -n otel-demo -l app=otel-gateway --tail=100
-  kubectl logs -n otel-demo -l app=otel-collector --tail=100
+  kubectl logs -n mobile-observability -l app=otel-gateway --tail=100
+  kubectl logs -n mobile-observability -l app=otel-collector --tail=100
   adb logcat | grep "ObservabilitySDK"
   ```
 

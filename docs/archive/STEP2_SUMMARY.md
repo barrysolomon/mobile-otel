@@ -113,13 +113,13 @@ docker save otel-gateway:latest | k3s ctr images import -
 kubectl apply -f ../k8s/otel-gateway.yaml
 
 # Verify
-kubectl get pods -n otel-demo -l app=otel-gateway
+kubectl get pods -n mobile-observability -l app=otel-gateway
 ```
 
 ### Test
 ```bash
 # Port-forward
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Health check
 curl http://localhost:8080/health
@@ -144,15 +144,15 @@ curl -X POST http://localhost:8080/ingest \
   }'
 
 # Check collector received it
-kubectl logs -n otel-demo -l app=otel-collector | tail -20
+kubectl logs -n mobile-observability -l app=otel-collector | tail -20
 ```
 
 ## Service Naming (Standardized)
 
-* Namespace: `otel-demo`
+* Namespace: `mobile-observability`
 * Collector service: `otel-collector`
 * Gateway service: `otel-gateway`
-* Internal DNS: `otel-gateway.otel-demo.svc.cluster.local:8080`
+* Internal DNS: `otel-gateway.mobile-observability.svc.cluster.local:8080`
 
 ## Database Schema
 

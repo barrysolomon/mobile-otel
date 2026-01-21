@@ -383,7 +383,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: control-plane-ui
-  namespace: otel-demo
+  namespace: mobile-observability
 spec:
   replicas: 1
   template:
@@ -399,7 +399,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: control-plane-ui
-  namespace: otel-demo
+  namespace: mobile-observability
 spec:
   type: ClusterIP
   ports:
@@ -477,7 +477,7 @@ spec:
 
 ```bash
 # 1. Start gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # 2. Start UI
 cd control-plane-ui
@@ -493,7 +493,7 @@ npm run dev
 # - Click Publish
 
 # 5. Verify in gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway --tail=20
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=20
 # Look for: POST /admin/publish
 
 # 6. Test device monitor
@@ -520,16 +520,16 @@ kubectl logs -n otel-demo -l app=otel-gateway --tail=20
 **Command sequence:**
 ```bash
 # Terminal 1: Gateway port-forward
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Terminal 2: UI
 cd control-plane-ui && npm run dev
 
 # Terminal 3: Watch gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway -f
+kubectl logs -n mobile-observability -l app=otel-gateway -f
 
 # Terminal 4: Watch collector logs
-kubectl logs -n otel-demo -l app=otel-collector -f
+kubectl logs -n mobile-observability -l app=otel-collector -f
 
 # Browser: Publish workflow
 # Android: Restart app to fetch config

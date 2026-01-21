@@ -14,10 +14,10 @@
 
 **Commands Provided:**
 ```bash
-kubectl get ns otel-demo
-kubectl -n otel-demo get deploy,po,svc
-kubectl -n otel-demo describe deploy otel-collector
-kubectl -n otel-demo describe deploy otel-gateway
+kubectl get ns mobile-observability
+kubectl -n mobile-observability get deploy,po,svc
+kubectl -n mobile-observability describe deploy otel-collector
+kubectl -n mobile-observability describe deploy otel-gateway
 ```
 
 **Expected Outputs:** All included with success criteria for each command
@@ -32,8 +32,8 @@ kubectl -n otel-demo describe deploy otel-gateway
 
 **Commands Provided:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector -f --tail=50
-kubectl logs -n otel-demo -l app=otel-collector | grep -A 20 "Body: Str(ui.freeze)"
+kubectl logs -n mobile-observability -l app=otel-collector -f --tail=50
+kubectl logs -n mobile-observability -l app=otel-collector | grep -A 20 "Body: Str(ui.freeze)"
 ```
 
 **Example OTEL Log Format Provided:**
@@ -158,7 +158,7 @@ Attributes:
 adb logcat ObservabilitySDK:D *:S | grep "Demo Run ID"
 
 # Search collector for that ID
-kubectl logs -n otel-demo -l app=otel-collector --tail=200 | grep "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=200 | grep "$DEMO_RUN_ID"
 ```
 
 **Status:** ✅ Complete with implementation, test steps, and grep commands
@@ -217,7 +217,7 @@ curl -X POST http://localhost:8080/ingest \
   -H "Content-Type: application/json" \
   -d "{\"events\":[{\"eventName\":\"smoke.test\",\"sessionId\":\"sess-001\",\"deviceId\":\"dev-001\",\"configVersion\":1,\"timestamp\":$(date +%s)000,\"attributes\":{\"demo_run_id\":\"$DEMO_RUN_ID\"}}]}" && \
 sleep 2 && \
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 10 "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep -A 10 "$DEMO_RUN_ID"
 ```
 
 **Expected:** See LogRecord with Body: smoke.test and demo_run_id attribute

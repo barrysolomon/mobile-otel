@@ -15,13 +15,13 @@
 ### 1.1 Verify Namespace Exists
 
 ```bash
-kubectl get ns otel-demo
+kubectl get ns mobile-observability
 ```
 
 **Expected Output:**
 ```
 NAME        STATUS   AGE
-otel-demo   Active   5m
+mobile-observability   Active   5m
 ```
 
 **Success Criteria:** Namespace exists and status is Active
@@ -31,7 +31,7 @@ otel-demo   Active   5m
 ### 1.2 Verify All Resources
 
 ```bash
-kubectl -n otel-demo get deploy,po,svc
+kubectl -n mobile-observability get deploy,po,svc
 ```
 
 **Expected Output:**
@@ -59,13 +59,13 @@ service/otel-gateway     ClusterIP   10.43.xxx.xxx   <none>        8080/TCP
 ### 1.3 Verify Collector Deployment
 
 ```bash
-kubectl -n otel-demo describe deploy otel-collector
+kubectl -n mobile-observability describe deploy otel-collector
 ```
 
 **Expected Output (Key Sections):**
 ```
 Name:                   otel-collector
-Namespace:              otel-demo
+Namespace:              mobile-observability
 Replicas:               1 desired | 1 updated | 1 total | 1 available
 Pod Template:
   Containers:
@@ -92,13 +92,13 @@ Conditions:
 ### 1.4 Verify Gateway Deployment
 
 ```bash
-kubectl -n otel-demo describe deploy otel-gateway
+kubectl -n mobile-observability describe deploy otel-gateway
 ```
 
 **Expected Output (Key Sections):**
 ```
 Name:                   otel-gateway
-Namespace:              otel-demo
+Namespace:              mobile-observability
 Replicas:               1 desired | 1 updated | 1 total | 1 available
 Pod Template:
   Containers:
@@ -108,7 +108,7 @@ Pod Template:
     Environment:
       PORT:                       8080
       DB_PATH:                    /data/gateway.db
-      OTEL_COLLECTOR_ENDPOINT:    otel-collector.otel-demo.svc.cluster.local:4317
+      OTEL_COLLECTOR_ENDPOINT:    otel-collector.mobile-observability.svc.cluster.local:4317
     Liveness:     http-get http://:8080/health delay=10s
     Readiness:    http-get http://:8080/health delay=5s
 Conditions:
@@ -129,7 +129,7 @@ Conditions:
 ### 2.1 Tail Collector Logs
 
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector -f --tail=50
+kubectl logs -n mobile-observability -l app=otel-collector -f --tail=50
 ```
 
 **Expected Output (Startup):**
@@ -183,7 +183,7 @@ Flags: 0
 
 **Search Pattern:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector | grep -A 20 "Body: Str(ui.freeze)"
+kubectl logs -n mobile-observability -l app=otel-collector | grep -A 20 "Body: Str(ui.freeze)"
 ```
 
 ---
@@ -193,7 +193,7 @@ kubectl logs -n otel-demo -l app=otel-collector | grep -A 20 "Body: Str(ui.freez
 ### Setup: Port-Forward Gateway
 
 ```bash
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 ```
 
 Leave this running in a separate terminal.
@@ -307,7 +307,7 @@ curl -X POST http://localhost:8080/ingest \
 
 **Verify in Gateway Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-gateway --tail=10
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=10
 ```
 
 Look for:
@@ -318,7 +318,7 @@ Successfully exported 1 events
 
 **Verify in Collector Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 10 "ui.freeze"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep -A 10 "ui.freeze"
 ```
 
 Look for LogRecord with:
@@ -368,7 +368,7 @@ buildConfigField("String", "GATEWAY_URL", "\"http://10.0.2.2:8080\"")
 
 **Step 4:** Ensure gateway port-forward is running:
 ```bash
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 ```
 
 **Step 5:** Run app on emulator (API 26+)
@@ -412,7 +412,7 @@ GatewayClient: Successfully ingested 6 events
 
 **Expected in Gateway Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-gateway --tail=20
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=20
 ```
 
 Look for:
@@ -423,7 +423,7 @@ Successfully exported 6 events
 
 **Expected in Collector Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep -A 15 "ui.freeze"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep -A 15 "ui.freeze"
 ```
 
 Look for LogRecord with:
@@ -465,7 +465,7 @@ GatewayClient: Successfully ingested 10 events
 
 **Expected in Collector Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep -A 10 "crash_marker"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep -A 10 "crash_marker"
 ```
 
 Look for LogRecord with:
@@ -505,7 +505,7 @@ GatewayClient: Successfully ingested 8 events
 
 **Expected in Collector Logs:**
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep -A 10 "http.response"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep -A 10 "http.response"
 ```
 
 Look for LogRecords with:
@@ -609,7 +609,7 @@ curl -X POST http://localhost:8080/ingest \
 **Step 2:** Search gateway logs:
 
 ```bash
-kubectl logs -n otel-demo -l app=otel-gateway --tail=100 | grep "POST /ingest"
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=100 | grep "POST /ingest"
 ```
 
 Expected:
@@ -623,7 +623,7 @@ Successfully exported 1 events
 **Step 3:** Search collector logs:
 
 ```bash
-kubectl logs -n otel-demo -l app=otel-collector --tail=200 | grep -A 20 "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=200 | grep -A 20 "$DEMO_RUN_ID"
 ```
 
 **Expected Output:**
@@ -655,7 +655,7 @@ Attributes:
 
 **Step 1:** Scale down collector:
 ```bash
-kubectl scale deployment -n otel-demo otel-collector --replicas=0
+kubectl scale deployment -n mobile-observability otel-collector --replicas=0
 ```
 
 **Step 2:** Send event to gateway:
@@ -688,7 +688,7 @@ OR
 
 **Step 3:** Check gateway logs:
 ```bash
-kubectl logs -n otel-demo -l app=otel-gateway --tail=20
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=20
 ```
 
 **Expected:**
@@ -698,7 +698,7 @@ Failed to export events: connection refused
 
 **Step 4:** Scale collector back up:
 ```bash
-kubectl scale deployment -n otel-demo otel-collector --replicas=1
+kubectl scale deployment -n mobile-observability otel-collector --replicas=1
 ```
 
 **Step 5:** Wait 30s and retry event ingestion. Should succeed.
@@ -717,7 +717,7 @@ kubectl scale deployment -n otel-demo otel-collector --replicas=1
 
 **Step 1:** Scale down gateway:
 ```bash
-kubectl scale deployment -n otel-demo otel-gateway --replicas=0
+kubectl scale deployment -n mobile-observability otel-gateway --replicas=0
 ```
 
 **Step 2:** In Android app, click "Trigger UI Freeze"
@@ -747,8 +747,8 @@ Events remain unflushed in disk buffer.
 
 **Step 4:** Scale gateway back up:
 ```bash
-kubectl scale deployment -n otel-demo otel-gateway --replicas=1
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl scale deployment -n mobile-observability otel-gateway --replicas=1
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 ```
 
 **Step 5:** In Android app, trigger another workflow (e.g., UI Freeze again)
@@ -845,11 +845,11 @@ kubectl apply -f k8s/otel-collector.yaml
 kubectl apply -f k8s/otel-gateway.yaml
 
 # 2. Wait for ready
-kubectl wait --for=condition=available --timeout=60s deployment/otel-collector -n otel-demo
-kubectl wait --for=condition=available --timeout=60s deployment/otel-gateway -n otel-demo
+kubectl wait --for=condition=available --timeout=60s deployment/otel-collector -n mobile-observability
+kubectl wait --for=condition=available --timeout=60s deployment/otel-gateway -n mobile-observability
 
 # 3. Port-forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # 4. Publish config
 curl -X POST http://localhost:8080/admin/publish \
@@ -863,10 +863,10 @@ curl -X POST http://localhost:8080/ingest \
   -d "{\"events\":[{\"eventName\":\"smoke.test\",\"sessionId\":\"sess-smoke-001\",\"deviceId\":\"dev-smoke-001\",\"configVersion\":1,\"timestamp\":$(date +%s)000,\"attributes\":{\"demo_run_id\":\"$DEMO_RUN_ID\"}}]}"
 
 # 6. Verify in collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep -A 10 "smoke.test"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep -A 10 "smoke.test"
 
 # 7. Search for correlation ID
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep "$DEMO_RUN_ID"
 ```
 
 **Expected:** See smoke.test event in collector logs with demo_run_id attribute.

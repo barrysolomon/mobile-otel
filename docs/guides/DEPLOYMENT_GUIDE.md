@@ -20,12 +20,12 @@ kubectl apply -f k8s/otel-collector.yaml
 kubectl apply -f k8s/otel-gateway.yaml
 
 # 2. Wait for pods to be ready
-kubectl wait --for=condition=ready pod -l app=otel-collector -n otel-demo --timeout=60s
-kubectl wait --for=condition=ready pod -l app=otel-gateway -n otel-demo --timeout=60s
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
+kubectl wait --for=condition=ready pod -l app=otel-gateway -n mobile-observability --timeout=60s
 
 # 3. Port forward for local access
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317 4318:4318 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318 &
 
 # 4. Start Control Plane UI
 cd control-plane-ui
@@ -44,21 +44,21 @@ curl http://localhost:8080/health
 cd /Users/barrysolomon/IdeaProjects/mobile-app
 
 # Create namespace
-kubectl create namespace otel-demo
+kubectl create namespace mobile-observability
 
 # Deploy collector
 kubectl apply -f k8s/otel-collector.yaml
 
 # Verify deployment
-kubectl get pods -n otel-demo -l app=otel-collector
-kubectl logs -n otel-demo -l app=otel-collector --tail=50
+kubectl get pods -n mobile-observability -l app=otel-collector
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 
 # Expected output: Pod running, logs show "Everything is ready. Begin running and processing data."
 ```
 
 **Service endpoints:**
-- `otel-collector.otel-demo.svc.cluster.local:4317` - OTLP/gRPC
-- `otel-collector.otel-demo.svc.cluster.local:4318` - OTLP/HTTP
+- `otel-collector.mobile-observability.svc.cluster.local:4317` - OTLP/gRPC
+- `otel-collector.mobile-observability.svc.cluster.local:4318` - OTLP/HTTP
 
 ### Step 2: Deploy Gateway
 
@@ -67,17 +67,17 @@ kubectl logs -n otel-demo -l app=otel-collector --tail=50
 kubectl apply -f k8s/otel-gateway.yaml
 
 # Verify deployment
-kubectl get pods -n otel-demo -l app=otel-gateway
-kubectl get pvc -n otel-demo
+kubectl get pods -n mobile-observability -l app=otel-gateway
+kubectl get pvc -n mobile-observability
 
 # Check logs
-kubectl logs -n otel-demo -l app=otel-gateway --tail=50
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 
 # Expected output: "Starting server on :8080" and "Connected to OTEL Collector"
 ```
 
 **Service endpoint:**
-- `otel-gateway.otel-demo.svc.cluster.local:8080` - Gateway API
+- `otel-gateway.mobile-observability.svc.cluster.local:8080` - Gateway API
 
 ### Step 3: Port Forward for Local Access
 
@@ -85,10 +85,10 @@ For development and testing, forward services to localhost:
 
 ```bash
 # Terminal 1: Gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Terminal 2: Collector (optional, for direct testing)
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317 4318:4318
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318
 ```
 
 Keep these running throughout testing.
@@ -105,7 +105,7 @@ curl "http://localhost:8080/config?app_id=demo-app&device_id=test-device"
 # Expected: {"version":0,"limits":{...},"workflows":[]}
 
 # Verify OTEL connection
-kubectl logs -n otel-demo -l app=otel-gateway | grep "Connected to OTEL Collector"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "Connected to OTEL Collector"
 ```
 
 ### Step 5: Deploy Control Plane UI
@@ -191,13 +191,13 @@ private const val GATEWAY_URL = "http://<your-local-ip>:8080" // Physical device
 
 5. **Check gateway logs**:
    ```bash
-   kubectl logs -n otel-demo -l app=otel-gateway --tail=100 | grep "demo_run_id"
+   kubectl logs -n mobile-observability -l app=otel-gateway --tail=100 | grep "demo_run_id"
    # Should see events with your demo_run_id
    ```
 
 6. **Check collector output**:
    ```bash
-   kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep "ui.freeze"
+   kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep "ui.freeze"
    # Should see OTEL log records with ui.freeze events
    ```
 
@@ -211,11 +211,11 @@ adb logcat | grep "Demo Run ID"
 # Output: Demo Run ID: run-1705780000000
 
 # Search gateway logs for that run ID
-kubectl logs -n otel-demo -l app=otel-gateway | grep "run-1705780000000"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "run-1705780000000"
 # Should see multiple events with matching demo_run_id
 
 # Search collector logs
-kubectl logs -n otel-demo -l app=otel-collector | grep "run-1705780000000"
+kubectl logs -n mobile-observability -l app=otel-collector | grep "run-1705780000000"
 # Should see OTEL log records with demo_run_id attribute
 ```
 
@@ -265,14 +265,14 @@ curl -X POST http://localhost:8080/ingest \
 # Expected: {"received":1,"status":"ok"}
 
 # Check collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 | grep "test.event"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 | grep "test.event"
 ```
 
 ## Verification Checklist
 
 Use this checklist to verify full system operation:
 
-- [ ] OTEL Collector pod running in otel-demo namespace
+- [ ] OTEL Collector pod running in mobile-observability namespace
 - [ ] Gateway pod running with PVC attached
 - [ ] Gateway health endpoint returns 200
 - [ ] Control Plane UI loads at http://localhost:3000
@@ -296,13 +296,13 @@ Use this checklist to verify full system operation:
 **Solution**:
 ```bash
 # Check collector is running
-kubectl get pods -n otel-demo -l app=otel-collector
+kubectl get pods -n mobile-observability -l app=otel-collector
 
 # Check service exists
-kubectl get svc -n otel-demo otel-collector
+kubectl get svc -n mobile-observability otel-collector
 
 # Verify collector is listening on 4317
-kubectl exec -n otel-demo -it $(kubectl get pod -n otel-demo -l app=otel-collector -o name) -- netstat -ln | grep 4317
+kubectl exec -n mobile-observability -it $(kubectl get pod -n mobile-observability -l app=otel-collector -o name) -- netstat -ln | grep 4317
 ```
 
 ### Android app can't reach gateway
@@ -355,13 +355,13 @@ kubectl exec -n otel-demo -it $(kubectl get pod -n otel-demo -l app=otel-collect
 
 1. **Check gateway logs**:
    ```bash
-   kubectl logs -n otel-demo -l app=otel-gateway --tail=100
+   kubectl logs -n mobile-observability -l app=otel-gateway --tail=100
    ```
    Should see "Received N events" and "Exported event"
 
 2. **Check collector config**:
    ```bash
-   kubectl get configmap -n otel-demo otel-collector-config -o yaml
+   kubectl get configmap -n mobile-observability otel-collector-config -o yaml
    ```
    Verify `exporters` includes `debug` or `logging`
 
@@ -398,7 +398,7 @@ adb logcat | grep "RAM buffer"
 
 **Gateway disk usage**:
 ```bash
-kubectl exec -n otel-demo -it $(kubectl get pod -n otel-demo -l app=otel-gateway -o name) -- du -sh /data/gateway.db
+kubectl exec -n mobile-observability -it $(kubectl get pod -n mobile-observability -l app=otel-gateway -o name) -- du -sh /data/gateway.db
 ```
 
 ### Event Throughput
@@ -424,7 +424,7 @@ done
 wait
 
 # Check gateway handled all events
-kubectl logs -n otel-demo -l app=otel-gateway --tail=200 | grep "Received.*events" | wc -l
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=200 | grep "Received.*events" | wc -l
 ```
 
 ## Production Considerations
@@ -511,7 +511,7 @@ Now that the system is deployed and verified:
 ## Support
 
 For issues:
-- Check logs: `kubectl logs -n otel-demo -l app=<component>`
-- Verify services: `kubectl get svc -n otel-demo`
+- Check logs: `kubectl logs -n mobile-observability -l app=<component>`
+- Verify services: `kubectl get svc -n mobile-observability`
 - Review verification checklist: [E2E_VERIFICATION_CHECKLIST.md](E2E_VERIFICATION_CHECKLIST.md)
 - Check component status: [FINAL_STATUS.md](FINAL_STATUS.md)

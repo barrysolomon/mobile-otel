@@ -15,7 +15,7 @@
 kubectl apply -f k8s/otel-collector.yaml
 
 # Expected output:
-# namespace/otel-demo created
+# namespace/mobile-observability created
 # configmap/otel-collector-config created
 # deployment.apps/otel-collector created
 # service/otel-collector created
@@ -25,10 +25,10 @@ kubectl apply -f k8s/otel-collector.yaml
 
 ```bash
 # Watch pod startup
-kubectl get pods -n otel-demo -w
+kubectl get pods -n mobile-observability -w
 
 # Or check status once
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # Expected output:
 # NAME                              READY   STATUS    RESTARTS   AGE
@@ -39,7 +39,7 @@ kubectl get pods -n otel-demo
 
 ```bash
 # Check service is created
-kubectl get svc -n otel-demo
+kubectl get svc -n mobile-observability
 
 # Expected output:
 # NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)
@@ -52,7 +52,7 @@ kubectl get svc -n otel-demo
 
 ```bash
 # View collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=50 -f
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50 -f
 
 # Expected startup logs should show:
 # - "Everything is ready. Begin running and processing data."
@@ -63,7 +63,7 @@ kubectl logs -n otel-demo -l app=otel-collector --tail=50 -f
 
 ```bash
 # Port-forward to local machine
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317 4318:4318
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318
 ```
 
 In another terminal:
@@ -80,20 +80,20 @@ telnet localhost 4317
 
 ```bash
 # Check ConfigMap
-kubectl get configmap -n otel-demo otel-collector-config -o yaml
+kubectl get configmap -n mobile-observability otel-collector-config -o yaml
 
 # Check if config is mounted correctly
-kubectl exec -n otel-demo deploy/otel-collector -- cat /conf/collector.yaml
+kubectl exec -n mobile-observability deploy/otel-collector -- cat /conf/collector.yaml
 ```
 
 ### 4. Check Resource Usage
 
 ```bash
 # View pod resource consumption
-kubectl top pod -n otel-demo
+kubectl top pod -n mobile-observability
 
 # View detailed pod description
-kubectl describe pod -n otel-demo -l app=otel-collector
+kubectl describe pod -n mobile-observability -l app=otel-collector
 ```
 
 ### 5. Test with Sample Data
@@ -105,16 +105,16 @@ Once the Gateway is deployed, you can test the full pipeline:
 # The collector logs should show received data
 
 # Watch collector logs for incoming data
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 -f | grep -i "LogsExporter"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 -f | grep -i "LogsExporter"
 ```
 
 ## Service Endpoints
 
 ### Internal (within k3s cluster)
 
-* OTLP gRPC: `otel-collector.otel-demo.svc.cluster.local:4317`
-* OTLP HTTP: `otel-collector.otel-demo.svc.cluster.local:4318`
-* Metrics: `otel-collector.otel-demo.svc.cluster.local:8888`
+* OTLP gRPC: `otel-collector.mobile-observability.svc.cluster.local:4317`
+* OTLP HTTP: `otel-collector.mobile-observability.svc.cluster.local:4318`
+* Metrics: `otel-collector.mobile-observability.svc.cluster.local:8888`
 
 ### External Access (Development)
 
@@ -122,10 +122,10 @@ Use port-forwarding to access from outside the cluster:
 
 ```bash
 # Forward OTLP gRPC
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317
 
 # Or forward both gRPC and HTTP
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317 4318:4318
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318
 ```
 
 Then access via `localhost:4317` or `localhost:4318`.
@@ -136,30 +136,30 @@ Then access via `localhost:4317` or `localhost:4318`.
 
 ```bash
 # Check pod events
-kubectl describe pod -n otel-demo -l app=otel-collector
+kubectl describe pod -n mobile-observability -l app=otel-collector
 
 # Check pod logs for errors
-kubectl logs -n otel-demo -l app=otel-collector
+kubectl logs -n mobile-observability -l app=otel-collector
 ```
 
 ### Configuration errors
 
 ```bash
 # Validate ConfigMap syntax
-kubectl get configmap -n otel-demo otel-collector-config -o jsonpath='{.data.collector\.yaml}'
+kubectl get configmap -n mobile-observability otel-collector-config -o jsonpath='{.data.collector\.yaml}'
 
 # Update config if needed
-kubectl edit configmap -n otel-demo otel-collector-config
+kubectl edit configmap -n mobile-observability otel-collector-config
 
 # Restart collector to pick up changes
-kubectl rollout restart deployment -n otel-demo otel-collector
+kubectl rollout restart deployment -n mobile-observability otel-collector
 ```
 
 ### Resource constraints
 
 ```bash
 # Check if memory limited
-kubectl describe pod -n otel-demo -l app=otel-collector | grep -A 5 "State:"
+kubectl describe pod -n mobile-observability -l app=otel-collector | grep -A 5 "State:"
 
 # Increase limits in otel-collector.yaml if needed
 ```
@@ -171,12 +171,12 @@ kubectl describe pod -n otel-demo -l app=otel-collector | grep -A 5 "State:"
 kubectl delete -f k8s/otel-collector.yaml
 
 # Or delete just the namespace
-kubectl delete namespace otel-demo
+kubectl delete namespace mobile-observability
 ```
 
 ## Naming Convention
 
-* Namespace: `otel-demo` (all components use this namespace)
+* Namespace: `mobile-observability` (all components use this namespace)
 * Service name: `otel-collector`
 * Gateway will use: `otel-gateway` (Step 2)
 

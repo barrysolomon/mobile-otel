@@ -62,10 +62,10 @@ import java.util.concurrent.atomic.AtomicInteger
 class MobileLogRecordProcessor private constructor(
     private val context: Context,
     private val exporter: LogRecordExporter,
+    private val config: io.opentelemetry.android.mobile.config.MobileConfig,
     private val ramBufferSize: Int,
     private val diskBufferMb: Int,
-    private val diskBufferTtlHours: Int,
-    private val collectorEndpoint: String
+    private val diskBufferTtlHours: Int
 ) : LogRecordProcessor {
 
     private val TAG = "MobileLogRecordProcessor"
@@ -82,7 +82,7 @@ class MobileLogRecordProcessor private constructor(
     )
 
     // Policy evaluator: determines when to flush
-    private val policyEvaluator = PolicyEvaluator(collectorEndpoint)
+    private val policyEvaluator = PolicyEvaluator(context, config)
 
     // Executor for background tasks
     private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
@@ -350,25 +350,25 @@ class MobileLogRecordProcessor private constructor(
      */
     class Builder(private val context: Context) {
         private var exporter: LogRecordExporter? = null
+        private var config: io.opentelemetry.android.mobile.config.MobileConfig? = null
         private var ramBufferSize: Int = 5000
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
-        private var collectorEndpoint: String = ""
 
         fun setExporter(exporter: LogRecordExporter) = apply { this.exporter = exporter }
+        fun setConfig(config: io.opentelemetry.android.mobile.config.MobileConfig) = apply { this.config = config }
         fun setRamBufferSize(size: Int) = apply { this.ramBufferSize = size }
         fun setDiskBufferMb(sizeMb: Int) = apply { this.diskBufferMb = sizeMb }
         fun setDiskBufferTtlHours(hours: Int) = apply { this.diskBufferTtlHours = hours }
-        fun setCollectorEndpoint(endpoint: String) = apply { this.collectorEndpoint = endpoint }
 
         fun build(): MobileLogRecordProcessor {
             return MobileLogRecordProcessor(
                 context = context,
                 exporter = requireNotNull(exporter) { "Exporter is required" },
+                config = requireNotNull(config) { "Config is required" },
                 ramBufferSize = ramBufferSize,
                 diskBufferMb = diskBufferMb,
-                diskBufferTtlHours = diskBufferTtlHours,
-                collectorEndpoint = collectorEndpoint
+                diskBufferTtlHours = diskBufferTtlHours
             )
         }
     }

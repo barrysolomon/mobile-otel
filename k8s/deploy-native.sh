@@ -32,7 +32,7 @@ kubectl apply -f otel-collector-native.yaml
 
 echo ""
 echo "Step 3: Waiting for collector to be ready..."
-kubectl wait --for=condition=ready pod -l app=otel-collector -n otel-demo --timeout=60s
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
 
 echo ""
 echo -e "${GREEN}✓ Deployment complete!${NC}"
@@ -46,12 +46,12 @@ echo ""
 
 # Get pod status
 echo "Pod Status:"
-kubectl get pods -n otel-demo -l app=otel-collector
+kubectl get pods -n mobile-observability -l app=otel-collector
 
 echo ""
 echo "Service Endpoints:"
-kubectl get svc -n otel-demo otel-collector -o wide
-kubectl get svc -n otel-demo otel-collector-external -o wide
+kubectl get svc -n mobile-observability otel-collector -o wide
+kubectl get svc -n mobile-observability otel-collector-external -o wide
 
 echo ""
 echo "=================================="
@@ -82,7 +82,7 @@ echo ""
 echo "1. Update Android app with endpoint above"
 echo "2. Run the app and trigger scenarios"
 echo "3. Check collector logs:"
-echo "   kubectl logs -n otel-demo -l app=otel-collector -f"
+echo "   kubectl logs -n mobile-observability -l app=otel-collector -f"
 echo ""
 echo "4. To build custom collector with mobile processor:"
 echo "   See: REMAINING_WORK.md Phase 4"

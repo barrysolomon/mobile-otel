@@ -123,10 +123,10 @@ Complete OTEL-based mobile observability system with local buffering, workflow-b
 ```bash
 # 1. Deploy backend
 kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -n otel-demo --all --timeout=60s
+kubectl wait --for=condition=ready pod -n mobile-observability --all --timeout=60s
 
 # 2. Port forward gateway
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # 3. Start Control Plane UI
 cd control-plane-ui && npm install && npm run dev
@@ -201,7 +201,7 @@ open http://localhost:3000
 ### ✅ Step 1: OTEL Collector
 
 **Deployed Components:**
-- Kubernetes namespace: `otel-demo`
+- Kubernetes namespace: `mobile-observability`
 - Deployment: `otel-collector` (1 replica)
 - Service: ClusterIP on ports 4317 (gRPC), 4318 (HTTP)
 

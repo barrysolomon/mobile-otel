@@ -99,7 +99,7 @@ buildConfigField("String", "GATEWAY_URL", "\"http://192.168.1.X:8080\"")
 **For k3s Cluster:**
 ```bash
 # Port-forward gateway to host machine
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
 
 # Then use 10.0.2.2:8080 for emulator or your IP for device
 ```

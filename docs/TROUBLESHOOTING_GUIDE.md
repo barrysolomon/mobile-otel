@@ -29,7 +29,7 @@ echo "=== Mobile Observability System Health Check ==="
 
 # 1. Kubernetes Pods
 echo -e "\n[1] Checking pods..."
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # 2. Gateway Health
 echo -e "\n[2] Checking gateway..."
@@ -37,15 +37,15 @@ curl -s http://localhost:8080/health || echo "Gateway unreachable"
 
 # 3. Collector Logs
 echo -e "\n[3] Checking collector (last 10 lines)..."
-kubectl logs -n otel-demo -l app=otel-collector --tail=10
+kubectl logs -n mobile-observability -l app=otel-collector --tail=10
 
 # 4. Gateway Logs
 echo -e "\n[4] Checking gateway (last 10 lines)..."
-kubectl logs -n otel-demo -l app=otel-gateway --tail=10
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=10
 
 # 5. Services
 echo -e "\n[5] Checking services..."
-kubectl get svc -n otel-demo
+kubectl get svc -n mobile-observability
 
 echo -e "\n=== Health Check Complete ==="
 ```
@@ -88,10 +88,10 @@ curl: (7) Failed to connect to localhost port 8080: Connection refused
 
 ```bash
 # 1. Check if pods are running
-kubectl get pods -n otel-demo -l app=otel-gateway
+kubectl get pods -n mobile-observability -l app=otel-gateway
 
 # 2. Check pod logs
-kubectl logs -n otel-demo -l app=otel-gateway --tail=50
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 
 # 3. Check port-forward
 lsof -i :8080 | grep kubectl
@@ -102,7 +102,7 @@ lsof -i :8080 | grep kubectl
 **A. Gateway pod not running:**
 ```bash
 # Check pod status
-kubectl describe pod -n otel-demo -l app=otel-gateway
+kubectl describe pod -n mobile-observability -l app=otel-gateway
 
 # Common causes:
 # - Image pull error: Check image name and registry access
@@ -110,24 +110,24 @@ kubectl describe pod -n otel-demo -l app=otel-gateway
 # - Resource limits: Check node capacity
 
 # Restart deployment
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 ```
 
 **B. Port-forward not running:**
 ```bash
 # Restart port-forward
 pkill -f "kubectl port-forward"
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 ```
 
 **C. Service misconfigured:**
 ```bash
 # Check service
-kubectl get svc -n otel-demo otel-gateway
+kubectl get svc -n mobile-observability otel-gateway
 
 # Verify service selector matches pod labels
-kubectl get svc otel-gateway -n otel-demo -o yaml | grep selector
-kubectl get pods -n otel-demo -l app=otel-gateway --show-labels
+kubectl get svc otel-gateway -n mobile-observability -o yaml | grep selector
+kubectl get pods -n mobile-observability -l app=otel-gateway --show-labels
 ```
 
 ### Gateway Returns 500 Errors
@@ -142,7 +142,7 @@ $ curl -X POST http://localhost:8080/ingest -d '{...}'
 
 ```bash
 # Check gateway logs for stack traces
-kubectl logs -n otel-demo -l app=otel-gateway --tail=100 | grep -A 20 ERROR
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=100 | grep -A 20 ERROR
 
 # Common errors:
 # - "Failed to connect to OTEL Collector"
@@ -155,36 +155,36 @@ kubectl logs -n otel-demo -l app=otel-gateway --tail=100 | grep -A 20 ERROR
 **A. Collector connection failed:**
 ```bash
 # Verify collector is running
-kubectl get pods -n otel-demo -l app=otel-collector
+kubectl get pods -n mobile-observability -l app=otel-collector
 
 # Test connectivity from gateway pod
-kubectl exec -n otel-demo -it <gateway-pod> -- \
+kubectl exec -n mobile-observability -it <gateway-pod> -- \
   nc -zv otel-collector 4317
 
 # If fails, check collector service
-kubectl get svc -n otel-demo otel-collector
+kubectl get svc -n mobile-observability otel-collector
 ```
 
 **B. Database connection failed:**
 ```bash
 # Check database pod (if using in-cluster)
-kubectl get pods -n otel-demo -l app=postgres
+kubectl get pods -n mobile-observability -l app=postgres
 
 # Test connectivity
-kubectl exec -n otel-demo -it <gateway-pod> -- \
+kubectl exec -n mobile-observability -it <gateway-pod> -- \
   nc -zv postgres 5432
 
 # Check credentials
-kubectl get secret -n otel-demo postgres-secret -o yaml
+kubectl get secret -n mobile-observability postgres-secret -o yaml
 ```
 
 **C. Out of memory:**
 ```bash
 # Check memory usage
-kubectl top pods -n otel-demo -l app=otel-gateway
+kubectl top pods -n mobile-observability -l app=otel-gateway
 
 # Increase memory limit in deployment
-kubectl edit deployment otel-gateway -n otel-demo
+kubectl edit deployment otel-gateway -n mobile-observability
 # Update: resources.limits.memory: "512Mi" -> "1Gi"
 ```
 
@@ -199,18 +199,18 @@ Error exporting events: rpc error: code = Unavailable desc = connection refused
 
 ```bash
 # 1. Verify collector endpoint
-kubectl get svc -n otel-demo otel-collector
-# Should show: otel-collector.otel-demo.svc.cluster.local:4317
+kubectl get svc -n mobile-observability otel-collector
+# Should show: otel-collector.mobile-observability.svc.cluster.local:4317
 
 # 2. Check collector is listening on 4317
-kubectl exec -n otel-demo -it <collector-pod> -- netstat -ln | grep 4317
+kubectl exec -n mobile-observability -it <collector-pod> -- netstat -ln | grep 4317
 
 # 3. Check NetworkPolicy isn't blocking
-kubectl get networkpolicy -n otel-demo
+kubectl get networkpolicy -n mobile-observability
 
 # 4. Restart both services
-kubectl rollout restart deployment/otel-collector -n otel-demo
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl rollout restart deployment/otel-collector -n mobile-observability
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 ```
 
 ## OTEL Collector Issues
@@ -225,7 +225,7 @@ kubectl rollout restart deployment/otel-gateway -n otel-demo
 
 ```bash
 # Check collector logs
-kubectl logs -n otel-demo -l app=otel-collector --tail=100
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100
 
 # Look for:
 # - "Everything is ready. Begin running and processing data."
@@ -236,7 +236,7 @@ kubectl logs -n otel-demo -l app=otel-collector --tail=100
 
 ```bash
 # 1. Verify collector config
-kubectl get configmap -n otel-demo otel-collector-config -o yaml
+kubectl get configmap -n mobile-observability otel-collector-config -o yaml
 
 # Ensure receivers are configured:
 receivers:
@@ -246,14 +246,14 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 # 2. Check collector is listening
-kubectl exec -n otel-demo -it <collector-pod> -- netstat -ln | grep 4317
+kubectl exec -n mobile-observability -it <collector-pod> -- netstat -ln | grep 4317
 
 # 3. Test with manual event
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317
 # Use grpcurl or similar to test
 
 # 4. Restart collector
-kubectl rollout restart deployment/otel-collector -n otel-demo
+kubectl rollout restart deployment/otel-collector -n mobile-observability
 ```
 
 ### Collector Logs Show "Queue is Full"
@@ -271,7 +271,7 @@ Queue is full, dropping data
 
 ```bash
 # 1. Increase batch size
-kubectl edit configmap -n otel-demo otel-collector-config
+kubectl edit configmap -n mobile-observability otel-collector-config
 
 # Update processors:
 processors:
@@ -280,10 +280,10 @@ processors:
     send_batch_size: 10000  # Increase from 1000
 
 # 2. Scale up collectors
-kubectl scale deployment otel-collector -n otel-demo --replicas=3
+kubectl scale deployment otel-collector -n mobile-observability --replicas=3
 
 # 3. Increase memory limit
-kubectl edit deployment otel-collector -n otel-demo
+kubectl edit deployment otel-collector -n mobile-observability
 # Update: resources.limits.memory: "1Gi" -> "2Gi"
 
 # 4. Add memory_limiter
@@ -297,7 +297,7 @@ processors:
 
 **Symptoms:**
 ```bash
-$ kubectl get pods -n otel-demo -l app=otel-collector
+$ kubectl get pods -n mobile-observability -l app=otel-collector
 NAME                              READY   STATUS             RESTARTS   AGE
 otel-collector-xxx-yyy            0/1     CrashLoopBackOff   5          3m
 ```
@@ -306,7 +306,7 @@ otel-collector-xxx-yyy            0/1     CrashLoopBackOff   5          3m
 
 ```bash
 # Check previous logs
-kubectl logs -n otel-demo <collector-pod> --previous
+kubectl logs -n mobile-observability <collector-pod> --previous
 
 # Common errors:
 # - "failed to build pipelines: unknown exporter type"
@@ -318,7 +318,7 @@ kubectl logs -n otel-demo <collector-pod> --previous
 **A. Invalid config:**
 ```bash
 # Validate config locally
-kubectl get configmap -n otel-demo otel-collector-config -o jsonpath='{.data.otel-collector-config\.yaml}' > config.yaml
+kubectl get configmap -n mobile-observability otel-collector-config -o jsonpath='{.data.otel-collector-config\.yaml}' > config.yaml
 
 # Check YAML syntax
 yamllint config.yaml
@@ -333,7 +333,7 @@ docker run --rm -v $(pwd)/config.yaml:/config.yaml \
 ```bash
 # Ensure using contrib distribution
 # Check image in deployment:
-kubectl get deployment otel-collector -n otel-demo -o yaml | grep image:
+kubectl get deployment otel-collector -n mobile-observability -o yaml | grep image:
 # Should be: otel/opentelemetry-collector-contrib (not otel/opentelemetry-collector)
 ```
 
@@ -410,7 +410,7 @@ cat control-plane-ui/vite.config.ts | grep proxy -A 5
 ```bash
 # Restart port-forward
 pkill -f "kubectl port-forward"
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # Verify
 curl http://localhost:8080/health
@@ -558,7 +558,7 @@ private const val GATEWAY_URL = "http://192.168.1.100:8080"
 lsof -i :8080 | grep kubectl
 
 # Restart if needed
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 ```
 
 ### Events Not Being Captured
@@ -647,24 +647,24 @@ sdk.captureEvent("ui.freeze", mapOf(
 
 **Error:**
 ```
-no such host: otel-collector.otel-demo.svc.cluster.local
+no such host: otel-collector.mobile-observability.svc.cluster.local
 ```
 
 **Solutions:**
 
 ```bash
 # 1. Check if services exist
-kubectl get svc -n otel-demo
+kubectl get svc -n mobile-observability
 
 # 2. Verify service names
-kubectl get svc -n otel-demo otel-collector
+kubectl get svc -n mobile-observability otel-collector
 
 # 3. Check DNS from pod
-kubectl exec -n otel-demo -it <gateway-pod> -- \
-  nslookup otel-collector.otel-demo.svc.cluster.local
+kubectl exec -n mobile-observability -it <gateway-pod> -- \
+  nslookup otel-collector.mobile-observability.svc.cluster.local
 
 # 4. Use IP address as fallback
-COLLECTOR_IP=$(kubectl get svc -n otel-demo otel-collector -o jsonpath='{.spec.clusterIP}')
+COLLECTOR_IP=$(kubectl get svc -n mobile-observability otel-collector -o jsonpath='{.spec.clusterIP}')
 # Update gateway config to use IP instead of hostname
 ```
 
@@ -679,16 +679,16 @@ x509: certificate signed by unknown authority
 
 ```bash
 # 1. Check certificate
-kubectl get secret -n otel-demo gateway-tls-secret
+kubectl get secret -n mobile-observability gateway-tls-secret
 
 # 2. Verify cert-manager
-kubectl get certificates -n otel-demo
+kubectl get certificates -n mobile-observability
 
 # 3. Check certificate status
-kubectl describe certificate gateway-tls -n otel-demo
+kubectl describe certificate gateway-tls -n mobile-observability
 
 # 4. Recreate certificate
-kubectl delete certificate gateway-tls -n otel-demo
+kubectl delete certificate gateway-tls -n mobile-observability
 kubectl apply -f certificate.yaml
 
 # 5. For development, skip TLS verification (not for production)
@@ -711,15 +711,15 @@ context deadline exceeded
 #     otlploggrpc.WithTimeout(30 * time.Second))  # Increase
 
 # 2. Check network latency
-kubectl exec -n otel-demo -it <gateway-pod> -- \
+kubectl exec -n mobile-observability -it <gateway-pod> -- \
   time nc -zv otel-collector 4317
 
 # 3. Check collector responsiveness
-kubectl top pods -n otel-demo -l app=otel-collector
+kubectl top pods -n mobile-observability -l app=otel-collector
 # High CPU/memory may cause timeouts
 
 # 4. Scale up collectors
-kubectl scale deployment otel-collector -n otel-demo --replicas=2
+kubectl scale deployment otel-collector -n mobile-observability --replicas=2
 ```
 
 ## Performance Issues
@@ -734,23 +734,23 @@ kubectl scale deployment otel-collector -n otel-demo --replicas=2
 
 ```bash
 # 1. Check resource usage
-kubectl top pods -n otel-demo -l app=otel-gateway
+kubectl top pods -n mobile-observability -l app=otel-gateway
 
 # 2. Profile gateway
-kubectl logs -n otel-demo -l app=otel-gateway | grep "duration"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "duration"
 
 # 3. Check database performance
-kubectl logs -n otel-demo -l app=postgres | grep "slow query"
+kubectl logs -n mobile-observability -l app=postgres | grep "slow query"
 ```
 
 **Solutions:**
 
 ```bash
 # 1. Scale horizontally
-kubectl scale deployment otel-gateway -n otel-demo --replicas=3
+kubectl scale deployment otel-gateway -n mobile-observability --replicas=3
 
 # 2. Increase resources
-kubectl edit deployment otel-gateway -n otel-demo
+kubectl edit deployment otel-gateway -n mobile-observability
 # Update:
 resources:
   limits:
@@ -774,17 +774,17 @@ kubectl apply -f hpa.yaml  # See Operations Guide
 
 ```bash
 # Check memory usage
-kubectl top pods -n otel-demo
+kubectl top pods -n mobile-observability
 
 # Check pod events
-kubectl describe pod -n otel-demo <pod-name> | grep -A 5 Events
+kubectl describe pod -n mobile-observability <pod-name> | grep -A 5 Events
 ```
 
 **Solutions:**
 
 ```bash
 # 1. Increase memory limit
-kubectl edit deployment <component> -n otel-demo
+kubectl edit deployment <component> -n mobile-observability
 # Update: resources.limits.memory
 
 # 2. Add memory_limiter processor (collector)
@@ -813,7 +813,7 @@ processors:
 ```bash
 # 1. Add indexes
 # Connect to PostgreSQL:
-kubectl exec -n otel-demo -it postgres-0 -- psql -U gateway
+kubectl exec -n mobile-observability -it postgres-0 -- psql -U gateway
 
 # Add indexes:
 CREATE INDEX idx_config_versions_active ON config_versions(active);
@@ -842,13 +842,13 @@ VACUUM ANALYZE;
 
 ```bash
 # 1. Check collector processors
-kubectl get configmap -n otel-demo otel-collector-config -o yaml
+kubectl get configmap -n mobile-observability otel-collector-config -o yaml
 
 # 2. Check collector exporters
 # Look for debug or logging exporter
 
 # 3. Verify collector is exporting
-kubectl logs -n otel-demo -l app=otel-collector | grep -i export
+kubectl logs -n mobile-observability -l app=otel-collector | grep -i export
 ```
 
 **Solutions:**
@@ -870,10 +870,10 @@ service:
       exporters: [debug, logging]  # Add debug
 
 # 2. Restart collector
-kubectl rollout restart deployment/otel-collector -n otel-demo
+kubectl rollout restart deployment/otel-collector -n mobile-observability
 
 # 3. Check logs again
-kubectl logs -n otel-demo -l app=otel-collector -f
+kubectl logs -n mobile-observability -l app=otel-collector -f
 ```
 
 ### Missing Attributes
@@ -889,7 +889,7 @@ adb logcat | grep "Captured event"
 # Check full event JSON
 
 # 2. Check gateway transformation
-kubectl logs -n otel-demo -l app=otel-gateway | grep "Exporting event"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "Exporting event"
 
 # 3. Ensure attributes are included in OTEL record
 # Check internal/otel/exporter.go:
@@ -937,14 +937,14 @@ Failed to pull image "gcr.io/your-project/gateway:latest": unauthorized
 docker images | grep gateway
 
 # 2. Verify registry credentials
-kubectl get secret -n otel-demo <registry-secret>
+kubectl get secret -n mobile-observability <registry-secret>
 
 # 3. Create image pull secret
 kubectl create secret docker-registry registry-secret \
   --docker-server=gcr.io \
   --docker-username=_json_key \
   --docker-password="$(cat key.json)" \
-  -n otel-demo
+  -n mobile-observability
 
 # 4. Add to deployment
 spec:
@@ -958,7 +958,7 @@ spec:
 
 **Symptoms:**
 ```bash
-$ kubectl get pods -n otel-demo
+$ kubectl get pods -n mobile-observability
 NAME                    READY   STATUS    RESTARTS   AGE
 gateway-xxx-yyy         0/1     Pending   0          5m
 ```
@@ -967,7 +967,7 @@ gateway-xxx-yyy         0/1     Pending   0          5m
 
 ```bash
 # Check pod events
-kubectl describe pod -n otel-demo <pod-name>
+kubectl describe pod -n mobile-observability <pod-name>
 
 # Common causes:
 # - Insufficient resources
@@ -988,7 +988,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 **B. PVC not bound:**
 ```bash
 # Check PVC status
-kubectl get pvc -n otel-demo
+kubectl get pvc -n mobile-observability
 
 # Check storage class
 kubectl get storageclass
@@ -1002,7 +1002,7 @@ kubectl get storageclass
 kubectl get nodes --show-labels
 
 # Update deployment to remove node selector
-kubectl edit deployment <component> -n otel-demo
+kubectl edit deployment <component> -n mobile-observability
 ```
 
 ## Common Error Messages
@@ -1013,9 +1013,9 @@ kubectl edit deployment <component> -n otel-demo
 
 **Fix:**
 ```bash
-kubectl get svc -n otel-demo otel-collector
-kubectl get pods -n otel-demo -l app=otel-collector
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl get svc -n mobile-observability otel-collector
+kubectl get pods -n mobile-observability -l app=otel-collector
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 ```
 
 ### "Database connection failed"
@@ -1024,8 +1024,8 @@ kubectl rollout restart deployment/otel-gateway -n otel-demo
 
 **Fix:**
 ```bash
-kubectl get pods -n otel-demo -l app=postgres
-kubectl get secret -n otel-demo postgres-secret
+kubectl get pods -n mobile-observability -l app=postgres
+kubectl get secret -n mobile-observability postgres-secret
 # Verify credentials and restart gateway
 ```
 
@@ -1055,7 +1055,7 @@ curl http://localhost:8080/admin/versions
 **Fix:**
 ```bash
 # Scale collectors
-kubectl scale deployment otel-collector -n otel-demo --replicas=3
+kubectl scale deployment otel-collector -n mobile-observability --replicas=3
 
 # Increase batch size in config
 # Increase memory limit
@@ -1073,24 +1073,24 @@ mkdir -p diagnostics
 cd diagnostics
 
 # Pod status
-kubectl get pods -n otel-demo -o wide > pods.txt
+kubectl get pods -n mobile-observability -o wide > pods.txt
 
 # Logs
-kubectl logs -n otel-demo -l app=otel-gateway --tail=500 > gateway.log
-kubectl logs -n otel-demo -l app=otel-collector --tail=500 > collector.log
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=500 > gateway.log
+kubectl logs -n mobile-observability -l app=otel-collector --tail=500 > collector.log
 
 # Describe resources
-kubectl describe deployment -n otel-demo otel-gateway > gateway-describe.txt
-kubectl describe deployment -n otel-demo otel-collector > collector-describe.txt
+kubectl describe deployment -n mobile-observability otel-gateway > gateway-describe.txt
+kubectl describe deployment -n mobile-observability otel-collector > collector-describe.txt
 
 # Events
-kubectl get events -n otel-demo --sort-by='.lastTimestamp' > events.txt
+kubectl get events -n mobile-observability --sort-by='.lastTimestamp' > events.txt
 
 # Service status
-kubectl get svc -n otel-demo -o yaml > services.yaml
+kubectl get svc -n mobile-observability -o yaml > services.yaml
 
 # ConfigMaps
-kubectl get configmap -n otel-demo -o yaml > configmaps.yaml
+kubectl get configmap -n mobile-observability -o yaml > configmaps.yaml
 
 echo "Diagnostics collected in diagnostics/"
 ```
@@ -1098,7 +1098,7 @@ echo "Diagnostics collected in diagnostics/"
 ### Support Checklist
 
 When requesting help, provide:
-- [ ] Output of `kubectl get pods -n otel-demo`
+- [ ] Output of `kubectl get pods -n mobile-observability`
 - [ ] Gateway logs (last 100 lines)
 - [ ] Collector logs (last 100 lines)
 - [ ] Describe output for failing pods

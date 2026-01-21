@@ -32,7 +32,7 @@ The Control Plane UI allows you to visually create and manage workflows that con
 
 1. Ensure the gateway is running and port-forwarded:
    ```bash
-   kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080
+   kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
    ```
 
 2. Start the UI:

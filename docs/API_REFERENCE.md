@@ -63,7 +63,7 @@ https://gateway.yourcompany.com
 
 **Kubernetes (internal):**
 ```
-http://otel-gateway.otel-demo.svc.cluster.local:8080
+http://otel-gateway.mobile-observability.svc.cluster.local:8080
 ```
 
 ## Event Ingestion

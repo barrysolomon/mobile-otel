@@ -324,8 +324,8 @@ adb shell am start -n com.mobile.observability.demo/.MainActivity
 1. Open app in emulator/device
 2. Click "Generate Normal Traffic" (creates 5 events)
 3. Click "Trigger UI Freeze"
-4. Check gateway logs: `kubectl logs -n otel-demo -l app=otel-gateway`
-5. Check collector logs: `kubectl logs -n otel-demo -l app=otel-collector`
+4. Check gateway logs: `kubectl logs -n mobile-observability -l app=otel-gateway`
+5. Check collector logs: `kubectl logs -n mobile-observability -l app=otel-collector`
 6. Verify OTEL logs appear with event details
 
 ## Data Flow Example

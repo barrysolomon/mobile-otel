@@ -5,26 +5,26 @@ Essential commands for deploying and testing the mobile observability demo.
 ## 🚀 One-Line Deploy
 
 ```bash
-cd /Users/barrysolomon/IdeaProjects/mobile-app && kubectl apply -f k8s/ && kubectl wait --for=condition=ready pod -l app=otel-collector -n otel-demo --timeout=60s && kubectl wait --for=condition=ready pod -l app=otel-gateway -n otel-demo --timeout=60s && kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+cd /Users/barrysolomon/IdeaProjects/mobile-app && kubectl apply -f k8s/ && kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s && kubectl wait --for=condition=ready pod -l app=otel-gateway -n mobile-observability --timeout=60s && kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 ```
 
 ## 📋 Component Status
 
 ```bash
 # All pods
-kubectl get pods -n otel-demo
+kubectl get pods -n mobile-observability
 
 # All services
-kubectl get svc -n otel-demo
+kubectl get svc -n mobile-observability
 
 # Gateway logs (last 50 lines)
-kubectl logs -n otel-demo -l app=otel-gateway --tail=50
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 
 # Collector logs (last 50 lines)
-kubectl logs -n otel-demo -l app=otel-collector --tail=50
+kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 
 # Storage
-kubectl get pvc -n otel-demo
+kubectl get pvc -n mobile-observability
 ```
 
 ## 🔍 Health Checks
@@ -40,7 +40,7 @@ curl "http://localhost:8080/config?app_id=demo-app&device_id=test-device"
 curl http://localhost:8080/admin/versions
 
 # OTEL Collector metrics
-kubectl port-forward -n otel-demo svc/otel-collector 8888:8888
+kubectl port-forward -n mobile-observability svc/otel-collector 8888:8888
 curl http://localhost:8888/metrics
 ```
 
@@ -63,7 +63,7 @@ curl -X POST http://localhost:8080/ingest \
   }'
 
 # Check if event reached collector
-kubectl logs -n otel-demo -l app=otel-collector --tail=100 | grep "test.event"
+kubectl logs -n mobile-observability -l app=otel-collector --tail=100 | grep "test.event"
 ```
 
 ## 📱 Android Testing
@@ -105,13 +105,13 @@ open http://localhost:3000
 
 ```bash
 # Gateway (required for UI and Android)
-kubectl port-forward -n otel-demo svc/otel-gateway 8080:8080 &
+kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 
 # Collector (optional, for direct testing)
-kubectl port-forward -n otel-demo svc/otel-collector 4317:4317 4318:4318 &
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318 &
 
 # Collector metrics
-kubectl port-forward -n otel-demo svc/otel-collector 8888:8888 &
+kubectl port-forward -n mobile-observability svc/otel-collector 8888:8888 &
 
 # Kill all port forwards
 pkill -f "kubectl port-forward"
@@ -121,17 +121,17 @@ pkill -f "kubectl port-forward"
 
 ```bash
 # Restart gateway
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 
 # Restart collector
-kubectl rollout restart deployment/otel-collector -n otel-demo
+kubectl rollout restart deployment/otel-collector -n mobile-observability
 
 # Clear gateway database
-kubectl exec -n otel-demo -it $(kubectl get pod -n otel-demo -l app=otel-gateway -o name) -- rm -f /data/gateway.db
-kubectl rollout restart deployment/otel-gateway -n otel-demo
+kubectl exec -n mobile-observability -it $(kubectl get pod -n mobile-observability -l app=otel-gateway -o name) -- rm -f /data/gateway.db
+kubectl rollout restart deployment/otel-gateway -n mobile-observability
 
 # View gateway DB content
-kubectl exec -n otel-demo -it $(kubectl get pod -n otel-demo -l app=otel-gateway -o name) -- sqlite3 /data/gateway.db ".tables"
+kubectl exec -n mobile-observability -it $(kubectl get pod -n mobile-observability -l app=otel-gateway -o name) -- sqlite3 /data/gateway.db ".tables"
 ```
 
 ## 📊 Correlation Tracking
@@ -142,13 +142,13 @@ DEMO_RUN_ID=$(adb logcat -d | grep "Demo Run ID" | tail -1 | awk '{print $NF}')
 echo "Tracking: $DEMO_RUN_ID"
 
 # Search gateway logs
-kubectl logs -n otel-demo -l app=otel-gateway | grep "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-gateway | grep "$DEMO_RUN_ID"
 
 # Search collector logs
-kubectl logs -n otel-demo -l app=otel-collector | grep "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector | grep "$DEMO_RUN_ID"
 
 # Count events with this run ID
-kubectl logs -n otel-demo -l app=otel-collector | grep -c "$DEMO_RUN_ID"
+kubectl logs -n mobile-observability -l app=otel-collector | grep -c "$DEMO_RUN_ID"
 ```
 
 ## 🗂️ Config Management
@@ -176,7 +176,7 @@ curl "http://localhost:8080/admin/versions?limit=1"
 
 ```bash
 # Remove everything
-kubectl delete namespace otel-demo
+kubectl delete namespace mobile-observability
 
 # Just stop port forwards
 pkill -f "kubectl port-forward"
@@ -211,22 +211,22 @@ wait
 echo "Sent 100 events"
 
 # Check gateway received all
-kubectl logs -n otel-demo -l app=otel-gateway --tail=200 | grep "Received.*events"
+kubectl logs -n mobile-observability -l app=otel-gateway --tail=200 | grep "Received.*events"
 
 # Check collector processed all
-kubectl logs -n otel-demo -l app=otel-collector --tail=200 | grep "stress.test" | wc -l
+kubectl logs -n mobile-observability -l app=otel-collector --tail=200 | grep "stress.test" | wc -l
 ```
 
 ## 🐛 Debug Mode
 
 ```bash
 # Enable verbose logging in collector
-kubectl edit configmap -n otel-demo otel-collector-config
+kubectl edit configmap -n mobile-observability otel-collector-config
 # Set verbosity: detailed (already default)
 
 # Tail all logs
-kubectl logs -n otel-demo -l app=otel-collector -f &
-kubectl logs -n otel-demo -l app=otel-gateway -f &
+kubectl logs -n mobile-observability -l app=otel-collector -f &
+kubectl logs -n mobile-observability -l app=otel-gateway -f &
 
 # Android verbose logs
 adb logcat -c  # Clear logs first
@@ -246,9 +246,9 @@ adb logcat *:V | grep -E "ObservabilitySDK|WorkflowEvaluator|RingBufferManager|G
 ## 🌐 Service Endpoints
 
 ### Inside Cluster
-- Collector gRPC: `otel-collector.otel-demo.svc.cluster.local:4317`
-- Collector HTTP: `otel-collector.otel-demo.svc.cluster.local:4318`
-- Gateway: `otel-gateway.otel-demo.svc.cluster.local:8080`
+- Collector gRPC: `otel-collector.mobile-observability.svc.cluster.local:4317`
+- Collector HTTP: `otel-collector.mobile-observability.svc.cluster.local:4318`
+- Gateway: `otel-gateway.mobile-observability.svc.cluster.local:8080`
 
 ### Port-Forwarded (localhost)
 - Gateway API: `http://localhost:8080`
