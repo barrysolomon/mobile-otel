@@ -343,6 +343,23 @@ See [docs/guides/DEPLOYMENT_GUIDE.md](docs/guides/DEPLOYMENT_GUIDE.md) for detai
 ### Issue: "App crashes on startup"
 **Solution:** Make sure you've initialized `MobileLoggerProvider` in your `Application.onCreate()` before using it.
 
+### Issue: "You need to use a Theme.AppCompat theme (or descendant) with this activity"
+**Solution:** If your MainActivity extends `AppCompatActivity`, make sure your AndroidManifest.xml uses an AppCompat theme:
+```xml
+<application
+    android:theme="@style/Theme.AppCompat.Light"
+    ...>
+```
+
+### Issue: "Force flush failed" or "Export failed after 4 attempts"
+**Solution:** This is **expected** when no OTEL Collector is running. The events are safely buffered in RAM and disk, and will be exported when a collector becomes available. This demonstrates the offline resilience feature working correctly.
+
+### Issue: Build errors with AGP 9.0 / Kotlin compilation errors
+**Solution:**
+- Make sure you're using compatible versions (see `build.gradle.kts`)
+- AGP 9.0 includes Kotlin natively - don't apply the Kotlin plugin separately
+- Ensure `targetSdk` is in `testOptions` and `lint` blocks, not `defaultConfig` (for libraries)
+
 ### Issue: "Gradle sync fails"
 **Solution:**
 1. Check your internet connection
