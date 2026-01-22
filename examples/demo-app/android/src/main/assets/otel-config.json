@@ -2,6 +2,7 @@
   "serviceName": "otel-mobile-demo",
   "serviceVersion": "1.0.0",
   "collectorEndpoint": "http://10.0.2.2:4317",
+  "comments": "Debug builds use local collector. Release builds use Dash0 US region.",
   "exportMode": "CONDITIONAL",
   "traceExportIntervalSeconds": 30,
   "metricExportIntervalSeconds": 60,

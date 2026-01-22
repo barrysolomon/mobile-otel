@@ -1,7 +1,7 @@
 {
   "serviceName": "otel-mobile-demo",
   "serviceVersion": "1.0.0",
-  "collectorEndpoint": "${DASH0_ENDPOINT}",
+  "collectorEndpoint": "https://ingress.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "traceExportIntervalSeconds": 30,
   "metricExportIntervalSeconds": 60,
