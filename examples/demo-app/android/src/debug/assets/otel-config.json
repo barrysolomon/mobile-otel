@@ -1,0 +1,72 @@
+{
+  "serviceName": "otel-mobile-demo",
+  "serviceVersion": "1.0.0-dev",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONTINUOUS",
+  "traceExportIntervalSeconds": 10,
+  "metricExportIntervalSeconds": 30,
+  "ramBufferSize": 1000,
+  "diskBufferMb": 20,
+  "diskBufferTtlHours": 24,
+  "exportTimeoutSeconds": 30,
+  "configPollIntervalSeconds": 300,
+  "maxExportRetries": 3,
+  "attachContextAttributes": true,
+  "buildChannel": "debug",
+  "headers": null,
+  "telemetrySettings": {
+    "dataCollection": {
+      "logs": true,
+      "traces": true,
+      "metrics": true,
+      "deviceMetrics": true
+    },
+    "deviceMetricCategories": {
+      "memory": true,
+      "battery": true,
+      "cpu": true,
+      "network": true,
+      "storage": true,
+      "thermal": true,
+      "display": true,
+      "system": true,
+      "app": true,
+      "location": false
+    },
+    "triggers": {
+      "uiFreeze": true,
+      "crash": true,
+      "networkError": true,
+      "lowMemory": true
+    }
+  },
+  "workflows": [
+    {
+      "id": "ui-freeze-detector",
+      "name": "UI Freeze Detection",
+      "enabled": true,
+      "description": "Detects UI freezes > 2s and flushes last 2 minutes",
+      "trigger": {
+        "all": [
+          {
+            "event": "ui.freeze",
+            "where": [
+              {
+                "attr": "duration_ms",
+                "op": ">",
+                "value": 2000
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 2,
+          "scope": "session"
+        }
+      ]
+    }
+  ]
+}

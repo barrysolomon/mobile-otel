@@ -221,3 +221,13 @@ fastlane/readme.md
 # Android Profiling
 *.hprof
 *.profraw
+
+# Security: NEVER commit tokens or credentials
+.env
+.env.local
+.env.*.local
+**/local.properties
+examples/demo-app/android/src/release/assets/otel-config.json
+
+# Keep templates only
+!**/*.template

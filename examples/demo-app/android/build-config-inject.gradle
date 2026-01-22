@@ -1,0 +1,51 @@
+/**
+ * Build configuration injection for secure token management.
+ *
+ * This script injects Dash0 credentials from environment variables at build time,
+ * ensuring tokens are never committed to source control.
+ *
+ * Priority order:
+ * 1. Environment variables (CI/CD, local .env)
+ * 2. local.properties (developer override)
+ * 3. Empty strings (will use local collector)
+ *
+ * Usage in build.gradle.kts:
+ * apply from: 'build-config-inject.gradle'
+ */
+
+// Load from local.properties if exists
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
+// Get Dash0 credentials with fallbacks
+ext.getDash0Endpoint = { ->
+    System.getenv('DASH0_ENDPOINT') ?:
+    localProperties.getProperty('dash0.endpoint') ?:
+    'https://ingress.dash0.com:4317'
+}
+
+ext.getDash0AuthToken = { ->
+    System.getenv('DASH0_AUTH_TOKEN') ?:
+    localProperties.getProperty('dash0.authToken') ?:
+    ''
+}
+
+ext.getDash0Dataset = { ->
+    System.getenv('DASH0_DATASET') ?:
+    localProperties.getProperty('dash0.dataset') ?:
+    'mobile-production'
+}
+
+ext.getDash0Region = { ->
+    def endpoint = getDash0Endpoint()
+    if (endpoint.contains('eu-west-1')) {
+        return 'EU'
+    } else if (endpoint.contains('dash0.com')) {
+        return 'US'
+    } else {
+        return 'CUSTOM'
+    }
+}

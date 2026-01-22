@@ -1,0 +1,123 @@
+{
+  "serviceName": "otel-mobile-demo",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "${DASH0_ENDPOINT}",
+  "exportMode": "CONDITIONAL",
+  "traceExportIntervalSeconds": 30,
+  "metricExportIntervalSeconds": 60,
+  "ramBufferSize": 5000,
+  "diskBufferMb": 50,
+  "diskBufferTtlHours": 24,
+  "exportTimeoutSeconds": 30,
+  "configPollIntervalSeconds": 300,
+  "maxExportRetries": 3,
+  "attachContextAttributes": false,
+  "buildChannel": "production",
+  "headers": {
+    "Authorization": "Bearer ${DASH0_AUTH_TOKEN}",
+    "Dash0-Dataset": "${DASH0_DATASET}"
+  },
+  "telemetrySettings": {
+    "dataCollection": {
+      "logs": true,
+      "traces": true,
+      "metrics": true,
+      "deviceMetrics": true
+    },
+    "deviceMetricCategories": {
+      "memory": true,
+      "battery": true,
+      "cpu": true,
+      "network": true,
+      "storage": true,
+      "thermal": false,
+      "display": true,
+      "system": true,
+      "app": true,
+      "location": false
+    },
+    "triggers": {
+      "uiFreeze": true,
+      "crash": true,
+      "networkError": true,
+      "lowMemory": true
+    }
+  },
+  "workflows": [
+    {
+      "id": "ui-freeze-detector",
+      "name": "UI Freeze Detection",
+      "enabled": true,
+      "description": "Detects UI freezes > 2s and flushes last 2 minutes",
+      "trigger": {
+        "all": [
+          {
+            "event": "ui.freeze",
+            "where": [
+              {
+                "attr": "duration_ms",
+                "op": ">",
+                "value": 2000
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 2,
+          "scope": "session"
+        }
+      ]
+    },
+    {
+      "id": "http-error-5xx",
+      "name": "HTTP 5xx Error Handler",
+      "enabled": true,
+      "description": "Captures server errors and flushes last 5 minutes",
+      "trigger": {
+        "all": [
+          {
+            "event": "http.error",
+            "where": [
+              {
+                "attr": "http.status_code",
+                "op": ">=",
+                "value": 500
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 5,
+          "scope": "session"
+        }
+      ]
+    },
+    {
+      "id": "crash-recovery",
+      "name": "Crash Recovery Handler",
+      "enabled": true,
+      "description": "Flushes pre-crash telemetry after app restart",
+      "trigger": {
+        "all": [
+          {
+            "event": "app.crash_recovery",
+            "where": []
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 10,
+          "scope": "device"
+        }
+      ]
+    }
+  ]
+}
