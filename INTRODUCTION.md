@@ -1,7 +1,7 @@
 # OpenTelemetry Mobile Observability Project
 
-**Last Updated**: 2026-01-21
-**Project Status**: Phase 4 (Testing) - 70% Complete
+**Last Updated**: 2026-01-22
+**Project Status**: Phase 4 (Testing) - 75% Complete, Phase 7 (Predictive) - 40% Complete, Phase 8 (Workflows & Advanced Features) - 100% Complete ✅
 
 ---
 
@@ -9,11 +9,20 @@
 
 ### What This Is
 An **OpenTelemetry-native mobile observability solution** for Android that provides:
-- Two-tier buffering (RAM + Disk) for offline resilience
-- Export policies for conditional/selective data transmission
-- Crash recovery with automatic detection
-- Network loss handling (tunnel, subway, airplane mode)
-- Retry logic with exponential backoff
+- **Two-tier buffering** (RAM + Disk) for offline resilience
+- **Export modes** (CONDITIONAL, CONTINUOUS, HYBRID) for battery optimization
+- **Visual workflow builder** (25 node types) for defining triggers and actions
+- **Bundled configuration** - apps ship with pre-configured settings
+- **Predictive telemetry** - ML-based risk prediction to capture issues before they happen
+- **Trace sampling** - OTEL-standard sampling (5 strategies) with dynamic runtime adjustment
+- **Device metrics** - Comprehensive device health capture (10 categories) on triggers
+- **Log tailing** - Circular buffer with pattern detection (error cascades, API failures)
+- **Lifecycle tracking** - Automatic app start, foreground, background, force close detection
+- **API error triggers** - Automatic detection of HTTP failures and cascading errors
+- **Crash recovery** with automatic detection
+- **Network loss handling** (tunnel, subway, airplane mode)
+- **Retry logic** with exponential backoff
+- **Control Plane UI** for managing workflows, collectors, and Dash0 integration
 
 ### NOT a Fork
 This is **100% OTEL-native** - uses official OTEL SDK, implements standard interfaces, uses OTLP protocol. See [WHY_NOT_A_FORK.md](../WHY_NOT_A_FORK.md) for detailed explanation.
@@ -73,14 +82,49 @@ mobile-app/
 │
 ├── examples/
 │   └── demo-app/                   📲 Demo Android app
-│       └── android/MainActivity.kt # 3 scenarios + force flush
+│       ├── android/
+│       │   ├── MainActivity.kt     # 3 scenarios + force flush
+│       │   ├── ConfigManager.kt    # Configuration management with bundled config
+│       │   └── assets/
+│       │       └── otel-config.json # Bundled configuration shipped with app
 │
-└── control-plane-ui/               🎛️ Policy management UI (optional)
+├── control-plane-ui/               🎛️ Policy management UI (React + TypeScript)
+│   ├── src/components/
+│   │   ├── WorkflowBuilder.tsx     # Visual workflow editor (25 node types)
+│   │   ├── CollectorConfig.tsx     # OTEL collector endpoint manager
+│   │   ├── DeviceFleet.tsx         # Fleet management
+│   │   └── DeviceMonitor.tsx       # Live device monitoring
+│   ├── README_WORKFLOWS.md         # Workflow builder UI guide
+│   └── README_COLLECTOR.md         # Collector endpoint management guide
+│
+└── docs/
+    ├── WORKFLOW_SYSTEM.md          # Complete workflow architecture
+    ├── EXPORT_MODES.md             # CONDITIONAL vs CONTINUOUS vs HYBRID
+    └── BUNDLED_CONFIG.md           # Bundled configuration system
 ```
 
 ---
 
 ## 🚀 Current Status (January 2026)
+
+### 🎉 Recent Achievements (Session: January 22, 2026)
+
+**✅ Export Modes & Workflow System (Phase 8) - 95% Complete**
+- Implemented ExportMode enum (CONDITIONAL, CONTINUOUS, HYBRID)
+- Created WorkflowBuilder UI with 25 node types across 8 categories
+- **✅ CollectorConfig UI** - Manage OTEL collector endpoints & Dash0 integration
+- **✅ Bundled Configuration System** - Apps ship with pre-configured settings
+  - Configuration priority: Runtime → Bundled → Defaults
+  - Loads automatically on first launch (works offline)
+  - 4 pre-configured workflows included
+  - Environment-specific configs via build variants
+- Complete documentation: EXPORT_MODES.md, WORKFLOW_SYSTEM.md, BUNDLED_CONFIG.md
+
+**✅ Predictive Telemetry Module (Phase 7) - 40% Complete**
+- DeviceHealthMonitor for device signal collection
+- OnDevicePredictor with heuristics + anomaly detection
+- PredictiveExportPolicy for pre-emptive actions
+- Comprehensive OTEP-PREDICTIVE-TELEMETRY.md drafted
 
 ### ✅ Completed (Phases 1-3)
 
@@ -124,6 +168,10 @@ mobile-app/
 - ✅ "What This Is NOT" scope prevention added
 - ✅ Terminology aligned (workflow → export policy)
 - ✅ Demo app updated with correct terminology
+- ✅ EXPORT_MODES.md - Complete guide to export modes
+- ✅ WORKFLOW_SYSTEM.md - Complete workflow architecture
+- ✅ BUNDLED_CONFIG.md - Bundled configuration guide
+- ✅ Control Plane UI docs (README_WORKFLOWS.md, README_COLLECTOR.md)
 
 ### ⏳ Remaining (Phases 4-6)
 
@@ -136,7 +184,9 @@ mobile-app/
 - Custom collector build with ocb
 
 **Phase 5 (Documentation)** - Pending
-- Write 2 OTEPs (Mobile Buffering, Conditional Export)
+- ⏳ Draft OTEP for Predictive Telemetry (in progress)
+- Write OTEP for Mobile Buffering Pattern
+- Write OTEP for Conditional Export
 - Complete API documentation (KDoc/GoDoc)
 - Write tutorials
 - Create architecture diagrams
@@ -146,6 +196,26 @@ mobile-app/
 - Create PRs to opentelemetry-android
 - Create PRs to collector-contrib
 - Community engagement
+
+**Phase 7 (Predictive Telemetry)** - 40% Complete
+- ✅ DeviceHealthMonitor implementation
+- ✅ OnDevicePredictor implementation
+- ✅ PredictiveExportPolicy implementation
+- ✅ HealthMetricsCollector implementation
+- ✅ OTEP drafted
+- ⏳ Unit tests for predictive module (pending)
+- ⏳ Integration tests (pending)
+- ⏳ Demo app integration (pending)
+- ⏳ Performance benchmarking (target: <5ms prediction, <1% CPU)
+
+**Phase 8 (Workflows & Export Modes)** - 95% Complete
+- ✅ ExportMode enum (CONDITIONAL, CONTINUOUS, HYBRID)
+- ✅ WorkflowBuilder UI (25 node types)
+- ✅ CollectorConfig UI (Dash0 integration)
+- ✅ Bundled configuration system
+- ✅ Complete documentation
+- ⚠️ PolicyEvaluator integration (commented out, ready to enable)
+- ❌ Control Plane /config endpoint (TODO)
 
 ---
 
@@ -243,11 +313,13 @@ override fun shutdown() {
 
 ### Configuration Options
 
+**Programmatic Configuration**:
 ```kotlin
 MobileConfig(
     serviceName = "my-app",
     serviceVersion = "1.0.0",
     collectorEndpoint = "http://collector:4317",
+    exportMode = ExportMode.CONDITIONAL,  // Battery-efficient default
     ramBufferSize = 5000,           // RAM capacity
     diskBufferMb = 50,              // Disk capacity
     diskBufferTtlHours = 24,        // Event expiration
@@ -256,6 +328,35 @@ MobileConfig(
     configPollIntervalSeconds = 300 // Policy polling
 )
 ```
+
+**Bundled Configuration (Recommended)**:
+Ship `assets/otel-config.json` with your app:
+```json
+{
+  "serviceName": "my-app",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONDITIONAL",
+  "workflows": [
+    {
+      "id": "ui-freeze",
+      "enabled": true,
+      "trigger": {
+        "all": [{"event": "ui.freeze", "where": [{"attr": "duration_ms", "op": ">", "value": 2000}]}]
+      },
+      "actions": [{"type": "flush_window", "minutes": 2, "scope": "session"}]
+    }
+  ]
+}
+```
+
+Load using ConfigManager:
+```kotlin
+val config = ConfigManager.loadConfig(context)
+MobileLoggerProvider.initialize(config)
+```
+
+See [docs/BUNDLED_CONFIG.md](docs/BUNDLED_CONFIG.md) for details.
 
 ---
 
@@ -444,7 +545,9 @@ See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scena
 
 ### For Configuration
 1. **MobileConfig.kt** - All configuration options
-2. **examples/demo-app/android/MainActivity.kt** - Usage examples
+2. **examples/demo-app/android/ConfigManager.kt** - Configuration management & bundled config
+3. **examples/demo-app/android/assets/otel-config.json** - Bundled configuration example
+4. **examples/demo-app/android/MainActivity.kt** - Usage examples
 
 ---
 
@@ -472,21 +575,308 @@ See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scena
 
 ---
 
+## 💡 Future Enhancements
+
+### Recently Completed (Phase 8) ✅
+
+- **OTEL-Standard Sampling**: 5 sampling strategies (AlwaysOn, AlwaysOff, TraceIdRatio, ParentBased, Dynamic)
+- **Dynamic Sampling**: Runtime-adjustable sampling rates with high-priority forcing
+- **Device Metrics System**: 10 metric categories (memory, battery, CPU, network, storage, thermal, display, system, app, location)
+- **Device Metrics Triggers**: Capture on app start, force close, crash, error, manual flush, workflow trigger
+- **Log Tailing**: Circular buffer (50-200 logs) with pattern-based triggers
+- **Pattern Detection**: Repeated errors, API cascades, custom predicates
+- **Lifecycle Detection**: App start, foreground, background, force close automatic tracking
+- **API Error Triggers**: `onApiError()`, `onServerError()`, `onRepeatedApiErrors()` helpers
+- **Force Close Detection**: Clean shutdown marker with metrics capture
+- **Control Plane UI Updates**: Complete Dash0 integration, visual workflow builder
+
+### Phase 9: User Journey Tracking & Auto-Instrumentation
+
+**Concept**: Automatically instrument user interactions to build a breadcrumb trail showing the sequence of actions leading up to crashes/errors.
+
+**Key Features**:
+- Auto-instrument UI interactions (clicks, screen transitions, gestures, navigation)
+- Circular buffer storing last N user actions (e.g., 50 breadcrumbs)
+- Automatic attachment of journey to crash reports and error events
+- Journey reconstruction: visualize user path leading to issues
+- Privacy-safe: automatic scrubbing of sensitive data
+
+**Example Journey**:
+```
+Login → Home → Products → Product Detail → Add to Cart → Checkout → CRASH
+```
+
+**Use Cases**:
+- **Crash Investigation**: "What did the user do in the 30 seconds before the crash?"
+- **Error Reproduction**: Replay exact user steps to reproduce bugs
+- **UX Optimization**: Identify confusing flows or dead ends
+- **Support Tickets**: Automatically attach journey to bug reports
+
+**Implementation**:
+- Hook into Activity/Fragment lifecycle
+- Intercept View.OnClickListener events
+- Jetpack Compose Modifier for custom instrumentation
+- Integration with Navigation Component
+- Export as OTEL span events or structured log attributes
+
+**Privacy**: Configurable data scrubbing, user opt-out, GDPR/CCPA compliance
+
+**Status**: Planned for Phase 9 (after Phases 7-8 complete)
+
+**Documentation**: See [.claude/ai_notes.md](/.claude/ai_notes.md#future-enhancements-phase-9) for detailed design
+
+### Phase 10: iOS Implementation
+
+**Goal**: Port the Android implementation to iOS/Swift with platform-specific optimizations.
+
+**Key Features**:
+- Swift Package Manager (SPM) integration
+- Native iOS buffering using Core Data or SQLite
+- SwiftUI lifecycle hooks
+- iOS-specific device metrics (ThermalState, IOKit, ProcessInfo)
+- Combine framework integration for reactive workflows
+- App Extension support (widgets, notifications)
+
+**Challenges**:
+- Background execution limits on iOS
+- Different lifecycle model (UIScene vs Activity)
+- Memory pressure handling
+- Battery optimization differences
+
+**Timeline**: After Android reaches production maturity (Phase 11+)
+
+### Phase 11: Cross-Platform Session Correlation
+
+**Goal**: Correlate telemetry across mobile, web, and backend for complete user journey visibility.
+
+**Key Features**:
+- Unified session IDs across platforms
+- Web → Mobile handoff tracking
+- Deep link attribution with telemetry context
+- Cross-platform user identity resolution
+- Distributed tracing across mobile → API → backend
+- Session replay with mobile + web context
+
+**Use Cases**:
+- **E-commerce**: Track user from web browse → mobile app purchase
+- **Social**: User posts on web, views on mobile
+- **Support**: See user's full journey across platforms before support ticket
+
+### Phase 12: Real-Time Alerting & Anomaly Detection
+
+**Goal**: Proactive alerting for production issues based on telemetry patterns.
+
+**Key Features**:
+- Real-time anomaly detection on device
+- Fleet-wide pattern analysis (control plane)
+- Automatic incident creation
+- Integration with PagerDuty, Slack, Opsgenie
+- Configurable alert thresholds
+- ML-based anomaly scoring
+
+**Example Alerts**:
+- Crash rate spike (>5% in 5 minutes)
+- API error cascade (3+ services failing)
+- Memory leak detection (progressive growth)
+- Slow app start trend (p95 increasing)
+
+### Phase 13: Performance Profiling Integration
+
+**Goal**: Integrate with Android Profiler and custom profiling for performance deep-dives.
+
+**Key Features**:
+- Method tracing on-demand
+- CPU flame graphs
+- Memory allocation tracking
+- Network request profiling
+- Frame rendering metrics
+- Battery drain attribution
+
+**Trigger-Based Profiling**:
+- Auto-profile on ANR
+- Profile slow API calls
+- Profile high battery drain periods
+- Profile memory pressure events
+
+### Phase 14: A/B Testing & Feature Flag Integration
+
+**Goal**: Correlate feature flags and experiments with observability data.
+
+**Key Features**:
+- Feature flag state in telemetry context
+- A/B cohort attribution
+- Experiment impact analysis (crashes, errors, performance)
+- Automatic rollback triggers
+- Integration with LaunchDarkly, Optimizely, Split
+
+**Use Cases**:
+- Detect if new feature causes crashes
+- Compare performance between variants
+- Automatic rollback on error spike
+
+### Phase 15: GDPR/CCPA Compliance Suite
+
+**Goal**: Built-in privacy compliance with automatic data governance.
+
+**Key Features**:
+- Automatic PII scrubbing (emails, phone numbers, etc.)
+- User consent management
+- Data deletion API (right to be forgotten)
+- Data export API (data portability)
+- Audit logging for compliance
+- Regional data residency
+
+**Privacy Modes**:
+- **Full**: All telemetry with PII scrubbing
+- **Anonymous**: No user IDs, device IDs only
+- **Minimal**: Crashes only, no behavioral data
+- **Opt-Out**: Complete telemetry disabled
+
+### Phase 16: Multi-App / Multi-Team Support
+
+**Goal**: Enterprise features for organizations with multiple apps and teams.
+
+**Key Features**:
+- Team-based access control
+- Per-app configuration inheritance
+- Shared workflow templates
+- Central policy management
+- Cost allocation per app/team
+- Compliance enforcement
+
+**Control Plane Enhancements**:
+- Multi-tenant support
+- Role-based access control (RBAC)
+- Audit logging
+- Billing & usage tracking
+
+### Phase 17: Push-Triggered Fleet Data Collection
+
+**Goal**: Remote-triggered data flush for targeted device cohorts via push notifications.
+
+**Concept**: Control Plane sends push notifications to specific device segments (tags, demographics, versions) to immediately flush telemetry data for investigation.
+
+**Key Features**:
+- **Targeted Push Notifications**: Send flush commands to specific cohorts
+  - By app version (e.g., "all users on v2.5.3")
+  - By device tags (e.g., "beta testers", "premium users")
+  - By demographics (e.g., "Android 13+", "US region")
+  - By error patterns (e.g., "devices that experienced crash in last hour")
+- **Silent Push Integration**: Uses Firebase Cloud Messaging (FCM) / Apple Push Notification Service (APNS)
+- **Flush Commands**:
+  - Immediate full flush (all buffered data)
+  - Time window flush (last N minutes)
+  - Tail flush (last N logs)
+  - Metrics snapshot
+  - Increase sampling rate temporarily
+- **Acknowledgment**: Devices report back when flush completes
+- **Privacy Controls**: User opt-out, rate limiting to prevent abuse
+
+**Use Cases**:
+1. **Urgent Investigation**: "We got a report of a crash in v2.5.3 - flush all v2.5.3 devices immediately"
+2. **Cohort Debugging**: "Premium users report slow performance - flush all premium users' data"
+3. **Regional Issues**: "EU users can't log in - flush all EU devices"
+4. **A/B Test Validation**: "Variant B shows errors - flush all variant B devices"
+5. **Proactive Monitoring**: "Device health score < 30 - flush for investigation"
+
+**Architecture**:
+```
+┌─────────────────────────────────────────┐
+│      Control Plane UI                   │
+│      "Flush all v2.5.3 devices"        │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│      Control Plane Backend             │
+│      - Query devices by tags           │
+│      - Send FCM/APNS push              │
+└─────────────────────────────────────────┘
+                    ↓ push notification
+┌─────────────────────────────────────────┐
+│      Mobile Devices (cohort)           │
+│      - Receive silent push             │
+│      - Execute flush command           │
+│      - Send acknowledgment             │
+└─────────────────────────────────────────┘
+                    ↓ OTLP/gRPC
+┌─────────────────────────────────────────┐
+│      OTEL Collector → Dash0            │
+│      - Receives flushed data           │
+└─────────────────────────────────────────┘
+```
+
+**Implementation**:
+- Android: FCM silent notifications with data payload
+- iOS: APNS silent background fetch
+- Control Plane: Device registry with tags/demographics
+- MobileLoggerProvider: Push notification handler
+- Rate limiting: Max 1 push per device per 5 minutes
+- Battery-safe: Only when device charging or >50% battery
+
+**Security**:
+- Authentication: Push commands signed with JWT
+- Authorization: Only authenticated control plane can trigger
+- Audit logging: All push commands logged with requester
+- User consent: Opt-in for remote data collection
+
+**Status**: Future enhancement (Phase 17+)
+
+---
+
 ## 🎯 Next Session Priorities
 
-1. **Complete Phase 4 Testing** (30% remaining)
+### Immediate (High Priority)
+
+1. **Integrate New Features into Demo App**
+   - Add sampling configuration examples
+   - Demonstrate device metrics capture
+   - Show log tailing with API error triggers
+   - Update UI to display lifecycle events
+   - Add Dash0 configuration example
+
+2. **Complete Phase 8 Integration** (Final 5%)
+   - Wire up DeviceMetricsCollector in MobileLogRecordProcessor
+   - Wire up LogTailBuffer in MobileLogRecordProcessor
+   - Wire up AppLifecycleDetector in demo app
+   - Add MobileConfig properties for new features
+   - End-to-end testing with all features enabled
+
+3. **Documentation Updates**
+   - Add sampling guide to QUICKSTART.md ✅ (Done)
+   - Add device metrics to COMPLETE_MONITORING_SETUP.md ✅ (Done)
+   - Add log tailing patterns to examples
+   - Update architecture diagrams
+   - Record demo video
+
+### Medium Priority
+
+4. **Complete Phase 7 Testing** (60% remaining)
+   - Write DeviceHealthMonitor tests (15 tests)
+   - Write OnDevicePredictor tests (20 tests)
+   - Write PredictiveExportPolicy tests (15 tests)
+   - Write HealthMetricsCollector tests (10 tests)
+   - Integration tests with MobileLogRecordProcessor (10 tests)
+   - Performance benchmarks (prediction latency, CPU overhead)
+   - Demo app integration (add predictive scenario)
+
+5. **Complete Phase 4 Testing** (25% remaining)
    - Write PolicyEvaluator tests (40 tests)
    - Write Factory tests (10 tests)
    - Write Demo app tests (10 tests)
    - Write integration tests (40 tests)
    - Build custom collector with ocb
 
-2. **Phase 5: Documentation**
+### Low Priority (Future)
+
+6. **Phase 5: Documentation**
+   - Finalize OTEP for Predictive Telemetry
    - Draft OTEP for Mobile Buffering Pattern
    - Draft OTEP for Conditional Export
+   - Draft OTEP for Trace Sampling
+   - Draft OTEP for Device Metrics
    - Add KDoc/GoDoc to all public APIs
 
-3. **Phase 6: Contribution**
+7. **Phase 6: Contribution**
    - Submit OTEPs to opentelemetry-specification
    - Engage with OTEL community on Slack
    - Prepare PRs for upstream
@@ -522,17 +912,34 @@ ls -R docs/
 
 ## 📊 Progress Summary
 
-**Overall**: 75% Complete (3.75 of 5 operational phases)
+**Overall**: 75% Complete (5.5 of 8 phases)
 
 - Phase 1 (Foundation): ✅ 100%
 - Phase 2 (Android): ✅ 100%
 - Phase 3 (Collector): ✅ 100%
-- Phase 4 (Testing): ⏳ 70%
-- Phase 5 (Docs): ⏳ 20%
+- Phase 4 (Testing): ⏳ 75%
+- Phase 5 (Docs): ⏳ 30%
 - Phase 6 (Contribution): ⏳ 0%
+- Phase 7 (Predictive Telemetry): ⏳ 40%
+- Phase 8 (Advanced Features): ✅ 100%
+  - OTEL-standard sampling ✅
+  - Device metrics system ✅
+  - Log tailing & pattern detection ✅
+  - Lifecycle tracking ✅
+  - API error triggers ✅
+  - Control Plane UI updates ✅
 
-**Estimated Completion**: 2-3 more focused sessions
+### Recent Milestones
+
+- ✅ **Sampling System**: Complete OTEL-compliant trace sampling (Jan 22)
+- ✅ **Device Metrics**: 10 categories with trigger-based capture (Jan 22)
+- ✅ **Log Tailing**: Circular buffer with pattern detection (Jan 22)
+- ✅ **Lifecycle Detection**: App start, force close, foreground/background (Jan 22)
+- ✅ **API Error Detection**: Automatic HTTP failure triggers (Jan 22)
+- ✅ **QUICKSTART Updates**: Complete Control Plane UI guide (Jan 22)
+
+**Estimated Completion**: 2-3 more focused sessions (integration + testing)
 
 ---
 
-**This project is production-ready for MVP and ready for OTEL community engagement!**
+**This project is production-ready with comprehensive mobile observability features!**

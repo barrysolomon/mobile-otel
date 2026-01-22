@@ -17,40 +17,200 @@ import 'reactflow/dist/style.css';
 import { EventMatchNode } from './nodes/EventMatchNode';
 import { FlushWindowNode } from './nodes/FlushWindowNode';
 import { LogicNode } from './nodes/LogicNode';
+import { TriggerNode } from './nodes/TriggerNode';
+import { ActionNode } from './nodes/ActionNode';
 import type { WorkflowGraph } from '../types/workflow';
 
 // Node type definitions for the palette
 const nodeTemplates = [
+  // Event Triggers
   {
     type: 'event_match',
-    category: 'Triggers',
+    category: 'Event Triggers',
     label: 'Event Match',
     icon: '🎯',
     description: 'Match events by name',
     defaultData: {
-      event_name: '',
+      eventName: '',
       predicates: [],
     },
   },
   {
-    type: 'flush_window',
-    category: 'Actions',
-    label: 'Flush Window',
-    icon: '💾',
-    description: 'Flush events to storage',
+    type: 'log_severity_match',
+    category: 'Event Triggers',
+    label: 'Log Severity',
+    icon: '📋',
+    description: 'Match logs by severity level',
     defaultData: {
-      duration_ms: 5000,
+      minSeverity: 'ERROR',
+      bodyContains: '',
     },
   },
+  {
+    type: 'metric_threshold',
+    category: 'Event Triggers',
+    label: 'Metric Threshold',
+    icon: '📊',
+    description: 'Trigger on metric threshold',
+    defaultData: {
+      metricName: '',
+      operator: '>',
+      threshold: 0,
+    },
+  },
+
+  // Performance Triggers
+  {
+    type: 'ui_freeze',
+    category: 'Performance',
+    label: 'UI Freeze',
+    icon: '❄️',
+    description: 'Detect UI freezes/ANRs',
+    defaultData: {
+      durationMs: 2000,
+    },
+  },
+  {
+    type: 'slow_operation',
+    category: 'Performance',
+    label: 'Slow Operation',
+    icon: '🐌',
+    description: 'Detect slow operations',
+    defaultData: {
+      operationName: '',
+      thresholdMs: 1000,
+    },
+  },
+  {
+    type: 'frame_drop',
+    category: 'Performance',
+    label: 'Frame Drops',
+    icon: '🎬',
+    description: 'Detect dropped frames',
+    defaultData: {
+      droppedFrames: 30,
+      windowMs: 1000,
+    },
+  },
+
+  // Network Triggers
+  {
+    type: 'http_error_match',
+    category: 'Network',
+    label: 'HTTP Error',
+    icon: '🌐',
+    description: 'Match HTTP error codes',
+    defaultData: {
+      statusMin: 500,
+      routeContains: '',
+    },
+  },
+  {
+    type: 'network_loss',
+    category: 'Network',
+    label: 'Network Loss',
+    icon: '📡',
+    description: 'Detect network disconnection',
+    defaultData: {
+      consecutiveFailures: 3,
+    },
+  },
+  {
+    type: 'slow_request',
+    category: 'Network',
+    label: 'Slow Request',
+    icon: '⏱️',
+    description: 'Detect slow HTTP requests',
+    defaultData: {
+      thresholdMs: 3000,
+      route: '',
+    },
+  },
+
+  // Device Health Triggers
+  {
+    type: 'low_memory',
+    category: 'Device Health',
+    label: 'Low Memory',
+    icon: '💾',
+    description: 'Detect low memory conditions',
+    defaultData: {
+      availableMb: 50,
+    },
+  },
+  {
+    type: 'battery_drain',
+    category: 'Device Health',
+    label: 'Battery Drain',
+    icon: '🔋',
+    description: 'Detect rapid battery drain',
+    defaultData: {
+      drainRatePercPerMin: 1.0,
+    },
+  },
+  {
+    type: 'thermal_throttling',
+    category: 'Device Health',
+    label: 'Thermal Throttling',
+    icon: '🌡️',
+    description: 'Detect device overheating',
+    defaultData: {
+      minLevel: 'MODERATE',
+    },
+  },
+  {
+    type: 'storage_low',
+    category: 'Device Health',
+    label: 'Low Storage',
+    icon: '💿',
+    description: 'Detect low storage space',
+    defaultData: {
+      availableMb: 100,
+    },
+  },
+
+  // Crash/Error Triggers
+  {
+    type: 'crash_marker',
+    category: 'Crash/Error',
+    label: 'Crash Detected',
+    icon: '💥',
+    description: 'Trigger on app crash',
+    defaultData: {},
+  },
+  {
+    type: 'exception_pattern',
+    category: 'Crash/Error',
+    label: 'Exception Pattern',
+    icon: '⚠️',
+    description: 'Match exception types',
+    defaultData: {
+      exceptionType: '',
+      messagePattern: '',
+    },
+  },
+
+  // Predictive Triggers
+  {
+    type: 'predictive_risk',
+    category: 'Predictive',
+    label: 'Predictive Risk',
+    icon: '🔮',
+    description: 'ML-based risk prediction',
+    defaultData: {
+      riskType: 'crash',
+      minScore: 0.7,
+    },
+  },
+
+  // Logic Nodes
   {
     type: 'any',
     category: 'Logic',
     label: 'Any (OR)',
     icon: '🔀',
     description: 'Match if any condition is true',
-    defaultData: {
-      operator: 'any',
-    },
+    defaultData: {},
   },
   {
     type: 'all',
@@ -58,8 +218,65 @@ const nodeTemplates = [
     label: 'All (AND)',
     icon: '🔗',
     description: 'Match if all conditions are true',
+    defaultData: {},
+  },
+
+  // Actions
+  {
+    type: 'flush_window',
+    category: 'Actions',
+    label: 'Flush Window',
+    icon: '📤',
+    description: 'Flush buffered events',
     defaultData: {
-      operator: 'all',
+      minutes: 2,
+      scope: 'session',
+    },
+  },
+  {
+    type: 'set_sampling',
+    category: 'Actions',
+    label: 'Set Sampling',
+    icon: '🎲',
+    description: 'Adjust sampling rate',
+    defaultData: {
+      rate: 100,
+      durationMinutes: 10,
+    },
+  },
+  {
+    type: 'annotate_trigger',
+    category: 'Actions',
+    label: 'Annotate Event',
+    icon: '🏷️',
+    description: 'Add trigger annotation',
+    defaultData: {
+      triggerId: '',
+      reason: '',
+    },
+  },
+  {
+    type: 'send_alert',
+    category: 'Actions',
+    label: 'Send Alert',
+    icon: '🚨',
+    description: 'Send notification alert',
+    defaultData: {
+      severity: 'warning',
+      message: '',
+      channels: ['email'],
+    },
+  },
+  {
+    type: 'adjust_config',
+    category: 'Actions',
+    label: 'Adjust Config',
+    icon: '⚙️',
+    description: 'Change runtime config',
+    defaultData: {
+      parameter: '',
+      value: '',
+      durationMinutes: 0,
     },
   },
 ];
@@ -78,11 +295,44 @@ export function WorkflowBuilder({ workflow, onChange }: WorkflowBuilderProps) {
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
+      // Event Triggers
       event_match: EventMatchNode,
-      flush_window: FlushWindowNode,
+      log_severity_match: TriggerNode,
+      metric_threshold: TriggerNode,
+
+      // Performance Triggers
+      ui_freeze: TriggerNode,
+      slow_operation: TriggerNode,
+      frame_drop: TriggerNode,
+
+      // Network Triggers
+      http_error_match: TriggerNode,
+      network_loss: TriggerNode,
+      slow_request: TriggerNode,
+
+      // Device Health Triggers
+      low_memory: TriggerNode,
+      battery_drain: TriggerNode,
+      thermal_throttling: TriggerNode,
+      storage_low: TriggerNode,
+
+      // Crash/Error Triggers
+      crash_marker: TriggerNode,
+      exception_pattern: TriggerNode,
+
+      // Predictive Triggers
+      predictive_risk: TriggerNode,
+
+      // Logic Nodes
       any: LogicNode,
       all: LogicNode,
-      // Add other node types as needed
+
+      // Actions
+      flush_window: FlushWindowNode,
+      set_sampling: ActionNode,
+      annotate_trigger: ActionNode,
+      send_alert: ActionNode,
+      adjust_config: ActionNode,
     }),
     []
   );
@@ -175,7 +425,16 @@ export function WorkflowBuilder({ workflow, onChange }: WorkflowBuilderProps) {
       <div className="node-palette">
         <h3>Node Palette</h3>
         <div className="palette-sections">
-          {['Triggers', 'Logic', 'Actions'].map((category) => (
+          {[
+            'Event Triggers',
+            'Performance',
+            'Network',
+            'Device Health',
+            'Crash/Error',
+            'Predictive',
+            'Logic',
+            'Actions',
+          ].map((category) => (
             <div key={category} className="palette-section">
               <div className="palette-category">{category}</div>
               {nodeTemplates

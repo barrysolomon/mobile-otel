@@ -180,10 +180,13 @@ kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 ### Essential Reading
 - **[Why Not a Fork?](WHY_NOT_A_FORK.md)** - One-page OTEL alignment explanation
 - **[Offline Resilience Guide](docs/guides/OFFLINE_RESILIENCE.md)** - Crash recovery, network loss, retry logic
+- **[Bundled Configuration](docs/BUNDLED_CONFIG.md)** - Pre-configured settings shipped with app
 - **[Deployment Guide](docs/guides/DEPLOYMENT_GUIDE.md)** - Production deployment steps
 
 ### Reference Documentation
 - **[Architecture](docs/reference/ARCHITECTURE.md)** - System design and data flow
+- **[Workflow System](docs/WORKFLOW_SYSTEM.md)** - Complete workflow architecture
+- **[Export Modes](docs/EXPORT_MODES.md)** - CONDITIONAL vs CONTINUOUS vs HYBRID
 - **[OpenTelemetry Native Plan](docs/reference/OPENTELEMETRY_NATIVE_PLAN.md)** - Complete migration plan
 - **[Testing Strategy](docs/guides/TESTING_STRATEGY.md)** - Testing approach and patterns
 - **[Testing Implementation](docs/reference/TESTING_IMPLEMENTATION.md)** - Current test coverage
@@ -191,6 +194,8 @@ kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 ### Component Documentation
 - [Android Library](otel-android-mobile/README.md) - API reference and usage
 - [Collector Processor](collector-processor/mobilepolicyprocessor/README.md) - Policy configuration
+- [Control Plane UI](control-plane-ui/README_WORKFLOWS.md) - Visual workflow editor
+- [Collector Configuration UI](control-plane-ui/README_COLLECTOR.md) - Endpoint management
 - [Demo Application](examples/demo-app/README.md) - Complete working example
 
 ### Project Status
@@ -422,16 +427,55 @@ To prevent scope creep and maintain OTEL alignment, here's what this project exp
 
 ### Android Library
 
+**Programmatic Configuration**:
 ```kotlin
 MobileConfig(
     serviceName = "my-app",
     serviceVersion = "1.0.0",
     collectorEndpoint = "https://otel-collector:4317",
+    exportMode = ExportMode.CONDITIONAL,  // Battery-efficient default
     ramBufferSize = 5000,      // Events in RAM
     diskBufferMb = 50,          // MB on disk
     retentionHours = 24         // Maximum age
 )
 ```
+
+**Bundled Configuration** (Offline-first):
+
+Ship pre-configured settings in `assets/otel-config.json`:
+
+```json
+{
+  "serviceName": "my-app",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONDITIONAL",
+  "ramBufferSize": 5000,
+  "diskBufferMb": 50,
+  "workflows": [
+    {
+      "id": "ui-freeze-detector",
+      "enabled": true,
+      "trigger": {
+        "all": [{
+          "event": "ui.freeze",
+          "where": [{"attr": "duration_ms", "op": ">", "value": 2000}]
+        }]
+      },
+      "actions": [
+        {"type": "flush_window", "minutes": 2, "scope": "session"}
+      ]
+    }
+  ]
+}
+```
+
+**Benefits**:
+- Works immediately without network connectivity
+- Environment-specific configs (dev, staging, prod via build variants)
+- Pre-configured workflows for new releases
+
+See [Bundled Configuration Guide](docs/BUNDLED_CONFIG.md) for details.
 
 ### Collector Processor
 

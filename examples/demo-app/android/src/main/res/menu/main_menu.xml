@@ -5,6 +5,12 @@
     <item
         android:id="@+id/action_settings"
         android:title="Settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_config"
+        android:title="Configuration"
         android:icon="@android:drawable/ic_menu_manage"
         app:showAsAction="never" />
 

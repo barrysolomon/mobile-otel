@@ -1,109 +1,402 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:background="@color/background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:orientation="vertical">
 
-        <!-- App Title -->
-        <TextView
+        <!-- Compact Header with Toolbar -->
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OpenTelemetry Mobile Demo"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp" />
+            android:background="@drawable/gradient_header"
+            android:fitsSystemWindows="true">
 
-        <!-- Status Card -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:elevation="4dp">
+            <!-- Toolbar for menu -->
+            <androidx.appcompat.widget.Toolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                android:elevation="0dp"
+                app:titleTextColor="@color/text_on_primary"
+                android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+                app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
-            <TextView
-                android:id="@+id/statusText"
+            <!-- Compact Header content -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Initializing OpenTelemetry..."
-                android:textSize="14sp"
-                android:padding="16dp"
-                android:minHeight="80dp"
-                android:gravity="center" />
+                android:layout_below="@id/toolbar"
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="16dp">
 
-        </androidx.cardview.widget.CardView>
+                <TextView
+                    android:id="@+id/headerTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📊 OTel Mobile Demo"
+                    android:textColor="@color/text_on_primary"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
 
-        <!-- Demo Scenarios Section -->
-        <TextView
+                <TextView
+                    android:id="@+id/headerSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Tap scenarios to generate telemetry"
+                    android:textColor="@color/text_on_primary"
+                    android:textSize="13sp"
+                    android:alpha="0.85" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <!-- Main Content Container -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Demo Scenarios"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <Button
-            android:id="@+id/btnScenarioA"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Scenario A: UI Freeze"
-            android:textAllCaps="false"
-            android:padding="16dp"
-            android:layout_marginBottom="8dp" />
+            <!-- Collapsible Status Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
 
-        <Button
-            android:id="@+id/btnScenarioB"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Scenario B: Crash Simulation"
-            android:textAllCaps="false"
-            android:padding="16dp"
-            android:layout_marginBottom="8dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/status_card_background">
 
-        <Button
-            android:id="@+id/btnScenarioC"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Scenario C: Network Error"
-            android:textAllCaps="false"
-            android:padding="16dp"
-            android:layout_marginBottom="24dp" />
+                    <!-- Status Header (clickable) -->
+                    <RelativeLayout
+                        android:id="@+id/statusHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="16dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:background="?attr/selectableItemBackground">
 
-        <!-- Manual Controls Section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Manual Controls"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentStart="true"
+                            android:layout_centerVertical="true"
+                            android:text="📡 Status"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/primary" />
 
-        <Button
-            android:id="@+id/btnForceFlush"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Force Flush All Events"
-            android:textAllCaps="false"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp" />
+                        <TextView
+                            android:id="@+id/statusExpandIcon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentEnd="true"
+                            android:layout_centerVertical="true"
+                            android:text="▼"
+                            android:textSize="12sp"
+                            android:textColor="@color/primary" />
+                    </RelativeLayout>
 
-        <!-- Info Text -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Use the menu (⋮) to access Settings, Help, and About"
-            android:textSize="12sp"
-            android:textStyle="italic"
-            android:textColor="#666666"
-            android:gravity="center"
-            android:layout_marginTop="16dp" />
+                    <!-- Status Content (collapsible) -->
+                    <TextView
+                        android:id="@+id/statusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Initializing OpenTelemetry..."
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary"
+                        android:lineSpacingExtra="2dp"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:paddingBottom="16dp"
+                        android:visibility="visible" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Trigger Events Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎯 Trigger Events"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginBottom="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="12dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScenarioA"
+                    android:layout_width="0dp"
+                    android:layout_height="80dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="❄️ UI Freeze"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_demo"
+                    app:cornerRadius="16dp"
+                    app:elevation="4dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScenarioB"
+                    android:layout_width="0dp"
+                    android:layout_height="80dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="💥 Crash"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_demo"
+                    app:cornerRadius="16dp"
+                    app:elevation="4dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="28dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScenarioC"
+                    android:layout_width="0dp"
+                    android:layout_height="80dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="🌐 Network Error"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_demo"
+                    app:cornerRadius="16dp"
+                    app:elevation="4dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScenarioD"
+                    android:layout_width="0dp"
+                    android:layout_height="80dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="🧠 Low Memory"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_demo"
+                    app:cornerRadius="16dp"
+                    app:elevation="4dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+            </LinearLayout>
+
+            <!-- Regular Activities Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✨ Regular App Activities"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginBottom="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="12dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUserLogin"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="🔐 Login"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPageNav"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="🧭 Navigate"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="12dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnApiCall"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="🔌 API Call"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBackgroundTask"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="⚙️ Background"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:weightSum="2"
+                android:layout_marginBottom="28dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUserInteraction"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="👆 Interaction"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFormSubmit"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="📝 Form Submit"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:backgroundTint="@color/button_regular"
+                    app:cornerRadius="14dp"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+            </LinearLayout>
+
+            <!-- Manual Controls Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎛️ Manual Controls"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"
+                android:layout_marginBottom="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnForceFlush"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="🚀 Force Flush All Events"
+                android:textSize="16sp"
+                android:textAllCaps="false"
+                android:layout_marginBottom="12dp"
+                app:backgroundTint="@color/button_control"
+                app:cornerRadius="16dp"
+                app:elevation="4dp"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnForceQuit"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="⛔ Force Quit (Flush &amp; Exit)"
+                android:textSize="16sp"
+                android:textAllCaps="false"
+                android:layout_marginBottom="20dp"
+                app:backgroundTint="@color/button_demo"
+                app:cornerRadius="16dp"
+                app:elevation="4dp"
+                app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                app:iconGravity="textStart"
+                app:iconPadding="12dp"
+                app:iconTint="@color/text_on_primary"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+            <!-- Info Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface_variant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ℹ️ Tip"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/info"
+                        android:layout_marginBottom="6dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Use the menu (⋮) to access Settings, Help, and About. Check Logcat to see events in real-time."
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:lineSpacingExtra="2dp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
 
     </LinearLayout>
 

@@ -53,6 +53,9 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("androidx.cardview:cardview:1.0.0")
 
+    // HTTP Client for real network calls in demo scenarios
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

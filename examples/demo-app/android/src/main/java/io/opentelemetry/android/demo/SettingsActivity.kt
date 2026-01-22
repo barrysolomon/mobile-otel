@@ -1,46 +1,54 @@
 package io.opentelemetry.android.demo
 
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.widget.Button
 import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import io.opentelemetry.android.mobile.config.MobileConfig
+import com.google.android.material.button.MaterialButton
 
 /**
- * Settings screen for configuring OpenTelemetry parameters.
+ * Settings screen for configuring telemetry collection and trigger behavior.
  *
- * Allows users to modify:
- * - Service identity (name, version)
- * - Collector endpoint
- * - Buffer sizes and retention
- * - Export behavior
- * - Advanced options
+ * Allows users to configure:
+ * - Data collection types (logs, traces, metrics, device metrics)
+ * - Device metric categories (memory, battery, CPU, network, etc.)
+ * - Automatic export triggers (UI freeze, crash, network error, low memory)
+ *
+ * These settings can be:
+ * 1. Bundled in assets/otel-config.json (shipped with app)
+ * 2. Modified via this UI (stored in SharedPreferences)
+ * 3. Updated remotely via Control Plane push (future feature)
  */
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var editServiceName: EditText
-    private lateinit var editServiceVersion: EditText
-    private lateinit var radioGroupProtocol: RadioGroup
-    private lateinit var radioGrpc: RadioButton
-    private lateinit var radioHttp: RadioButton
-    private lateinit var editCollectorEndpoint: EditText
-    private lateinit var editAuthToken: EditText
-    private lateinit var editDataset: EditText
-    private lateinit var editRamBufferSize: EditText
-    private lateinit var editDiskBufferMb: EditText
-    private lateinit var editDiskBufferTtl: EditText
-    private lateinit var editExportTimeout: EditText
-    private lateinit var editMaxRetries: EditText
-    private lateinit var checkboxAttachContext: CheckBox
-    private lateinit var editBuildChannel: EditText
-    private lateinit var btnSave: Button
-    private lateinit var btnResetDefaults: Button
+    // Data Collection Settings
+    private lateinit var checkboxCollectLogs: CheckBox
+    private lateinit var checkboxCollectTraces: CheckBox
+    private lateinit var checkboxCollectMetrics: CheckBox
+    private lateinit var checkboxCollectDeviceMetrics: CheckBox
+
+    // Device Metric Categories
+    private lateinit var checkboxMetricMemory: CheckBox
+    private lateinit var checkboxMetricBattery: CheckBox
+    private lateinit var checkboxMetricCpu: CheckBox
+    private lateinit var checkboxMetricNetwork: CheckBox
+    private lateinit var checkboxMetricStorage: CheckBox
+    private lateinit var checkboxMetricThermal: CheckBox
+    private lateinit var checkboxMetricDisplay: CheckBox
+    private lateinit var checkboxMetricSystem: CheckBox
+    private lateinit var checkboxMetricApp: CheckBox
+    private lateinit var checkboxMetricLocation: CheckBox
+
+    // Trigger Settings
+    private lateinit var checkboxUiFreeze: CheckBox
+    private lateinit var checkboxCrash: CheckBox
+    private lateinit var checkboxNetworkError: CheckBox
+    private lateinit var checkboxLowMemory: CheckBox
+
+    // Buttons
+    private lateinit var btnSave: MaterialButton
+    private lateinit var btnResetDefaults: MaterialButton
+    private lateinit var btnClose: MaterialButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,140 +56,149 @@ class SettingsActivity : AppCompatActivity() {
 
         // Enable back button in action bar
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Settings"
+        supportActionBar?.title = "Telemetry Settings"
 
-        // Initialize views
-        editServiceName = findViewById(R.id.editServiceName)
-        editServiceVersion = findViewById(R.id.editServiceVersion)
-        radioGroupProtocol = findViewById(R.id.radioGroupProtocol)
-        radioGrpc = findViewById(R.id.radioGrpc)
-        radioHttp = findViewById(R.id.radioHttp)
-        editCollectorEndpoint = findViewById(R.id.editCollectorEndpoint)
-        editAuthToken = findViewById(R.id.editAuthToken)
-        editDataset = findViewById(R.id.editDataset)
-        editRamBufferSize = findViewById(R.id.editRamBufferSize)
-        editDiskBufferMb = findViewById(R.id.editDiskBufferMb)
-        editDiskBufferTtl = findViewById(R.id.editDiskBufferTtl)
-        editExportTimeout = findViewById(R.id.editExportTimeout)
-        editMaxRetries = findViewById(R.id.editMaxRetries)
-        checkboxAttachContext = findViewById(R.id.checkboxAttachContext)
-        editBuildChannel = findViewById(R.id.editBuildChannel)
+        // Initialize data collection checkboxes
+        checkboxCollectLogs = findViewById(R.id.checkboxCollectLogs)
+        checkboxCollectTraces = findViewById(R.id.checkboxCollectTraces)
+        checkboxCollectMetrics = findViewById(R.id.checkboxCollectMetrics)
+        checkboxCollectDeviceMetrics = findViewById(R.id.checkboxCollectDeviceMetrics)
+
+        // Initialize device metric category checkboxes
+        checkboxMetricMemory = findViewById(R.id.checkboxMetricMemory)
+        checkboxMetricBattery = findViewById(R.id.checkboxMetricBattery)
+        checkboxMetricCpu = findViewById(R.id.checkboxMetricCpu)
+        checkboxMetricNetwork = findViewById(R.id.checkboxMetricNetwork)
+        checkboxMetricStorage = findViewById(R.id.checkboxMetricStorage)
+        checkboxMetricThermal = findViewById(R.id.checkboxMetricThermal)
+        checkboxMetricDisplay = findViewById(R.id.checkboxMetricDisplay)
+        checkboxMetricSystem = findViewById(R.id.checkboxMetricSystem)
+        checkboxMetricApp = findViewById(R.id.checkboxMetricApp)
+        checkboxMetricLocation = findViewById(R.id.checkboxMetricLocation)
+
+        // Initialize trigger checkboxes
+        checkboxUiFreeze = findViewById(R.id.checkboxUiFreeze)
+        checkboxCrash = findViewById(R.id.checkboxCrash)
+        checkboxNetworkError = findViewById(R.id.checkboxNetworkError)
+        checkboxLowMemory = findViewById(R.id.checkboxLowMemory)
+
+        // Initialize buttons
         btnSave = findViewById(R.id.btnSave)
         btnResetDefaults = findViewById(R.id.btnResetDefaults)
+        btnClose = findViewById(R.id.btnClose)
 
-        // Load current configuration
-        loadConfiguration()
+        // Load current settings
+        loadSettings()
 
         // Set up button listeners
         btnSave.setOnClickListener {
-            saveConfiguration()
+            saveSettings()
         }
 
         btnResetDefaults.setOnClickListener {
             resetToDefaults()
         }
 
-        // Update endpoint hint based on protocol selection
-        radioGroupProtocol.setOnCheckedChangeListener { _, checkedId ->
-            when (checkedId) {
-                R.id.radioGrpc -> {
-                    editCollectorEndpoint.hint = "e.g., https://ingress.us-west-2.aws.dash0.com:4317"
-                }
-                R.id.radioHttp -> {
-                    editCollectorEndpoint.hint = "e.g., https://ingress.us-west-2.aws.dash0.com/v1/logs"
-                }
-            }
-        }
-    }
-
-    /**
-     * Loads the current configuration into the UI fields.
-     */
-    private fun loadConfiguration() {
-        val config = ConfigManager.loadConfig(this)
-        val protocol = ConfigManager.getProtocol(this)
-
-        editServiceName.setText(config.serviceName)
-        editServiceVersion.setText(config.serviceVersion)
-
-        // Set protocol radio button
-        when (protocol) {
-            "grpc" -> radioGrpc.isChecked = true
-            "http" -> radioHttp.isChecked = true
-            else -> radioGrpc.isChecked = true
-        }
-
-        editCollectorEndpoint.setText(config.collectorEndpoint)
-        editAuthToken.setText(ConfigManager.getAuthToken(this))
-        editDataset.setText(ConfigManager.getDataset(this))
-        editRamBufferSize.setText(config.ramBufferSize.toString())
-        editDiskBufferMb.setText(config.diskBufferMb.toString())
-        editDiskBufferTtl.setText(config.diskBufferTtlHours.toString())
-        editExportTimeout.setText(config.exportTimeoutSeconds.toString())
-        editMaxRetries.setText(config.maxExportRetries.toString())
-        checkboxAttachContext.isChecked = config.attachContextAttributes
-        editBuildChannel.setText(config.buildChannel ?: "")
-    }
-
-    /**
-     * Saves the configuration from UI fields to SharedPreferences.
-     */
-    private fun saveConfiguration() {
-        try {
-            // Save protocol preference
-            val protocol = when (radioGroupProtocol.checkedRadioButtonId) {
-                R.id.radioGrpc -> "grpc"
-                R.id.radioHttp -> "http"
-                else -> "grpc"
-            }
-            ConfigManager.saveProtocol(this, protocol)
-
-            // Save auth token and dataset separately
-            val authToken = editAuthToken.text.toString().trim()
-            val dataset = editDataset.text.toString().trim()
-
-            ConfigManager.saveAuthToken(this, authToken)
-            ConfigManager.saveDataset(this, dataset)
-
-            // Build headers map
-            val headers = mutableMapOf<String, String>()
-            if (authToken.isNotBlank()) {
-                headers["Authorization"] = "Bearer $authToken"
-            }
-            if (dataset.isNotBlank()) {
-                headers["Dash0-Dataset"] = dataset
-            }
-
-            val config = MobileConfig(
-                serviceName = editServiceName.text.toString().trim(),
-                serviceVersion = editServiceVersion.text.toString().trim(),
-                collectorEndpoint = editCollectorEndpoint.text.toString().trim(),
-                ramBufferSize = editRamBufferSize.text.toString().toInt(),
-                diskBufferMb = editDiskBufferMb.text.toString().toInt(),
-                diskBufferTtlHours = editDiskBufferTtl.text.toString().toInt(),
-                exportTimeoutSeconds = editExportTimeout.text.toString().toLong(),
-                configPollIntervalSeconds = 300, // Not configurable in UI
-                maxExportRetries = editMaxRetries.text.toString().toInt(),
-                headers = headers.ifEmpty { null },
-                attachContextAttributes = checkboxAttachContext.isChecked,
-                buildChannel = editBuildChannel.text.toString().trim().ifBlank { null }
-            )
-
-            ConfigManager.saveConfig(this, config)
-
-            Toast.makeText(this, "Settings saved. Restart app to apply changes.", Toast.LENGTH_LONG).show()
+        btnClose.setOnClickListener {
             finish()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Invalid input: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     /**
-     * Resets all configuration to default values.
+     * Loads all telemetry settings from SharedPreferences.
+     */
+    private fun loadSettings() {
+        val prefs = getSharedPreferences("telemetry_settings", MODE_PRIVATE)
+
+        // Load data collection settings
+        checkboxCollectLogs.isChecked = prefs.getBoolean("collect_logs", true)
+        checkboxCollectTraces.isChecked = prefs.getBoolean("collect_traces", true)
+        checkboxCollectMetrics.isChecked = prefs.getBoolean("collect_metrics", true)
+        checkboxCollectDeviceMetrics.isChecked = prefs.getBoolean("collect_device_metrics", true)
+
+        // Load device metric categories
+        checkboxMetricMemory.isChecked = prefs.getBoolean("metric_memory", true)
+        checkboxMetricBattery.isChecked = prefs.getBoolean("metric_battery", true)
+        checkboxMetricCpu.isChecked = prefs.getBoolean("metric_cpu", true)
+        checkboxMetricNetwork.isChecked = prefs.getBoolean("metric_network", true)
+        checkboxMetricStorage.isChecked = prefs.getBoolean("metric_storage", true)
+        checkboxMetricThermal.isChecked = prefs.getBoolean("metric_thermal", false)
+        checkboxMetricDisplay.isChecked = prefs.getBoolean("metric_display", true)
+        checkboxMetricSystem.isChecked = prefs.getBoolean("metric_system", true)
+        checkboxMetricApp.isChecked = prefs.getBoolean("metric_app", true)
+        checkboxMetricLocation.isChecked = prefs.getBoolean("metric_location", false)
+
+        // Load trigger settings
+        checkboxUiFreeze.isChecked = prefs.getBoolean("trigger_ui_freeze", true)
+        checkboxCrash.isChecked = prefs.getBoolean("trigger_crash", true)
+        checkboxNetworkError.isChecked = prefs.getBoolean("trigger_network_error", true)
+        checkboxLowMemory.isChecked = prefs.getBoolean("trigger_low_memory", true)
+    }
+
+    /**
+     * Saves all telemetry settings to SharedPreferences.
+     */
+    private fun saveSettings() {
+        val prefs = getSharedPreferences("telemetry_settings", MODE_PRIVATE)
+        prefs.edit()
+            // Data collection settings
+            .putBoolean("collect_logs", checkboxCollectLogs.isChecked)
+            .putBoolean("collect_traces", checkboxCollectTraces.isChecked)
+            .putBoolean("collect_metrics", checkboxCollectMetrics.isChecked)
+            .putBoolean("collect_device_metrics", checkboxCollectDeviceMetrics.isChecked)
+
+            // Device metric categories
+            .putBoolean("metric_memory", checkboxMetricMemory.isChecked)
+            .putBoolean("metric_battery", checkboxMetricBattery.isChecked)
+            .putBoolean("metric_cpu", checkboxMetricCpu.isChecked)
+            .putBoolean("metric_network", checkboxMetricNetwork.isChecked)
+            .putBoolean("metric_storage", checkboxMetricStorage.isChecked)
+            .putBoolean("metric_thermal", checkboxMetricThermal.isChecked)
+            .putBoolean("metric_display", checkboxMetricDisplay.isChecked)
+            .putBoolean("metric_system", checkboxMetricSystem.isChecked)
+            .putBoolean("metric_app", checkboxMetricApp.isChecked)
+            .putBoolean("metric_location", checkboxMetricLocation.isChecked)
+
+            // Trigger settings
+            .putBoolean("trigger_ui_freeze", checkboxUiFreeze.isChecked)
+            .putBoolean("trigger_crash", checkboxCrash.isChecked)
+            .putBoolean("trigger_network_error", checkboxNetworkError.isChecked)
+            .putBoolean("trigger_low_memory", checkboxLowMemory.isChecked)
+
+            .apply()
+
+        Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    /**
+     * Resets all settings to default values.
      */
     private fun resetToDefaults() {
-        ConfigManager.resetToDefaults(this)
-        loadConfiguration()
+        // Data collection defaults (all enabled)
+        checkboxCollectLogs.isChecked = true
+        checkboxCollectTraces.isChecked = true
+        checkboxCollectMetrics.isChecked = true
+        checkboxCollectDeviceMetrics.isChecked = true
+
+        // Device metric category defaults
+        checkboxMetricMemory.isChecked = true
+        checkboxMetricBattery.isChecked = true
+        checkboxMetricCpu.isChecked = true
+        checkboxMetricNetwork.isChecked = true
+        checkboxMetricStorage.isChecked = true
+        checkboxMetricThermal.isChecked = false // Privacy/performance
+        checkboxMetricDisplay.isChecked = true
+        checkboxMetricSystem.isChecked = true
+        checkboxMetricApp.isChecked = true
+        checkboxMetricLocation.isChecked = false // Privacy
+
+        // Trigger defaults (all enabled)
+        checkboxUiFreeze.isChecked = true
+        checkboxCrash.isChecked = true
+        checkboxNetworkError.isChecked = true
+        checkboxLowMemory.isChecked = true
+
         Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
     }
 

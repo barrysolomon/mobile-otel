@@ -4,6 +4,22 @@
 
 This guide assumes you're starting from scratch and walks through everything step-by-step.
 
+**✨ New: Visual Control Plane UI** - We now include a web-based management console for configuring workflows, managing collectors, and setting up Dash0 integration. See **Step 10** below!
+
+---
+
+## 📋 Quick Navigation
+
+**Get Started (Steps 1-5)**: Clone → Setup → Run Demo
+**Try Features (Steps 6-9)**: Test scenarios → View data → Integrate into your app
+**⭐ Control Plane UI (Step 10)**: Visual workflow editor + Dash0 setup ← **Recommended!**
+**Advanced (Steps 11-12)**: Offline testing → Production deployment
+
+**⏱️ Time Estimates:**
+- Minimal setup (demo only): 10 minutes
+- With Control Plane UI: 15 minutes
+- Full integration in your app: 30 minutes
+
 ---
 
 ## Prerequisites
@@ -37,11 +53,35 @@ Take a quick look at what's in the project:
 mobile-otel/
 ├── otel-android-mobile/        # The Android library (what you'll use in your apps)
 ├── examples/demo-app/          # Demo app showing how it works
+├── control-plane-ui/           # Web UI for visual configuration (NEW!)
 ├── collector-processor/        # Backend processor (optional)
 └── docs/                       # Documentation
 ```
 
-For this quick start, we'll focus on the **demo app**.
+### The Complete Stack
+
+```
+┌─────────────────────────────────────────┐
+│      Control Plane UI (Web)            │  ← Configure workflows visually
+│      http://localhost:3000              │     Manage Dash0 integration
+└─────────────────────────────────────────┘
+                    ↓ exports config JSON
+┌─────────────────────────────────────────┐
+│      Your Android App                   │  ← Uses bundled config
+│      + otel-android-mobile library      │     Sends telemetry
+└─────────────────────────────────────────┘
+                    ↓ OTLP/gRPC
+┌─────────────────────────────────────────┐
+│      OTEL Collector                     │  ← Routes telemetry
+│      localhost:4317 or Dash0           │     Processes data
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│      Backend (Dash0, Jaeger, etc.)     │  ← Visualize & analyze
+└─────────────────────────────────────────┘
+```
+
+For this quick start, we'll focus on the **demo app** and **Control Plane UI**.
 
 ---
 
@@ -244,9 +284,12 @@ class MyApp : Application() {
             serviceName = "my-awesome-app",
             serviceVersion = "1.0.0",
             collectorEndpoint = "http://your-collector:4317",
+            exportMode = ExportMode.CONDITIONAL,  // Battery-efficient default
             ramBufferSize = 5000,
             diskBufferMb = 50,
-            diskBufferTtlHours = 24
+            diskBufferTtlHours = 24,
+            traceExportIntervalSeconds = 30,  // For CONTINUOUS mode
+            metricExportIntervalSeconds = 60   // For CONTINUOUS mode
         )
 
         // Initialize the logger provider
@@ -254,6 +297,13 @@ class MyApp : Application() {
     }
 }
 ```
+
+**Export Modes:**
+- `ExportMode.CONDITIONAL` (default) - Only exports on triggers or manual flush (battery-efficient)
+- `ExportMode.CONTINUOUS` - Regular scheduled exports (development/debug)
+- `ExportMode.HYBRID` - Balanced approach (2x intervals + triggers)
+
+See [docs/EXPORT_MODES.md](docs/EXPORT_MODES.md) for details.
 
 Don't forget to register it in `AndroidManifest.xml`:
 
@@ -289,48 +339,440 @@ class MainActivity : AppCompatActivity() {
 }
 ```
 
-### 9.4 Configure Export Policies
+### 9.4 Use Bundled Configuration (Recommended)
 
-Create `policies.yaml` in your assets folder:
+**💡 Tip: Use the Control Plane UI** (Step 10) to visually create your config instead of manually editing JSON. The UI validates your configuration and exports production-ready JSON.
 
-```yaml
-policies:
-  - id: crash-detection
-    match:
-      attributes:
-        event.name: {equals: "app.crash"}
-    actions:
-      - type: flush_all
+**Option A: Bundled Config (Offline-first)**
 
-  - id: error-threshold
-    match:
-      attributes:
-        severity: {equals: "ERROR"}
-    actions:
-      - type: flush_window
-        parameters: {window_minutes: 5}
+Create `assets/otel-config.json` that ships with your app (or export from Control Plane UI):
 
-  - id: wifi-only-bulk-export
-    match:
-      network: {type: "wifi"}
-    actions:
-      - type: scheduled_flush
-        parameters: {interval_minutes: 30}
+```json
+{
+  "serviceName": "my-awesome-app",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONDITIONAL",
+  "ramBufferSize": 5000,
+  "diskBufferMb": 50,
+  "diskBufferTtlHours": 24,
+  "workflows": [
+    {
+      "id": "crash-detection",
+      "name": "Crash Detection",
+      "enabled": true,
+      "trigger": {
+        "all": [
+          {
+            "event": "app.crash",
+            "where": []
+          }
+        ]
+      },
+      "actions": [
+        {"type": "flush_window", "minutes": 10, "scope": "device"}
+      ]
+    },
+    {
+      "id": "http-errors",
+      "name": "HTTP Error Handler",
+      "enabled": true,
+      "trigger": {
+        "all": [
+          {
+            "event": "http.error",
+            "where": [{"attr": "http.status_code", "op": ">=", "value": 500}]
+          }
+        ]
+      },
+      "actions": [
+        {"type": "flush_window", "minutes": 5, "scope": "session"}
+      ]
+    }
+  ]
+}
 ```
 
-Load policies in your config:
+Then load it using ConfigManager:
 
 ```kotlin
-val policies = loadPoliciesFromAssets("policies.yaml")
+class MyApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        // Loads bundled config on first launch, then uses runtime config
+        val config = ConfigManager.loadConfig(this)
+        MobileLoggerProvider.initialize(config)
+    }
+}
+```
+
+**Benefits:**
+- Works immediately without network connectivity
+- Configuration persists across app restarts
+- Can be updated dynamically via Control Plane
+- Environment-specific configs via build variants
+
+See [docs/BUNDLED_CONFIG.md](docs/BUNDLED_CONFIG.md) for details.
+
+**Option B: Programmatic Configuration**
+
+If you prefer code-based config:
+
+```kotlin
 val config = MobileConfig(
-    // ... other config
-    exportPolicies = policies
+    serviceName = "my-awesome-app",
+    serviceVersion = "1.0.0",
+    collectorEndpoint = "http://your-collector:4317",
+    exportMode = ExportMode.CONDITIONAL
 )
 ```
 
 ---
 
-## Step 10: Test Offline Scenarios
+## Step 10: Use the Control Plane UI (⭐ Recommended)
+
+> **Why use the Control Plane UI?**
+> - 🎨 **Visual workflow builder** - No JSON editing required
+> - ✅ **Real-time validation** - Catch errors before deployment
+> - 🚀 **Dash0 one-click setup** - Automatic header configuration
+> - 📦 **Template library** - Pre-built workflows for common scenarios
+> - 🔄 **Multi-environment** - Separate configs for dev/staging/prod
+> - 📤 **Export to JSON** - Generate bundled config for your app
+
+The **Control Plane UI** is a web-based management console that lets you visually configure workflows, manage collector endpoints, and monitor your mobile observability setup.
+
+### 10.1 Start the Control Plane UI
+
+From the project root:
+
+```bash
+cd control-plane-ui
+npm install        # First time only
+npm run dev
+```
+
+The UI will start on **`http://localhost:3000`**
+
+**System Requirements:**
+- Node.js 18+
+- npm or yarn
+
+### 10.2 Navigate the Interface
+
+**UI Preview:**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Mobile OTEL Control Plane            [User] [Settings] │
+├──────────┬──────────────────────────────────────────────┤
+│ 📊 Dash  │  System Overview                            │
+│          │  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│ 🔄 Work  │  │  Active  │  │ Collect- │  │  Recent  │   │
+│  flows   │  │Workflows │  │   ors    │  │  Events  │   │
+│          │  │    12    │  │     2    │  │   1,234  │   │
+│ 🔗 Coll  │  └──────────┘  └──────────┘  └──────────┘   │
+│  ectors  │                                              │
+│          │  [Visual Workflow Canvas]                    │
+│ ⚙️ Sett  │  ┌────────┐     ┌────────┐     ┌────────┐   │
+│  ings    │  │Trigger │ --> │ Action │ --> │Metrics │   │
+│          │  └────────┘     └────────┘     └────────┘   │
+└──────────┴──────────────────────────────────────────────┘
+```
+
+The Control Plane has 4 main sections:
+
+#### 📊 Dashboard (Home)
+- Overview of your observability setup
+- Active workflows count
+- Collector endpoints status
+- Recent configuration changes
+
+#### 🔄 Workflows Tab
+- **Visual workflow editor** with drag-and-drop node builder
+- 25+ node types (triggers, conditions, actions)
+- Real-time validation
+- Export to JSON for bundled config
+
+#### 🔗 Collectors Tab
+- Manage OTEL collector endpoints
+- Configure Dash0 integration
+- Test connectivity
+- Environment-specific endpoints (dev/staging/prod)
+
+#### ⚙️ Settings Tab
+- Global configuration
+- Export modes (CONDITIONAL/CONTINUOUS/HYBRID)
+- Buffer settings (RAM/disk)
+- Sampling rates
+
+### 10.3 Create Your First Workflow (Visual Editor)
+
+Let's create a workflow that captures device metrics on API errors:
+
+1. **Open the Workflows tab**
+   - Click **"Workflows"** in the left sidebar
+   - Click **"+ New Workflow"** button
+
+2. **Add a Trigger Node**
+   - Drag **"Event Trigger"** from the palette
+   - Set event name: `http.error`
+   - Click **"Add Condition"**
+   - Set: `http.status_code >= 500`
+
+3. **Add Action Nodes**
+   - Drag **"Flush Window"** node
+     - Set minutes: `10`
+   - Drag **"Capture Device Metrics"** node
+   - Drag **"Set Sampling Rate"** node
+     - Set rate: `1.0` (100%)
+     - Set duration: `10` minutes
+
+4. **Connect the Nodes**
+   - Click and drag from trigger output to action inputs
+   - The editor validates connections automatically
+
+5. **Save & Export**
+   - Click **"Save Workflow"**
+   - Give it a name: "API Error Handler"
+   - Click **"Export"** to download JSON
+   - Place exported JSON in `assets/otel-config.json`
+
+**Visual representation of your workflow:**
+```
+┌───────────────────────────────────────────────────────┐
+│  Workflow: API Error Handler                         │
+├───────────────────────────────────────────────────────┤
+│                                                       │
+│  [Event Trigger: http.error]                         │
+│         └─ Condition: status_code >= 500             │
+│                   │                                   │
+│                   ├─> [Flush Window: 10 min]         │
+│                   │                                   │
+│                   ├─> [Capture Device Metrics]       │
+│                   │                                   │
+│                   └─> [Set Sampling: 100% for 10min] │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+**Your workflow is now ready to use!**
+
+**What happens when triggered:**
+1. ⚡ User's app encounters HTTP 500+ error
+2. 🔍 Workflow evaluates: `status_code >= 500` → TRUE
+3. 📤 Flushes last 10 minutes of events
+4. 📊 Captures complete device metrics snapshot
+5. 🎯 Increases trace sampling to 100% for next 10 minutes
+6. ✅ All data sent to Dash0 for analysis
+
+### 10.4 Configure Dash0 Integration
+
+If you're using **Dash0** as your backend:
+
+1. **Go to Collectors tab**
+   - Click **"Collectors"** in sidebar
+
+2. **Add Dash0 Endpoint**
+   - Click **"+ Add Collector"**
+   - Select **"Dash0"** from provider dropdown
+   - Enter your details:
+     - **Ingress URL**: `https://ingress.us.dash0.com:4317`
+     - **Auth Token**: Your Dash0 authorization token
+     - **Dataset**: `mobile-prod` (or your dataset name)
+   - Click **"Test Connection"** to verify
+   - Click **"Save"**
+
+3. **Set as Default**
+   - Click the **star icon** next to your Dash0 collector
+   - This sets it as the default endpoint for your app
+
+4. **Export Configuration**
+   - Click **"Export Config"**
+   - Save to `assets/otel-config.json` in your app
+   - Rebuild your app
+
+**Headers are automatically configured:**
+```json
+{
+  "collectorEndpoint": "https://ingress.us.dash0.com:4317",
+  "headers": {
+    "Authorization": "Bearer YOUR_DASH0_TOKEN",
+    "Dash0-Dataset": "mobile-prod"
+  }
+}
+```
+
+### 10.5 Test Your Configuration
+
+1. **Verify in the UI**
+   - Dashboard should show "Connected" status
+   - Workflows show as "Active"
+
+2. **Test in Demo App**
+   - Run the demo app
+   - Trigger an API error (Scenario C)
+   - Check Dash0 dashboard for incoming data
+
+3. **Monitor in Real-Time**
+   - Control Plane UI shows recent events
+   - Dash0 shows traces and logs
+   - Collector logs show processing
+
+### 10.6 Visual Workflow Examples
+
+The Control Plane includes **pre-built workflow templates**:
+
+**Template: Crash Detection & Recovery**
+```
+[app.crash event]
+  → [Flush 10 minutes]
+  → [Capture device metrics]
+  → [Increase sampling to 100% for 30 min]
+```
+
+**Template: Memory Pressure**
+```
+[memory.available_mb < 50]
+  → [Log tail: last 20 logs]
+  → [Capture metrics]
+  → [Flush 5 minutes]
+```
+
+**Template: Force Close Investigation**
+```
+[app.force_close event]
+  → [Flush 15 minutes]
+  → [Log tail: last 50 logs]
+  → [Capture all device metrics]
+```
+
+**Template: API Error Cascade**
+```
+[3+ http errors in 10 logs]
+  → [Flush 10 minutes]
+  → [Capture network metrics]
+  → [Set sampling: 100% for 10 min]
+```
+
+**To use a template:**
+1. Click **"Templates"** in Workflows tab
+2. Select a template
+3. Click **"Load Template"**
+4. Customize as needed
+5. Export to your app
+
+### 10.7 Workflow Validation
+
+The editor validates your workflows in real-time:
+
+✅ **Valid workflow indicators:**
+- Green checkmarks on all nodes
+- Connections show as solid lines
+- "Valid" badge in top-right
+
+⚠️ **Common issues:**
+- **Red X on node**: Missing required fields
+- **Dashed lines**: Incompatible connection types
+- **Orange warning**: Valid but suboptimal (e.g., too frequent)
+
+### 10.8 Environment-Specific Configs
+
+Manage different configs per environment:
+
+1. **Create environments** in Settings:
+   - Development: `http://10.0.2.2:4317` (local)
+   - Staging: `https://staging-collector:4317`
+   - Production: Dash0 ingress URL
+
+2. **Export per environment**:
+   - Select environment dropdown
+   - Click "Export Config"
+   - Save to build variant assets:
+     - `assets/debug/otel-config.json` (dev)
+     - `assets/release/otel-config.json` (prod)
+
+3. **Android loads correct config** based on build variant automatically
+
+### 10.9 Control Plane Features Summary
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Visual Workflow Builder** | Drag-and-drop node editor with 25+ types | No JSON editing needed |
+| **Real-time Validation** | Instant feedback on configuration | Catch errors before deployment |
+| **Dash0 Integration** | One-click setup for Dash0 backend | Seamless observability platform |
+| **Multi-environment** | Separate configs for dev/staging/prod | Safe testing before production |
+| **Template Library** | Pre-built workflows for common scenarios | Quick setup, best practices |
+| **Export to JSON** | Download bundled config for app | Offline-first configuration |
+| **Collector Management** | Add/remove/test OTEL collectors | Centralized endpoint management |
+| **Live Preview** | See workflow execution flow | Understand behavior before deploy |
+
+### 10.10 Complete Example: Production Setup with Dash0
+
+Here's a complete end-to-end setup using the Control Plane UI:
+
+**Step 1: Configure Dash0 Collector** (2 minutes)
+1. Open Control Plane UI → Collectors tab
+2. Click "+ Add Collector"
+3. Enter:
+   - Name: "Dash0 Production"
+   - Endpoint: `https://ingress.us.dash0.com:4317`
+   - Auth Token: `YOUR_DASH0_TOKEN`
+   - Dataset: `mobile-prod`
+4. Click "Test Connection" → Should show ✅ Connected
+5. Click "Save" and set as default (star icon)
+
+**Step 2: Create Production Workflows** (5 minutes)
+1. Go to Workflows tab
+2. Load template: "API Error Cascade"
+3. Customize:
+   - Trigger: `http.error` with `status_code >= 500`
+   - Actions: Flush 10 min + Capture metrics + Set sampling 100%
+4. Save as "Production API Errors"
+5. Repeat for "Crash Detection" and "Force Close Investigation"
+
+**Step 3: Export Configuration** (1 minute)
+1. Click "Export Config" button (top-right)
+2. Select environment: "Production"
+3. Download `otel-config.json`
+4. Place in your app: `app/src/main/assets/otel-config.json`
+
+**Step 4: Update Your App** (2 minutes)
+```kotlin
+class MyApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        // Loads bundled config (includes Dash0 + workflows)
+        val config = ConfigManager.loadConfig(this)
+        MobileLoggerProvider.initialize(config)
+
+        Log.i("MyApp", "Connected to Dash0: ${config.collectorEndpoint}")
+    }
+}
+```
+
+**Step 5: Deploy & Monitor** (Ongoing)
+1. Build release APK
+2. Deploy to production
+3. Monitor in Dash0 dashboard:
+   - View real-time traces
+   - Analyze device metrics
+   - Set up alerts for crashes/errors
+
+**Total setup time: ~10 minutes** ⏱️
+
+Your production mobile observability is now fully configured!
+
+### 10.11 Control Plane Documentation
+
+For more details, see:
+- **[control-plane-ui/README.md](control-plane-ui/README.md)** - Getting started guide
+- **[control-plane-ui/README_WORKFLOWS.md](control-plane-ui/README_WORKFLOWS.md)** - Complete workflow documentation (25 node types)
+- **[control-plane-ui/README_COLLECTOR.md](control-plane-ui/README_COLLECTOR.md)** - Collector management & Dash0 setup
+
+---
+
+## Step 11: Test Offline Scenarios
 
 Let's test the offline resilience features:
 
@@ -355,7 +797,7 @@ Let's test the offline resilience features:
 
 ---
 
-## Step 11: View Data in Production
+## Step 12: View Data in Production
 
 For production deployments, you'll want to:
 
@@ -409,16 +851,53 @@ See [docs/guides/DEPLOYMENT_GUIDE.md](docs/guides/DEPLOYMENT_GUIDE.md) for detai
 2. Invalidate caches: **File → Invalidate Caches / Restart**
 3. Update Android Studio to the latest version
 
+### Issue: "Control Plane UI won't start"
+**Solution:**
+1. Check Node.js version: `node --version` (need 18+)
+2. Clear npm cache: `npm cache clean --force`
+3. Delete `node_modules` and reinstall: `rm -rf node_modules && npm install`
+4. Check port 3000 isn't already in use: `lsof -i :3000`
+
+### Issue: "Dash0 connection test fails"
+**Solution:**
+1. Verify your Dash0 token is correct
+2. Check ingress URL format: `https://ingress.us.dash0.com:4317` (include `:4317`)
+3. Test with curl:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_TOKEN" \
+        -H "Dash0-Dataset: mobile-prod" \
+        https://ingress.us.dash0.com:4317
+   ```
+4. Ensure your Dash0 account has mobile observability enabled
+
+### Issue: "Workflow export doesn't work in app"
+**Solution:**
+1. Make sure JSON is saved in correct location: `app/src/main/assets/otel-config.json`
+2. Rebuild the app (assets aren't hot-reloaded)
+3. Verify JSON is valid: Copy to [jsonlint.com](https://jsonlint.com)
+4. Check ConfigManager is loading bundled config: `ConfigManager.loadConfig(this)`
+
 ---
 
 ## Next Steps
 
 Now that you've got the basics working, explore:
 
+### Essential Documentation
 - **[INTRODUCTION.md](INTRODUCTION.md)** - Detailed project overview with FAQ
 - **[docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md)** - Deep dive into crash recovery and network loss handling
-- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** - System design and implementation details
+- **[docs/BUNDLED_CONFIG.md](docs/BUNDLED_CONFIG.md)** - Pre-configured settings shipped with app
 - **[WHY_NOT_A_FORK.md](WHY_NOT_A_FORK.md)** - Understanding the OTEL-native approach
+
+### Advanced Features
+- **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** - CONDITIONAL vs CONTINUOUS vs HYBRID modes
+- **[docs/WORKFLOW_SYSTEM.md](docs/WORKFLOW_SYSTEM.md)** - Complete workflow architecture
+- **[control-plane-ui/README_WORKFLOWS.md](control-plane-ui/README_WORKFLOWS.md)** - Visual workflow editor (25 node types)
+- **[control-plane-ui/README_COLLECTOR.md](control-plane-ui/README_COLLECTOR.md)** - Manage collector endpoints & Dash0 integration
+
+### Technical References
+- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** - System design and implementation details
+- **[docs/oteps/OTEP-PREDICTIVE-TELEMETRY.md](docs/oteps/OTEP-PREDICTIVE-TELEMETRY.md)** - ML-based predictive telemetry (experimental)
 
 ---
 
@@ -435,10 +914,46 @@ Now that you've got the basics working, explore:
 
 You now know how to:
 - ✅ Set up and run the demo app
+- ✅ Use the Control Plane UI for visual workflow configuration
+- ✅ Configure Dash0 integration with one-click setup
+- ✅ Create workflows using the drag-and-drop editor
 - ✅ Understand the two-tier buffering system
 - ✅ Test offline resilience scenarios
 - ✅ Integrate the library into your own app
-- ✅ Configure export policies
-- ✅ View telemetry data in collectors
+- ✅ Configure export policies (visually or via JSON)
+- ✅ View telemetry data in collectors and Dash0
 
 **You're ready to build production-grade mobile observability!**
+
+---
+
+## Quick Reference
+
+### Start Control Plane UI
+```bash
+cd control-plane-ui && npm install && npm run dev
+# Open http://localhost:3000
+```
+
+### Dash0 Configuration
+```json
+{
+  "collectorEndpoint": "https://ingress.us.dash0.com:4317",
+  "headers": {
+    "Authorization": "Bearer YOUR_TOKEN",
+    "Dash0-Dataset": "mobile-prod"
+  }
+}
+```
+
+### Demo App Scenarios
+- **UI Freeze**: Logs `ui.freeze` event, flushes 2 minutes
+- **Crash**: Sets marker, flushes on next start
+- **API Error**: Logs `http.error`, triggers sampling increase
+- **Force Flush**: Manual export of all buffered events
+
+### Control Plane Shortcuts
+- **Workflows**: Visual editor with 25+ node types
+- **Collectors**: Manage endpoints, test connections
+- **Templates**: Pre-built workflows for common scenarios
+- **Export**: Download JSON for bundled config

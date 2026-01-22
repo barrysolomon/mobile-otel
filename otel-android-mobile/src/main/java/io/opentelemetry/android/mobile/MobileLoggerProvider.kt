@@ -10,19 +10,28 @@ import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.SdkLoggerProvider
 import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
+import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.sdk.metrics.SdkMeterProvider
+import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
 import io.opentelemetry.sdk.resources.Resource
+import io.opentelemetry.android.mobile.sampling.SamplerFactory
+import io.opentelemetry.android.mobile.sampling.DynamicSampler
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Mobile-optimized OpenTelemetry Logger Provider with ring buffer and conditional export.
+ * Mobile-optimized OpenTelemetry Provider with full observability support (logs, traces, metrics).
  *
  * This provider extends the standard OpenTelemetry SDK with mobile-specific features:
  * - Two-tier ring buffer (RAM + disk) for offline support
  * - Policy-based conditional export to reduce bandwidth
  * - Device ID correlation for session tracking
  * - Crash recovery with persisted events
+ * - Full support for logs, traces, and metrics
  *
  * Usage:
  * ```kotlin
@@ -32,7 +41,15 @@ import java.util.concurrent.TimeUnit
  *     collectorEndpoint = "https://collector.example.com:4317"
  * )
  * val provider = MobileLoggerProvider.getInstance(context, config)
+ *
+ * // Get logger for logs
  * val logger = provider.getLogger("my-component")
+ *
+ * // Get tracer for traces
+ * val tracer = provider.getOpenTelemetrySdk().getTracer("my-component", "1.0.0")
+ *
+ * // Get meter for metrics
+ * val meter = provider.getOpenTelemetrySdk().getMeter("my-component")
  * ```
  *
  * @see MobileConfig for configuration options
@@ -46,8 +63,12 @@ class MobileLoggerProvider private constructor(
     private val sdkLoggerProvider: SdkLoggerProvider
     private val openTelemetrySdk: OpenTelemetrySdk
     private val deviceId: String = getOrCreateDeviceId(context)
+    private val sampler: io.opentelemetry.sdk.trace.samplers.Sampler
 
     init {
+        // Create sampler based on configuration
+        sampler = SamplerFactory.createSampler(config.samplingConfig)
+
         // Build resource with mobile-specific attributes
         val resource = Resource.builder()
             .put("service.name", config.serviceName)
@@ -88,9 +109,89 @@ class MobileLoggerProvider private constructor(
             .addLogRecordProcessor(mobileProcessor)
             .build()
 
-        // Build OpenTelemetry SDK
+        // Create OTLP trace exporter
+        val traceExporter = OtlpGrpcSpanExporter.builder()
+            .setEndpoint(config.collectorEndpoint)
+            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+            .apply {
+                config.headers?.forEach { (key, value) ->
+                    addHeader(key, value)
+                }
+            }
+            .build()
+
+        // Build SDK Tracer Provider with mode-appropriate configuration and sampling
+        val tracerProvider = SdkTracerProvider.builder()
+            .setResource(resource)
+            .setSampler(sampler)
+            .addSpanProcessor(
+                when (config.exportMode) {
+                    io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
+                        // Only export on forceFlush(), not on schedule
+                        BatchSpanProcessor.builder(traceExporter)
+                            .setScheduleDelay(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .setMaxQueueSize(10000)  // Large queue for buffering
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
+                        // Regular scheduled exports
+                        BatchSpanProcessor.builder(traceExporter)
+                            .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
+                        // Moderate export frequency
+                        BatchSpanProcessor.builder(traceExporter)
+                            .setScheduleDelay(config.traceExportIntervalSeconds * 2, TimeUnit.SECONDS)
+                            .build()
+                    }
+                }
+            )
+            .build()
+
+        // Create OTLP metric exporter
+        val metricExporter = OtlpGrpcMetricExporter.builder()
+            .setEndpoint(config.collectorEndpoint)
+            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+            .apply {
+                config.headers?.forEach { (key, value) ->
+                    addHeader(key, value)
+                }
+            }
+            .build()
+
+        // Build SDK Meter Provider with mode-appropriate configuration
+        val meterProvider = SdkMeterProvider.builder()
+            .setResource(resource)
+            .registerMetricReader(
+                when (config.exportMode) {
+                    io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
+                        // Only export on forceFlush(), not on schedule
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
+                        // Regular scheduled exports
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
+                        // Moderate export frequency (2x the configured interval)
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(config.metricExportIntervalSeconds * 2, TimeUnit.SECONDS)
+                            .build()
+                    }
+                }
+            )
+            .build()
+
+        // Build OpenTelemetry SDK with logging, tracing, and metrics
         openTelemetrySdk = OpenTelemetrySdk.builder()
             .setLoggerProvider(sdkLoggerProvider)
+            .setTracerProvider(tracerProvider)
+            .setMeterProvider(meterProvider)
             .build()
     }
 
@@ -129,16 +230,72 @@ class MobileLoggerProvider private constructor(
     fun getOpenTelemetrySdk(): OpenTelemetrySdk = openTelemetrySdk
 
     /**
-     * Triggers an immediate flush of buffered events.
+     * Sets the trace sampling rate at runtime (for dynamic sampler only).
      *
-     * This forces all buffered events to be exported immediately, regardless of policies.
-     * Useful for critical events or app shutdown.
+     * This is used by workflow actions to temporarily increase sampling after critical events.
+     * Only works if the configured sampler is a DynamicSampler.
+     *
+     * Example workflow action: "Set Sampling Rate to 100% for 10 minutes after HTTP 500 error"
+     *
+     * @param rate Sampling rate (0.0 to 1.0)
+     * @param durationMinutes Optional duration before reverting to baseline (null = permanent)
+     * @return true if sampling was adjusted, false if sampler is not dynamic
+     */
+    fun setSamplingRate(rate: Double, durationMinutes: Int? = null): Boolean {
+        return if (sampler is DynamicSampler) {
+            sampler.setSamplingRate(rate, durationMinutes)
+            true
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Resets trace sampling to baseline rate (for dynamic sampler only).
+     *
+     * @return true if sampling was reset, false if sampler is not dynamic
+     */
+    fun resetSamplingToBaseline(): Boolean {
+        return if (sampler is DynamicSampler) {
+            sampler.resetToBaseline()
+            true
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Gets the current trace sampling rate (for dynamic sampler only).
+     *
+     * @return Current sampling rate, or null if sampler is not dynamic
+     */
+    fun getCurrentSamplingRate(): Double? {
+        return if (sampler is DynamicSampler) {
+            sampler.getCurrentSamplingRate()
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Triggers an immediate flush of buffered events across all signals (logs, traces, metrics).
+     *
+     * This forces all buffered data to be exported immediately, regardless of policies or schedules.
+     * Essential for:
+     * - Conditional export mode (where scheduled exports are disabled)
+     * - Critical events that must be captured
+     * - App shutdown
+     * - Workflow trigger actions
      *
      * @param timeoutSeconds Maximum time to wait for flush to complete
      * @return CompletableResultCode indicating flush success/failure
      */
     fun forceFlush(timeoutSeconds: Long = 30): CompletableResultCode {
-        return sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+        val logResult = sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+        val traceResult = openTelemetrySdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+        val metricResult = openTelemetrySdk.sdkMeterProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+
+        return CompletableResultCode.ofAll(listOf(logResult, traceResult, metricResult))
     }
 
     /**
@@ -151,7 +308,13 @@ class MobileLoggerProvider private constructor(
      * @return CompletableResultCode indicating shutdown success/failure
      */
     fun shutdown(timeoutSeconds: Long = 30): CompletableResultCode {
-        return sdkLoggerProvider.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
+        // Shutdown the entire OpenTelemetry SDK (includes logger, tracer, and meter providers)
+        return openTelemetrySdk.sdkLoggerProvider.shutdown()
+            .join(timeoutSeconds, TimeUnit.SECONDS)
+            .also {
+                openTelemetrySdk.sdkTracerProvider.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
+                openTelemetrySdk.sdkMeterProvider.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
+            }
     }
 
     companion object {

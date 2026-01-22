@@ -3,6 +3,7 @@ import { WorkflowBuilder } from './components/WorkflowBuilder';
 import { DeviceMonitor } from './components/DeviceMonitor';
 import { DeviceFleet } from './components/DeviceFleet';
 import { ConfigManager } from './components/ConfigManager';
+import { CollectorConfig } from './components/CollectorConfig';
 import { gatewayAPI } from './api/gateway';
 import { compileGraphToDSL, validateGraph } from './utils/graphToDSL';
 import type { WorkflowGraph, ConfigVersion } from './types/workflow';
@@ -47,6 +48,7 @@ export function App() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(defaultWorkflow.id);
   const [activeTab, setActiveTab] = useState<'builder' | 'devices' | 'config'>('builder');
   const [devicesSubTab, setDevicesSubTab] = useState<'fleet' | 'monitor'>('fleet');
+  const [configSubTab, setConfigSubTab] = useState<'workflows' | 'collector'>('workflows');
   const [versions, setVersions] = useState<ConfigVersion[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -252,7 +254,22 @@ export function App() {
 
       {activeTab === 'config' && (
         <div className="config-container">
-          <ConfigManager />
+          <div className="config-subtabs">
+            <button
+              className={`subtab-btn ${configSubTab === 'workflows' ? 'active' : ''}`}
+              onClick={() => setConfigSubTab('workflows')}
+            >
+              ⚙️ Workflow Config
+            </button>
+            <button
+              className={`subtab-btn ${configSubTab === 'collector' ? 'active' : ''}`}
+              onClick={() => setConfigSubTab('collector')}
+            >
+              📡 Collector Endpoints
+            </button>
+          </div>
+          {configSubTab === 'workflows' && <ConfigManager />}
+          {configSubTab === 'collector' && <CollectorConfig />}
         </div>
       )}
     </div>

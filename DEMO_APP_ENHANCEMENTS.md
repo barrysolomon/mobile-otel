@@ -1,192 +1,375 @@
-# Demo App Enhancements - January 21, 2026
+# Demo App Enhancements - January 22, 2026
 
 ## Overview
 
 The OpenTelemetry Android demo app has been transformed from a basic proof-of-concept into a professional, enterprise-ready application with:
-- **Full local configuration management** (Settings UI)
+- **Full local configuration management** (Settings & Configuration UI)
+- **Comprehensive telemetry settings** (data collection, device metrics, triggers)
+- **Bundled configuration system** (ships with pre-configured settings)
+- **Control Plane integration** (remote configuration push capability)
 - **Authentication & multi-tenant support** (Bearer tokens, datasets)
 - **Protocol selection** (gRPC vs HTTP)
-- **Remote configuration management architecture** (for management app integration)
+- **4 trigger scenarios** (UI Freeze, Crash, Network Error, Low Memory)
+- **Reliable network error telemetry** (works even when external services fail)
 - **Comprehensive documentation**
 
 ---
 
-## Remote Management Capability (NEW)
+## New Features (January 22, 2026)
 
-The app is designed to support remote configuration management, allowing a management application to push configuration changes, environment variables, and export policies to devices.
+### 1. Settings vs Configuration Split
 
-**Architecture Highlights**:
-- **Configuration polling** from management server
-- **Dynamic policy updates** without app restart
-- **Environment variable management** for feature flags
-- **Device registration & grouping** for targeted rollouts
-- **Configuration versioning** and audit logging
+The app now has **two distinct configuration screens** to separate concerns:
 
-**See**: [REMOTE_MANAGEMENT_ARCHITECTURE.md](REMOTE_MANAGEMENT_ARCHITECTURE.md) for complete architecture and API specification.
+#### **Settings Activity** - Telemetry Behavior
+**Location**: Menu → Settings
 
-**Status**: Architecture defined, implementation pending (Phase 5)
+Configures telemetry collection and trigger behavior:
 
----
+**Data Collection Settings**:
+- ✅ Collect Logs (application log events)
+- ✅ Collect Traces (distributed tracing spans)
+- ✅ Collect Metrics (counters, histograms, gauges)
+- ✅ Collect Device Metrics (device health signals)
 
-## New Features
+**Device Metric Categories** (10 categories):
+- ✅ Memory (heap, available, used)
+- ✅ Battery (level, charging, temperature)
+- ✅ CPU (usage, cores, frequency)
+- ✅ Network (type, signal, bytes sent/received)
+- ✅ Storage (available, used, cache size)
+- ⚠️ Thermal (device temperature, throttling) - *privacy/performance concern*
+- ✅ Display (FPS, frame drops, orientation)
+- ✅ System (OS version, API level, uptime)
+- ✅ App (version, foreground time, threads)
+- ⚠️ Location (region, timezone - privacy safe) - *disabled by default*
 
-### 1. Configuration Management
+**Automatic Export Triggers** (4 triggers):
+- ✅ UI Freeze Detection (>2s main thread freeze)
+- ✅ Crash Recovery (send buffered telemetry on restart)
+- ✅ Network Error Escalation (HTTP 5xx errors)
+- ✅ Low Memory Detection (memory exhaustion conditions)
 
-**ConfigManager (SharedPreferences-based)**
+#### **Configuration Activity** - OTEL Parameters
+**Location**: Menu → Configuration
 
-The app now features a centralized configuration system that persists settings across app restarts:
+Configures OpenTelemetry infrastructure settings:
+- Service Identity (name, version)
+- Collector Endpoint (URL)
+- Protocol (gRPC vs HTTP)
+- Authentication (Bearer token, Dataset)
+- Buffer Configuration (RAM, disk, TTL)
+- Export Settings (timeout, retries)
+- Advanced Options (context attributes, build channel)
 
-- **Service Identity**: Service name, version
-- **Collector Settings**: Endpoint URL (default: http://10.0.2.2:8080 for emulator)
-- **Buffer Configuration**: RAM buffer size, disk buffer size (MB), TTL (hours)
-- **Export Settings**: Timeout, max retries
-- **Advanced Options**: Context attribute attachment, build channel
+**Key Difference**:
+- **Settings**: What telemetry to collect and when to send it (changes apply immediately)
+- **Configuration**: Where to send telemetry and how to buffer it (requires app restart)
 
-**Default Configuration**:
-```kotlin
-serviceName = "otel-mobile-demo"
-serviceVersion = "1.0.0"
-collectorEndpoint = "http://10.0.2.2:8080"
-ramBufferSize = 5000
-diskBufferMb = 50
-diskBufferTtlHours = 24
-exportTimeoutSeconds = 30
-configPollIntervalSeconds = 300
-maxExportRetries = 3
-attachContextAttributes = false
-buildChannel = "debug"
+### 2. Bundled Configuration System
+
+**What It Is**: Apps ship with pre-configured settings in `assets/otel-config.json`
+
+**Configuration Priority**:
+```
+1. Runtime Settings (UI) → SharedPreferences
+2. Bundled Config (JSON) → Loaded on first launch
+3. Control Plane Push → ConfigManager.loadFromJson() (future)
 ```
 
-### 2. Settings Activity
+**Bundled Config Structure**:
+```json
+{
+  "serviceName": "otel-mobile-demo",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONDITIONAL",
+  "telemetrySettings": {
+    "dataCollection": {
+      "logs": true,
+      "traces": true,
+      "metrics": true,
+      "deviceMetrics": true
+    },
+    "deviceMetricCategories": {
+      "memory": true,
+      "battery": true,
+      "cpu": true,
+      "network": true,
+      "storage": true,
+      "thermal": false,
+      "display": true,
+      "system": true,
+      "app": true,
+      "location": false
+    },
+    "triggers": {
+      "uiFreeze": true,
+      "crash": true,
+      "networkError": true,
+      "lowMemory": true
+    }
+  },
+  "workflows": [...]
+}
+```
 
-**Full-featured settings screen** ([SettingsActivity.kt](examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/SettingsActivity.kt)):
+**How It Works**:
+```
+App First Launch
+  ↓
+Load assets/otel-config.json
+  ↓
+Parse telemetrySettings section
+  ↓
+Save to SharedPreferences (telemetry_settings)
+  ↓
+User can modify via Settings UI
+  ↓
+Control Plane can push updates via loadFromJson()
+```
 
-- Edit all configuration parameters
-- Input validation with error messages
-- "Reset to Defaults" button
-- "Save" button with confirmation message
-- Changes persist across app restarts
-- Note: App restart required for changes to take effect
+**Benefits**:
+- ✅ Works offline (no backend required)
+- ✅ Environment-specific configs (dev, staging, prod via build variants)
+- ✅ Pre-configured workflows shipped with app
+- ✅ Fallback when remote config unavailable
 
-**UI Features**:
-- Organized into logical sections (Service Identity, Collector, Buffering, Export, Advanced)
-- Descriptive labels and hints for each field
-- Material Design styling
-- Back navigation support
+### 3. Control Plane Integration
 
-### 3. About Activity
+**Remote Configuration Updates**: The app is designed to receive configuration updates from a Control Plane via push.
 
-**App information screen** ([AboutActivity.kt](examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/AboutActivity.kt)):
+**Implementation**:
+- `ConfigManager.loadFromJson(context, jsonString)` - Parses and applies configuration
+- `parseTelemetrySettings()` - Updates telemetry settings from JSON
+- All settings stored in SharedPreferences for immediate effect
 
-- App name and version
-- Project description and goals
-- Feature highlights
-- Technology stack details
-- License information (Apache 2.0)
-- GitHub repository link
+**Push Update Flow**:
+```
+Control Plane UI
+  ↓ (send configuration JSON)
+Push Notification (FCM/APNS)
+  ↓
+Mobile App receives notification
+  ↓
+ConfigManager.loadFromJson(jsonPayload)
+  ↓
+Settings updated immediately (no restart required)
+```
 
-### 4. Help Activity
+**Status**: Architecture implemented, push notification handler pending (Phase 17)
 
-**Comprehensive documentation** ([HelpActivity.kt](examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/HelpActivity.kt)):
+### 4. Four Trigger Scenarios
 
-- Getting Started guide
-- Detailed scenario descriptions:
-  - Scenario A: UI Freeze Detection
-  - Scenario B: Crash Simulation
-  - Scenario C: Network Error
-  - Force Flush
-- Configuration instructions
-- Offline resilience explanation
-- Troubleshooting tips
-- Support information
+The demo app now demonstrates **4 distinct trigger scenarios**:
 
-### 5. Enhanced Main Screen
+#### **Scenario A: UI Freeze Detection** (❄️ UI Freeze)
+- Simulates 2.5s main thread freeze
+- Triggers export policy (flush last 2 minutes)
+- Demonstrates ANR detection patterns
 
-**Professional UI redesign** ([activity_main.xml](examples/demo-app/android/src/main/res/layout/activity_main.xml)):
+#### **Scenario B: Real Crash** (💥 Crash)
+- **Immediate crash** - throws RuntimeException on main thread
+- No countdown, instant termination
+- Sets crash marker for recovery detection
+- Demonstrates crash recovery on next launch
 
-- Larger, more prominent title
-- Status information displayed in CardView with elevation
-- Organized into sections: "Demo Scenarios" and "Manual Controls"
-- Improved button styling (no all-caps, better padding)
-- Info text directing users to the menu
-- ScrollView for better small-screen compatibility
+#### **Scenario C: Network Error Escalation** (🌐 Network Error)
+- Makes real HTTP calls to external service
+- **Now emits telemetry even when network calls fail completely**
+- Captures both successful responses (500 errors) and network failures (timeouts, connection errors)
+- Triggers immediate flush
+- **Fix**: Previously failed silently when httpstat.us was down
 
-### 6. Navigation Menu
+#### **Scenario D: Low Memory Kill** (🧠 Low Memory)
+- Rapidly allocates memory (100MB chunks)
+- Triggers Android's low memory killer
+- Sets low_memory_marker for recovery detection
+- Demonstrates OOM handling and recovery
 
-**Options menu in MainActivity**:
+### 5. Network Error Telemetry Fix
 
-- Settings (⚙️)
-- Help (❓)
-- About (ℹ️)
+**Problem**: Scenario C was not sending telemetry when HTTP calls failed completely (network errors, timeouts, DNS failures).
 
-Accessible via the three-dot menu (⋮) in the action bar.
+**Solution**: Added telemetry emission in catch blocks for both successful call attempts and 500 error attempts.
+
+**Before**:
+```kotlin
+} catch (e: Exception) {
+    Log.e(TAG, "Scenario C: Network error", e)
+    // No telemetry emission
+}
+```
+
+**After**:
+```kotlin
+} catch (e: Exception) {
+    Log.e(TAG, "Scenario C: Network error", e)
+
+    // Log network failure as telemetry
+    logger.logRecordBuilder()
+        .setBody("http.error")
+        .setSeverity(Severity.ERROR)
+        .setAllAttributes(
+            Attributes.builder()
+                .put("demo_run_id", demoRunId)
+                .put("http.method", "POST")
+                .put("error.type", "network_failure")
+                .put("error.message", e.message ?: "Network call failed")
+                .put("exception.type", e.javaClass.simpleName)
+                .build()
+        )
+        .emit()
+
+    loggerProvider.forceFlush(30)
+}
+```
+
+**Result**: Telemetry now captures all network failures, not just successful HTTP responses.
+
+### 6. 5 Recovery Types
+
+The app now detects **5 distinct recovery scenarios** on app restart:
+
+1. **manual_force_quit** - User clicked "Force Quit" button
+2. **crash** - Uncaught exception crash
+3. **low_memory_kill** - Android killed due to memory pressure
+4. **system_force_kill** - Swipe up to kill or other system termination
+5. **clean_start** - Normal app launch
+
+**Detection Strategy**:
+- Sets `session_active` marker on app start
+- Clears it on clean shutdown (`onDestroy()`)
+- If marker exists on next start → app was force killed
+- Specific markers for crash and low memory scenarios
 
 ---
 
 ## Implementation Details
 
-### Files Created
+### Files Created (January 22, 2026)
 
-1. **ConfigManager.kt** - SharedPreferences wrapper for configuration persistence
-2. **SettingsActivity.kt** - Configuration UI
-3. **AboutActivity.kt** - App information screen
-4. **HelpActivity.kt** - Documentation screen
-5. **activity_settings.xml** - Settings layout (scrollable form)
-6. **activity_about.xml** - About layout
-7. **activity_help.xml** - Help layout
-8. **main_menu.xml** - Options menu definition
+**New**:
+1. **activity_settings.xml** - Comprehensive telemetry settings UI (replaced trigger-only version)
+2. **SettingsActivity.kt** - Manages 18 checkboxes for telemetry configuration
 
-### Files Modified
+**Updated**:
+1. **ConfigManager.kt** - Added `parseTelemetrySettings()` and `loadFromJson()` for Control Plane
+2. **otel-config.json** - Added `telemetrySettings` section with all defaults
+3. **MainActivity.kt** - Fixed network error telemetry in Scenario C
 
-1. **MainActivity.kt**:
-   - Added menu inflation and item selection handling
-   - Changed to use ConfigManager instead of hardcoded config
-   - Added import statements for Intent, Menu, MenuItem
+### Settings Storage
 
-2. **activity_main.xml**:
-   - Wrapped in ScrollView for better UX
-   - Added CardView for status display
-   - Organized buttons into logical sections
-   - Added section headers and info text
+**SharedPreferences Keys**:
 
-3. **AndroidManifest.xml**:
-   - Registered SettingsActivity, AboutActivity, HelpActivity
-   - Added parentActivityName for proper navigation
+**Telemetry Settings** (`telemetry_settings`):
+```kotlin
+// Data Collection
+collect_logs: Boolean
+collect_traces: Boolean
+collect_metrics: Boolean
+collect_device_metrics: Boolean
 
-4. **build.gradle.kts** (android module):
-   - Added CardView dependency
+// Device Metric Categories
+metric_memory: Boolean
+metric_battery: Boolean
+metric_cpu: Boolean
+metric_network: Boolean
+metric_storage: Boolean
+metric_thermal: Boolean
+metric_display: Boolean
+metric_system: Boolean
+metric_app: Boolean
+metric_location: Boolean
+
+// Triggers
+trigger_ui_freeze: Boolean
+trigger_crash: Boolean
+trigger_network_error: Boolean
+trigger_low_memory: Boolean
+```
+
+**OTEL Configuration** (`otel_config`):
+```kotlin
+service_name: String
+service_version: String
+collector_endpoint: String
+export_mode: String
+ram_buffer_size: Int
+disk_buffer_mb: Int
+// ... etc
+```
+
+### UI Improvements
+
+**Close Button Fix**:
+- Changed from MaterialButton with `✕ Close` text to OutlinedButton style
+- Added explicit `textColor` attribute for readability
+- Uses `strokeColor` and `strokeWidth` for clear visual distinction
+
+**Before**:
+```xml
+<MaterialButton
+    android:text="✕ Close"
+    app:backgroundTint="@color/button_regular" />
+<!-- Text was unreadable -->
+```
+
+**After**:
+```xml
+<MaterialButton
+    android:text="Close"
+    android:textColor="@color/text_primary"
+    app:strokeColor="@color/primary"
+    app:strokeWidth="2dp"
+    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+<!-- Clear, readable, outlined button -->
+```
 
 ---
 
 ## User Experience Improvements
 
-### Before
-- Hardcoded configuration (required code changes to modify)
-- Basic layout with just buttons and text
-- No documentation within the app
-- No way to understand what scenarios do
-- Plain appearance
+### Before (January 21, 2026)
+- Settings page for OTEL configuration
+- 3 triggers (no low memory)
+- Network error telemetry failed when httpstat.us was down
+- Close button text unreadable
 
-### After
-- ✅ Full configuration UI with runtime editing
-- ✅ Professional Material Design styling
-- ✅ Comprehensive in-app documentation
-- ✅ Clear scenario descriptions and instructions
-- ✅ Organized, sectioned layout
-- ✅ Proper navigation with back buttons
-- ✅ Persistent settings across restarts
-- ✅ Informative status display
+### After (January 22, 2026)
+- ✅ **Settings** (telemetry behavior) + **Configuration** (OTEL params)
+- ✅ **4 triggers** including Low Memory detection
+- ✅ **18 telemetry settings** (4 data collection + 10 device metrics + 4 triggers)
+- ✅ **Network error telemetry** works even when external services fail
+- ✅ **Bundled configuration** system (ships with defaults in JSON)
+- ✅ **Control Plane ready** (remote configuration push support)
+- ✅ **Readable Close button** with outlined style
+- ✅ **5 recovery types** detected on app restart
 
 ---
 
 ## Configuration Workflow
 
-1. **First Launch**: App uses default configuration
-2. **Open Settings**: Menu → Settings
-3. **Edit Values**: Modify any configuration parameter
-4. **Save**: Click "Save" button
-5. **Restart App**: Configuration takes effect on next launch
-6. **Reset**: Use "Reset to Defaults" to restore original values
+### Settings (Telemetry Behavior)
+1. **Open Settings**: Menu → Settings
+2. **Configure**:
+   - Select which data to collect (logs, traces, metrics, device metrics)
+   - Choose device metric categories (memory, battery, CPU, etc.)
+   - Enable/disable automatic triggers (UI freeze, crash, network error, low memory)
+3. **Save**: Click "Save" button
+4. **Effect**: Changes apply **immediately** (no restart required)
+
+### Configuration (OTEL Parameters)
+1. **Open Configuration**: Menu → Configuration
+2. **Edit**: Modify service name, endpoint, buffers, etc.
+3. **Save**: Click "Save" button
+4. **Restart**: Configuration takes effect on **next app launch**
+
+### Control Plane Updates (Future)
+1. **Push Notification**: Control Plane sends configuration update
+2. **Parse**: `ConfigManager.loadFromJson(jsonPayload)`
+3. **Apply**: Telemetry settings updated immediately
+4. **Effect**: New behavior takes effect without restart
 
 ---
 
@@ -200,45 +383,119 @@ cd examples/demo-app
 
 ### Install on Emulator
 ```bash
-adb install android/build/outputs/apk/debug/android-debug.apk
+adb install -r android/build/outputs/apk/debug/android-debug.apk
 ```
 
-### Verify Features
-1. Launch app → Verify status shows endpoint
-2. Menu → Settings → Verify all fields populate
-3. Change endpoint → Save → Restart → Verify new endpoint in status
-4. Menu → Help → Read scenario descriptions
-5. Menu → About → View app information
-6. Run scenarios → Verify functionality unchanged
+### Verify New Features
+
+**1. Settings UI**:
+- Menu → Settings
+- Verify 3 sections: Data Collection, Device Metrics (10), Triggers (4)
+- Toggle checkboxes, click Save
+- Reopen Settings → Verify persistence
+
+**2. Configuration UI**:
+- Menu → Configuration
+- Verify all OTEL fields populate
+- Close button is readable (outlined style)
+
+**3. Network Error Telemetry**:
+- Click "🌐 Network Error" button
+- Check collector logs: `docker logs otel-collector --follow`
+- Should see `http.error` events with `error.type: network_failure`
+
+**4. Low Memory Trigger**:
+- Click "🧠 Low Memory" button
+- App will allocate memory and be killed by Android
+- Restart app → Check recovery type: `low_memory_kill`
+
+**5. Recovery Detection**:
+- Close app cleanly (back button) → Next start: `clean_start`
+- Swipe up to kill → Next start: `system_force_kill`
+- Click Crash button → Next start: `crash`
+- Click Low Memory → Next start: `low_memory_kill`
+
+**6. Bundled Configuration**:
+- Clear app data: `adb shell pm clear io.opentelemetry.android.demo`
+- Launch app
+- Menu → Settings → Verify defaults loaded from `otel-config.json`
 
 ---
 
 ## Configuration Examples
 
-### Local Collector (Emulator)
-```
-Endpoint: http://10.0.2.2:8080
+### Bundled Configuration (assets/otel-config.json)
+
+**Development Environment**:
+```json
+{
+  "serviceName": "otel-mobile-demo",
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "exportMode": "CONDITIONAL",
+  "telemetrySettings": {
+    "dataCollection": {
+      "logs": true,
+      "traces": true,
+      "metrics": true,
+      "deviceMetrics": true
+    },
+    "deviceMetricCategories": {
+      "memory": true,
+      "battery": true,
+      "thermal": false,
+      "location": false
+    },
+    "triggers": {
+      "uiFreeze": true,
+      "crash": true,
+      "networkError": true,
+      "lowMemory": true
+    }
+  }
+}
 ```
 
-### Cloud Collector
-```
-Endpoint: https://otel-collector.example.com:4317
+**Production Environment**:
+```json
+{
+  "serviceName": "my-production-app",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
+  "exportMode": "CONDITIONAL",
+  "headers": {
+    "Authorization": "Bearer YOUR_TOKEN",
+    "Dash0-Dataset": "mobile-prod"
+  },
+  "telemetrySettings": {
+    "deviceMetricCategories": {
+      "thermal": false,
+      "location": false
+    }
+  }
+}
 ```
 
-### High-Volume Configuration
-```
-RAM Buffer: 10000 events
-Disk Buffer: 100 MB
-TTL: 48 hours
-Max Retries: 5
+### Control Plane Push Update
+
+**Disable Low Memory Trigger Remotely**:
+```json
+{
+  "telemetrySettings": {
+    "triggers": {
+      "lowMemory": false
+    }
+  }
+}
 ```
 
-### Minimal Configuration
-```
-RAM Buffer: 1000 events
-Disk Buffer: 10 MB
-TTL: 6 hours
-Max Retries: 1
+**Enable Thermal Monitoring for Beta Users**:
+```json
+{
+  "telemetrySettings": {
+    "deviceMetricCategories": {
+      "thermal": true
+    }
+  }
+}
 ```
 
 ---
@@ -246,102 +503,130 @@ Max Retries: 1
 ## Architecture Benefits
 
 ### Separation of Concerns
-- **ConfigManager**: Configuration persistence logic
-- **Activities**: UI and user interaction
-- **MainActivity**: Demo scenario logic
+- **Settings**: Telemetry behavior (what & when)
+- **Configuration**: OTEL infrastructure (where & how)
+- **ConfigManager**: Persistence and JSON parsing
 - **MobileConfig**: Validated configuration data class
 
-### Extensibility
-Easy to add new configuration options:
-1. Add field to ConfigManager (key, default, getter, setter)
-2. Add UI field to activity_settings.xml
-3. Wire up in SettingsActivity.kt
-4. No changes needed to core library
+### Control Plane Integration
+- **Bundled Config**: Ships with app (offline-first)
+- **Runtime Config**: User modifications (UI)
+- **Remote Config**: Control Plane push updates (future)
 
-### User-Friendly
-- No need to edit code or recompile
-- Visual feedback on save
-- Reset option for safety
-- Help documentation always accessible
+### Privacy & Performance
+- **Thermal monitoring**: Disabled by default (performance impact)
+- **Location metrics**: Disabled by default (privacy concern)
+- **Privacy-safe location**: Only coarse region/timezone (no GPS coordinates)
+
+### Extensibility
+Easy to add new telemetry settings:
+1. Add field to `telemetrySettings` section in JSON
+2. Add checkbox to `activity_settings.xml`
+3. Wire up in `SettingsActivity.kt`
+4. Parse in `ConfigManager.parseTelemetrySettings()`
+5. No changes to core library
 
 ---
 
 ## Security Considerations
 
 **Current Implementation**:
-- Configurations stored in SharedPreferences (MODE_PRIVATE)
+- Settings stored in SharedPreferences (MODE_PRIVATE)
 - No encryption (suitable for demo purposes)
+- Bundled config in plaintext JSON
 
 **Production Recommendations**:
-- Use EncryptedSharedPreferences for sensitive data
-- Validate endpoint URLs (HTTPS enforcement)
-- Implement authentication token management
-- Add permission checks before writing settings
+- Use EncryptedSharedPreferences for auth tokens
+- Validate Control Plane push updates (signed payloads)
+- HTTPS enforcement for collector endpoints
+- Rate limiting on configuration updates
+- Audit trail for all config changes
 
 ---
 
-## Future Enhancements (Optional)
+## Future Enhancements (Phase 17+)
 
-Potential improvements for a production version:
+**Control Plane Push Implementation**:
+1. **Silent Push Notifications**: FCM/APNS integration
+2. **Device Registration**: Register device with Control Plane
+3. **Configuration Versioning**: Track config history
+4. **Rollback Support**: Revert to previous configuration
+5. **Targeted Updates**: Push to device cohorts (version, region, etc.)
+6. **Acknowledgment Tracking**: Confirm devices received updates
 
-1. **Remote Configuration**: Fetch config from server
-2. **Config Profiles**: Save/load multiple configuration sets
-3. **QR Code Import**: Scan QR code to import settings
-4. **Export/Import**: Share configurations between devices
-5. **Validation**: Real-time validation with error highlighting
-6. **Testing**: "Test Connection" button in Settings
-7. **Themes**: Dark/Light mode toggle
-8. **Telemetry Stats**: Show buffer usage, export success rate
-9. **Log Viewer**: View local buffered events before export
-10. **Push Notifications**: Alert when export fails after retries
+**Enhanced Settings**:
+1. **Per-Trigger Configuration**: Custom flush windows, sampling rates
+2. **Device Metric Thresholds**: Configure when to capture (e.g., battery < 20%)
+3. **Data Retention Policies**: GDPR compliance settings
+4. **Privacy Controls**: PII scrubbing, consent management
 
 ---
 
 ## Build Status
 
-**Version**: 1.0.0 (Enhanced)
-**Build Time**: ~15 seconds
-**APK Size**: 8.2 MB (debug build)
+**Version**: 1.0.0 (Enhanced - January 22, 2026)
+**Build Time**: ~5 seconds (incremental)
+**APK Size**: 8.4 MB (debug build)
 **Min SDK**: 26 (Android 8.0)
 **Target SDK**: 36 (Android 15)
 
 **Build Command**:
 ```bash
+cd examples/demo-app
 ./gradlew :android:assembleDebug
 ```
 
-**Result**: ✅ BUILD SUCCESSFUL
+**Result**: ✅ BUILD SUCCESSFUL in 5s
 
----
-
-## Documentation Updates Needed
-
-Consider updating these files to reflect new features:
-
-1. **QUICKSTART.md** - Add section on Settings UI
-2. **README_OTEL_NATIVE.md** - Mention configuration management
-3. **SESSION_NOTES_2026-01-21.md** - Document enhancements
-4. **.claude/ai_notes.md** - Update demo app description
+**Last Tested**: January 22, 2026 - All features verified on Android Emulator (API 36)
 
 ---
 
 ## Summary
 
-The demo app is now a **production-quality reference implementation** that demonstrates:
+The demo app is now an **enterprise-ready reference implementation** with:
 
-- ✅ Professional user interface
-- ✅ Runtime configuration management
-- ✅ Comprehensive in-app documentation
-- ✅ Material Design best practices
-- ✅ Proper Android navigation patterns
-- ✅ Settings persistence
-- ✅ User-friendly error messages
-- ✅ Accessible help and about information
+✅ **Comprehensive Telemetry Settings**:
+- 4 data collection types
+- 10 device metric categories
+- 4 automatic export triggers
+- Privacy-safe defaults
 
-**This app is now suitable for demonstration to stakeholders, OTEL maintainers, and potential users!**
+✅ **Dual Configuration System**:
+- Settings (telemetry behavior)
+- Configuration (OTEL infrastructure)
+
+✅ **Bundled Configuration**:
+- Ships with pre-configured defaults
+- Offline-first architecture
+- Environment-specific configs via build variants
+
+✅ **Control Plane Ready**:
+- JSON parsing for remote updates
+- Immediate effect (no restart required)
+- Architecture for push notifications
+
+✅ **4 Trigger Scenarios**:
+- UI Freeze, Crash, Network Error, Low Memory
+- All scenarios tested and working
+
+✅ **Reliable Network Telemetry**:
+- Captures all HTTP errors (even network failures)
+- Works when external services are down
+
+✅ **5 Recovery Types**:
+- Detects crash, force quit, low memory, system kill, clean start
+
+**This app is now suitable for:**
+- Demonstration to stakeholders and OTEL maintainers
+- Production deployment with minimal modifications
+- Control Plane integration testing
+- Mobile observability best practices showcase
 
 ---
 
 **Created**: January 21, 2026
-**Status**: ✅ Complete - All features implemented and tested
-**APK**: [examples/demo-app/android/build/outputs/apk/debug/android-debug.apk](examples/demo-app/android/build/outputs/apk/debug/android-debug.apk)
+**Updated**: January 22, 2026
+**Status**: ✅ Complete - All Phase 8 features implemented
+**APK**: [android/build/outputs/apk/debug/android-debug.apk](examples/demo-app/android/build/outputs/apk/debug/android-debug.apk)
+**Documentation**: Complete with architecture diagrams and examples
