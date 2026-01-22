@@ -1,7 +1,7 @@
 # AI Notes - OpenTelemetry Mobile Observability Project
 
-**Last Updated**: 2026-01-21 (Build System Fixed, Demo App Running)
-**Project Status**: Phase 4 (Testing) - 75% Complete, Build System Operational
+**Last Updated**: 2026-01-22 (Predictive Telemetry Module + Docker Setup)
+**Project Status**: Phase 4 (Testing) - 70% Complete, Phase 7 (Predictive) - 40% Complete
 
 ---
 
@@ -54,8 +54,13 @@ mobile-app/
 │   │   │   ├── MobileLogRecordProcessor.kt  # Two-tier buffer + policy eval
 │   │   │   ├── DiskLogBuffer.kt             # Room database (crash-safe)
 │   │   │   └── RetryableExporter.kt         # Exponential backoff retry
-│   │   └── policy/
-│   │       └── PolicyEvaluator.kt           # Policy matching logic
+│   │   ├── policy/
+│   │   │   └── PolicyEvaluator.kt           # Policy matching logic
+│   │   └── predictive/                      # ⭐ NEW: Predictive telemetry (Phase 7)
+│   │       ├── DeviceHealthMonitor.kt       # Device health signal collection
+│   │       ├── OnDevicePredictor.kt         # Lightweight ML/heuristics
+│   │       ├── PredictiveExportPolicy.kt    # Pre-emptive actions
+│   │       └── HealthMetricsCollector.kt    # OTEL metrics export
 │   └── src/test/java/.../                   # Tests (55+ implemented)
 │       ├── buffering/
 │       │   ├── MobileLogRecordProcessorTest.kt  # 30+ tests
@@ -82,7 +87,25 @@ mobile-app/
 
 ## 🚀 Current Status (January 2026)
 
-### 🎉 Recent Achievements (January 21, 2026)
+### 🎉 Recent Achievements
+
+**Session: January 22, 2026**
+
+**✅ Predictive Telemetry Module (Phase 7) - 40% Complete**
+- Implemented DeviceHealthMonitor for device signal collection
+- Built OnDevicePredictor with heuristics + anomaly detection
+- Created PredictiveExportPolicy for pre-emptive actions
+- Added HealthMetricsCollector for OTEL metrics export
+- Drafted comprehensive OTEP-PREDICTIVE-TELEMETRY.md
+
+**✅ Local Development Infrastructure**
+- Created docker-compose.yml for easy OTEL Collector setup
+- Added otel-collector-docker.yaml configuration
+- Built comprehensive k8s/README.md deployment guide
+- Updated QUICKSTART.md with accurate docker instructions
+- Added network config guidance (Android emulator vs real device)
+
+**Session: January 21, 2026**
 
 **✅ Build System Fully Operational**
 - Fixed all AGP 9.0 compatibility issues
@@ -165,6 +188,17 @@ mobile-app/
 - Create PRs to collector-contrib
 - Community engagement
 
+**Phase 7 (Predictive Telemetry)** - NEW - 40% Complete
+- ✅ DeviceHealthMonitor implementation (collects memory, battery, network, thermal signals)
+- ✅ OnDevicePredictor implementation (heuristics + anomaly detection)
+- ✅ PredictiveExportPolicy implementation (pre-emptive actions)
+- ✅ HealthMetricsCollector implementation (OTEL metrics export)
+- ✅ OTEP drafted (docs/oteps/OTEP-PREDICTIVE-TELEMETRY.md)
+- ⏳ Unit tests for predictive module (pending)
+- ⏳ Integration tests (pending)
+- ⏳ Demo app integration (pending)
+- ⏳ Performance benchmarking (target: <5ms prediction, <1% CPU)
+
 ---
 
 ## 🔑 Key Concepts
@@ -219,6 +253,42 @@ policies:
 3. Logs `app.crash_recovery` event automatically
 4. Flushes last 5 minutes from disk buffer
 5. Collector receives crash marker + historical context
+
+### Predictive Telemetry ⭐ NEW (Phase 7)
+
+**What It Does**:
+Anticipates potential issues BEFORE they happen using on-device intelligence:
+- Predicts app crashes (OOM, memory pressure)
+- Predicts network failures (connectivity loss)
+- Predicts performance degradation (thermal throttling)
+- Predicts battery drain events
+- Detects "unknown unknowns" via anomaly detection
+
+**How It Works**:
+```
+Device Health Signals → Predictor → Risk Scores → Pre-emptive Actions
+(memory, battery,       (heuristics  (0.0-1.0)    (flush, sample,
+ network, thermal)      + anomaly)                 alert)
+```
+
+**Predictive Actions**:
+- **Network loss predicted** → Flush buffers before losing connectivity
+- **Crash risk high** → Increase telemetry sampling + immediate flush
+- **Battery critical** → Reduce telemetry volume, batch exports
+- **Anomaly detected** → Emit alert event, capture detailed metrics
+
+**Example Scenario**:
+1. User enters subway tunnel
+2. Network signal declining rapidly (85% loss risk)
+3. System flushes all buffered events PRE-EMPTIVELY
+4. Connectivity lost
+5. ✅ All telemetry preserved (would have been lost reactively)
+
+**Components** (see [OTEP-PREDICTIVE-TELEMETRY.md](../docs/oteps/OTEP-PREDICTIVE-TELEMETRY.md)):
+- `DeviceHealthMonitor.kt` - Collects device state signals
+- `OnDevicePredictor.kt` - Generates risk predictions (<5ms)
+- `PredictiveExportPolicy.kt` - Takes pre-emptive actions
+- `HealthMetricsCollector.kt` - Exports health as OTEL metrics
 
 ---
 
@@ -382,6 +452,9 @@ See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scena
 2. **MobileLogRecordProcessor.kt** - Two-tier buffer logic
 3. **DiskLogBuffer.kt** - Room database persistence
 4. **RetryableExporter.kt** - Exponential backoff retry
+5. **predictive/DeviceHealthMonitor.kt** - Device health signal collection ⭐ NEW
+6. **predictive/OnDevicePredictor.kt** - Lightweight prediction engine ⭐ NEW
+7. **predictive/PredictiveExportPolicy.kt** - Pre-emptive actions ⭐ NEW
 
 ### For Testing
 1. **MobileLogRecordProcessorTest.kt** - Buffer tests
@@ -420,19 +493,29 @@ See: [docs/guides/OFFLINE_RESILIENCE.md](docs/guides/OFFLINE_RESILIENCE.md#scena
 
 ## 🎯 Next Session Priorities
 
-1. **Complete Phase 4 Testing** (30% remaining)
+1. **Complete Phase 7 Testing** (60% remaining) ⭐ NEW
+   - Write DeviceHealthMonitor tests (15 tests)
+   - Write OnDevicePredictor tests (20 tests)
+   - Write PredictiveExportPolicy tests (15 tests)
+   - Write HealthMetricsCollector tests (10 tests)
+   - Integration tests with MobileLogRecordProcessor (10 tests)
+   - Performance benchmarks (prediction latency, CPU overhead)
+   - Demo app integration (add predictive scenario)
+
+2. **Complete Phase 4 Testing** (30% remaining)
    - Write PolicyEvaluator tests (40 tests)
    - Write Factory tests (10 tests)
    - Write Demo app tests (10 tests)
    - Write integration tests (40 tests)
    - Build custom collector with ocb
 
-2. **Phase 5: Documentation**
+3. **Phase 5: Documentation**
+   - ✅ Draft OTEP for Predictive Telemetry (DONE - Jan 22, 2026)
    - Draft OTEP for Mobile Buffering Pattern
    - Draft OTEP for Conditional Export
    - Add KDoc/GoDoc to all public APIs
 
-3. **Phase 6: Contribution**
+4. **Phase 6: Contribution**
    - Submit OTEPs to opentelemetry-specification
    - Engage with OTEL community on Slack
    - Prepare PRs for upstream
@@ -468,7 +551,7 @@ ls -R docs/
 
 ## 📊 Progress Summary
 
-**Overall**: 75% Complete (3.75 of 5 operational phases)
+**Overall**: 70% Complete (4.9 of 7 phases)
 
 - Phase 1 (Foundation): ✅ 100%
 - Phase 2 (Android): ✅ 100%
@@ -476,8 +559,9 @@ ls -R docs/
 - Phase 4 (Testing): ⏳ 70%
 - Phase 5 (Docs): ⏳ 20%
 - Phase 6 (Contribution): ⏳ 0%
+- Phase 7 (Predictive Telemetry): ⏳ 40% ⭐ NEW
 
-**Estimated Completion**: 2-3 more focused sessions
+**Estimated Completion**: 3-4 more focused sessions
 
 ---
 

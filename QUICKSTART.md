@@ -61,9 +61,9 @@ If you see any SDK or dependency warnings, click **Install** or **Update** to re
 
 ## Step 4: Set Up a Local OTEL Collector (Optional)
 
-The demo app can work without a collector, but to see data flow, let's set one up.
+The demo app can work without a collector, but to see data flow in Jaeger, let's set one up.
 
-### Option A: Using Docker (Easiest)
+### Option A: Using Docker (Recommended)
 
 If you have Docker installed:
 
@@ -72,13 +72,45 @@ cd mobile-otel/k8s
 docker-compose up -d
 ```
 
-This starts:
-- OTEL Collector on `http://localhost:4317`
-- Jaeger UI on `http://localhost:16686` (for viewing traces)
+This starts two services:
+- **OTEL Collector** on `http://localhost:4317` (gRPC) and `http://localhost:4318` (HTTP)
+- **Jaeger UI** on `http://localhost:16686` (for viewing traces and logs)
+
+**Verify it's running:**
+
+```bash
+docker-compose ps
+```
+
+You should see both `otel-collector` and `jaeger` with status "Up".
+
+**View collector logs:**
+
+```bash
+docker logs -f otel-collector
+```
+
+**Stop the services when done:**
+
+```bash
+docker-compose down
+```
 
 ### Option B: Skip the Collector
 
-You can run the demo without a collector. Events will be buffered locally and you can see them in the app logs.
+You can run the demo without a collector. Events will be buffered locally and you can see them in the app logs. However, you won't be able to visualize traces in Jaeger UI.
+
+---
+
+### Important: Network Configuration for Android
+
+**Android Emulator**: Use `http://10.0.2.2:4317` as your collector endpoint
+- The emulator maps `10.0.2.2` to your host machine's `localhost`
+
+**Real Android Device**: Use `http://YOUR_MACHINE_IP:4317`
+- Find your machine's IP: `ipconfig getifaddr en0` (macOS) or `ipconfig` (Windows)
+- Example: `http://192.168.1.100:4317`
+- Make sure your device and computer are on the same network
 
 ---
 
@@ -141,9 +173,20 @@ The demo app has 4 interactive scenarios to demonstrate the library:
 ### In Jaeger UI (if using Docker collector)
 
 1. Open browser to `http://localhost:16686`
-2. Select service: **demo-app**
+2. In the **Service** dropdown, select your app (e.g., `demo-app` or the service name from your config)
 3. Click **Find Traces**
-4. You'll see the traces from your demo scenarios
+4. You'll see traces from your demo scenarios
+5. Click on a trace to see detailed spans and timing information
+
+**Tip**: It may take 10-30 seconds for data to appear in Jaeger after you trigger an event in the app.
+
+### In Collector Logs (real-time)
+
+```bash
+docker logs -f otel-collector
+```
+
+You'll see detailed output as the collector receives and processes your telemetry data.
 
 ---
 

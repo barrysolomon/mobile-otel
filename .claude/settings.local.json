@@ -17,7 +17,10 @@
       "Bash(gradle --version:*)",
       "Bash(gradle wrapper:*)",
       "Bash(adb shell am start:*)",
-      "Bash(adb logcat:*)"
+      "Bash(adb logcat:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker logs:*)"
     ]
   }
 }
