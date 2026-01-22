@@ -128,6 +128,23 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Deletes events within a time window from disk.
+     *
+     * @param windowStartMs Start of window in epoch milliseconds
+     * @return Number of deleted events
+     */
+    suspend fun deleteEventsInWindow(windowStartMs: Long): Int = withContext(Dispatchers.IO) {
+        try {
+            val deletedCount = logDao.deleteEventsAfter(windowStartMs)
+            Log.d(TAG, "Deleted $deletedCount events from disk for window starting at $windowStartMs")
+            deletedCount
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting events from window", e)
+            0
+        }
+    }
+
+    /**
      * Gets the current number of events in disk buffer.
      */
     fun getEventCount(): Int {
@@ -243,6 +260,9 @@ interface LogDao {
 
     @Query("DELETE FROM log_records WHERE timestampMs < :expiryMs")
     suspend fun deleteOlderThan(expiryMs: Long): Int
+
+    @Query("DELETE FROM log_records WHERE timestampMs >= :startMs")
+    suspend fun deleteEventsAfter(startMs: Long): Int
 
     @Query("DELETE FROM log_records WHERE id IN (SELECT id FROM log_records ORDER BY timestampMs ASC LIMIT :count)")
     suspend fun deleteOldest(count: Int): Int

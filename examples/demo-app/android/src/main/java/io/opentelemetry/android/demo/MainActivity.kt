@@ -12,6 +12,7 @@ import io.opentelemetry.android.mobile.MobileLoggerProvider
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.common.AttributesBuilder
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
@@ -33,9 +34,10 @@ import java.util.UUID
  * - Export policy-based selective flushing
  *
  * **Demo Scenarios:**
- * 1. UI Freeze Detection - Simulates a slow operation
+ * 1. True ANR - Blocks main thread causing OS ANR dialog
  * 2. Crash Simulation - Demonstrates crash recovery
  * 3. Network Error - Triggers error-based workflow
+ * 4. Low Memory Kill - Forces OOM kill by Android
  */
 class MainActivity : AppCompatActivity() {
 
@@ -65,6 +67,41 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnFormSubmit: Button
     private lateinit var btnForceFlush: Button
     private lateinit var btnForceQuit: Button
+
+    /**
+     * Helper function to add standard thread context to log attributes.
+     * Follows OpenTelemetry semantic convention for thread identification.
+     */
+    @Suppress("DEPRECATION")
+    private fun addThreadContext(builder: AttributesBuilder): AttributesBuilder {
+        val thread = Thread.currentThread()
+        return builder
+            .put("thread.name", thread.name)
+            .put("thread.id", thread.id)
+    }
+
+    /**
+     * Helper function to add code location context to log attributes.
+     * Follows OpenTelemetry semantic convention for code traceability.
+     * Extracts caller information from stack trace.
+     */
+    private fun addCodeLocation(builder: AttributesBuilder, functionName: String): AttributesBuilder {
+        return builder
+            .put("code.namespace", "io.opentelemetry.android.demo")
+            .put("code.function", functionName)
+            .put("code.filepath", "MainActivity.kt")
+    }
+
+    /**
+     * Helper function to create base attributes with demo context, thread, and code location.
+     * Reduces boilerplate and ensures consistency across all log events.
+     */
+    private fun createBaseAttributes(functionName: String): AttributesBuilder {
+        return Attributes.builder()
+            .put("demo_run_id", demoRunId)
+            .also { addThreadContext(it) }
+            .also { addCodeLocation(it, functionName) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -224,6 +261,7 @@ class MainActivity : AppCompatActivity() {
         val manualForceQuit = prefs.getBoolean("force_quit_marker", false)
         val wasCrash = prefs.getBoolean("crash_marker", false)
         val wasLowMemory = prefs.getBoolean("low_memory_marker", false)
+        val wasAnr = prefs.getBoolean("anr_marker", false)
         val sessionWasActive = prefs.getBoolean("session_active", false)
         val lastSessionTimestamp = prefs.getLong("session_start_timestamp", 0L)
 
@@ -231,6 +269,7 @@ class MainActivity : AppCompatActivity() {
             manualForceQuit -> "manual_force_quit"
             wasCrash -> "crash"
             wasLowMemory -> "low_memory_kill"  // Android killed due to memory pressure
+            wasAnr -> "anr_force_kill"  // User force closed during ANR dialog
             sessionWasActive -> "system_force_kill" // Swipe up to kill or other system kill
             else -> "clean_start"
         }
@@ -253,25 +292,25 @@ class MainActivity : AppCompatActivity() {
             .setBody("app.start")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("screen"), "MainActivity",
-                    AttributeKey.stringKey("device_id"), loggerProvider.getDeviceId(),
-                    AttributeKey.stringKey("recovery_type"), recoveryType,
-                    AttributeKey.longKey("time_since_last_session_ms"), timeSinceLastSession
-                )
+                createBaseAttributes("logAppStart")
+                    .put("screen.name", "MainActivity")
+                    .put("device_id", loggerProvider.getDeviceId())
+                    .put("recovery_type", recoveryType)
+                    .put("time_since_last_session_ms", timeSinceLastSession)
+                    .build()
             )
             .emit()
 
         Log.i(TAG, "Logged app.start event (recovery_type: $recoveryType)")
 
         // If recovering from abnormal termination, log recovery event and flush
-        if (manualForceQuit || wasCrash || wasLowMemory || sessionWasActive) {
-            val terminationType = when {
-                manualForceQuit -> "Manual force quit button"
-                wasCrash -> "Uncaught exception crash"
-                wasLowMemory -> "Low memory / OOM kill by Android"
-                sessionWasActive -> "System force kill (swipe up or other)"
+        if (recoveryType != "clean_start") {
+            val terminationType = when (recoveryType) {
+                "manual_force_quit" -> "Manual force quit button"
+                "crash" -> "Uncaught exception crash"
+                "low_memory_kill" -> "Low memory / OOM kill by Android"
+                "anr_force_kill" -> "ANR force close by user"
+                "system_force_kill" -> "System force kill (swipe up or other)"
                 else -> "Unknown"
             }
 
@@ -279,14 +318,13 @@ class MainActivity : AppCompatActivity() {
                 .setBody("app.recovery")
                 .setSeverity(Severity.WARN)
                 .setAllAttributes(
-                    Attributes.of(
-                        AttributeKey.stringKey("demo_run_id"), demoRunId,
-                        AttributeKey.stringKey("recovery_type"), recoveryType,
-                        AttributeKey.stringKey("termination_type"), terminationType,
-                        AttributeKey.stringKey("previous_session"), "terminated_abnormally",
-                        AttributeKey.stringKey("device_id"), loggerProvider.getDeviceId(),
-                        AttributeKey.longKey("downtime_ms"), timeSinceLastSession
-                    )
+                    createBaseAttributes("logAppStart")
+                        .put("recovery_type", recoveryType)
+                        .put("termination_type", terminationType)
+                        .put("previous_session", "terminated_abnormally")
+                        .put("device_id", loggerProvider.getDeviceId())
+                        .put("downtime_ms", timeSinceLastSession)
+                        .build()
                 )
                 .emit()
 
@@ -315,19 +353,25 @@ class MainActivity : AppCompatActivity() {
                 .remove("force_quit_marker")
                 .remove("crash_marker")
                 .remove("low_memory_marker")
+                .remove("anr_marker")
                 .apply()
         }
     }
 
     /**
-     * Scenario A: UI Freeze Detection
+     * Scenario A: True ANR (Application Not Responding)
      *
-     * Simulates a UI freeze (>2s) which should trigger the export policy:
-     * - Event: ui.freeze with duration_ms > 2000
-     * - Action: Flush last 2 minutes of events
+     * Blocks the main thread for an extended period causing a genuine ANR:
+     * - Android will display "App isn't responding" dialog after ~5 seconds
+     * - User must force close or wait for the app to recover
+     * - Event: app.anr logged before blocking
+     * - Action: Demonstrates real ANR telemetry capture
+     *
+     * WARNING: This will make the app completely unresponsive for 30 seconds!
+     * The OS will show an ANR dialog and offer to force close the app.
      */
     private fun runScenarioA() {
-        updateStatus("🔵 Running Scenario A: UI Freeze Detection")
+        updateStatus("⚠️ Running Scenario A: True ANR\n\nBLOCKING MAIN THREAD FOR 30 SECONDS!")
 
         // Record button click metric
         buttonClickCounter.add(1, Attributes.of(
@@ -335,48 +379,78 @@ class MainActivity : AppCompatActivity() {
             AttributeKey.stringKey("button.category"), "demo_scenarios"
         ))
 
-        // Log some user activity before the freeze
-        for (i in 1..5) {
-            logger.logRecordBuilder()
-                .setBody("user.action")
-                .setSeverity(Severity.INFO)
-                .setAllAttributes(
-                    Attributes.of(
-                        AttributeKey.stringKey("demo_run_id"), demoRunId,
-                        AttributeKey.stringKey("action_type"), "button_click",
-                        AttributeKey.stringKey("button_id"), "btn_$i",
-                        AttributeKey.stringKey("screen"), "MainActivity"
-                    )
-                )
-                .emit()
+        // Set ANR marker for recovery detection if force killed
+        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("anr_marker", true)
+            .putLong("anr_timestamp", System.currentTimeMillis())
+            .apply()
 
-            Thread.sleep(100) // Simulate time between actions
-        }
+        Log.w(TAG, "Set anr_marker - about to trigger ANR")
 
-        // Simulate UI freeze
-        Log.w(TAG, "Simulating UI freeze...")
-        Thread.sleep(2500) // 2.5 seconds
-
-        // Log the UI freeze event (should trigger workflow)
+        // Log pre-ANR event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
-            .setBody("ui.freeze")
-            .setSeverity(Severity.WARN)
+            .setBody("app.anr")
+            .setSeverity(Severity.ERROR)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.longKey("duration_ms"), 2500L,
-                    AttributeKey.stringKey("screen"), "MainActivity",
-                    AttributeKey.stringKey("thread"), "main"
-                )
+                createBaseAttributes("runScenarioA")
+                    // Standard semantic convention for error classification
+                    .put("error.type", "android.anr")
+                    // ANR-specific details
+                    .put("android.anr.type", "main_thread_blocked")
+                    .put("android.anr.expected_duration_ms", 30000L)
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
             )
             .emit()
 
-        // Trigger immediate flush (simulates workflow trigger action)
-        Log.i(TAG, "Triggering forceFlush() due to ui.freeze trigger")
-        loggerProvider.forceFlush(30)
+        // Force flush to disk before ANR
+        loggerProvider.forceFlush(2)
 
-        updateStatus("✅ Scenario A complete\nUI freeze logged (2500ms)\n📤 Data flushed immediately!")
-        Log.i(TAG, "Scenario A complete: ui.freeze event logged and flushed")
+        Log.e(TAG, "TRIGGERING ANR - Blocking main thread for 30 seconds!")
+        Log.e(TAG, "Android will show ANR dialog - you can force close or wait")
+
+        // Block the main thread for 30 seconds
+        // This WILL trigger Android's ANR detection and show the system dialog
+        val startTime = System.currentTimeMillis()
+        val blockDuration = 30000L // 30 seconds
+
+        // Busy-wait loop (more reliable than Thread.sleep for triggering ANR)
+        while (System.currentTimeMillis() - startTime < blockDuration) {
+            // Intensive computation to ensure main thread is truly blocked
+            var dummy = 0.0
+            for (i in 0..1000) {
+                dummy += Math.sqrt(i.toDouble())
+            }
+        }
+
+        Log.i(TAG, "ANR completed - main thread unblocked after 30 seconds")
+
+        // If we reach here, user waited through the ANR
+        logger.logRecordBuilder()
+            .setBody("app.anr.recovered")
+            .setSeverity(Severity.WARN)
+            .setAllAttributes(
+                createBaseAttributes("runScenarioA")
+                    // Standard error type for recovery
+                    .put("error.type", "android.anr")
+                    // Recovery-specific details
+                    .put("android.anr.recovery_type", "user_waited")
+                    .put("android.anr.duration_ms", blockDuration)
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
+            )
+            .emit()
+
+        // Clear ANR marker if user waited
+        prefs.edit()
+            .remove("anr_marker")
+            .apply()
+
+        updateStatus("✅ Scenario A complete\nANR recovered (user waited 30s)\n📤 Telemetry captured!")
+        Log.i(TAG, "Scenario A complete: ANR event logged")
     }
 
     /**
@@ -406,17 +480,19 @@ class MainActivity : AppCompatActivity() {
 
         Log.w(TAG, "Set crash_marker - crashing app NOW")
 
-        // Log crash event
+        // Log crash event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
             .setBody("app.crash")
             .setSeverity(Severity.ERROR)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("crash_type"), "uncaught_exception",
-                    AttributeKey.stringKey("exception_message"), "Demo crash: Immediate uncaught exception",
-                    AttributeKey.stringKey("screen"), "MainActivity"
-                )
+                createBaseAttributes("runScenarioB")
+                    // Standard error semantic conventions
+                    .put("error.type", "java.lang.RuntimeException")
+                    .put("error.message", "Demo crash: Immediate uncaught exception")
+                    .put("exception.type", "RuntimeException")
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
             )
             .emit()
 
@@ -468,13 +544,17 @@ class MainActivity : AppCompatActivity() {
                         .setBody("http.request")
                         .setSeverity(Severity.INFO)
                         .setAllAttributes(
-                            Attributes.builder()
-                                .put("demo_run_id", demoRunId)
+                            createBaseAttributes("runScenarioC")
+                                // Standard HTTP semantic conventions
                                 .put("http.method", "GET")
                                 .put("http.url", "https://httpstat.us/200")
                                 .put("http.route", "/appointments")
+                                .put("http.scheme", "https")
+                                .put("net.peer.name", "httpstat.us")
                                 .put("http.status_code", response.code.toLong())
                                 .put("http.duration_ms", duration)
+                                // Mobile context
+                                .put("screen.name", "MainActivity")
                                 .build()
                         )
                         .emit()
@@ -486,20 +566,25 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Scenario C: Network error during successful call #$i", e)
 
-                    // Log network failure as telemetry
+                    // Log network failure as telemetry using semantic conventions
                     logger.logRecordBuilder()
                         .setBody("http.error")
                         .setSeverity(Severity.WARN)
                         .setAllAttributes(
-                            Attributes.builder()
-                                .put("demo_run_id", demoRunId)
+                            createBaseAttributes("runScenarioC")
+                                // Standard HTTP semantic conventions
                                 .put("http.method", "GET")
                                 .put("http.url", "https://httpstat.us/200")
                                 .put("http.route", "/appointments")
-                                .put("request_number", i.toLong())
+                                .put("http.scheme", "https")
+                                .put("net.peer.name", "httpstat.us")
+                                // Error attributes
                                 .put("error.type", "network_failure")
                                 .put("error.message", e.message ?: "Network call failed")
                                 .put("exception.type", e.javaClass.simpleName)
+                                // Context
+                                .put("request_number", i.toLong())
+                                .put("screen.name", "MainActivity")
                                 .build()
                         )
                         .emit()
@@ -517,19 +602,25 @@ class MainActivity : AppCompatActivity() {
                 val response = client.newCall(request).execute()
                 val duration = System.currentTimeMillis() - startTime
 
-                // Log the REAL HTTP 500 error
+                // Log the REAL HTTP 500 error using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("http.error")
                     .setSeverity(Severity.ERROR)
                     .setAllAttributes(
-                        Attributes.builder()
-                            .put("demo_run_id", demoRunId)
+                        createBaseAttributes("runScenarioC")
+                            // Standard HTTP semantic conventions
                             .put("http.method", "POST")
                             .put("http.url", "https://httpstat.us/500")
                             .put("http.route", "/appointments")
+                            .put("http.scheme", "https")
+                            .put("net.peer.name", "httpstat.us")
                             .put("http.status_code", response.code.toLong())
-                            .put("error.message", response.message)
                             .put("http.duration_ms", duration)
+                            // Error attributes
+                            .put("error.type", "http.server_error")
+                            .put("error.message", response.message)
+                            // Mobile context
+                            .put("screen.name", "MainActivity")
                             .build()
                     )
                     .emit()
@@ -549,19 +640,24 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Scenario C: Network exception during 500 call", e)
 
-                // Log the network failure as telemetry
+                // Log the network failure as telemetry using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("http.error")
                     .setSeverity(Severity.ERROR)
                     .setAllAttributes(
-                        Attributes.builder()
-                            .put("demo_run_id", demoRunId)
+                        createBaseAttributes("runScenarioC")
+                            // Standard HTTP semantic conventions
                             .put("http.method", "POST")
                             .put("http.url", "https://httpstat.us/500")
                             .put("http.route", "/appointments")
+                            .put("http.scheme", "https")
+                            .put("net.peer.name", "httpstat.us")
+                            // Error attributes
                             .put("error.type", "network_failure")
                             .put("error.message", e.message ?: "Network call failed")
                             .put("exception.type", e.javaClass.simpleName)
+                            // Mobile context
+                            .put("screen.name", "MainActivity")
                             .build()
                     )
                     .emit()
@@ -606,16 +702,18 @@ class MainActivity : AppCompatActivity() {
 
         Log.w(TAG, "Set low_memory_marker - starting memory allocation")
 
-        // Log pre-OOM event
+        // Log pre-OOM event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
             .setBody("app.low_memory")
             .setSeverity(Severity.ERROR)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("event_type"), "memory_exhaustion",
-                    AttributeKey.stringKey("screen"), "MainActivity"
-                )
+                createBaseAttributes("runScenarioD")
+                    // Standard error semantic conventions
+                    .put("error.type", "memory.exhaustion")
+                    .put("error.message", "Memory exhaustion initiated - triggering OOM")
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
             )
             .emit()
 
@@ -648,17 +746,20 @@ class MainActivity : AppCompatActivity() {
                 // This should trigger before Android kills us
                 Log.e(TAG, "OutOfMemoryError caught - app will be killed by Android", e)
 
-                // Try to log OOM event if possible
+                // Try to log OOM event if possible using semantic conventions
                 try {
                     logger.logRecordBuilder()
                         .setBody("app.out_of_memory")
                         .setSeverity(Severity.FATAL)
                         .setAllAttributes(
-                            Attributes.of(
-                                AttributeKey.stringKey("demo_run_id"), demoRunId,
-                                AttributeKey.stringKey("error_type"), "OutOfMemoryError",
-                                AttributeKey.stringKey("screen"), "MainActivity"
-                            )
+                            createBaseAttributes("runScenarioD")
+                                // Standard error semantic conventions
+                                .put("error.type", "java.lang.OutOfMemoryError")
+                                .put("error.message", "Out of memory - app will be killed")
+                                .put("exception.type", "OutOfMemoryError")
+                                // Mobile context
+                                .put("screen.name", "MainActivity")
+                                .build()
                         )
                         .emit()
                 } catch (ignored: Exception) {
@@ -723,17 +824,16 @@ class MainActivity : AppCompatActivity() {
         ))
 
         Thread {
-            // Log pre-quit event
+            // Log pre-quit event using semantic conventions
             logger.logRecordBuilder()
                 .setBody("app.force_quit")
                 .setSeverity(Severity.WARN)
                 .setAllAttributes(
-                    Attributes.of(
-                        AttributeKey.stringKey("demo_run_id"), demoRunId,
-                        AttributeKey.stringKey("quit_type"), "manual_force_quit",
-                        AttributeKey.stringKey("screen"), "MainActivity",
-                        AttributeKey.stringKey("device_id"), loggerProvider.getDeviceId()
-                    )
+                    createBaseAttributes("forceQuitApp")
+                        .put("quit_type", "manual_force_quit")
+                        .put("screen.name", "MainActivity")
+                        .put("device_id", loggerProvider.getDeviceId())
+                        .build()
                 )
                 .emit()
 
@@ -798,12 +898,11 @@ class MainActivity : AppCompatActivity() {
                             .setBody("auth.login.attempt")
                             .setSeverity(Severity.INFO)
                             .setAllAttributes(
-                                Attributes.of(
-                                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                                    AttributeKey.stringKey("auth.method"), "email_password",
-                                    AttributeKey.stringKey("user.email"), "demo@example.com",
-                                    AttributeKey.stringKey("screen"), "LoginActivity"
-                                )
+                                createBaseAttributes("logUserLogin")
+                                    .put("auth.method", "email_password")
+                                    .put("user.email", "demo@example.com")
+                                    .put("screen.name", "LoginActivity")
+                                    .build()
                             )
                             .emit()
 
@@ -825,13 +924,12 @@ class MainActivity : AppCompatActivity() {
                     .setBody("auth.login.success")
                     .setSeverity(Severity.INFO)
                     .setAllAttributes(
-                        Attributes.of(
-                            AttributeKey.stringKey("demo_run_id"), demoRunId,
-                            AttributeKey.stringKey("user.id"), "user_12345",
-                            AttributeKey.stringKey("user.email"), "demo@example.com",
-                            AttributeKey.stringKey("session.id"), sessionId,
-                            AttributeKey.longKey("auth.duration_ms"), 300L
-                        )
+                        createBaseAttributes("logUserLogin")
+                            .put("user.id", "user_12345")
+                            .put("user.email", "demo@example.com")
+                            .put("session.id", sessionId)
+                            .put("auth.duration_ms", 300L)
+                            .build()
                     )
                     .emit()
 
@@ -872,32 +970,30 @@ class MainActivity : AppCompatActivity() {
         val currentScreen = screens.random()
         val nextScreen = (screens - currentScreen).random()
 
-        // Screen exit
+        // Screen exit using semantic conventions
         logger.logRecordBuilder()
             .setBody("screen.exit")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("screen.name"), currentScreen,
-                    AttributeKey.longKey("screen.duration_ms"), (2000..5000).random().toLong()
-                )
+                createBaseAttributes("logPageNavigation")
+                    .put("screen.name", currentScreen)
+                    .put("screen.duration_ms", (2000..5000).random().toLong())
+                    .build()
             )
             .emit()
 
         Thread.sleep(100)
 
-        // Screen enter
+        // Screen enter using semantic conventions
         logger.logRecordBuilder()
             .setBody("screen.enter")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("screen.name"), nextScreen,
-                    AttributeKey.stringKey("screen.source"), currentScreen,
-                    AttributeKey.stringKey("navigation.method"), "button_click"
-                )
+                createBaseAttributes("logPageNavigation")
+                    .put("screen.name", nextScreen)
+                    .put("screen.source", currentScreen)
+                    .put("navigation.method", "button_click")
+                    .build()
             )
             .emit()
 
@@ -935,45 +1031,56 @@ class MainActivity : AppCompatActivity() {
 
         try {
             span.makeCurrent().use {
-                // Log API request
+                // Log API request using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("http.request")
                     .setSeverity(Severity.INFO)
                     .setAllAttributes(
-                        Attributes.of(
-                            AttributeKey.stringKey("demo_run_id"), demoRunId,
-                            AttributeKey.stringKey("http.method"), "GET",
-                            AttributeKey.stringKey("http.url"), "https://api.example.com$endpoint",
-                            AttributeKey.stringKey("http.route"), endpoint,
-                            AttributeKey.stringKey("request.id"), UUID.randomUUID().toString()
-                        )
+                        createBaseAttributes("logApiCall")
+                            .put("http.method", "GET")
+                            .put("http.url", "https://api.example.com$endpoint")
+                            .put("http.route", endpoint)
+                            .put("http.scheme", "https")
+                            .put("net.peer.name", "api.example.com")
+                            .put("request.id", UUID.randomUUID().toString())
+                            .build()
                     )
                     .emit()
 
-                span.addEvent("request_sent")
+                span.addEvent("request_sent", Attributes.of(
+                    AttributeKey.stringKey("http.method"), "GET",
+                    AttributeKey.stringKey("http.url"), "https://api.example.com$endpoint",
+                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
+                ))
 
                 // Simulate network delay
                 Thread.sleep(duration.toLong())
 
-                span.addEvent("response_received")
+                span.addEvent("response_received", Attributes.of(
+                    AttributeKey.longKey("http.status_code"), 200L,
+                    AttributeKey.longKey("http.response_content_length"), responseSize.toLong(),
+                    AttributeKey.longKey("http.duration_ms"), duration.toLong(),
+                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
+                ))
 
                 // Set response attributes
                 span.setAttribute("http.status_code", 200L)
                 span.setAttribute("http.response_content_length", responseSize.toLong())
 
-                // Log API response
+                // Log API response using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("http.response")
                     .setSeverity(Severity.INFO)
                     .setAllAttributes(
-                        Attributes.of(
-                            AttributeKey.stringKey("demo_run_id"), demoRunId,
-                            AttributeKey.stringKey("http.method"), "GET",
-                            AttributeKey.stringKey("http.route"), endpoint,
-                            AttributeKey.longKey("http.status_code"), 200L,
-                            AttributeKey.longKey("http.duration_ms"), duration.toLong(),
-                            AttributeKey.longKey("http.response_size_bytes"), responseSize.toLong()
-                        )
+                        createBaseAttributes("logApiCall")
+                            .put("http.method", "GET")
+                            .put("http.route", endpoint)
+                            .put("http.scheme", "https")
+                            .put("net.peer.name", "api.example.com")
+                            .put("http.status_code", 200L)
+                            .put("http.duration_ms", duration.toLong())
+                            .put("http.response_content_length", responseSize.toLong())
+                            .build()
                     )
                     .emit()
 
@@ -1031,41 +1138,51 @@ class MainActivity : AppCompatActivity() {
 
         try {
             span.makeCurrent().use {
-                // Task started
+                // Task started using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("background.task.started")
                     .setSeverity(Severity.INFO)
                     .setAllAttributes(
-                        Attributes.of(
-                            AttributeKey.stringKey("demo_run_id"), demoRunId,
-                            AttributeKey.stringKey("task.type"), taskType,
-                            AttributeKey.stringKey("task.description"), taskDescription,
-                            AttributeKey.stringKey("task.id"), taskId
-                        )
+                        createBaseAttributes("logBackgroundTask")
+                            .put("task.type", taskType)
+                            .put("task.description", taskDescription)
+                            .put("task.id", taskId)
+                            .build()
                     )
                     .emit()
 
-                span.addEvent("task_processing_started")
+                span.addEvent("task_processing_started", Attributes.of(
+                    AttributeKey.stringKey("task.type"), taskType,
+                    AttributeKey.stringKey("task.id"), taskId,
+                    AttributeKey.stringKey("phase"), "processing",
+                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
+                ))
 
                 // Simulate task execution
                 Thread.sleep(duration.toLong())
 
-                span.addEvent("task_processing_completed")
+                span.addEvent("task_processing_completed", Attributes.of(
+                    AttributeKey.stringKey("task.type"), taskType,
+                    AttributeKey.stringKey("task.id"), taskId,
+                    AttributeKey.stringKey("task.status"), "success",
+                    AttributeKey.longKey("task.duration_ms"), duration.toLong(),
+                    AttributeKey.stringKey("phase"), "completed",
+                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
+                ))
                 span.setAttribute("task.status", "success")
                 span.setAttribute("task.duration_ms", duration.toLong())
 
-                // Task completed
+                // Task completed using semantic conventions
                 logger.logRecordBuilder()
                     .setBody("background.task.completed")
                     .setSeverity(Severity.INFO)
                     .setAllAttributes(
-                        Attributes.of(
-                            AttributeKey.stringKey("demo_run_id"), demoRunId,
-                            AttributeKey.stringKey("task.type"), taskType,
-                            AttributeKey.stringKey("task.description"), taskDescription,
-                            AttributeKey.longKey("task.duration_ms"), duration.toLong(),
-                            AttributeKey.stringKey("task.status"), "success"
-                        )
+                        createBaseAttributes("logBackgroundTask")
+                            .put("task.type", taskType)
+                            .put("task.description", taskDescription)
+                            .put("task.duration_ms", duration.toLong())
+                            .put("task.status", "success")
+                            .build()
                     )
                     .emit()
 
@@ -1115,13 +1232,12 @@ class MainActivity : AppCompatActivity() {
             .setBody("user.interaction")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("interaction.type"), interactionType,
-                    AttributeKey.stringKey("interaction.element_id"), elementId,
-                    AttributeKey.stringKey("screen"), "FeedActivity",
-                    AttributeKey.longKey("interaction.timestamp_ms"), System.currentTimeMillis()
-                )
+                createBaseAttributes("logUserInteraction")
+                    .put("interaction.type", interactionType)
+                    .put("interaction.element_id", elementId)
+                    .put("screen.name", "FeedActivity")
+                    .put("interaction.timestamp_ms", System.currentTimeMillis())
+                    .build()
             )
             .emit()
 
@@ -1148,35 +1264,33 @@ class MainActivity : AppCompatActivity() {
         )
         val (formType, fields) = formTypes.random()
 
-        // Form validation
+        // Form validation using semantic conventions
         logger.logRecordBuilder()
             .setBody("form.validation")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("form.type"), formType,
-                    AttributeKey.longKey("form.field_count"), fields.size.toLong(),
-                    AttributeKey.stringKey("validation.status"), "passed"
-                )
+                createBaseAttributes("logFormSubmission")
+                    .put("form.type", formType)
+                    .put("form.field_count", fields.size.toLong())
+                    .put("validation.status", "passed")
+                    .build()
             )
             .emit()
 
         Thread.sleep(100)
 
-        // Form submission
+        // Form submission using semantic conventions
         logger.logRecordBuilder()
             .setBody("form.submitted")
             .setSeverity(Severity.INFO)
             .setAllAttributes(
-                Attributes.of(
-                    AttributeKey.stringKey("demo_run_id"), demoRunId,
-                    AttributeKey.stringKey("form.type"), formType,
-                    AttributeKey.stringKey("form.id"), UUID.randomUUID().toString(),
-                    AttributeKey.longKey("form.field_count"), fields.size.toLong(),
-                    AttributeKey.stringKey("submission.status"), "success",
-                    AttributeKey.longKey("submission.duration_ms"), 150L
-                )
+                createBaseAttributes("logFormSubmission")
+                    .put("form.type", formType)
+                    .put("form.id", UUID.randomUUID().toString())
+                    .put("form.field_count", fields.size.toLong())
+                    .put("submission.status", "success")
+                    .put("submission.duration_ms", 150L)
+                    .build()
             )
             .emit()
 

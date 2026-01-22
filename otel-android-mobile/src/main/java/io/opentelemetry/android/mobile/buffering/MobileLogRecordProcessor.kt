@@ -165,6 +165,7 @@ class MobileLogRecordProcessor private constructor(
      * 1. Collecting events from RAM buffer within the time window
      * 2. Collecting events from disk buffer within the time window
      * 3. Exporting all collected events via OTLP
+     * 4. Removing successfully exported events from both buffers
      *
      * @param windowMinutes Number of minutes to look back
      * @return CompletableResultCode indicating success/failure
@@ -200,7 +201,35 @@ class MobileLogRecordProcessor private constructor(
             }
 
             // Wait for all batches to complete
-            return CompletableResultCode.ofAll(results)
+            val result = CompletableResultCode.ofAll(results)
+
+            // Clear successfully exported events from buffers
+            result.whenComplete {
+                if (result.isSuccess) {
+                    try {
+                        // Remove exported events from RAM buffer
+                        val remainingEvents = ramBuffer.filter { logRecord ->
+                            logRecord.timestampEpochNanos / 1_000_000 < windowStartMs
+                        }
+                        ramBuffer.clear()
+                        ramBuffer.addAll(remainingEvents)
+                        ramBufferCount.set(remainingEvents.size)
+
+                        // Remove exported events from disk buffer
+                        runBlocking {
+                            diskBuffer.deleteEventsInWindow(windowStartMs)
+                        }
+
+                        Log.i(TAG, "Successfully flushed and cleared ${eventsToFlush.size} events from window")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error clearing events after successful flush", e)
+                    }
+                } else {
+                    Log.w(TAG, "Window flush failed, keeping events in buffer")
+                }
+            }
+
+            return result
 
         } catch (e: Exception) {
             Log.e(TAG, "Error flushing window", e)
