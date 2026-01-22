@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="OpenTelemetry Mobile Demo"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Version 1.0.0"
+            android:textSize="14sp"
+            android:textColor="#666666"
+            android:gravity="center"
+            android:layout_marginBottom="32dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="About This App"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="This application demonstrates OpenTelemetry-native mobile observability patterns for Android.\n\nIt showcases:\n\n• Two-tier buffering (RAM + Disk) for offline resilience\n• Export policies for conditional data transmission\n• Crash recovery with automatic detection\n• Network loss handling (tunnel, subway, airplane mode)\n• Retry logic with exponential backoff\n\nThe implementation uses the official OpenTelemetry SDK and follows OTEL standards for compatibility with the broader observability ecosystem."
+            android:textSize="14sp"
+            android:lineSpacingMultiplier="1.3"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Features"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="✓ OTEL-native implementation\n✓ OTLP/gRPC protocol support\n✓ Configurable buffering strategy\n✓ Crash detection and recovery\n✓ Offline data persistence\n✓ Automatic retry with backoff\n✓ Policy-based export control\n✓ Device and geo context enrichment"
+            android:textSize="14sp"
+            android:lineSpacingMultiplier="1.3"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Technology Stack"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="• OpenTelemetry SDK 1.58.0\n• Android Gradle Plugin 9.0\n• Kotlin Coroutines\n• Room Database (SQLite)\n• OTLP/gRPC Exporter"
+            android:textSize="14sp"
+            android:lineSpacingMultiplier="1.3"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="License"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Apache License 2.0\n\nCopyright 2026 OpenTelemetry Mobile Contributors"
+            android:textSize="14sp"
+            android:lineSpacingMultiplier="1.3"
+            android:layout_marginBottom="32dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Project Repository"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="github.com/opentelemetry/mobile-otel"
+            android:textSize="14sp"
+            android:textColor="#0066CC"
+            android:layout_marginBottom="32dp" />
+
+    </LinearLayout>
+</ScrollView>

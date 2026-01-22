@@ -16,6 +16,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Mobile Observability Demo"
 include(":app")
-
-// Point to the app module
-project(":app").projectDir = file(".")

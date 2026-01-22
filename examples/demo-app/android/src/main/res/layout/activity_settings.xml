@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="OpenTelemetry Configuration"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Service Configuration -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Service Identity"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Service Name"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editServiceName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., my-mobile-app"
+            android:inputType="text"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Service Version"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editServiceVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 1.0.0"
+            android:inputType="text"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Collector Configuration -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Collector"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Protocol"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <RadioGroup
+            android:id="@+id/radioGroupProtocol"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <RadioButton
+                android:id="@+id/radioGrpc"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="gRPC (port 4317)"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/radioHttp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="HTTP (path /v1/signal)" />
+
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Collector Endpoint"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editCollectorEndpoint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., https://ingress.us-west-2.aws.dash0.com:4317"
+            android:inputType="textUri"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="gRPC: Use :4317 port\nHTTP: Use /v1/logs path"
+            android:textSize="10sp"
+            android:textColor="#999999"
+            android:textStyle="italic"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Authorization Token (Bearer)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editAuthToken"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh"
+            android:inputType="textPassword"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dataset / Tenant ID (optional)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editDataset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., pi5-k3s"
+            android:inputType="text"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Buffer Configuration -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Buffering"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RAM Buffer Size (events)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editRamBufferSize"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 5000"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Disk Buffer Size (MB)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editDiskBufferMb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 50"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Disk Buffer TTL (hours)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editDiskBufferTtl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 24"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Export Configuration -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export Timeout (seconds)"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editExportTimeout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 30"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Max Export Retries"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editMaxRetries"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., 3"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Advanced Configuration -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Advanced"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <CheckBox
+            android:id="@+id/checkboxAttachContext"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Attach Context Attributes (geo/device)"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Build Channel"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <EditText
+            android:id="@+id/editBuildChannel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g., debug, beta, prod"
+            android:inputType="text"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end">
+
+            <Button
+                android:id="@+id/btnResetDefaults"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reset to Defaults"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnSave"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Save" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Note: Changes require app restart to take effect"
+            android:textSize="12sp"
+            android:textStyle="italic"
+            android:textColor="#666666"
+            android:layout_marginTop="16dp" />
+
+    </LinearLayout>
+</ScrollView>

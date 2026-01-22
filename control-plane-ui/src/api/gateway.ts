@@ -71,4 +71,95 @@ export const gatewayAPI = {
     const response = await api.get<{ status: string }>('/health');
     return response.data;
   },
+
+  // Device management
+  async registerDevice(data: {
+    device_id: string;
+    os_version: string;
+    app_version: string;
+    device_group?: string;
+  }): Promise<any> {
+    const response = await api.post('/v1/devices/register', data);
+    return response.data;
+  },
+
+  async listDevices(params?: {
+    group?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> {
+    const response = await api.get('/v1/devices', { params });
+    return response.data;
+  },
+
+  async getDevice(deviceId: string): Promise<any> {
+    const response = await api.get('/v1/devices/detail', {
+      params: { device_id: deviceId }
+    });
+    return response.data;
+  },
+
+  async updateDeviceGroup(deviceId: string, deviceGroup: string): Promise<any> {
+    const response = await api.patch(`/v1/devices/group?device_id=${deviceId}`, {
+      device_group: deviceGroup
+    });
+    return response.data;
+  },
+
+  async listDeviceGroups(): Promise<any> {
+    const response = await api.get('/v1/device-groups');
+    return response.data;
+  },
+
+  async getHeartbeats(limit: number = 100): Promise<any> {
+    const response = await api.get('/v1/heartbeats', {
+      params: { limit }
+    });
+    return response.data;
+  },
+
+  // OTEL Configuration management
+  async createOTELConfig(data: {
+    device_group: string;
+    protocol: string;
+    collector_endpoint: string;
+    auth_token?: string;
+    dataset?: string;
+    ram_buffer_size?: number;
+    disk_buffer_mb?: number;
+    disk_buffer_ttl_hours?: number;
+    export_timeout_seconds?: number;
+    max_export_retries?: number;
+    environment_vars?: Record<string, string>;
+    feature_flags?: Record<string, boolean>;
+  }): Promise<any> {
+    const response = await api.post('/v1/otel-configs', data);
+    return response.data;
+  },
+
+  async listOTELConfigs(deviceGroup?: string, limit?: number): Promise<any> {
+    const response = await api.get('/v1/otel-configs', {
+      params: { device_group: deviceGroup, limit }
+    });
+    return response.data;
+  },
+
+  async getActiveOTELConfig(deviceGroup: string): Promise<any> {
+    const response = await api.get('/v1/otel-configs/active', {
+      params: { device_group: deviceGroup }
+    });
+    return response.data;
+  },
+
+  async activateOTELConfig(id: number): Promise<any> {
+    const response = await api.post('/v1/otel-configs/activate', null, {
+      params: { id }
+    });
+    return response.data;
+  },
+
+  async getConfigRolloutStatus(): Promise<any> {
+    const response = await api.get('/v1/otel-configs/rollout-status');
+    return response.data;
+  },
 };

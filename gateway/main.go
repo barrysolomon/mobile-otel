@@ -21,11 +21,21 @@ func main() {
 	port := getEnv("PORT", "8080")
 	dbPath := getEnv("DB_PATH", "./data/gateway.db")
 	collectorEndpoint := getEnv("OTEL_COLLECTOR_ENDPOINT", "otel-collector.mobile-observability.svc.cluster.local:4317")
+	otelAuthToken := getEnv("OTEL_AUTH_TOKEN", "")
 
 	log.Printf("Starting Mobile Observability Gateway")
 	log.Printf("Port: %s", port)
 	log.Printf("Database: %s", dbPath)
 	log.Printf("Collector: %s", collectorEndpoint)
+	if otelAuthToken != "" {
+		log.Printf("OTEL Auth Token: configured")
+	}
+
+	// Ensure database directory exists
+	dbDir := "./data"
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatalf("Failed to create database directory: %v", err)
+	}
 
 	// Initialize database
 	database, err := db.NewDatabase(dbPath)
@@ -36,7 +46,7 @@ func main() {
 
 	// Initialize OTEL exporter
 	ctx := context.Background()
-	exporter, err := otel.NewLogExporter(ctx, collectorEndpoint)
+	exporter, err := otel.NewLogExporter(ctx, collectorEndpoint, otelAuthToken)
 	if err != nil {
 		log.Fatalf("Failed to initialize OTEL exporter: %v", err)
 	}
@@ -55,6 +65,21 @@ func main() {
 	mux.HandleFunc("POST /ingest", h.HandleIngest)
 	mux.HandleFunc("GET /config", h.HandleGetConfig)
 	mux.HandleFunc("POST /status", h.HandleStatus)
+
+	// Device management endpoints
+	mux.HandleFunc("POST /api/v1/devices/register", h.HandleRegisterDevice)
+	mux.HandleFunc("GET /api/v1/devices", h.HandleListDevices)
+	mux.HandleFunc("GET /api/v1/devices/detail", h.HandleGetDevice)
+	mux.HandleFunc("PATCH /api/v1/devices/group", h.HandleUpdateDeviceGroup)
+	mux.HandleFunc("GET /api/v1/device-groups", h.HandleListDeviceGroups)
+	mux.HandleFunc("GET /api/v1/heartbeats", h.HandleListHeartbeats)
+
+	// OTEL Configuration management endpoints
+	mux.HandleFunc("POST /api/v1/otel-configs", h.HandleCreateOTELConfig)
+	mux.HandleFunc("GET /api/v1/otel-configs", h.HandleListOTELConfigs)
+	mux.HandleFunc("GET /api/v1/otel-configs/active", h.HandleGetActiveOTELConfig)
+	mux.HandleFunc("POST /api/v1/otel-configs/activate", h.HandleActivateOTELConfig)
+	mux.HandleFunc("GET /api/v1/otel-configs/rollout-status", h.HandleGetConfigRolloutStatus)
 
 	// Admin endpoints
 	mux.HandleFunc("POST /admin/publish", h.HandlePublish)

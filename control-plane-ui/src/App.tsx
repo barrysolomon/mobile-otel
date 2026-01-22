@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { WorkflowBuilder } from './components/WorkflowBuilder';
 import { DeviceMonitor } from './components/DeviceMonitor';
+import { DeviceFleet } from './components/DeviceFleet';
+import { ConfigManager } from './components/ConfigManager';
 import { gatewayAPI } from './api/gateway';
 import { compileGraphToDSL, validateGraph } from './utils/graphToDSL';
 import type { WorkflowGraph, ConfigVersion } from './types/workflow';
@@ -43,7 +45,8 @@ const defaultWorkflow: WorkflowGraph = {
 export function App() {
   const [workflows, setWorkflows] = useState<WorkflowGraph[]>([defaultWorkflow]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(defaultWorkflow.id);
-  const [activeTab, setActiveTab] = useState<'builder' | 'devices'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'devices' | 'config'>('builder');
+  const [devicesSubTab, setDevicesSubTab] = useState<'fleet' | 'monitor'>('fleet');
   const [versions, setVersions] = useState<ConfigVersion[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -141,6 +144,12 @@ export function App() {
           >
             Devices
           </button>
+          <button
+            className={`tab-btn ${activeTab === 'config' ? 'active' : ''}`}
+            onClick={() => setActiveTab('config')}
+          >
+            Configuration
+          </button>
         </div>
       </header>
 
@@ -222,7 +231,28 @@ export function App() {
 
       {activeTab === 'devices' && (
         <div className="devices-container">
-          <DeviceMonitor />
+          <div className="devices-subtabs">
+            <button
+              className={`subtab-btn ${devicesSubTab === 'fleet' ? 'active' : ''}`}
+              onClick={() => setDevicesSubTab('fleet')}
+            >
+              📱 Device Fleet
+            </button>
+            <button
+              className={`subtab-btn ${devicesSubTab === 'monitor' ? 'active' : ''}`}
+              onClick={() => setDevicesSubTab('monitor')}
+            >
+              📊 Live Monitor
+            </button>
+          </div>
+          {devicesSubTab === 'fleet' && <DeviceFleet />}
+          {devicesSubTab === 'monitor' && <DeviceMonitor />}
+        </div>
+      )}
+
+      {activeTab === 'config' && (
+        <div className="config-container">
+          <ConfigManager />
         </div>
       )}
     </div>

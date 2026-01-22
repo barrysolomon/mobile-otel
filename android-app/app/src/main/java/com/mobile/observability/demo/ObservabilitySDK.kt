@@ -19,11 +19,12 @@ import java.util.UUID
 class ObservabilitySDK private constructor(
     private val context: Context,
     private val appId: String,
-    private val gatewayUrl: String
+    private val gatewayUrl: String,
+    private val authToken: String? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val database = ObservabilityDatabase.getDatabase(context)
-    private val gatewayClient = GatewayClient(gatewayUrl)
+    private val gatewayClient = GatewayClient(gatewayUrl, authToken)
 
     private val deviceId = getOrCreateDeviceId()
     private val sessionId = UUID.randomUUID().toString()
@@ -245,12 +246,18 @@ class ObservabilitySDK private constructor(
         @Volatile
         private var INSTANCE: ObservabilitySDK? = null
 
-        fun initialize(context: Context, appId: String, gatewayUrl: String): ObservabilitySDK {
+        fun initialize(
+            context: Context,
+            appId: String,
+            gatewayUrl: String,
+            authToken: String? = null
+        ): ObservabilitySDK {
             return INSTANCE ?: synchronized(this) {
                 val instance = ObservabilitySDK(
                     context.applicationContext,
                     appId,
-                    gatewayUrl
+                    gatewayUrl,
+                    authToken
                 )
                 INSTANCE = instance
                 instance

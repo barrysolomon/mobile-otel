@@ -1,7 +1,10 @@
 package io.opentelemetry.android.demo
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -64,24 +67,19 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Initializes the OpenTelemetry MobileLoggerProvider.
+     * Configuration is loaded from SharedPreferences (managed by ConfigManager).
      */
     private fun initializeOTEL() {
         demoRunId = UUID.randomUUID().toString()
 
-        val config = MobileConfig(
-            serviceName = "otel-mobile-demo",
-            serviceVersion = "1.0.0",
-            collectorEndpoint = "http://10.0.2.2:8080", // Android emulator host
-            ramBufferSize = 5000,
-            diskBufferMb = 50,
-            diskBufferTtlHours = 24
-        )
+        // Load configuration from SharedPreferences
+        val config = ConfigManager.loadConfig(this)
 
         loggerProvider = MobileLoggerProvider.getInstance(this, config)
         logger = loggerProvider.get("demo-app")
 
-        updateStatus("✅ OpenTelemetry initialized\nDevice ID: ${loggerProvider.getDeviceId()}\nRun ID: $demoRunId")
-        Log.i(TAG, "OpenTelemetry initialized: deviceId=${loggerProvider.getDeviceId()}, runId=$demoRunId")
+        updateStatus("✅ OpenTelemetry initialized\nDevice ID: ${loggerProvider.getDeviceId()}\nRun ID: $demoRunId\nEndpoint: ${config.collectorEndpoint}")
+        Log.i(TAG, "OpenTelemetry initialized: deviceId=${loggerProvider.getDeviceId()}, runId=$demoRunId, endpoint=${config.collectorEndpoint}")
     }
 
     /**
@@ -300,6 +298,29 @@ class MainActivity : AppCompatActivity() {
      */
     private fun updateStatus(status: String) {
         statusText.text = status
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_help -> {
+                startActivity(Intent(this, HelpActivity::class.java))
+                true
+            }
+            R.id.action_about -> {
+                startActivity(Intent(this, AboutActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     override fun onDestroy() {

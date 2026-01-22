@@ -13,7 +13,11 @@
       "Bash(tree:*)",
       "Bash(./gradlew:*)",
       "Bash(awk:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(gradle --version:*)",
+      "Bash(gradle wrapper:*)",
+      "Bash(adb shell am start:*)",
+      "Bash(adb logcat:*)"
     ]
   }
 }

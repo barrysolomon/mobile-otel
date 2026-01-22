@@ -15,8 +15,9 @@ import (
 )
 
 type LogExporter struct {
-	provider *sdklog.LoggerProvider
-	logger   log.Logger
+	provider  *sdklog.LoggerProvider
+	logger    log.Logger
+	authToken string
 }
 
 // MobileEvent represents an event received from the mobile device
@@ -30,20 +31,32 @@ type MobileEvent struct {
 	Attributes    map[string]interface{} `json:"attributes"`
 }
 
-func NewLogExporter(ctx context.Context, collectorEndpoint string) (*LogExporter, error) {
-	// Create gRPC connection to collector
-	conn, err := grpc.DialContext(ctx, collectorEndpoint,
+func NewLogExporter(ctx context.Context, collectorEndpoint string, authToken string) (*LogExporter, error) {
+	// Create gRPC connection to collector with timeout
+	// Note: WithBlock is removed to allow non-blocking connection
+	// Connection will be established lazily on first use
+	conn, err := grpc.NewClient(collectorEndpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
 
-	// Create OTLP log exporter
-	exporter, err := otlploggrpc.New(ctx,
+	// Create OTLP log exporter with optional auth headers
+	exporterOpts := []otlploggrpc.Option{
 		otlploggrpc.WithGRPCConn(conn),
-	)
+	}
+
+	// Add authorization header if token is provided
+	if authToken != "" {
+		exporterOpts = append(exporterOpts,
+			otlploggrpc.WithHeaders(map[string]string{
+				"Authorization": "Bearer " + authToken,
+			}),
+		)
+	}
+
+	exporter, err := otlploggrpc.New(ctx, exporterOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP log exporter: %w", err)
 	}
@@ -69,8 +82,9 @@ func NewLogExporter(ctx context.Context, collectorEndpoint string) (*LogExporter
 	logger := provider.Logger("gateway")
 
 	return &LogExporter{
-		provider: provider,
-		logger:   logger,
+		provider:  provider,
+		logger:    logger,
+		authToken: authToken,
 	}, nil
 }
 

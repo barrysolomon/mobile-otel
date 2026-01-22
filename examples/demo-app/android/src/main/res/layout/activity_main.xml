@@ -1,46 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:fillViewport="true">
 
-    <TextView
-        android:id="@+id/statusText"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="OpenTelemetry Android Demo"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="24dp" />
+        android:orientation="vertical"
+        android:padding="16dp">
 
-    <Button
-        android:id="@+id/btnScenarioA"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Scenario A: UI Freeze"
-        android:layout_marginBottom="12dp" />
+        <!-- App Title -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="OpenTelemetry Mobile Demo"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
 
-    <Button
-        android:id="@+id/btnScenarioB"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Scenario B: Crash"
-        android:layout_marginBottom="12dp" />
+        <!-- Status Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:elevation="4dp">
 
-    <Button
-        android:id="@+id/btnScenarioC"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Scenario C: Network Error"
-        android:layout_marginBottom="12dp" />
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Initializing OpenTelemetry..."
+                android:textSize="14sp"
+                android:padding="16dp"
+                android:minHeight="80dp"
+                android:gravity="center" />
 
-    <Button
-        android:id="@+id/btnForceFlush"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Force Flush All Events"
-        android:layout_marginTop="24dp" />
+        </androidx.cardview.widget.CardView>
 
-</LinearLayout>
+        <!-- Demo Scenarios Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Demo Scenarios"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnScenarioA"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Scenario A: UI Freeze"
+            android:textAllCaps="false"
+            android:padding="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnScenarioB"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Scenario B: Crash Simulation"
+            android:textAllCaps="false"
+            android:padding="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnScenarioC"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Scenario C: Network Error"
+            android:textAllCaps="false"
+            android:padding="16dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Manual Controls Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Manual Controls"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnForceFlush"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Force Flush All Events"
+            android:textAllCaps="false"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Info Text -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Use the menu (⋮) to access Settings, Help, and About"
+            android:textSize="12sp"
+            android:textStyle="italic"
+            android:textColor="#666666"
+            android:gravity="center"
+            android:layout_marginTop="16dp" />
+
+    </LinearLayout>
+
+</ScrollView>

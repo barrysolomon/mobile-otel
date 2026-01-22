@@ -11,7 +11,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
-class GatewayClient(private val baseUrl: String) {
+class GatewayClient(
+    private val baseUrl: String,
+    private val authToken: String? = null
+) {
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -22,6 +25,17 @@ class GatewayClient(private val baseUrl: String) {
                 level = HttpLoggingInterceptor.Level.BASIC
             }
         )
+        .apply {
+            // Add auth token interceptor if token is provided
+            if (authToken != null) {
+                addInterceptor { chain ->
+                    val request = chain.request().newBuilder()
+                        .addHeader("Authorization", "Bearer $authToken")
+                        .build()
+                    chain.proceed(request)
+                }
+            }
+        }
         .build()
 
     suspend fun getConfig(appId: String, deviceId: String): Result<DSLConfig> {

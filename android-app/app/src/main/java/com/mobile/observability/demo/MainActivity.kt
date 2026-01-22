@@ -24,7 +24,8 @@ class MainActivity : AppCompatActivity() {
         sdk = ObservabilitySDK.initialize(
             context = this,
             appId = "mobile-observability-demo",
-            gatewayUrl = BuildConfig.GATEWAY_URL
+            gatewayUrl = BuildConfig.GATEWAY_URL,
+            authToken = BuildConfig.OTEL_AUTH_TOKEN
         )
 
         statusText = findViewById(R.id.statusText)
