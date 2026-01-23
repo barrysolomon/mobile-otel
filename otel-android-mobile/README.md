@@ -24,6 +24,32 @@ dependencies {
 
 ## Quick Start
 
+### Auto-Capture (Drop-in)
+
+```kotlin
+import io.opentelemetry.android.mobile.OTelMobile
+import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
+import io.opentelemetry.android.mobile.config.MobileConfig
+
+class MyApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        val config = MobileConfig(
+            serviceName = "my-mobile-app",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://otel-collector.example.com:4317"
+        )
+
+        OTelMobile.start(
+            application = this,
+            config = config,
+            options = AutoCaptureOptions()
+        )
+    }
+}
+```
+
 ### Basic Setup
 
 ```kotlin

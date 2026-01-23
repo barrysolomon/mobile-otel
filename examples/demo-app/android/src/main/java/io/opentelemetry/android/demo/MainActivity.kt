@@ -9,7 +9,7 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import io.opentelemetry.android.mobile.MobileLoggerProvider
-import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.OTelMobile
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
@@ -21,7 +21,6 @@ import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.metrics.LongCounter
 import io.opentelemetry.api.metrics.DoubleHistogram
-import io.opentelemetry.context.Scope
 import java.util.UUID
 
 /**
@@ -239,7 +238,7 @@ class MainActivity : AppCompatActivity() {
         setupButtons()
 
         // Log app start
-        logAppStart()
+        checkIncompleteTransaction()
     }
 
     /**
@@ -302,10 +301,9 @@ class MainActivity : AppCompatActivity() {
     private fun initializeOTEL() {
         demoRunId = UUID.randomUUID().toString()
 
-        // Load configuration from SharedPreferences
         val config = ConfigManager.loadConfig(this)
 
-        loggerProvider = MobileLoggerProvider.getInstance(this, config)
+        loggerProvider = OTelMobile.getLoggerProvider()
         logger = loggerProvider.get("demo-app")
 
         // Get tracer from the OpenTelemetry SDK
@@ -410,64 +408,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Logs application start event and checks for crash/force quit recovery.
-     *
-     * Detection strategy:
-     * - Sets "session_active" marker on app start
-     * - Clears it on clean shutdown (onDestroy)
-     * - If marker exists on next start = app was force killed
-     */
-    private fun logAppStart() {
+    private fun checkIncompleteTransaction() {
         val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-
-        // Check if app was force quit, crashed, or killed by system
-        val manualForceQuit = prefs.getBoolean("force_quit_marker", false)
-        val wasCrash = prefs.getBoolean("crash_marker", false)
-        val wasLowMemory = prefs.getBoolean("low_memory_marker", false)
-        val wasAnr = prefs.getBoolean("anr_marker", false)
-        val sessionWasActive = prefs.getBoolean("session_active", false)
-        val lastSessionTimestamp = prefs.getLong("session_start_timestamp", 0L)
-
-        val recoveryType = when {
-            manualForceQuit -> "manual_force_quit"
-            wasCrash -> "crash"
-            wasLowMemory -> "low_memory_kill"  // Android killed due to memory pressure
-            wasAnr -> "anr_force_kill"  // User force closed during ANR dialog
-            sessionWasActive -> "system_force_kill" // Swipe up to kill or other system kill
-            else -> "clean_start"
-        }
-
-        // Set session active marker for this new session
-        prefs.edit()
-            .putBoolean("session_active", true)
-            .putLong("session_start_timestamp", System.currentTimeMillis())
-            .apply()
-
-        Log.i(TAG, "Session started - recovery_type: $recoveryType")
-
-        // Log app start with recovery info
-        val startTime = System.currentTimeMillis()
-        val timeSinceLastSession = if (lastSessionTimestamp > 0) {
-            startTime - lastSessionTimestamp
-        } else 0L
-
-        logger.logRecordBuilder()
-            .setBody("app.start")
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(
-                createBaseAttributes("logAppStart")
-                    .put("screen.name", "MainActivity")
-                    .put("device_id", loggerProvider.getDeviceId())
-                    .put("recovery_type", recoveryType)
-                    .put("time_since_last_session_ms", timeSinceLastSession)
-                    .build()
-            )
-            .emit()
-
-        Log.i(TAG, "Logged app.start event (recovery_type: $recoveryType)")
-
-        // Check for incomplete transaction from previous session
         val transactionWasActive = prefs.getBoolean("transaction_active", false)
         val transactionId = prefs.getString("transaction_id", null)
         val transactionType = prefs.getString("transaction_type", null)
@@ -475,13 +417,13 @@ class MainActivity : AppCompatActivity() {
 
         if (transactionWasActive && transactionId != null && transactionType != null) {
             val duration = System.currentTimeMillis() - transactionStartTime
+            val recoveryType = OTelMobile.getLastRecoveryType() ?: "clean_start"
 
-            // Log incomplete transaction event
             logger.logRecordBuilder()
                 .setBody("transaction.incomplete")
                 .setSeverity(Severity.WARN)
                 .setAllAttributes(
-                    createBaseAttributes("logAppStart")
+                    createBaseAttributes("checkIncompleteTransaction")
                         .put("transaction.id", transactionId)
                         .put("transaction.type", transactionType)
                         .put("transaction.status", "incomplete_due_to_crash")
@@ -492,9 +434,6 @@ class MainActivity : AppCompatActivity() {
                 )
                 .emit()
 
-            Log.w(TAG, "Detected incomplete transaction: type=$transactionType, id=$transactionId, duration=${duration}ms")
-
-            // Create a synthetic span to mark the failed transaction
             val syntheticSpan = tracer.spanBuilder(transactionType)
                 .setAttribute("transaction.id", transactionId)
                 .setAttribute("transaction.synthetic", true)
@@ -508,9 +447,6 @@ class MainActivity : AppCompatActivity() {
             syntheticSpan.setStatus(StatusCode.ERROR, "Transaction interrupted by app crash")
             syntheticSpan.end(System.currentTimeMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
 
-            Log.i(TAG, "Created synthetic span for incomplete transaction")
-
-            // Clear incomplete transaction markers
             prefs.edit().apply {
                 remove("transaction_active")
                 remove("transaction_id")
@@ -518,60 +454,6 @@ class MainActivity : AppCompatActivity() {
                 remove("transaction_start_time")
                 apply()
             }
-        }
-
-        // If recovering from abnormal termination, log recovery event and flush
-        if (recoveryType != "clean_start") {
-            val terminationType = when (recoveryType) {
-                "manual_force_quit" -> "Manual force quit button"
-                "crash" -> "Uncaught exception crash"
-                "low_memory_kill" -> "Low memory / OOM kill by Android"
-                "anr_force_kill" -> "ANR force close by user"
-                "system_force_kill" -> "System force kill (swipe up or other)"
-                else -> "Unknown"
-            }
-
-            logger.logRecordBuilder()
-                .setBody("app.recovery")
-                .setSeverity(Severity.WARN)
-                .setAllAttributes(
-                    createBaseAttributes("logAppStart")
-                        .put("recovery_type", recoveryType)
-                        .put("termination_type", terminationType)
-                        .put("previous_session", "terminated_abnormally")
-                        .put("device_id", loggerProvider.getDeviceId())
-                        .put("downtime_ms", timeSinceLastSession)
-                        .build()
-                )
-                .emit()
-
-            Log.w(TAG, "App recovered from $recoveryType - flushing buffered telemetry from disk")
-
-            // Flush any buffered telemetry from previous session
-            // This is CRITICAL - it sends all the telemetry that was written to disk
-            // before the app was killed
-            Thread {
-                val result = loggerProvider.forceFlush(30)
-                if (result.isSuccess) {
-                    Log.i(TAG, "✅ Successfully flushed recovery telemetry from disk")
-                    runOnUiThread {
-                        updateStatus("✅ Recovered from $recoveryType\n📤 Sent buffered telemetry from previous session")
-                    }
-                } else {
-                    Log.e(TAG, "❌ Failed to flush recovery telemetry")
-                    runOnUiThread {
-                        updateStatus("⚠️ Recovered from $recoveryType\n❌ Failed to send some telemetry")
-                    }
-                }
-            }.start()
-
-            // Clear recovery markers
-            prefs.edit()
-                .remove("force_quit_marker")
-                .remove("crash_marker")
-                .remove("low_memory_marker")
-                .remove("anr_marker")
-                .apply()
         }
     }
 
@@ -655,14 +537,8 @@ class MainActivity : AppCompatActivity() {
             AttributeKey.stringKey("button.category"), "demo_scenarios"
         ))
 
-        // Set crash marker for recovery detection on next start
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("crash_marker", true)
-            .putLong("crash_timestamp", System.currentTimeMillis())
-            .apply()
-
-        Log.w(TAG, "Set crash_marker - crashing app NOW")
+        OTelMobile.markCrashForNextStart()
+        Log.w(TAG, "Marked crash for recovery - crashing app now")
 
         // Log crash event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
@@ -877,14 +753,8 @@ class MainActivity : AppCompatActivity() {
             AttributeKey.stringKey("button.category"), "demo_scenarios"
         ))
 
-        // Set low memory marker for recovery detection on next start
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("low_memory_marker", true)
-            .putLong("low_memory_timestamp", System.currentTimeMillis())
-            .apply()
-
-        Log.w(TAG, "Set low_memory_marker - starting memory allocation")
+        OTelMobile.markLowMemoryForNextStart()
+        Log.w(TAG, "Marked low memory for recovery - starting memory allocation")
 
         // Log pre-OOM event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
@@ -978,14 +848,8 @@ class MainActivity : AppCompatActivity() {
             AttributeKey.stringKey("button.category"), "demo_scenarios"
         ))
 
-        // Set ANR marker for recovery detection if force killed
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("anr_marker", true)
-            .putLong("anr_timestamp", System.currentTimeMillis())
-            .apply()
-
-        Log.w(TAG, "Set anr_marker - about to trigger ANR")
+        OTelMobile.markAnrForNextStart()
+        Log.w(TAG, "Marked ANR for recovery - about to trigger ANR")
 
 
         Log.e(TAG, "TRIGGERING ANR - Blocking main thread for 30 seconds!")
@@ -1024,10 +888,7 @@ class MainActivity : AppCompatActivity() {
             )
             .emit()
 
-        // Clear ANR marker if user waited
-        prefs.edit()
-            .remove("anr_marker")
-            .apply()
+        // No ANR marker clearing needed when app recovers
 
         updateStatus("✅ Scenario E complete\nANR recovered (user waited 30s)\n📤 Telemetry captured!")
         Log.i(TAG, "Scenario E complete: ANR event logged")
@@ -1067,15 +928,6 @@ class MainActivity : AppCompatActivity() {
     private fun forceQuitApp() {
         updateStatus("⚠️ Force Quit Initiated\n\nFlushing telemetry and exiting in 3 seconds...")
         Log.w(TAG, "Force quit requested - flushing telemetry before exit")
-
-        // Set marker in SharedPreferences for recovery detection
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("force_quit_marker", true)
-            .putLong("force_quit_timestamp", System.currentTimeMillis())
-            .apply()
-
-        Log.i(TAG, "Set force_quit_marker for recovery on next startup")
 
         // Record button click metric
         buttonClickCounter.add(1, Attributes.of(
@@ -1254,13 +1106,8 @@ class MainActivity : AppCompatActivity() {
                             .emit()
 
                         // Set crash marker
-                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-                        prefs.edit()
-                            .putBoolean("crash_marker", true)
-                            .putLong("crash_timestamp", System.currentTimeMillis())
-                            .apply()
-
-                        Log.w(TAG, "Transaction crashing - will be detected as incomplete on restart")
+                        OTelMobile.markCrashForNextStart()
+                        Log.w(TAG, "Transaction crashing - recovery marker set")
                         updateStatus("💥 Transaction crashing!\nOutcome: CRASH\nTransaction will be incomplete")
 
                         // DON'T end the tracked transaction - let it remain incomplete
@@ -1403,11 +1250,7 @@ class MainActivity : AppCompatActivity() {
                             )
                             .emit()
 
-                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-                        prefs.edit()
-                            .putBoolean("crash_marker", true)
-                            .putLong("crash_timestamp", System.currentTimeMillis())
-                            .apply()
+                        OTelMobile.markCrashForNextStart()
 
                         span.end()
                         Thread.sleep(100)
@@ -1552,11 +1395,7 @@ class MainActivity : AppCompatActivity() {
                             )
                             .emit()
 
-                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-                        prefs.edit()
-                            .putBoolean("crash_marker", true)
-                            .putLong("crash_timestamp", System.currentTimeMillis())
-                            .apply()
+                        OTelMobile.markCrashForNextStart()
 
                         span.end()
                         Thread.sleep(100)
@@ -1814,60 +1653,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-
-        // Log app going to background
-        logger.logRecordBuilder()
-            .setBody("app.background")
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(
-                createBaseAttributes("onPause")
-                    .put("lifecycle.state", "paused")
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
-        Log.d(TAG, "App moved to background")
-    }
-
-    override fun onResume() {
-        super.onResume()
-
-        // Log app returning to foreground and trigger flush
-        logger.logRecordBuilder()
-            .setBody("app.foreground")
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(
-                createBaseAttributes("onResume")
-                    .put("lifecycle.state", "resumed")
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
-        // Force flush to send buffered events from background session
-        Thread {
-            loggerProvider.forceFlush(30)
-            Log.i(TAG, "App returned to foreground - flushed buffered events")
-        }.start()
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-
-        // Clear session active marker on clean shutdown
-        // This allows detection of system force kills (swipe up) on next app start
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("session_active", false)
-            .apply()
-
-        Log.i(TAG, "Cleared session_active marker - clean shutdown")
-
-        // Shutdown OpenTelemetry on app close
-        Log.i(TAG, "Shutting down OpenTelemetry")
-        loggerProvider.shutdown(30)
+        Log.i(TAG, "MainActivity destroyed")
     }
 }

@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import io.opentelemetry.android.mobile.MobileLoggerProvider
+import io.opentelemetry.android.mobile.OTelMobile
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -59,8 +60,7 @@ class LogsActivity : AppCompatActivity() {
         btnClearBuffer = findViewById(R.id.btnClearBuffer)
 
         // Initialize OpenTelemetry
-        val config = ConfigManager.loadConfig(this)
-        loggerProvider = MobileLoggerProvider.getInstance(this, config)
+        loggerProvider = OTelMobile.getLoggerProvider()
 
         // Set up button listeners
         setupButtons()
