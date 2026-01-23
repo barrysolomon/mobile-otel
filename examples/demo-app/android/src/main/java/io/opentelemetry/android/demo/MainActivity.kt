@@ -461,9 +461,8 @@ class MainActivity : AppCompatActivity() {
      * Scenario A: UI Freeze (2-11 seconds)
      *
      * Blocks the main thread for a random duration between 2-11 seconds:
-     * - Triggers the ui.freeze workflow when duration exceeds 2 seconds
-     * - Event: ui.freeze logged after blocking completes
-     * - Action: Workflow flushes last 2 minutes of telemetry
+     * - Triggers the ui.freeze detector after blocking completes
+     * - Detector emits ui.freeze and handles flushing
      *
      * Random duration ensures varied testing of the freeze detection threshold.
      */
@@ -498,25 +497,8 @@ class MainActivity : AppCompatActivity() {
 
         Log.i(TAG, "UI freeze completed - main thread was blocked for ${actualDuration}ms")
 
-        // Log UI freeze event using OpenTelemetry semantic conventions
-        logger.logRecordBuilder()
-            .setBody("ui.freeze")
-            .setSeverity(Severity.WARN)
-            .setAllAttributes(
-                createBaseAttributes("runScenarioA")
-                    // UI freeze attributes
-                    .put("duration_ms", actualDuration)
-                    .put("freeze.type", "main_thread_blocked")
-                    .put("freeze.intentional", true)
-                    // Mobile context
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
-        // Note: The ui-freeze-detector workflow will trigger a flush if duration > 2000ms
-        updateStatus("✅ Scenario A complete\nUI freeze: ${actualDuration}ms\n📤 Workflow triggered!")
-        Log.i(TAG, "Scenario A complete: UI freeze event logged (${actualDuration}ms)")
+        updateStatus("✅ Scenario A complete\nUI freeze: ${actualDuration}ms")
+        Log.i(TAG, "Scenario A complete: UI freeze completed (${actualDuration}ms)")
     }
 
     /**
@@ -541,21 +523,6 @@ class MainActivity : AppCompatActivity() {
         Log.w(TAG, "Marked crash for recovery - crashing app now")
 
         // Log crash event using OpenTelemetry semantic conventions
-        logger.logRecordBuilder()
-            .setBody("app.crash")
-            .setSeverity(Severity.ERROR)
-            .setAllAttributes(
-                createBaseAttributes("runScenarioB")
-                    // Standard error semantic conventions
-                    .put("error.type", "java.lang.RuntimeException")
-                    .put("error.message", "Demo crash: Immediate uncaught exception")
-                    .put("exception.type", "RuntimeException")
-                    // Mobile context
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
         Log.e(TAG, "CRASHING APP NOW!")
 
         // Throw exception on MAIN THREAD immediately to crash the app

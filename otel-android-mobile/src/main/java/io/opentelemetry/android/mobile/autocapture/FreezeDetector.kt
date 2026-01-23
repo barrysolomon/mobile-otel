@@ -16,7 +16,9 @@ class FreezeDetector(
     private val logger: Logger,
     private val provider: MobileLoggerProvider,
     private val sessionTracker: SessionTracker,
-    private val options: AutoCaptureOptions
+    private val options: AutoCaptureOptions,
+    private val onAnrDetected: (() -> Unit)? = null,
+    private val onAnrRecovered: (() -> Unit)? = null
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
@@ -31,6 +33,8 @@ class FreezeDetector(
     private var lastFreezeAtMs: Long = 0
 
     private var future: ScheduledFuture<*>? = null
+    private val pendingLock = Any()
+    private var pendingFreeze: PendingFreeze? = null
 
     fun start() {
         if (!options.freezeDetectorEnabled) return
@@ -61,16 +65,40 @@ class FreezeDetector(
             return
         }
 
-        lastFreezeAtMs = now
-        val screenName = sessionTracker.getCurrentScreenName()
+        synchronized(pendingLock) {
+            if (pendingFreeze != null) {
+                return
+            }
+            lastFreezeAtMs = now
+            pendingFreeze = PendingFreeze(
+                delayMs = delay,
+                isAnr = delay >= options.anrThresholdMs,
+                screenName = sessionTracker.getCurrentScreenName()
+            )
+        }
+
+        if (delay >= options.anrThresholdMs) {
+            onAnrDetected?.invoke()
+        }
+
+        // Emit after main thread recovers.
+        mainHandler.post { emitPendingFreeze() }
+    }
+
+    private fun emitPendingFreeze() {
+        val pending = synchronized(pendingLock) {
+            val value = pendingFreeze
+            pendingFreeze = null
+            value
+        } ?: return
 
         val attributes = Attributes.builder()
             .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
             .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
-            .put(AttributeKey.longKey("ui.freeze.delay_ms"), delay)
+            .put(AttributeKey.longKey("ui.freeze.delay_ms"), pending.delayMs)
             .apply {
-                if (screenName != null) {
-                    put(AttributeKey.stringKey("screen.name"), screenName)
+                if (pending.screenName != null) {
+                    put(AttributeKey.stringKey("screen.name"), pending.screenName)
                 }
             }
             .build()
@@ -81,7 +109,36 @@ class FreezeDetector(
             .setAllAttributes(attributes)
             .emit()
 
-        // Flush recent window to disk + export when possible
-        provider.flushWindowAndClearAll()
+        if (pending.isAnr) {
+            val anrAttributes = Attributes.builder()
+                .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
+                .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                .put(AttributeKey.longKey("anr.delay_ms"), pending.delayMs)
+                .put(AttributeKey.stringKey("anr.user_action"), "user_waited")
+                .apply {
+                    if (pending.screenName != null) {
+                        put(AttributeKey.stringKey("screen.name"), pending.screenName)
+                    }
+                }
+                .build()
+
+            logger.logRecordBuilder()
+                .setBody("app.anr")
+                .setSeverity(Severity.ERROR)
+                .setAllAttributes(anrAttributes)
+                .emit()
+
+            onAnrRecovered?.invoke()
+        }
+
+        scheduler.execute {
+            provider.flushWindowAndClearAll()
+        }
     }
+
+    private data class PendingFreeze(
+        val delayMs: Long,
+        val isAnr: Boolean,
+        val screenName: String?
+    )
 }

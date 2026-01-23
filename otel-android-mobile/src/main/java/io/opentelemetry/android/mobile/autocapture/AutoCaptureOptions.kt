@@ -14,6 +14,7 @@ data class AutoCaptureOptions(
     val freezeDetectorEnabled: Boolean = true,
     val freezeThresholdMs: Long = 2000,
     val freezeCooldownMs: Long = 30000,
+    val anrThresholdMs: Long = 5000,
     val scrollThrottleMs: Long = 500,
     val tapCoalesceWindowMs: Long = 800,
     val bucketGridSize: Int = 3,

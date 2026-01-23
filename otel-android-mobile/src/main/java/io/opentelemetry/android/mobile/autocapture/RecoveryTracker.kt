@@ -59,6 +59,10 @@ class RecoveryTracker(
         prefs.edit().putBoolean(KEY_ANR_MARKER, true).apply()
     }
 
+    fun clearAnrMarker() {
+        prefs.edit().remove(KEY_ANR_MARKER).apply()
+    }
+
     override fun onTrimMemory(level: Int) {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE ||
             level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
@@ -90,6 +94,35 @@ class RecoveryTracker(
         if (lastRecoveryType != "clean_start") {
             val lastSessionEnd = prefs.getLong(KEY_LAST_SESSION_END_MS, 0)
             val downtimeMs = if (lastSessionEnd > 0) System.currentTimeMillis() - lastSessionEnd else 0L
+
+            if (wasAnr) {
+                logger.logRecordBuilder()
+                    .setBody("app.anr")
+                    .setSeverity(Severity.ERROR)
+                    .setAllAttributes(
+                        Attributes.builder()
+                            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
+                            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                            .put(AttributeKey.stringKey("anr.user_action"), "force_close")
+                            .build()
+                    )
+                    .emit()
+            }
+
+            if (wasCrash) {
+                logger.logRecordBuilder()
+                    .setBody("app.crash")
+                    .setSeverity(Severity.ERROR)
+                    .setAllAttributes(
+                        Attributes.builder()
+                            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
+                            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                            .put(AttributeKey.stringKey("recovery_type"), lastRecoveryType)
+                            .put(AttributeKey.stringKey("error.type"), "uncaught_exception")
+                            .build()
+                    )
+                    .emit()
+            }
 
             logger.logRecordBuilder()
                 .setBody("app.recovery")

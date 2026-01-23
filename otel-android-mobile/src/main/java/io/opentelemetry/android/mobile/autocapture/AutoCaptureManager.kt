@@ -29,7 +29,14 @@ class AutoCaptureManager(
     private val tapCapture = TapCapture(logger, sessionTracker, options)
     private val backPressCapture = if (options.captureBackPress) BackPressCapture(logger, sessionTracker) else null
     private val scrollCapture = ScrollCapture(logger, sessionTracker, options)
-    private val freezeDetector = FreezeDetector(logger, provider, sessionTracker, options)
+    private val freezeDetector = FreezeDetector(
+        logger,
+        provider,
+        sessionTracker,
+        options,
+        onAnrDetected = { recoveryTracker.markAnrForNextStart() },
+        onAnrRecovered = { recoveryTracker.clearAnrMarker() }
+    )
     private val recoveryTracker = RecoveryTracker(application, logger, provider, sessionTracker)
 
     private val wrappedCallbacks = WeakHashMap<Window, Window.Callback>()
