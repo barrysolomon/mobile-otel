@@ -1,6 +1,7 @@
 package io.opentelemetry.android.mobile.config
 
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
+import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
 
 /**
  * Export mode for telemetry data.
@@ -62,6 +63,7 @@ enum class ExportMode {
  * @property attachContextAttributes Whether to attach geo/device context attributes to exported logs (default: false)
  * @property buildChannel Build channel for the app: prod/beta/internal/unknown (default: "unknown")
  * @property samplingConfig Sampling configuration for traces (default: 10% dynamic sampling with 100% for high-priority)
+ * @property deviceMetricsConfig Configuration for which device metrics to capture on triggers (default: all enabled except location)
  */
 data class MobileConfig(
     val serviceName: String,
@@ -79,7 +81,8 @@ data class MobileConfig(
     val headers: Map<String, String>? = null,
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
-    val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0)
+    val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),
+    val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default()
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -125,6 +128,7 @@ data class MobileConfig(
         private var attachContextAttributes: Boolean = false
         private var buildChannel: String? = null
         private var samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0)
+        private var deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default()
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -142,6 +146,7 @@ data class MobileConfig(
         fun setAttachContextAttributes(enabled: Boolean) = apply { this.attachContextAttributes = enabled }
         fun setBuildChannel(channel: String) = apply { this.buildChannel = channel }
         fun setSamplingConfig(config: SamplingConfig) = apply { this.samplingConfig = config }
+        fun setDeviceMetricsConfig(config: DeviceMetricsConfig) = apply { this.deviceMetricsConfig = config }
 
         fun build(): MobileConfig {
             return MobileConfig(
@@ -160,7 +165,8 @@ data class MobileConfig(
                 headers = headers,
                 attachContextAttributes = attachContextAttributes,
                 buildChannel = buildChannel,
-                samplingConfig = samplingConfig
+                samplingConfig = samplingConfig,
+                deviceMetricsConfig = deviceMetricsConfig
             )
         }
     }

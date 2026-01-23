@@ -102,5 +102,19 @@ object AttributeEnricher {
         builder.put("device.network", context.networkType)
         builder.put("device.battery", context.batteryState)
         builder.put("app.build_channel", context.buildChannel)
+
+        // User demographics (if available)
+        if (context.deviceType != null) {
+            builder.put("device.type", context.deviceType)
+        }
+        if (context.userRegion != null) {
+            builder.put("user.region", context.userRegion)
+        }
+        if (context.ageGroup != null) {
+            builder.put("user.age_group", context.ageGroup)
+        }
+        if (context.tier != null) {
+            builder.put("user.tier", context.tier)
+        }
     }
 }

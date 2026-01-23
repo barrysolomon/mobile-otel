@@ -43,6 +43,10 @@ import java.util.TimeZone
  * @property networkType Network connectivity: wifi/cellular/offline/unknown
  * @property batteryState Battery status: charging/low/normal/unknown
  * @property buildChannel Developer-provided channel: prod/beta/internal/unknown
+ * @property deviceType Optional user-provided device type (e.g., "smartphone", "tablet", "phablet")
+ * @property userRegion Optional user-provided region (e.g., "us", "eu", "asia", "latam")
+ * @property ageGroup Optional user-provided age group (e.g., "18-24", "25-34", "35-44")
+ * @property tier Optional user-provided subscription tier (e.g., "free", "basic", "premium")
  */
 data class ContextSnapshot(
     // Geo (coarse only, privacy-safe)
@@ -57,7 +61,13 @@ data class ContextSnapshot(
     val deviceClass: String,    // "phone" | "tablet" | "unknown"
     val networkType: String,    // "wifi" | "cellular" | "offline" | "unknown"
     val batteryState: String,   // "charging" | "low" | "normal" | "unknown"
-    val buildChannel: String    // "prod" | "beta" | "internal" | "unknown"
+    val buildChannel: String,   // "prod" | "beta" | "internal" | "unknown"
+
+    // User demographics (optional, app-provided)
+    val deviceType: String? = null,   // e.g., "smartphone", "tablet", "phablet"
+    val userRegion: String? = null,   // e.g., "us", "eu", "asia", "latam"
+    val ageGroup: String? = null,     // e.g., "18-24", "25-34", "35-44"
+    val tier: String? = null          // e.g., "free", "basic", "premium"
 ) {
     companion object {
         const val DEVICE_CLASS_PHONE = "phone"
@@ -100,6 +110,9 @@ object ContextSnapshotProvider {
      * @return ContextSnapshot with current device/geo state
      */
     fun getSnapshot(context: Context, config: MobileConfig): ContextSnapshot {
+        // Read demographics from SharedPreferences if available
+        val prefs = context.getSharedPreferences("demo_app_prefs", Context.MODE_PRIVATE)
+
         return ContextSnapshot(
             // Geo (coarse, privacy-safe)
             country = getCountry(),
@@ -113,7 +126,13 @@ object ContextSnapshotProvider {
             deviceClass = getDeviceClass(context),
             networkType = getNetworkType(context),
             batteryState = getBatteryState(context),
-            buildChannel = config.buildChannel ?: ContextSnapshot.CHANNEL_UNKNOWN
+            buildChannel = config.buildChannel ?: ContextSnapshot.CHANNEL_UNKNOWN,
+
+            // User demographics (optional, from SharedPreferences)
+            deviceType = prefs.getString("user_device_type", null),
+            userRegion = prefs.getString("user_region", null),
+            ageGroup = prefs.getString("user_age_group", null),
+            tier = prefs.getString("user_tier", null)
         )
     }
 

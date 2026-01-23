@@ -104,16 +104,42 @@ class MobileLoggerProvider private constructor(
             maxRetries = config.maxExportRetries
         )
 
-        // Create mobile log processor with ring buffer
-        val mobileProcessor = MobileLogRecordProcessor.builder(context)
-            .setExporter(retryableExporter)
-            .setConfig(config)
+        // Create OTLP metric exporter
+        val metricExporter = OtlpGrpcMetricExporter.builder()
+            .setEndpoint(config.collectorEndpoint)
+            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+            .apply {
+                config.headers?.forEach { (key, value) ->
+                    addHeader(key, value)
+                }
+            }
             .build()
 
-        // Build SDK Logger Provider
-        sdkLoggerProvider = SdkLoggerProvider.builder()
+        // Build SDK Meter Provider with mode-appropriate configuration
+        val meterProvider = SdkMeterProvider.builder()
             .setResource(resource)
-            .addLogRecordProcessor(mobileProcessor)
+            .registerMetricReader(
+                when (config.exportMode) {
+                    io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
+                        // Only export on forceFlush(), not on schedule
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
+                        // Regular scheduled exports
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
+                            .build()
+                    }
+                    io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
+                        // Moderate export frequency (2x the configured interval)
+                        PeriodicMetricReader.builder(metricExporter)
+                            .setInterval(config.metricExportIntervalSeconds * 2, TimeUnit.SECONDS)
+                            .build()
+                    }
+                }
+            )
             .build()
 
         // Create OTLP trace exporter
@@ -156,42 +182,17 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // Create OTLP metric exporter
-        val metricExporter = OtlpGrpcMetricExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
-            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-            .apply {
-                config.headers?.forEach { (key, value) ->
-                    addHeader(key, value)
-                }
-            }
+        // Create mobile log processor with ring buffer
+        val mobileProcessor = MobileLogRecordProcessor.builder(context)
+            .setExporter(retryableExporter)
+            .setConfig(config)
+            .setMeter(meterProvider.get("device-metrics"))
             .build()
 
-        // Build SDK Meter Provider with mode-appropriate configuration
-        val meterProvider = SdkMeterProvider.builder()
+        // Build SDK Logger Provider
+        sdkLoggerProvider = SdkLoggerProvider.builder()
             .setResource(resource)
-            .registerMetricReader(
-                when (config.exportMode) {
-                    io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        // Only export on forceFlush(), not on schedule
-                        PeriodicMetricReader.builder(metricExporter)
-                            .setInterval(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
-                            .build()
-                    }
-                    io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        // Regular scheduled exports
-                        PeriodicMetricReader.builder(metricExporter)
-                            .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
-                            .build()
-                    }
-                    io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // Moderate export frequency (2x the configured interval)
-                        PeriodicMetricReader.builder(metricExporter)
-                            .setInterval(config.metricExportIntervalSeconds * 2, TimeUnit.SECONDS)
-                            .build()
-                    }
-                }
-            )
+            .addLogRecordProcessor(mobileProcessor)
             .build()
 
         // Build OpenTelemetry SDK with logging, tracing, and metrics

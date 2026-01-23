@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.ExportMode
+import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
 import org.json.JSONObject
 import java.io.IOException
 
@@ -73,6 +74,25 @@ object ConfigManager {
     }
 
     /**
+     * Loads DeviceMetricsConfig from SharedPreferences.
+     */
+    private fun loadDeviceMetricsConfig(context: Context): DeviceMetricsConfig {
+        val prefs = context.getSharedPreferences("telemetry_settings", Context.MODE_PRIVATE)
+        return DeviceMetricsConfig(
+            captureMemory = prefs.getBoolean("metric_memory", true),
+            captureBattery = prefs.getBoolean("metric_battery", true),
+            captureCpu = prefs.getBoolean("metric_cpu", true),
+            captureNetwork = prefs.getBoolean("metric_network", true),
+            captureStorage = prefs.getBoolean("metric_storage", true),
+            captureThermal = prefs.getBoolean("metric_thermal", false),
+            captureDisplay = prefs.getBoolean("metric_display", true),
+            captureSystem = prefs.getBoolean("metric_system", true),
+            captureApp = prefs.getBoolean("metric_app", true),
+            captureLocation = prefs.getBoolean("metric_location", false)
+        )
+    }
+
+    /**
      * Loads the current MobileConfig with priority order:
      * 1. Runtime config (SharedPreferences) - if previously saved
      * 2. Bundled config (assets/otel-config.json) - if app hasn't loaded config yet
@@ -131,7 +151,8 @@ object ConfigManager {
             maxExportRetries = prefs.getInt(KEY_MAX_EXPORT_RETRIES, DEFAULT_MAX_EXPORT_RETRIES),
             headers = headers.ifEmpty { null },
             attachContextAttributes = prefs.getBoolean(KEY_ATTACH_CONTEXT_ATTRIBUTES, DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
-            buildChannel = prefs.getString(KEY_BUILD_CHANNEL, DEFAULT_BUILD_CHANNEL)
+            buildChannel = prefs.getString(KEY_BUILD_CHANNEL, DEFAULT_BUILD_CHANNEL),
+            deviceMetricsConfig = loadDeviceMetricsConfig(context)
         )
     }
 
@@ -234,7 +255,7 @@ object ConfigManager {
             parseTelemetrySettings(context, json)
 
             // Parse and return the main config
-            parseJsonConfig(json)
+            parseJsonConfig(context, json)
         } catch (e: IOException) {
             Log.w(TAG, "No bundled config found at assets/$BUNDLED_CONFIG_FILE", e)
             null
@@ -274,7 +295,7 @@ object ConfigManager {
      * @param json JSON string
      * @return MobileConfig
      */
-    private fun parseJsonConfig(json: String): MobileConfig {
+    private fun parseJsonConfig(context: Context, json: String): MobileConfig {
         val jsonObj = JSONObject(json)
 
         // Parse export mode
@@ -298,6 +319,9 @@ object ConfigManager {
             null
         }
 
+        // Load device metrics config from telemetry settings that were already parsed
+        val deviceMetricsConfig = loadDeviceMetricsConfig(context)
+
         val config = MobileConfig(
             serviceName = jsonObj.optString("serviceName", DEFAULT_SERVICE_NAME),
             serviceVersion = jsonObj.optString("serviceVersion", DEFAULT_SERVICE_VERSION),
@@ -313,7 +337,8 @@ object ConfigManager {
             maxExportRetries = jsonObj.optInt("maxExportRetries", DEFAULT_MAX_EXPORT_RETRIES),
             headers = headers,
             attachContextAttributes = jsonObj.optBoolean("attachContextAttributes", DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
-            buildChannel = jsonObj.optString("buildChannel", DEFAULT_BUILD_CHANNEL)
+            buildChannel = jsonObj.optString("buildChannel", DEFAULT_BUILD_CHANNEL),
+            deviceMetricsConfig = deviceMetricsConfig
         )
 
         return config
@@ -398,7 +423,7 @@ object ConfigManager {
             parseTelemetrySettings(context, jsonString)
 
             // Parse main config
-            val config = parseJsonConfig(jsonString)
+            val config = parseJsonConfig(context, jsonString)
             saveConfig(context, config)
             getPrefs(context).edit().putBoolean(KEY_CONFIG_LOADED, true).apply()
 

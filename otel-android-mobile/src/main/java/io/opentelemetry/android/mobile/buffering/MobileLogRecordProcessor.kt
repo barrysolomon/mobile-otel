@@ -2,7 +2,9 @@ package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
 import android.util.Log
-// import io.opentelemetry.android.mobile.policy.PolicyEvaluator
+import io.opentelemetry.android.mobile.policy.PolicyEvaluator
+import io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector
+import io.opentelemetry.android.mobile.metrics.CaptureReason
 import io.opentelemetry.context.Context as OtelContext
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.LogRecordProcessor
@@ -65,6 +67,7 @@ class MobileLogRecordProcessor private constructor(
     private val context: Context,
     private val exporter: LogRecordExporter,
     private val config: io.opentelemetry.android.mobile.config.MobileConfig,
+    private val meter: io.opentelemetry.api.metrics.Meter,
     private val ramBufferSize: Int,
     private val diskBufferMb: Int,
     private val diskBufferTtlHours: Int
@@ -84,7 +87,10 @@ class MobileLogRecordProcessor private constructor(
     )
 
     // Policy evaluator: determines when to flush
-    // private val policyEvaluator = PolicyEvaluator(context, config)
+    private val policyEvaluator = PolicyEvaluator(context, config)
+
+    // Device metrics collector: captures device health metrics on triggers
+    private val deviceMetricsCollector = DeviceMetricsCollector(context, meter, config.deviceMetricsConfig)
 
     // Executor for background tasks
     private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
@@ -136,27 +142,37 @@ class MobileLogRecordProcessor private constructor(
         }
 
         // Evaluate policies to see if we should flush
-        // executor.submit { evaluatePolicies(logRecordData) }
+        executor.submit { evaluatePolicies(logRecordData) }
     }
 
     /**
      * Evaluates policies against the new log record to determine if a flush is needed.
      *
      * This runs asynchronously to avoid blocking the logging thread.
+     * When a policy matches, it also captures device metrics for debugging context.
      */
-    /*
     private fun evaluatePolicies(logRecord: LogRecordData) {
         try {
             val matchResult = policyEvaluator.evaluate(logRecord)
             if (matchResult != null) {
-                Log.i(TAG, "Policy matched: ${matchResult.policyId}, flushing window")
+                Log.i(TAG, "Policy matched: ${matchResult.policyId}, capturing device metrics and flushing window")
+
+                // Capture device metrics on policy match for debugging context
+                val captureReason = when (matchResult.policyId) {
+                    "ui-freeze-detector" -> CaptureReason.WORKFLOW_TRIGGER
+                    "crash-recovery" -> CaptureReason.CRASH
+                    "app-foreground" -> CaptureReason.APP_START
+                    else -> CaptureReason.WORKFLOW_TRIGGER
+                }
+                deviceMetricsCollector.captureMetrics(captureReason)
+
+                // Flush the time window
                 flushWindow(matchResult.flushWindowMinutes)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating policies", e)
         }
     }
-    */
 
     /**
      * Flushes a time window of events (e.g., "last 2 minutes").
@@ -394,12 +410,14 @@ class MobileLogRecordProcessor private constructor(
     class Builder(private val context: Context) {
         private var exporter: LogRecordExporter? = null
         private var config: io.opentelemetry.android.mobile.config.MobileConfig? = null
+        private var meter: io.opentelemetry.api.metrics.Meter? = null
         private var ramBufferSize: Int = 5000
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
 
         fun setExporter(exporter: LogRecordExporter) = apply { this.exporter = exporter }
         fun setConfig(config: io.opentelemetry.android.mobile.config.MobileConfig) = apply { this.config = config }
+        fun setMeter(meter: io.opentelemetry.api.metrics.Meter) = apply { this.meter = meter }
         fun setRamBufferSize(size: Int) = apply { this.ramBufferSize = size }
         fun setDiskBufferMb(sizeMb: Int) = apply { this.diskBufferMb = sizeMb }
         fun setDiskBufferTtlHours(hours: Int) = apply { this.diskBufferTtlHours = hours }
@@ -409,6 +427,7 @@ class MobileLogRecordProcessor private constructor(
                 context = context,
                 exporter = requireNotNull(exporter) { "Exporter is required" },
                 config = requireNotNull(config) { "Config is required" },
+                meter = requireNotNull(meter) { "Meter is required" },
                 ramBufferSize = ramBufferSize,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours

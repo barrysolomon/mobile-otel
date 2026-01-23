@@ -232,11 +232,67 @@ class MainActivity : AppCompatActivity() {
         // Initialize OpenTelemetry
         initializeOTEL()
 
+        // Handle demographics from intent extras (for monkey test support)
+        handleDemographics(intent)
+
         // Set up button listeners
         setupButtons()
 
         // Log app start
         logAppStart()
+    }
+
+    /**
+     * Handles demographic attributes from intent extras.
+     * This allows the monkey test script to set demographics via adb shell.
+     *
+     * Usage: adb shell am start -n io.opentelemetry.android.demo/.MainActivity \
+     *        --es device_type "smartphone" --es region "us" --es age_group "25-34" --es tier "premium"
+     */
+    private fun handleDemographics(intent: Intent?) {
+        intent?.extras?.let { extras ->
+            val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+            val editor = prefs.edit()
+            var updated = false
+
+            extras.getString("device_type")?.let {
+                editor.putString("user_device_type", it)
+                updated = true
+                Log.i(TAG, "Updated demographics: device_type=$it")
+            }
+
+            extras.getString("region")?.let {
+                editor.putString("user_region", it)
+                updated = true
+                Log.i(TAG, "Updated demographics: region=$it")
+            }
+
+            extras.getString("age_group")?.let {
+                editor.putString("user_age_group", it)
+                updated = true
+                Log.i(TAG, "Updated demographics: age_group=$it")
+            }
+
+            extras.getString("tier")?.let {
+                editor.putString("user_tier", it)
+                updated = true
+                Log.i(TAG, "Updated demographics: tier=$it")
+            }
+
+            if (updated) {
+                editor.apply()
+                Log.i(TAG, "Demographics updated from intent extras")
+            }
+        }
+    }
+
+    /**
+     * Handles new intents when activity is already running.
+     * This allows demographics to be updated without restarting the activity.
+     */
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        handleDemographics(intent)
     }
 
     /**

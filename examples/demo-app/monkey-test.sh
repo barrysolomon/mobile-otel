@@ -316,14 +316,20 @@ set_demographics() {
     local profile="${DEMOGRAPHIC_PROFILES[$CURRENT_DEMOGRAPHIC_INDEX]}"
     log_demographic "Setting profile #$((CURRENT_DEMOGRAPHIC_INDEX + 1)): $profile"
 
-    # Parse and set demographic attributes
+    # Parse profile and build intent extras
+    local intent_extras=""
     IFS=',' read -ra ATTRS <<< "$profile"
     for attr in "${ATTRS[@]}"; do
         IFS=':' read -ra KV <<< "$attr"
         local key="${KV[0]}"
         local value="${KV[1]}"
         log_debug "  $key = $value"
+        intent_extras="$intent_extras --es $key \"$value\""
     done
+
+    # Send demographics to app via intent extras (using FLAG_ACTIVITY_SINGLE_TOP to avoid restart)
+    log_debug "Sending demographics via intent: $intent_extras"
+    adb shell am start -n $PACKAGE_NAME/.MainActivity --activity-single-top $intent_extras >/dev/null 2>&1
 
     # Cycle to next profile
     CURRENT_DEMOGRAPHIC_INDEX=$(( (CURRENT_DEMOGRAPHIC_INDEX + 1) % ${#DEMOGRAPHIC_PROFILES[@]} ))
