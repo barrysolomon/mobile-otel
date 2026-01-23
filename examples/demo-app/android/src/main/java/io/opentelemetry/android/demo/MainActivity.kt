@@ -105,6 +105,98 @@ class MainActivity : AppCompatActivity() {
             .also { addCodeLocation(it, functionName) }
     }
 
+    /**
+     * Transaction outcome configuration for testing
+     * Default: 70% pass, 20% fail, 10% crash
+     */
+    data class TransactionOutcomeConfig(
+        val passRate: Int = 70,    // Percentage that complete successfully
+        val failRate: Int = 20,    // Percentage that fail gracefully
+        val crashRate: Int = 10    // Percentage that crash before completion
+    ) {
+        init {
+            require(passRate + failRate + crashRate == 100) {
+                "Transaction outcome rates must sum to 100% (got: ${passRate + failRate + crashRate})"
+            }
+        }
+    }
+
+    private val transactionOutcomeConfig = TransactionOutcomeConfig()
+
+    enum class TransactionOutcome {
+        PASS, FAIL, CRASH
+    }
+
+    /**
+     * Determines transaction outcome based on configured rates.
+     * Returns PASS, FAIL, or CRASH.
+     */
+    private fun determineTransactionOutcome(): TransactionOutcome {
+        val random = (1..100).random()
+        return when {
+            random <= transactionOutcomeConfig.passRate -> TransactionOutcome.PASS
+            random <= transactionOutcomeConfig.passRate + transactionOutcomeConfig.failRate -> TransactionOutcome.FAIL
+            else -> TransactionOutcome.CRASH
+        }
+    }
+
+    /**
+     * Starts a tracked transaction that will be monitored for completion.
+     * If app crashes before endTrackedTransaction() is called, it will be detected on restart.
+     */
+    private fun startTrackedTransaction(
+        transactionId: String,
+        transactionType: String,
+        spanBuilder: io.opentelemetry.api.trace.SpanBuilder
+    ): Span {
+        val span = spanBuilder
+            .setAttribute("transaction.id", transactionId)
+            .setAttribute("transaction.type", transactionType)
+            .startSpan()
+
+        // Track active transaction in SharedPreferences for crash detection
+        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+        prefs.edit().apply {
+            putBoolean("transaction_active", true)
+            putString("transaction_id", transactionId)
+            putString("transaction_type", transactionType)
+            putLong("transaction_start_time", System.currentTimeMillis())
+            apply()
+        }
+
+        Log.d(TAG, "Started tracked transaction: type=$transactionType, id=$transactionId")
+        return span
+    }
+
+    /**
+     * Ends a tracked transaction and clears the tracking markers.
+     * Should be called when transaction completes (successfully or with error).
+     */
+    private fun endTrackedTransaction(
+        span: Span,
+        statusCode: StatusCode = StatusCode.OK,
+        statusMessage: String? = null
+    ) {
+        if (statusMessage != null) {
+            span.setStatus(statusCode, statusMessage)
+        } else {
+            span.setStatus(statusCode)
+        }
+        span.end()
+
+        // Clear transaction tracking
+        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+        prefs.edit().apply {
+            remove("transaction_active")
+            remove("transaction_id")
+            remove("transaction_type")
+            remove("transaction_start_time")
+            apply()
+        }
+
+        Log.d(TAG, "Ended tracked transaction with status: $statusCode")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -318,6 +410,59 @@ class MainActivity : AppCompatActivity() {
             .emit()
 
         Log.i(TAG, "Logged app.start event (recovery_type: $recoveryType)")
+
+        // Check for incomplete transaction from previous session
+        val transactionWasActive = prefs.getBoolean("transaction_active", false)
+        val transactionId = prefs.getString("transaction_id", null)
+        val transactionType = prefs.getString("transaction_type", null)
+        val transactionStartTime = prefs.getLong("transaction_start_time", 0L)
+
+        if (transactionWasActive && transactionId != null && transactionType != null) {
+            val duration = System.currentTimeMillis() - transactionStartTime
+
+            // Log incomplete transaction event
+            logger.logRecordBuilder()
+                .setBody("transaction.incomplete")
+                .setSeverity(Severity.WARN)
+                .setAllAttributes(
+                    createBaseAttributes("logAppStart")
+                        .put("transaction.id", transactionId)
+                        .put("transaction.type", transactionType)
+                        .put("transaction.status", "incomplete_due_to_crash")
+                        .put("transaction.duration_before_crash_ms", duration)
+                        .put("recovery_type", recoveryType)
+                        .put("device_id", loggerProvider.getDeviceId())
+                        .build()
+                )
+                .emit()
+
+            Log.w(TAG, "Detected incomplete transaction: type=$transactionType, id=$transactionId, duration=${duration}ms")
+
+            // Create a synthetic span to mark the failed transaction
+            val syntheticSpan = tracer.spanBuilder(transactionType)
+                .setAttribute("transaction.id", transactionId)
+                .setAttribute("transaction.synthetic", true)
+                .setAttribute("transaction.incomplete", true)
+                .setAttribute("recovery_type", recoveryType)
+                .setAttribute("duration_before_crash_ms", duration)
+                .setStartTimestamp(transactionStartTime, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .startSpan()
+
+            syntheticSpan.addEvent("transaction_interrupted_by_crash")
+            syntheticSpan.setStatus(StatusCode.ERROR, "Transaction interrupted by app crash")
+            syntheticSpan.end(System.currentTimeMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
+
+            Log.i(TAG, "Created synthetic span for incomplete transaction")
+
+            // Clear incomplete transaction markers
+            prefs.edit().apply {
+                remove("transaction_active")
+                remove("transaction_id")
+                remove("transaction_type")
+                remove("transaction_start_time")
+                apply()
+            }
+        }
 
         // If recovering from abnormal termination, log recovery event and flush
         if (recoveryType != "clean_start") {
@@ -945,6 +1090,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Simulates a user login flow with authentication logs and traces.
+     * Uses tracked transactions with configurable pass/fail/crash outcomes.
      */
     private fun logUserLogin() {
         updateStatus("🔵 Logging user login flow...")
@@ -956,13 +1102,19 @@ class MainActivity : AppCompatActivity() {
         ))
 
         val startTime = System.currentTimeMillis()
+        val transactionId = UUID.randomUUID().toString()
+        val outcome = determineTransactionOutcome()
 
-        // Create a span for the entire login operation
-        val span = tracer.spanBuilder("auth.login")
-            .setAttribute("demo_run_id", demoRunId)
-            .setAttribute("auth.method", "email_password")
-            .setAttribute("user.email", "demo@example.com")
-            .startSpan()
+        // Create a tracked span for the entire login operation
+        val span = startTrackedTransaction(
+            transactionId = transactionId,
+            transactionType = "auth.login",
+            spanBuilder = tracer.spanBuilder("auth.login")
+                .setAttribute("demo_run_id", demoRunId)
+                .setAttribute("auth.method", "email_password")
+                .setAttribute("user.email", "demo@example.com")
+                .setAttribute("transaction.expected_outcome", outcome.name)
+        )
 
         try {
             span.makeCurrent().use { scope ->
@@ -980,6 +1132,7 @@ class MainActivity : AppCompatActivity() {
                                     .put("auth.method", "email_password")
                                     .put("user.email", "demo@example.com")
                                     .put("screen.name", "LoginActivity")
+                                    .put("transaction.id", transactionId)
                                     .build()
                             )
                             .emit()
@@ -993,43 +1146,116 @@ class MainActivity : AppCompatActivity() {
                     attemptSpan.end()
                 }
 
-                // Login success
-                val sessionId = UUID.randomUUID().toString()
-                span.setAttribute("user.id", "user_12345")
-                span.setAttribute("session.id", sessionId)
+                // Handle transaction outcome
+                when (outcome) {
+                    TransactionOutcome.PASS -> {
+                        // Login success
+                        val sessionId = UUID.randomUUID().toString()
+                        span.setAttribute("user.id", "user_12345")
+                        span.setAttribute("session.id", sessionId)
+                        span.setAttribute("transaction.outcome", "PASS")
 
-                logger.logRecordBuilder()
-                    .setBody("auth.login.success")
-                    .setSeverity(Severity.INFO)
-                    .setAllAttributes(
-                        createBaseAttributes("logUserLogin")
-                            .put("user.id", "user_12345")
-                            .put("user.email", "demo@example.com")
-                            .put("session.id", sessionId)
-                            .put("auth.duration_ms", 300L)
-                            .build()
-                    )
-                    .emit()
+                        logger.logRecordBuilder()
+                            .setBody("auth.login.success")
+                            .setSeverity(Severity.INFO)
+                            .setAllAttributes(
+                                createBaseAttributes("logUserLogin")
+                                    .put("user.id", "user_12345")
+                                    .put("user.email", "demo@example.com")
+                                    .put("session.id", sessionId)
+                                    .put("auth.duration_ms", 300L)
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "PASS")
+                                    .build()
+                            )
+                            .emit()
 
-                span.setStatus(StatusCode.OK)
+                        endTrackedTransaction(span, StatusCode.OK)
+                        updateStatus("✅ User login logged\nOutcome: PASS\nUser ID: user_12345\nTransaction ID: $transactionId")
+                    }
+
+                    TransactionOutcome.FAIL -> {
+                        // Login fails gracefully (wrong password, etc.)
+                        span.setAttribute("transaction.outcome", "FAIL")
+                        span.setAttribute("error.type", "auth.invalid_credentials")
+
+                        logger.logRecordBuilder()
+                            .setBody("auth.login.failure")
+                            .setSeverity(Severity.WARN)
+                            .setAllAttributes(
+                                createBaseAttributes("logUserLogin")
+                                    .put("user.email", "demo@example.com")
+                                    .put("error.type", "invalid_credentials")
+                                    .put("error.message", "Invalid username or password")
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "FAIL")
+                                    .build()
+                            )
+                            .emit()
+
+                        endTrackedTransaction(span, StatusCode.ERROR, "Invalid credentials")
+                        updateStatus("⚠️ User login failed\nOutcome: FAIL\nReason: Invalid credentials\nTransaction ID: $transactionId")
+                    }
+
+                    TransactionOutcome.CRASH -> {
+                        // Crash before transaction completes - transaction will be marked incomplete on restart
+                        span.setAttribute("transaction.outcome", "CRASH")
+                        span.addEvent("transaction_about_to_crash")
+
+                        logger.logRecordBuilder()
+                            .setBody("auth.login.crash_simulated")
+                            .setSeverity(Severity.ERROR)
+                            .setAllAttributes(
+                                createBaseAttributes("logUserLogin")
+                                    .put("user.email", "demo@example.com")
+                                    .put("error.type", "simulated_crash")
+                                    .put("error.message", "Simulated crash during login transaction")
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "CRASH")
+                                    .build()
+                            )
+                            .emit()
+
+                        // Set crash marker
+                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+                        prefs.edit()
+                            .putBoolean("crash_marker", true)
+                            .putLong("crash_timestamp", System.currentTimeMillis())
+                            .apply()
+
+                        Log.w(TAG, "Transaction crashing - will be detected as incomplete on restart")
+                        updateStatus("💥 Transaction crashing!\nOutcome: CRASH\nTransaction will be incomplete")
+
+                        // DON'T end the tracked transaction - let it remain incomplete
+                        span.end()  // End span but leave transaction tracking active
+
+                        // Give time for logs to be written
+                        Thread.sleep(100)
+
+                        // Crash the app
+                        throw RuntimeException("Simulated crash during transaction: $transactionId")
+                    }
+                }
+
+                // Record operation duration metric (only for PASS/FAIL, not CRASH)
+                if (outcome != TransactionOutcome.CRASH) {
+                    val duration = (System.currentTimeMillis() - startTime).toDouble()
+                    operationDurationHistogram.record(duration, Attributes.of(
+                        AttributeKey.stringKey("operation.name"), "auth.login",
+                        AttributeKey.stringKey("operation.status"), outcome.name.lowercase()
+                    ))
+                }
             }
         } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, "Login failed: ${e.message}")
-            span.recordException(e)
+            // Only catch non-crash exceptions
+            if (outcome != TransactionOutcome.CRASH) {
+                span.recordException(e)
+                endTrackedTransaction(span, StatusCode.ERROR, "Unexpected error: ${e.message}")
+            }
             throw e
-        } finally {
-            span.end()
-
-            // Record operation duration metric
-            val duration = (System.currentTimeMillis() - startTime).toDouble()
-            operationDurationHistogram.record(duration, Attributes.of(
-                AttributeKey.stringKey("operation.name"), "auth.login",
-                AttributeKey.stringKey("operation.status"), "success"
-            ))
         }
 
-        updateStatus("✅ User login logged\nEvent: auth.login.success\nUser ID: user_12345\nTrace + Metrics created!")
-        Log.i(TAG, "User login flow logged with trace and metrics")
+        Log.i(TAG, "User login flow logged with outcome: $outcome, transaction_id: $transactionId")
     }
 
     /**
@@ -1047,36 +1273,120 @@ class MainActivity : AppCompatActivity() {
         val screens = listOf("HomeActivity", "ProfileActivity", "SettingsActivity")
         val currentScreen = screens.random()
         val nextScreen = (screens - currentScreen).random()
+        val transactionId = UUID.randomUUID().toString()
+        val outcome = determineTransactionOutcome()
 
-        // Screen exit using semantic conventions
-        logger.logRecordBuilder()
-            .setBody("screen.exit")
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(
-                createBaseAttributes("logPageNavigation")
-                    .put("screen.name", currentScreen)
-                    .put("screen.duration_ms", (2000..5000).random().toLong())
-                    .build()
-            )
-            .emit()
+        // Create tracked span for navigation
+        val span = startTrackedTransaction(
+            transactionId = transactionId,
+            transactionType = "screen.navigation",
+            spanBuilder = tracer.spanBuilder("screen.navigation")
+                .setAttribute("demo_run_id", demoRunId)
+                .setAttribute("screen.from", currentScreen)
+                .setAttribute("screen.to", nextScreen)
+                .setAttribute("transaction.expected_outcome", outcome.name)
+        )
 
-        Thread.sleep(100)
+        try {
+            span.makeCurrent().use {
+                // Screen exit
+                logger.logRecordBuilder()
+                    .setBody("screen.exit")
+                    .setSeverity(Severity.INFO)
+                    .setAllAttributes(
+                        createBaseAttributes("logPageNavigation")
+                            .put("screen.name", currentScreen)
+                            .put("screen.duration_ms", (2000..5000).random().toLong())
+                            .put("transaction.id", transactionId)
+                            .build()
+                    )
+                    .emit()
 
-        // Screen enter using semantic conventions
-        logger.logRecordBuilder()
-            .setBody("screen.enter")
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(
-                createBaseAttributes("logPageNavigation")
-                    .put("screen.name", nextScreen)
-                    .put("screen.source", currentScreen)
-                    .put("navigation.method", "button_click")
-                    .build()
-            )
-            .emit()
+                Thread.sleep(100)
 
-        updateStatus("✅ Page navigation logged\n$currentScreen → $nextScreen")
-        Log.i(TAG, "Page navigation logged: $currentScreen -> $nextScreen")
+                // Handle transaction outcome
+                when (outcome) {
+                    TransactionOutcome.PASS -> {
+                        span.setAttribute("transaction.outcome", "PASS")
+
+                        logger.logRecordBuilder()
+                            .setBody("screen.enter")
+                            .setSeverity(Severity.INFO)
+                            .setAllAttributes(
+                                createBaseAttributes("logPageNavigation")
+                                    .put("screen.name", nextScreen)
+                                    .put("screen.source", currentScreen)
+                                    .put("navigation.method", "button_click")
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "PASS")
+                                    .build()
+                            )
+                            .emit()
+
+                        endTrackedTransaction(span, StatusCode.OK)
+                        updateStatus("✅ Navigation: PASS\n$currentScreen → $nextScreen")
+                    }
+
+                    TransactionOutcome.FAIL -> {
+                        span.setAttribute("transaction.outcome", "FAIL")
+                        span.setAttribute("error.type", "navigation.not_found")
+
+                        logger.logRecordBuilder()
+                            .setBody("screen.navigation_failed")
+                            .setSeverity(Severity.WARN)
+                            .setAllAttributes(
+                                createBaseAttributes("logPageNavigation")
+                                    .put("screen.from", currentScreen)
+                                    .put("screen.to", nextScreen)
+                                    .put("error.type", "screen_not_found")
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "FAIL")
+                                    .build()
+                            )
+                            .emit()
+
+                        endTrackedTransaction(span, StatusCode.ERROR, "Navigation failed")
+                        updateStatus("⚠️ Navigation: FAIL\n$currentScreen ╳ $nextScreen")
+                    }
+
+                    TransactionOutcome.CRASH -> {
+                        span.setAttribute("transaction.outcome", "CRASH")
+                        span.addEvent("transaction_about_to_crash")
+
+                        logger.logRecordBuilder()
+                            .setBody("screen.navigation_crash_simulated")
+                            .setSeverity(Severity.ERROR)
+                            .setAllAttributes(
+                                createBaseAttributes("logPageNavigation")
+                                    .put("screen.from", currentScreen)
+                                    .put("screen.to", nextScreen)
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "CRASH")
+                                    .build()
+                            )
+                            .emit()
+
+                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+                        prefs.edit()
+                            .putBoolean("crash_marker", true)
+                            .putLong("crash_timestamp", System.currentTimeMillis())
+                            .apply()
+
+                        span.end()
+                        Thread.sleep(100)
+                        throw RuntimeException("Crash during navigation transaction: $transactionId")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (outcome != TransactionOutcome.CRASH) {
+                span.recordException(e)
+                endTrackedTransaction(span, StatusCode.ERROR)
+            }
+            throw e
+        }
+
+        Log.i(TAG, "Navigation: $currentScreen -> $nextScreen, outcome: $outcome, tx: $transactionId")
     }
 
     /**
@@ -1095,17 +1405,23 @@ class MainActivity : AppCompatActivity() {
         val endpoint = endpoints.random()
         val duration = (50..300).random()
         val responseSize = (1024..10240).random()
+        val transactionId = UUID.randomUUID().toString()
+        val outcome = determineTransactionOutcome()
 
-        // Create HTTP span (follows semantic conventions)
-        val span = tracer.spanBuilder("HTTP GET")
-            .setAttribute("http.method", "GET")
-            .setAttribute("http.url", "https://api.example.com$endpoint")
-            .setAttribute("http.route", endpoint)
-            .setAttribute("http.scheme", "https")
-            .setAttribute("http.target", endpoint)
-            .setAttribute("net.peer.name", "api.example.com")
-            .setAttribute("demo_run_id", demoRunId)
-            .startSpan()
+        // Create tracked HTTP span (follows semantic conventions)
+        val span = startTrackedTransaction(
+            transactionId = transactionId,
+            transactionType = "http.request",
+            spanBuilder = tracer.spanBuilder("HTTP GET")
+                .setAttribute("http.method", "GET")
+                .setAttribute("http.url", "https://api.example.com$endpoint")
+                .setAttribute("http.route", endpoint)
+                .setAttribute("http.scheme", "https")
+                .setAttribute("http.target", endpoint)
+                .setAttribute("net.peer.name", "api.example.com")
+                .setAttribute("demo_run_id", demoRunId)
+                .setAttribute("transaction.expected_outcome", outcome.name)
+        )
 
         try {
             span.makeCurrent().use {
@@ -1121,67 +1437,114 @@ class MainActivity : AppCompatActivity() {
                             .put("http.scheme", "https")
                             .put("net.peer.name", "api.example.com")
                             .put("request.id", UUID.randomUUID().toString())
+                            .put("transaction.id", transactionId)
                             .build()
                     )
                     .emit()
 
-                span.addEvent("request_sent", Attributes.of(
-                    AttributeKey.stringKey("http.method"), "GET",
-                    AttributeKey.stringKey("http.url"), "https://api.example.com$endpoint",
-                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
-                ))
+                span.addEvent("request_sent")
 
                 // Simulate network delay
                 Thread.sleep(duration.toLong())
 
-                span.addEvent("response_received", Attributes.of(
-                    AttributeKey.longKey("http.status_code"), 200L,
-                    AttributeKey.longKey("http.response_content_length"), responseSize.toLong(),
-                    AttributeKey.longKey("http.duration_ms"), duration.toLong(),
-                    AttributeKey.longKey("timestamp_ms"), System.currentTimeMillis()
-                ))
+                // Handle transaction outcome
+                when (outcome) {
+                    TransactionOutcome.PASS -> {
+                        span.setAttribute("http.status_code", 200L)
+                        span.setAttribute("http.response_content_length", responseSize.toLong())
+                        span.setAttribute("transaction.outcome", "PASS")
+                        span.addEvent("response_received")
 
-                // Set response attributes
-                span.setAttribute("http.status_code", 200L)
-                span.setAttribute("http.response_content_length", responseSize.toLong())
+                        logger.logRecordBuilder()
+                            .setBody("http.response")
+                            .setSeverity(Severity.INFO)
+                            .setAllAttributes(
+                                createBaseAttributes("logApiCall")
+                                    .put("http.method", "GET")
+                                    .put("http.route", endpoint)
+                                    .put("http.status_code", 200L)
+                                    .put("http.duration_ms", duration.toLong())
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "PASS")
+                                    .build()
+                            )
+                            .emit()
 
-                // Log API response using semantic conventions
-                logger.logRecordBuilder()
-                    .setBody("http.response")
-                    .setSeverity(Severity.INFO)
-                    .setAllAttributes(
-                        createBaseAttributes("logApiCall")
-                            .put("http.method", "GET")
-                            .put("http.route", endpoint)
-                            .put("http.scheme", "https")
-                            .put("net.peer.name", "api.example.com")
-                            .put("http.status_code", 200L)
-                            .put("http.duration_ms", duration.toLong())
-                            .put("http.response_content_length", responseSize.toLong())
-                            .build()
-                    )
-                    .emit()
+                        endTrackedTransaction(span, StatusCode.OK)
+                        updateStatus("✅ API call: PASS\nGET $endpoint (200 OK)")
+                    }
 
-                span.setStatus(StatusCode.OK)
+                    TransactionOutcome.FAIL -> {
+                        val errorCode = listOf(500, 502, 503).random()
+                        span.setAttribute("http.status_code", errorCode.toLong())
+                        span.setAttribute("transaction.outcome", "FAIL")
+                        span.addEvent("response_received")
 
-                // Record HTTP duration metric
-                operationDurationHistogram.record(duration.toDouble(), Attributes.of(
-                    AttributeKey.stringKey("operation.name"), "http.request",
-                    AttributeKey.stringKey("http.method"), "GET",
-                    AttributeKey.stringKey("http.route"), endpoint,
-                    AttributeKey.longKey("http.status_code"), 200L
-                ))
+                        logger.logRecordBuilder()
+                            .setBody("http.response")
+                            .setSeverity(Severity.ERROR)
+                            .setAllAttributes(
+                                createBaseAttributes("logApiCall")
+                                    .put("http.method", "GET")
+                                    .put("http.route", endpoint)
+                                    .put("http.status_code", errorCode.toLong())
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "FAIL")
+                                    .build()
+                            )
+                            .emit()
+
+                        endTrackedTransaction(span, StatusCode.ERROR, "HTTP $errorCode")
+                        updateStatus("⚠️ API call: FAIL\nGET $endpoint (HTTP $errorCode)")
+                    }
+
+                    TransactionOutcome.CRASH -> {
+                        span.setAttribute("transaction.outcome", "CRASH")
+                        span.addEvent("transaction_about_to_crash")
+
+                        logger.logRecordBuilder()
+                            .setBody("http.crash_simulated")
+                            .setSeverity(Severity.ERROR)
+                            .setAllAttributes(
+                                createBaseAttributes("logApiCall")
+                                    .put("http.method", "GET")
+                                    .put("http.route", endpoint)
+                                    .put("transaction.id", transactionId)
+                                    .put("transaction.outcome", "CRASH")
+                                    .build()
+                            )
+                            .emit()
+
+                        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+                        prefs.edit()
+                            .putBoolean("crash_marker", true)
+                            .putLong("crash_timestamp", System.currentTimeMillis())
+                            .apply()
+
+                        span.end()
+                        Thread.sleep(100)
+                        throw RuntimeException("Crash during API transaction: $transactionId")
+                    }
+                }
+
+                if (outcome != TransactionOutcome.CRASH) {
+                    operationDurationHistogram.record(duration.toDouble(), Attributes.of(
+                        AttributeKey.stringKey("operation.name"), "http.request",
+                        AttributeKey.stringKey("http.method"), "GET",
+                        AttributeKey.stringKey("http.route"), endpoint,
+                        AttributeKey.stringKey("transaction.outcome"), outcome.name
+                    ))
+                }
             }
         } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, "HTTP request failed")
-            span.recordException(e)
+            if (outcome != TransactionOutcome.CRASH) {
+                span.recordException(e)
+                endTrackedTransaction(span, StatusCode.ERROR)
+            }
             throw e
-        } finally {
-            span.end()
         }
 
-        updateStatus("✅ API call logged\nGET $endpoint\nStatus: 200 (${duration}ms)\nTrace + Metrics created!")
-        Log.i(TAG, "API call logged: GET $endpoint -> 200 OK (${duration}ms)")
+        Log.i(TAG, "API call: $endpoint, outcome: $outcome, tx: $transactionId")
     }
 
     /**
