@@ -179,7 +179,7 @@ object ConfigManager {
 
     /**
      * Saves a MobileConfig to SharedPreferences.
-     * Note: Auth token and dataset are saved separately via saveAuthToken/saveDataset.
+     * Extracts auth token and dataset from headers if present.
      */
     fun saveConfig(context: Context, config: MobileConfig) {
         getPrefs(context).edit().apply {
@@ -197,6 +197,19 @@ object ConfigManager {
             putInt(KEY_MAX_EXPORT_RETRIES, config.maxExportRetries)
             putBoolean(KEY_ATTACH_CONTEXT_ATTRIBUTES, config.attachContextAttributes)
             putString(KEY_BUILD_CHANNEL, config.buildChannel)
+
+            // Extract and save headers
+            config.headers?.let { headers ->
+                headers["Authorization"]?.let { auth ->
+                    // Extract token from "Bearer token" format
+                    val token = auth.removePrefix("Bearer ").trim()
+                    putString(KEY_AUTH_TOKEN, token)
+                }
+                headers["Dash0-Dataset"]?.let { dataset ->
+                    putString(KEY_DATASET, dataset)
+                }
+            }
+
             apply()
         }
     }

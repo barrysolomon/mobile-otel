@@ -1,7 +1,7 @@
 {
   "serviceName": "otel-mobile-demo",
   "serviceVersion": "1.0.0-dev",
-  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "headers": {
     "Authorization": "Bearer auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh",

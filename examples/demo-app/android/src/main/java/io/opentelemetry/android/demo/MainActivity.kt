@@ -179,6 +179,15 @@ class MainActivity : AppCompatActivity() {
 
         updateStatus("✅ OpenTelemetry initialized\nDevice ID: ${loggerProvider.getDeviceId()}\nRun ID: $demoRunId\nEndpoint: ${config.collectorEndpoint}")
         Log.i(TAG, "OpenTelemetry initialized: deviceId=${loggerProvider.getDeviceId()}, runId=$demoRunId, endpoint=${config.collectorEndpoint}")
+
+        // Hook into export results to display status
+        io.opentelemetry.android.mobile.export.LoggingHttpExporter.onExportResult = { success, message ->
+            runOnUiThread {
+                val currentStatus = statusText.text.toString()
+                val exportStatus = "\n\n📡 Last Export:\n$message"
+                updateStatus(currentStatus + exportStatus)
+            }
+        }
     }
 
     /**

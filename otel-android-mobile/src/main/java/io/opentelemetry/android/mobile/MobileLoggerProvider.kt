@@ -12,11 +12,11 @@ import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
-import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter
-import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
-import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.android.mobile.sampling.SamplerFactory
 import io.opentelemetry.android.mobile.sampling.DynamicSampler
@@ -80,20 +80,27 @@ class MobileLoggerProvider private constructor(
             .put("device.manufacturer", android.os.Build.MANUFACTURER)
             .build()
 
-        // Create OTLP exporter
-        val otlpExporter = OtlpHttpLogRecordExporter.builder()
+        // Create OTLP gRPC exporter with headers
+        val otlpExporter = OtlpGrpcLogRecordExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->
+                    android.util.Log.d("MobileLoggerProvider", "Adding header: $key = $value")
                     addHeader(key, value)
                 }
             }
             .build()
 
+        // Wrap with logging for debugging
+        val loggingExporter = io.opentelemetry.android.mobile.export.LoggingHttpExporter(
+            delegate = otlpExporter,
+            endpoint = config.collectorEndpoint
+        )
+
         // Wrap exporter with retry logic
         val retryableExporter = io.opentelemetry.android.mobile.buffering.RetryableExporter(
-            delegate = otlpExporter,
+            delegate = loggingExporter,
             maxRetries = config.maxExportRetries
         )
 
@@ -110,7 +117,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP trace exporter
-        val traceExporter = OtlpHttpSpanExporter.builder()
+        val traceExporter = OtlpGrpcSpanExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -150,7 +157,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP metric exporter
-        val metricExporter = OtlpHttpMetricExporter.builder()
+        val metricExporter = OtlpGrpcMetricExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
