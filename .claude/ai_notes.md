@@ -1,11 +1,158 @@
 # AI Notes - OpenTelemetry Mobile Observability Project
 
-**Last Updated**: 2026-01-22 (100% OTEL Semantic Conventions Compliance + True ANR Trigger)
+**Last Updated**: 2026-01-23 (Transaction Tracking + Incomplete Transaction Detection)
 **Project Status**: Phase 4 (Testing) - 75%, Phase 7 (Predictive) - 40%, Phase 8 (Advanced Features) - 100% ✅
 
 ---
 
-## 🆕 Latest Session Updates (January 22, 2026 - Session 2)
+## 🆕 Latest Session Updates (January 23, 2026 - Session 4)
+
+### Transaction Tracking with Configurable Outcomes ✅
+
+**Achievement**: Implemented comprehensive transaction tracking system with configurable pass/fail/crash outcomes for realistic mobile testing.
+
+#### Implementation Details
+
+**1. Transaction Outcome Configuration**
+- Data class `TransactionOutcomeConfig` with configurable rates:
+  - Default: 70% PASS, 20% FAIL, 10% CRASH
+  - Rates must sum to 100%
+  - Easily adjustable for different testing scenarios
+
+**2. Three Transaction Outcome Types**
+
+**PASS (70% default)**:
+- Transaction completes successfully
+- `StatusCode.OK` with success logs
+- Transaction markers cleared from SharedPreferences
+- Example: Login succeeds with session ID
+
+**FAIL (20% default)**:
+- Transaction fails gracefully with error handling
+- `StatusCode.ERROR` with failure logs
+- Transaction markers cleared from SharedPreferences
+- Example: Login fails with "invalid credentials" error
+
+**CRASH (10% default)**:
+- App crashes before transaction completes
+- Transaction markers remain active in SharedPreferences
+- Detected on next app start as incomplete transaction
+- Synthetic span created with crash context
+
+**3. Transaction Tracking Infrastructure**
+- `startTrackedTransaction()` - Begins transaction with persistence
+- `endTrackedTransaction()` - Completes and clears markers
+- `determineTransactionOutcome()` - Random selection based on configured rates
+- SharedPreferences used for crash-survivable tracking
+
+**4. Incomplete Transaction Detection**
+Enhanced `logAppStart()` to detect incomplete transactions:
+- Checks for active transaction markers from previous session
+- Logs `transaction.incomplete` event with crash context
+- Creates synthetic span with:
+  - `transaction.synthetic=true`
+  - `transaction.incomplete=true`
+  - Original start time preserved
+  - Duration calculated from crash
+  - `StatusCode.ERROR` with "interrupted by crash" message
+- Clears transaction markers after detection
+
+**5. Updated Activity Buttons**
+
+All regular activity buttons now use tracked transactions:
+
+**Login (auth.login)**:
+- PASS: Successful authentication with session ID
+- FAIL: Invalid credentials error
+- CRASH: Crashes mid-authentication (incomplete transaction)
+
+**API Call (http.request)**:
+- PASS: HTTP 200 OK response
+- FAIL: HTTP 500/502/503 server error
+- CRASH: Crashes during API call (incomplete transaction)
+
+**Navigation (screen.navigation)**:
+- PASS: Successful screen transition
+- FAIL: Screen not found error
+- CRASH: Crashes during navigation (incomplete transaction)
+
+#### Expected Telemetry
+
+**Successful Transaction (PASS)**:
+```json
+{
+  "span": {
+    "name": "auth.login",
+    "status": "OK",
+    "attributes": {
+      "transaction.id": "abc-123",
+      "transaction.outcome": "PASS"
+    }
+  }
+}
+```
+
+**Failed Transaction (FAIL)**:
+```json
+{
+  "span": {
+    "name": "auth.login",
+    "status": "ERROR",
+    "statusMessage": "Invalid credentials",
+    "attributes": {
+      "transaction.id": "abc-123",
+      "transaction.outcome": "FAIL",
+      "error.type": "auth.invalid_credentials"
+    }
+  }
+}
+```
+
+**Incomplete Transaction (CRASH)**:
+```json
+{
+  "log": {
+    "body": "transaction.incomplete",
+    "severity": "WARN",
+    "attributes": {
+      "transaction.id": "abc-123",
+      "transaction.type": "auth.login",
+      "transaction.status": "incomplete_due_to_crash",
+      "transaction.duration_before_crash_ms": 234,
+      "recovery_type": "crash"
+    }
+  },
+  "synthetic_span": {
+    "name": "auth.login",
+    "status": "ERROR",
+    "statusMessage": "Transaction interrupted by app crash",
+    "attributes": {
+      "transaction.synthetic": true,
+      "transaction.incomplete": true
+    },
+    "events": ["transaction_interrupted_by_crash"]
+  }
+}
+```
+
+#### Benefits
+
+1. **Realistic Testing**: Configurable outcome rates simulate real-world scenarios
+2. **Crash Impact Visibility**: See which transactions were in-flight during crashes
+3. **OpenTelemetry Best Practices**: Standard span status, attributes, and events
+4. **Full Observability**: Track transaction lifecycle from start to completion or crash
+5. **No Data Loss**: Synthetic spans ensure all transaction attempts are visible
+
+#### Files Modified
+- `MainActivity.kt` - Added TransactionOutcomeConfig, tracking infrastructure, updated login/API/navigation buttons
+- `TRANSACTION_TRACKING.md` (NEW) - Complete documentation with examples
+
+#### Documentation
+- ✅ `examples/demo-app/TRANSACTION_TRACKING.md` - Comprehensive guide with configuration examples
+
+---
+
+## Previous Session Updates (January 23, 2026 - Session 3)
 
 ### 100% OpenTelemetry Semantic Conventions Compliance ✅
 
