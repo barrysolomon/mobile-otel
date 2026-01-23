@@ -581,8 +581,8 @@ else
     log_info "Max actions: unlimited"
 fi
 if [ $MAX_DURATION -gt 0 ]; then
-    local hours=$((MAX_DURATION / 3600))
-    local mins=$(( (MAX_DURATION % 3600) / 60 ))
+    hours=$((MAX_DURATION / 3600))
+    mins=$(( (MAX_DURATION % 3600) / 60 ))
     log_info "Max duration: ${hours}h ${mins}m (${MAX_DURATION}s)"
 else
     log_info "Max duration: unlimited"
