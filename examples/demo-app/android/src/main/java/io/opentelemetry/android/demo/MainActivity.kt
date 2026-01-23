@@ -34,10 +34,11 @@ import java.util.UUID
  * - Export policy-based selective flushing
  *
  * **Demo Scenarios:**
- * 1. True ANR - Blocks main thread causing OS ANR dialog
+ * 1. UI Freeze - Blocks main thread for 2-11s (random) to trigger freeze workflow
  * 2. Crash Simulation - Demonstrates crash recovery
  * 3. Network Error - Triggers error-based workflow
  * 4. Low Memory Kill - Forces OOM kill by Android
+ * 5. True ANR - Blocks main thread for 30s causing OS ANR dialog
  */
 class MainActivity : AppCompatActivity() {
 
@@ -59,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnScenarioB: Button
     private lateinit var btnScenarioC: Button
     private lateinit var btnScenarioD: Button
+    private lateinit var btnScenarioE: Button
     private lateinit var btnUserLogin: Button
     private lateinit var btnPageNav: Button
     private lateinit var btnApiCall: Button
@@ -125,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         btnScenarioB = findViewById(R.id.btnScenarioB)
         btnScenarioC = findViewById(R.id.btnScenarioC)
         btnScenarioD = findViewById(R.id.btnScenarioD)
+        btnScenarioE = findViewById(R.id.btnScenarioE)
         btnUserLogin = findViewById(R.id.btnUserLogin)
         btnPageNav = findViewById(R.id.btnPageNav)
         btnApiCall = findViewById(R.id.btnApiCall)
@@ -196,6 +199,10 @@ class MainActivity : AppCompatActivity() {
 
         btnScenarioD.setOnClickListener {
             runScenarioD()
+        }
+
+        btnScenarioE.setOnClickListener {
+            runScenarioE()
         }
 
         btnUserLogin.setOnClickListener {
@@ -359,19 +366,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Scenario A: True ANR (Application Not Responding)
+     * Scenario A: UI Freeze (2-11 seconds)
      *
-     * Blocks the main thread for an extended period causing a genuine ANR:
-     * - Android will display "App isn't responding" dialog after ~5 seconds
-     * - User must force close or wait for the app to recover
-     * - Event: app.anr logged before blocking
-     * - Action: Demonstrates real ANR telemetry capture
+     * Blocks the main thread for a random duration between 2-11 seconds:
+     * - Triggers the ui.freeze workflow when duration exceeds 2 seconds
+     * - Event: ui.freeze logged after blocking completes
+     * - Action: Workflow flushes last 2 minutes of telemetry
      *
-     * WARNING: This will make the app completely unresponsive for 30 seconds!
-     * The OS will show an ANR dialog and offer to force close the app.
+     * Random duration ensures varied testing of the freeze detection threshold.
      */
     private fun runScenarioA() {
-        updateStatus("⚠️ Running Scenario A: True ANR\n\nBLOCKING MAIN THREAD FOR 30 SECONDS!")
+        // Generate random freeze duration between 2-11 seconds
+        val freezeDurationSeconds = (2..11).random()
+        val freezeDurationMs = freezeDurationSeconds * 1000L
+
+        updateStatus("⚠️ Running Scenario A: UI Freeze\n\nBLOCKING MAIN THREAD FOR ${freezeDurationSeconds}s!")
 
         // Record button click metric
         buttonClickCounter.add(1, Attributes.of(
@@ -379,45 +388,13 @@ class MainActivity : AppCompatActivity() {
             AttributeKey.stringKey("button.category"), "demo_scenarios"
         ))
 
-        // Set ANR marker for recovery detection if force killed
-        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean("anr_marker", true)
-            .putLong("anr_timestamp", System.currentTimeMillis())
-            .apply()
+        Log.w(TAG, "Triggering UI freeze for ${freezeDurationSeconds} seconds")
 
-        Log.w(TAG, "Set anr_marker - about to trigger ANR")
-
-        // Log pre-ANR event using OpenTelemetry semantic conventions
-        logger.logRecordBuilder()
-            .setBody("app.anr")
-            .setSeverity(Severity.ERROR)
-            .setAllAttributes(
-                createBaseAttributes("runScenarioA")
-                    // Standard semantic convention for error classification
-                    .put("error.type", "android.anr")
-                    // ANR-specific details
-                    .put("android.anr.type", "main_thread_blocked")
-                    .put("android.anr.expected_duration_ms", 30000L)
-                    // Mobile context
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
-        // Force flush to disk before ANR
-        loggerProvider.forceFlush(2)
-
-        Log.e(TAG, "TRIGGERING ANR - Blocking main thread for 30 seconds!")
-        Log.e(TAG, "Android will show ANR dialog - you can force close or wait")
-
-        // Block the main thread for 30 seconds
-        // This WILL trigger Android's ANR detection and show the system dialog
+        // Block the main thread
         val startTime = System.currentTimeMillis()
-        val blockDuration = 30000L // 30 seconds
 
-        // Busy-wait loop (more reliable than Thread.sleep for triggering ANR)
-        while (System.currentTimeMillis() - startTime < blockDuration) {
+        // Busy-wait loop to block main thread
+        while (System.currentTimeMillis() - startTime < freezeDurationMs) {
             // Intensive computation to ensure main thread is truly blocked
             var dummy = 0.0
             for (i in 0..1000) {
@@ -425,32 +402,29 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        Log.i(TAG, "ANR completed - main thread unblocked after 30 seconds")
+        val actualDuration = System.currentTimeMillis() - startTime
 
-        // If we reach here, user waited through the ANR
+        Log.i(TAG, "UI freeze completed - main thread was blocked for ${actualDuration}ms")
+
+        // Log UI freeze event using OpenTelemetry semantic conventions
         logger.logRecordBuilder()
-            .setBody("app.anr.recovered")
+            .setBody("ui.freeze")
             .setSeverity(Severity.WARN)
             .setAllAttributes(
                 createBaseAttributes("runScenarioA")
-                    // Standard error type for recovery
-                    .put("error.type", "android.anr")
-                    // Recovery-specific details
-                    .put("android.anr.recovery_type", "user_waited")
-                    .put("android.anr.duration_ms", blockDuration)
+                    // UI freeze attributes
+                    .put("duration_ms", actualDuration)
+                    .put("freeze.type", "main_thread_blocked")
+                    .put("freeze.intentional", true)
                     // Mobile context
                     .put("screen.name", "MainActivity")
                     .build()
             )
             .emit()
 
-        // Clear ANR marker if user waited
-        prefs.edit()
-            .remove("anr_marker")
-            .apply()
-
-        updateStatus("✅ Scenario A complete\nANR recovered (user waited 30s)\n📤 Telemetry captured!")
-        Log.i(TAG, "Scenario A complete: ANR event logged")
+        // Note: The ui-freeze-detector workflow will trigger a flush if duration > 2000ms
+        updateStatus("✅ Scenario A complete\nUI freeze: ${actualDuration}ms\n📤 Workflow triggered!")
+        Log.i(TAG, "Scenario A complete: UI freeze event logged (${actualDuration}ms)")
     }
 
     /**
@@ -771,6 +745,101 @@ class MainActivity : AppCompatActivity() {
         }.start()
 
         Log.i(TAG, "Scenario D: Memory allocation started - Android will kill app when memory is exhausted")
+    }
+
+    /**
+     * Scenario E: True ANR (Application Not Responding)
+     *
+     * Blocks the main thread for an extended period causing a genuine ANR:
+     * - Android will display "App isn't responding" dialog after ~5 seconds
+     * - User must force close or wait for the app to recover
+     * - Event: app.anr logged before blocking
+     * - Action: Demonstrates real ANR telemetry capture
+     *
+     * WARNING: This will make the app completely unresponsive for 30 seconds!
+     * The OS will show an ANR dialog and offer to force close the app.
+     */
+    private fun runScenarioE() {
+        updateStatus("⚠️ Running Scenario E: True ANR\n\nBLOCKING MAIN THREAD FOR 30 SECONDS!")
+
+        // Record button click metric
+        buttonClickCounter.add(1, Attributes.of(
+            AttributeKey.stringKey("button.name"), "scenario_e",
+            AttributeKey.stringKey("button.category"), "demo_scenarios"
+        ))
+
+        // Set ANR marker for recovery detection if force killed
+        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("anr_marker", true)
+            .putLong("anr_timestamp", System.currentTimeMillis())
+            .apply()
+
+        Log.w(TAG, "Set anr_marker - about to trigger ANR")
+
+        // Log pre-ANR event using OpenTelemetry semantic conventions
+        logger.logRecordBuilder()
+            .setBody("app.anr")
+            .setSeverity(Severity.ERROR)
+            .setAllAttributes(
+                createBaseAttributes("runScenarioE")
+                    // Standard semantic convention for error classification
+                    .put("error.type", "android.anr")
+                    // ANR-specific details
+                    .put("android.anr.type", "main_thread_blocked")
+                    .put("android.anr.expected_duration_ms", 30000L)
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
+            )
+            .emit()
+
+        // Force flush to disk before ANR
+        loggerProvider.forceFlush(2)
+
+        Log.e(TAG, "TRIGGERING ANR - Blocking main thread for 30 seconds!")
+        Log.e(TAG, "Android will show ANR dialog - you can force close or wait")
+
+        // Block the main thread for 30 seconds
+        // This WILL trigger Android's ANR detection and show the system dialog
+        val startTime = System.currentTimeMillis()
+        val blockDuration = 30000L // 30 seconds
+
+        // Busy-wait loop (more reliable than Thread.sleep for triggering ANR)
+        while (System.currentTimeMillis() - startTime < blockDuration) {
+            // Intensive computation to ensure main thread is truly blocked
+            var dummy = 0.0
+            for (i in 0..1000) {
+                dummy += Math.sqrt(i.toDouble())
+            }
+        }
+
+        Log.i(TAG, "ANR completed - main thread unblocked after 30 seconds")
+
+        // If we reach here, user waited through the ANR
+        logger.logRecordBuilder()
+            .setBody("app.anr.recovered")
+            .setSeverity(Severity.WARN)
+            .setAllAttributes(
+                createBaseAttributes("runScenarioE")
+                    // Standard error type for recovery
+                    .put("error.type", "android.anr")
+                    // Recovery-specific details
+                    .put("android.anr.recovery_type", "user_waited")
+                    .put("android.anr.duration_ms", blockDuration)
+                    // Mobile context
+                    .put("screen.name", "MainActivity")
+                    .build()
+            )
+            .emit()
+
+        // Clear ANR marker if user waited
+        prefs.edit()
+            .remove("anr_marker")
+            .apply()
+
+        updateStatus("✅ Scenario E complete\nANR recovered (user waited 30s)\n📤 Telemetry captured!")
+        Log.i(TAG, "Scenario E complete: ANR event logged")
     }
 
     /**
@@ -1318,6 +1387,10 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.action_config -> {
                 startActivity(Intent(this, ConfigActivity::class.java))
+                true
+            }
+            R.id.action_logs -> {
+                startActivity(Intent(this, LogsActivity::class.java))
                 true
             }
             R.id.action_help -> {

@@ -151,7 +151,7 @@
                     android:layout_height="80dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="6dp"
-                    android:text="🚫 ANR (30s)"
+                    android:text="❄️ UI Freeze"
                     android:textSize="14sp"
                     android:textAllCaps="false"
                     app:backgroundTint="@color/button_demo"
@@ -179,7 +179,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:weightSum="2"
-                android:layout_marginBottom="28dp">
+                android:layout_marginBottom="12dp">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnScenarioC"
@@ -209,6 +209,19 @@
                     app:elevation="4dp"
                     style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
             </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnScenarioE"
+                android:layout_width="match_parent"
+                android:layout_height="80dp"
+                android:layout_marginBottom="28dp"
+                android:text="🚫 ANR (30s)"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                app:backgroundTint="@color/button_demo"
+                app:cornerRadius="16dp"
+                app:elevation="4dp"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
 
             <!-- Regular Activities Section -->
             <TextView

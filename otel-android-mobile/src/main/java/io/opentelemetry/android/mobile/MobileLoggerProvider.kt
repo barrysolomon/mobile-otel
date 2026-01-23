@@ -12,11 +12,11 @@ import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
-import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
-import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
+import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.android.mobile.sampling.SamplerFactory
 import io.opentelemetry.android.mobile.sampling.DynamicSampler
@@ -81,7 +81,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP exporter
-        val otlpExporter = OtlpGrpcLogRecordExporter.builder()
+        val otlpExporter = OtlpHttpLogRecordExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -110,7 +110,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP trace exporter
-        val traceExporter = OtlpGrpcSpanExporter.builder()
+        val traceExporter = OtlpHttpSpanExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -150,7 +150,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP metric exporter
-        val metricExporter = OtlpGrpcMetricExporter.builder()
+        val metricExporter = OtlpHttpMetricExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {

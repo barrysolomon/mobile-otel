@@ -1,8 +1,13 @@
 {
   "serviceName": "otel-mobile-demo",
   "serviceVersion": "1.0.0-dev",
-  "collectorEndpoint": "http://10.0.2.2:4317",
-  "exportMode": "CONTINUOUS",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com",
+  "exportMode": "CONDITIONAL",
+  "headers": {
+    "Authorization": "Bearer auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh",
+    "Dash0-Dataset": "otel-mobile"
+  },
+
   "traceExportIntervalSeconds": 10,
   "metricExportIntervalSeconds": 30,
   "ramBufferSize": 1000,
@@ -13,7 +18,7 @@
   "maxExportRetries": 3,
   "attachContextAttributes": true,
   "buildChannel": "debug",
-  "headers": null,
+
   "telemetrySettings": {
     "dataCollection": {
       "logs": true,

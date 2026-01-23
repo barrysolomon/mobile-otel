@@ -15,6 +15,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_logs"
+        android:title="Logs"
+        android:icon="@android:drawable/ic_menu_view"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_help"
         android:title="Help"
         android:icon="@android:drawable/ic_menu_help"
