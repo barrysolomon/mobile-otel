@@ -963,7 +963,7 @@ class MainActivity : AppCompatActivity() {
      * Blocks the main thread for an extended period causing a genuine ANR:
      * - Android will display "App isn't responding" dialog after ~5 seconds
      * - User must force close or wait for the app to recover
-     * - Event: app.anr logged before blocking
+     * - Event: app.anr.recovered logged after unblocking
      * - Action: Demonstrates real ANR telemetry capture
      *
      * WARNING: This will make the app completely unresponsive for 30 seconds!
@@ -987,25 +987,6 @@ class MainActivity : AppCompatActivity() {
 
         Log.w(TAG, "Set anr_marker - about to trigger ANR")
 
-        // Log pre-ANR event using OpenTelemetry semantic conventions
-        logger.logRecordBuilder()
-            .setBody("app.anr")
-            .setSeverity(Severity.ERROR)
-            .setAllAttributes(
-                createBaseAttributes("runScenarioE")
-                    // Standard semantic convention for error classification
-                    .put("error.type", "android.anr")
-                    // ANR-specific details
-                    .put("android.anr.type", "main_thread_blocked")
-                    .put("android.anr.expected_duration_ms", 30000L)
-                    // Mobile context
-                    .put("screen.name", "MainActivity")
-                    .build()
-            )
-            .emit()
-
-        // Force flush to disk before ANR
-        loggerProvider.forceFlush(2)
 
         Log.e(TAG, "TRIGGERING ANR - Blocking main thread for 30 seconds!")
         Log.e(TAG, "Android will show ANR dialog - you can force close or wait")
