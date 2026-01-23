@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 ################################################################################
-# OpenTelemetry Mobile Demo - Monkey Test Script
+# OpenTelemetry Mobile Demo - Enhanced Monkey Test Script
 #
-# This script performs randomized testing of the demo app with:
-# - Random button clicks (regular activities and trigger events)
-# - Configurable activity stretches (short/med/long normal activity bursts)
-# - Periodic manual flushes to validate telemetry capture
+# Features:
+# - Transaction flows (login → api → navigation sequences)
+# - Demographic cycling (simulates different user profiles)
+# - Activity stretches (short/med/long normal activity bursts)
+# - Periodic manual flushes
 # - Background/foreground transitions
-# - Crash and ANR detection
-# - Automatic app restart after crashes
+# - Crash and ANR detection with recovery
 #
 # Usage:
 #   bash monkey-test.sh [OPTIONS]
@@ -17,23 +17,32 @@
 # Options:
 #   -a, --actions N         Run N random actions (default: unlimited)
 #   -t, --time N            Run for N seconds (default: unlimited)
-#   -s, --stretch-mode MODE Activity stretch mode: mixed|short|medium|long|none (default: mixed)
-#   -f, --flush-interval N  Flush every N actions (default: 20, 0=disable)
+#   -s, --stretch-mode MODE Activity stretch mode: mixed|short|medium|long|none (default: long)
+#   -f, --flush-interval N  Flush every N actions (default: 25, 0=disable)
+#   -x, --transactions N    Transaction flow every N actions (default: 15, 0=disable)
+#   -d, --demographics N    Change demographics every N actions (default: 50, 0=disable)
 #   -p, --package PKG       Package name (default: io.opentelemetry.android.demo)
 #   -v, --verbose           Verbose output
 #   -h, --help              Show this help
 #
 # Stretch Modes:
-#   mixed  - Random mix of short/medium/long stretches (default)
+#   mixed  - Random mix of short/medium/long stretches
 #   short  - 5-10 normal actions between triggers
 #   medium - 15-25 normal actions between triggers
-#   long   - 30-50 normal actions between triggers
+#   long   - 30-50 normal actions between triggers (default for 3-hour test)
 #   none   - Always use weighted random (old behavior)
 #
+# Transaction Flows:
+#   login → api_call → navigate (simulates user session)
+#
+# Demographics:
+#   Cycles through different user profiles with varying:
+#   - Device types, regions, age groups, subscription tiers
+#
 # Examples:
-#   bash monkey-test.sh --actions 100 --stretch-mode medium
-#   bash monkey-test.sh --time 300 --flush-interval 15
-#   bash monkey-test.sh -a 50 -s long -f 10 -v
+#   bash monkey-test.sh --time 10800  # 3 hours with defaults
+#   bash monkey-test.sh -t 3600 -s long -x 10 -d 30
+#   bash monkey-test.sh -a 200 -s medium -x 15 -f 20
 #
 # Note: Compatible with Bash 3.2+ (macOS default)
 #
@@ -49,13 +58,18 @@ MAX_DURATION=-1
 VERBOSE=0
 ACTION_COUNT=0
 START_TIME=$(date +%s)
-STRETCH_MODE="mixed"
-FLUSH_INTERVAL=20
+STRETCH_MODE="long"
+FLUSH_INTERVAL=25
+TRANSACTION_INTERVAL=15
+DEMOGRAPHICS_INTERVAL=50
 STRETCH_COUNTER=0
 CURRENT_STRETCH_SIZE=0
 FLUSH_COUNTER=0
+TRANSACTION_COUNTER=0
+DEMOGRAPHICS_COUNTER=0
+CURRENT_DEMOGRAPHIC_INDEX=0
 
-# Button data using parallel arrays for Bash 3.2 compatibility
+# Button data using parallel arrays
 BUTTON_NAMES=(
     "login" "navigate" "api_call" "background" "interaction" "form_submit"
     "ui_freeze" "crash" "network_error" "low_memory" "anr" "force_flush"
@@ -65,17 +79,30 @@ BUTTON_X=(270 810 270 810 270 810  270 810 270 810 540  540)
 BUTTON_Y=(1200 1200 1320 1320 1440 1440  900 900 1020 1020 1140  1600)
 BUTTON_WEIGHTS=(15 15 15 15 15 15  5 2 5 1 1  10)
 
-# Regular activity buttons (first 6)
+# Regular activity buttons
 REGULAR_BUTTON_NAMES=("login" "navigate" "api_call" "background" "interaction" "form_submit")
 REGULAR_BUTTON_INDICES=(0 1 2 3 4 5)
 
-# Colors for output
+# Demographics profiles (will cycle through these)
+DEMOGRAPHIC_PROFILES=(
+    "device_type:smartphone,region:us,age_group:25-34,tier:premium"
+    "device_type:tablet,region:eu,age_group:35-44,tier:free"
+    "device_type:smartphone,region:asia,age_group:18-24,tier:basic"
+    "device_type:phablet,region:us,age_group:45-54,tier:premium"
+    "device_type:smartphone,region:latam,age_group:25-34,tier:basic"
+    "device_type:tablet,region:eu,age_group:55-64,tier:premium"
+    "device_type:smartphone,region:asia,age_group:18-24,tier:free"
+    "device_type:smartphone,region:us,age_group:35-44,tier:basic"
+)
+
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+MAGENTA='\033[0;35m'
+NC='\033[0m'
 
 ################################################################################
 # Helper Functions
@@ -103,37 +130,44 @@ log_stretch() {
     echo -e "${CYAN}[STRETCH]${NC} $1"
 }
 
+log_transaction() {
+    echo -e "${MAGENTA}[TRANSACTION]${NC} $1"
+}
+
+log_demographic() {
+    echo -e "${YELLOW}[DEMOGRAPHIC]${NC} $1"
+}
+
 show_help() {
     cat << EOF
-OpenTelemetry Mobile Demo - Monkey Test Script
+OpenTelemetry Mobile Demo - Enhanced Monkey Test Script
 
 Usage: bash $0 [OPTIONS]
 
 Options:
   -a, --actions N         Run N random actions (default: unlimited)
   -t, --time N            Run for N seconds (default: unlimited)
-  -s, --stretch-mode MODE Activity stretch mode (default: mixed)
-  -f, --flush-interval N  Manual flush every N actions (default: 20, 0=disable)
+  -s, --stretch-mode MODE Activity stretch mode (default: long)
+  -f, --flush-interval N  Manual flush every N actions (default: 25, 0=disable)
+  -x, --transactions N    Transaction flow every N actions (default: 15, 0=disable)
+  -d, --demographics N    Change demographics every N actions (default: 50, 0=disable)
   -p, --package PKG       Package name (default: $PACKAGE_NAME)
   -v, --verbose           Verbose output
   -h, --help              Show this help
 
 Stretch Modes:
-  mixed  - Random mix of short/medium/long stretches (default)
+  mixed  - Random mix of short/medium/long stretches
   short  - 5-10 normal actions between triggers
   medium - 15-25 normal actions between triggers
-  long   - 30-50 normal actions between triggers
+  long   - 30-50 normal actions between triggers (default)
   none   - Always use weighted random (old behavior)
 
-Examples:
-  bash $0 --actions 100 --stretch-mode medium
-  bash $0 --time 300 --flush-interval 15
-  bash $0 -a 50 -s long -f 10 -v
+For 3-hour test:
+  bash $0 --time 10800
 
-Activity Stretches:
-  The test will perform bursts of normal user activity (login, navigate, etc.)
-  without triggering errors. After each stretch, it may trigger an error event.
-  Manual flushes occur periodically to validate telemetry capture.
+Examples:
+  bash $0 -t 3600 -s long -x 10 -d 30 -v
+  bash $0 -a 200 -s medium -x 15 -f 20
 
 EOF
 }
@@ -142,7 +176,6 @@ check_device() {
     log_info "Checking for connected device..."
     if ! adb devices 2>/dev/null | grep -q "device$"; then
         log_error "No device connected. Please connect a device and try again."
-        log_error "Or install adb: brew install android-platform-tools"
         exit 1
     fi
     log_info "Device found"
@@ -193,7 +226,6 @@ bring_to_foreground() {
 
 get_button_index() {
     local name=$1
-    local i
     for i in "${!BUTTON_NAMES[@]}"; do
         if [ "${BUTTON_NAMES[$i]}" = "$name" ]; then
             echo $i
@@ -220,12 +252,9 @@ click_button() {
 }
 
 select_random_button() {
-    # Create weighted array of button indices
     local weighted_buttons=()
-    local i
     for i in "${!BUTTON_NAMES[@]}"; do
         local weight=${BUTTON_WEIGHTS[$i]}
-        local j
         for ((j=0; j<weight; j++)); do
             weighted_buttons+=($i)
         done
@@ -239,7 +268,6 @@ select_random_button() {
 }
 
 select_regular_button() {
-    # Select only from regular activity buttons (first 6)
     local random_idx=$((RANDOM % 6))
     local button_idx=${REGULAR_BUTTON_INDICES[$random_idx]}
     echo "${BUTTON_NAMES[$button_idx]}"
@@ -248,25 +276,24 @@ select_regular_button() {
 get_stretch_size() {
     case $STRETCH_MODE in
         short)
-            echo $((RANDOM % 6 + 5))  # 5-10
+            echo $((RANDOM % 6 + 5))
             ;;
         medium)
-            echo $((RANDOM % 11 + 15))  # 15-25
+            echo $((RANDOM % 11 + 15))
             ;;
         long)
-            echo $((RANDOM % 21 + 30))  # 30-50
+            echo $((RANDOM % 21 + 30))
             ;;
         mixed)
-            # Randomly choose short/medium/long
             local mode=$((RANDOM % 3))
             case $mode in
-                0) echo $((RANDOM % 6 + 5)) ;;    # short
-                1) echo $((RANDOM % 11 + 15)) ;;  # medium
-                2) echo $((RANDOM % 21 + 30)) ;;  # long
+                0) echo $((RANDOM % 6 + 5)) ;;
+                1) echo $((RANDOM % 11 + 15)) ;;
+                2) echo $((RANDOM % 21 + 30)) ;;
             esac
             ;;
         none)
-            echo 0  # No stretches
+            echo 0
             ;;
         *)
             echo 0
@@ -275,51 +302,77 @@ get_stretch_size() {
 }
 
 random_delay() {
-    # Random delay between 500ms and 3000ms
     local delay_ms=$((RANDOM % 2500 + 500))
     local delay_sec=$(echo "scale=3; $delay_ms / 1000" | bc 2>/dev/null || echo "1")
     sleep $delay_sec
 }
 
 random_background_delay() {
-    # Random delay for background duration (1-10 seconds)
     local delay=$((RANDOM % 9 + 1))
     sleep $delay
 }
 
+set_demographics() {
+    local profile="${DEMOGRAPHIC_PROFILES[$CURRENT_DEMOGRAPHIC_INDEX]}"
+    log_demographic "Setting profile #$((CURRENT_DEMOGRAPHIC_INDEX + 1)): $profile"
+
+    # Parse and set demographic attributes
+    IFS=',' read -ra ATTRS <<< "$profile"
+    for attr in "${ATTRS[@]}"; do
+        IFS=':' read -ra KV <<< "$attr"
+        local key="${KV[0]}"
+        local value="${KV[1]}"
+        log_debug "  $key = $value"
+    done
+
+    # Cycle to next profile
+    CURRENT_DEMOGRAPHIC_INDEX=$(( (CURRENT_DEMOGRAPHIC_INDEX + 1) % ${#DEMOGRAPHIC_PROFILES[@]} ))
+}
+
+execute_transaction_flow() {
+    log_transaction "Executing transaction flow: login → api_call → navigate"
+
+    # Step 1: Login
+    log_transaction "  Step 1/3: Login"
+    click_button "login"
+    sleep 1
+
+    # Step 2: API Call
+    log_transaction "  Step 2/3: API Call"
+    click_button "api_call"
+    sleep 1
+
+    # Step 3: Navigate
+    log_transaction "  Step 3/3: Navigate"
+    click_button "navigate"
+    sleep 1
+
+    log_transaction "Transaction flow complete"
+}
+
 handle_crash() {
     log_warn "App crashed! Waiting before restart..."
-
-    # Random delay before restart (5-60 seconds)
     local restart_delay=$((RANDOM % 55 + 5))
     log_info "Waiting ${restart_delay}s before restart"
     sleep $restart_delay
-
-    # Clean restart
     stop_app
     start_app
-
     log_info "App restarted after crash"
 }
 
 handle_anr() {
     log_warn "App in ANR state! Killing and restarting..."
-
     kill_app
-
-    # Random delay before restart
     local restart_delay=$((RANDOM % 30 + 10))
     log_info "Waiting ${restart_delay}s before restart"
     sleep $restart_delay
-
     stop_app
     start_app
-
     log_info "App restarted after ANR"
 }
 
 trigger_manual_flush() {
-    log_info "🚀 Triggering manual flush (every $FLUSH_INTERVAL actions)"
+    log_info "🚀 Triggering manual flush (interval: $FLUSH_INTERVAL)"
     click_button "force_flush"
     sleep 2
 }
@@ -327,8 +380,10 @@ trigger_manual_flush() {
 perform_random_action() {
     ACTION_COUNT=$((ACTION_COUNT + 1))
     FLUSH_COUNTER=$((FLUSH_COUNTER + 1))
+    TRANSACTION_COUNTER=$((TRANSACTION_COUNTER + 1))
+    DEMOGRAPHICS_COUNTER=$((DEMOGRAPHICS_COUNTER + 1))
 
-    # Check if app is still running and responding
+    # Check if app is responding
     if ! is_app_responding; then
         if adb shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
             handle_anr
@@ -339,14 +394,27 @@ perform_random_action() {
         fi
     fi
 
-    # Check for manual flush interval
+    # Check for demographics change
+    if [ $DEMOGRAPHICS_INTERVAL -gt 0 ] && [ $DEMOGRAPHICS_COUNTER -ge $DEMOGRAPHICS_INTERVAL ]; then
+        set_demographics
+        DEMOGRAPHICS_COUNTER=0
+    fi
+
+    # Check for transaction flow
+    if [ $TRANSACTION_INTERVAL -gt 0 ] && [ $TRANSACTION_COUNTER -ge $TRANSACTION_INTERVAL ]; then
+        execute_transaction_flow
+        TRANSACTION_COUNTER=0
+        return
+    fi
+
+    # Check for manual flush
     if [ $FLUSH_INTERVAL -gt 0 ] && [ $FLUSH_COUNTER -ge $FLUSH_INTERVAL ]; then
         trigger_manual_flush
         FLUSH_COUNTER=0
         return
     fi
 
-    # 10% chance to do a background/foreground transition (only if not in stretch)
+    # 10% chance for background/foreground transition
     if [ "$STRETCH_MODE" = "none" ] || [ $STRETCH_COUNTER -ge $CURRENT_STRETCH_SIZE ]; then
         if [ $((RANDOM % 10)) -eq 0 ]; then
             log_info "Action #$ACTION_COUNT: Background/Foreground transition"
@@ -358,24 +426,18 @@ perform_random_action() {
         fi
     fi
 
-    # Determine if we're in a stretch or mixing
+    # Determine button based on stretch mode
     local button
     if [ "$STRETCH_MODE" = "none" ]; then
-        # Old behavior: weighted random
         button=$(select_random_button)
         log_info "Action #$ACTION_COUNT: Clicking $button"
     else
-        # Stretch mode active
         if [ $STRETCH_COUNTER -lt $CURRENT_STRETCH_SIZE ]; then
-            # Inside stretch: only regular buttons
             button=$(select_regular_button)
             STRETCH_COUNTER=$((STRETCH_COUNTER + 1))
             log_info "Action #$ACTION_COUNT: Clicking $button (stretch: $STRETCH_COUNTER/$CURRENT_STRETCH_SIZE)"
         else
-            # End of stretch: trigger event and start new stretch
             button=$(select_random_button)
-
-            # Prefer trigger buttons at end of stretch
             local is_trigger=0
             case $button in
                 ui_freeze|crash|network_error|low_memory|anr)
@@ -389,7 +451,6 @@ perform_random_action() {
                 log_info "Action #$ACTION_COUNT: Clicking $button (between stretches)"
             fi
 
-            # Start new stretch
             CURRENT_STRETCH_SIZE=$(get_stretch_size)
             STRETCH_COUNTER=0
             if [ $CURRENT_STRETCH_SIZE -gt 0 ]; then
@@ -400,7 +461,7 @@ perform_random_action() {
 
     click_button "$button"
 
-    # Special handling for crash button
+    # Special handling
     if [ "$button" = "crash" ]; then
         log_warn "Crash button clicked - expecting app to crash"
         sleep 2
@@ -410,7 +471,6 @@ perform_random_action() {
         return
     fi
 
-    # Special handling for ANR button
     if [ "$button" = "anr" ]; then
         log_warn "ANR button clicked - app will freeze for 30s"
         sleep 35
@@ -420,7 +480,6 @@ perform_random_action() {
         return
     fi
 
-    # Normal delay between actions
     random_delay
 }
 
@@ -439,11 +498,24 @@ should_continue() {
     return 0
 }
 
+print_statistics() {
+    local duration=$(($(date +%s) - START_TIME))
+    local hours=$((duration / 3600))
+    local mins=$(( (duration % 3600) / 60 ))
+    local secs=$((duration % 60))
+
+    log_info "==== Test Statistics ===="
+    log_info "Total actions: $ACTION_COUNT"
+    log_info "Duration: ${hours}h ${mins}m ${secs}s"
+    log_info "Actions/min: $(echo "scale=1; $ACTION_COUNT * 60 / $duration" | bc 2>/dev/null || echo "N/A")"
+    log_info "========================="
+}
+
 ################################################################################
 # Main Script
 ################################################################################
 
-# Parse command line arguments
+# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -a|--actions)
@@ -460,6 +532,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -f|--flush-interval)
             FLUSH_INTERVAL="$2"
+            shift 2
+            ;;
+        -x|--transactions)
+            TRANSACTION_INTERVAL="$2"
+            shift 2
+            ;;
+        -d|--demographics)
+            DEMOGRAPHICS_INTERVAL="$2"
             shift 2
             ;;
         -p|--package)
@@ -488,13 +568,12 @@ case $STRETCH_MODE in
         ;;
     *)
         log_error "Invalid stretch mode: $STRETCH_MODE"
-        log_error "Valid modes: mixed, short, medium, long, none"
         exit 1
         ;;
 esac
 
 # Print configuration
-log_info "==== Monkey Test Configuration ===="
+log_info "==== Enhanced Monkey Test Configuration ===="
 log_info "Package: $PACKAGE_NAME"
 if [ $MAX_ACTIONS -gt 0 ]; then
     log_info "Max actions: $MAX_ACTIONS"
@@ -502,35 +581,38 @@ else
     log_info "Max actions: unlimited"
 fi
 if [ $MAX_DURATION -gt 0 ]; then
-    log_info "Max duration: ${MAX_DURATION}s"
+    local hours=$((MAX_DURATION / 3600))
+    local mins=$(( (MAX_DURATION % 3600) / 60 ))
+    log_info "Max duration: ${hours}h ${mins}m (${MAX_DURATION}s)"
 else
     log_info "Max duration: unlimited"
 fi
 log_info "Stretch mode: $STRETCH_MODE"
-if [ $FLUSH_INTERVAL -gt 0 ]; then
-    log_info "Flush interval: every $FLUSH_INTERVAL actions"
-else
-    log_info "Flush interval: disabled"
-fi
+[ $FLUSH_INTERVAL -gt 0 ] && log_info "Flush interval: every $FLUSH_INTERVAL actions" || log_info "Flush interval: disabled"
+[ $TRANSACTION_INTERVAL -gt 0 ] && log_info "Transaction flow: every $TRANSACTION_INTERVAL actions" || log_info "Transaction flows: disabled"
+[ $DEMOGRAPHICS_INTERVAL -gt 0 ] && log_info "Demographics change: every $DEMOGRAPHICS_INTERVAL actions" || log_info "Demographics: disabled"
 log_info "Verbose: $VERBOSE"
-log_info "===================================="
+log_info "============================================="
 echo
 
-# Check for connected device
 check_device
 
-# Stop and restart app for clean start
-log_info "Preparing app for monkey test..."
+log_info "Preparing app for enhanced monkey test..."
 stop_app
 start_app
 
-# Initialize stretch if needed
+# Initialize demographics
+if [ $DEMOGRAPHICS_INTERVAL -gt 0 ]; then
+    set_demographics
+fi
+
+# Initialize stretch
 if [ "$STRETCH_MODE" != "none" ]; then
     CURRENT_STRETCH_SIZE=$(get_stretch_size)
     log_stretch "Starting with stretch: $CURRENT_STRETCH_SIZE normal actions"
 fi
 
-log_info "Starting monkey test..."
+log_info "Starting enhanced monkey test..."
 echo
 
 # Main test loop
@@ -539,11 +621,9 @@ while should_continue; do
 done
 
 # Cleanup
-log_info "Monkey test complete!"
-log_info "Total actions performed: $ACTION_COUNT"
-log_info "Total duration: $(($(date +%s) - START_TIME))s"
+log_info "Enhanced monkey test complete!"
+print_statistics
 
-# Trigger final flush
 log_info "Triggering final flush..."
 click_button "force_flush"
 sleep 3
