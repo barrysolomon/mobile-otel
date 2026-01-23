@@ -114,12 +114,20 @@ adb logcat | grep -i "otel\|dash0"
 
 **Current:** US Region (Default)
 - Endpoint: `https://ingress.dash0.com:4317`
+- Protocol: **gRPC (OTLP)**
 - Best for: Americas, Asia-Pacific
 
 **Alternative:** EU Region
 - Endpoint: `https://ingress.eu-west-1.aws.dash0.com:4317`
+- Protocol: **gRPC (OTLP)**
 - Best for: Europe, Africa, Middle East
 - To switch: Edit `dash0.endpoint` in local.properties
+
+**⚠️ Important Protocol Note:**
+- **Always use port 4317** for gRPC
+- Dash0's HTTP endpoint (port 4318) only accepts JSON format
+- OpenTelemetry HTTP exporters send protobuf by default (incompatible)
+- See [DASH0_HTTP_EXPORT_DEBUGGING.md](../../DASH0_HTTP_EXPORT_DEBUGGING.md) for technical details
 
 ---
 
@@ -128,4 +136,5 @@ adb logcat | grep -i "otel\|dash0"
 - 📖 **Full Guide**: [SETUP.md](SETUP.md)
 - 🔧 **Configuration**: [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md)
 - 🌍 **Global Deployment**: [GLOBAL_DEPLOYMENT.md](GLOBAL_DEPLOYMENT.md)
+- 🐛 **Debugging**: [DASH0_HTTP_EXPORT_DEBUGGING.md](../../DASH0_HTTP_EXPORT_DEBUGGING.md)
 - 💬 **Dash0 Support**: support@dash0.com
