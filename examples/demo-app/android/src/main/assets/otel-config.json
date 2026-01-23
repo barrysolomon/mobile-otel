@@ -162,6 +162,32 @@
           "scope": "device"
         }
       ]
+    },
+    {
+      "id": "app-foreground",
+      "name": "App Foreground Handler",
+      "enabled": true,
+      "description": "Flushes buffered events when app returns to foreground from background",
+      "trigger": {
+        "all": [
+          {
+            "event": "app.foreground",
+            "where": []
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 5,
+          "scope": "session"
+        },
+        {
+          "type": "annotate_trigger",
+          "trigger_id": "app-foreground",
+          "reason": "App returned to foreground - capturing background session data"
+        }
+      ]
     }
   ],
   "limits": {

@@ -1414,6 +1414,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+
+        // Log app going to background
+        logger.logRecordBuilder()
+            .setBody("app.background")
+            .setSeverity(Severity.INFO)
+            .setAllAttributes(
+                createBaseAttributes("onPause")
+                    .put("lifecycle.state", "paused")
+                    .put("screen.name", "MainActivity")
+                    .build()
+            )
+            .emit()
+
+        Log.d(TAG, "App moved to background")
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Log app returning to foreground and trigger flush
+        logger.logRecordBuilder()
+            .setBody("app.foreground")
+            .setSeverity(Severity.INFO)
+            .setAllAttributes(
+                createBaseAttributes("onResume")
+                    .put("lifecycle.state", "resumed")
+                    .put("screen.name", "MainActivity")
+                    .build()
+            )
+            .emit()
+
+        // Force flush to send buffered events from background session
+        Thread {
+            loggerProvider.forceFlush(30)
+            Log.i(TAG, "App returned to foreground - flushed buffered events")
+        }.start()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
 
