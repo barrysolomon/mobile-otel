@@ -98,7 +98,13 @@ class MobileLogRecordProcessor private constructor(
     // Shutdown flag
     private val isShutdown = AtomicBoolean(false)
 
+    // Original exception handler (to chain calls)
+    private val originalExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
+
     init {
+        // Install crash handler to flush buffers before app dies
+        installCrashHandler()
+
         // Schedule periodic disk overflow (every 5 seconds)
         executor.scheduleAtFixedRate(
             { overflowToDisk() },
@@ -131,6 +137,42 @@ class MobileLogRecordProcessor private constructor(
         }
 
         Log.i(TAG, "Initialized: RAM buffer size=$ramBufferSize, Disk buffer=${diskBufferMb}MB, TTL=${diskBufferTtlHours}h, Export mode=${config.exportMode}")
+    }
+
+    /**
+     * Installs an UncaughtExceptionHandler to flush buffers on crash.
+     *
+     * This ensures that RAM buffer events are persisted to disk before the app terminates.
+     * On next app start, these events can be retrieved from disk and sent.
+     */
+    private fun installCrashHandler() {
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                Log.w(TAG, "Uncaught exception detected, flushing RAM buffer to disk before crash")
+
+                // Quickly overflow ALL RAM buffer to disk (synchronous, must be fast)
+                val eventsToSave = mutableListOf<LogRecordData>()
+                ramBuffer.forEach { eventsToSave.add(it) }
+
+                if (eventsToSave.isNotEmpty()) {
+                    // Persist to disk immediately (blocking call, but we're about to crash anyway)
+                    runBlocking {
+                        try {
+                            diskBuffer.persistEvents(eventsToSave)
+                            Log.i(TAG, "Saved ${eventsToSave.size} events to disk before crash")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to save events to disk before crash", e)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in crash handler", e)
+            } finally {
+                // Chain to original handler to maintain default crash behavior
+                originalExceptionHandler?.uncaughtException(thread, throwable)
+            }
+        }
+        Log.d(TAG, "Crash handler installed")
     }
 
     /**
@@ -174,7 +216,7 @@ class MobileLogRecordProcessor private constructor(
         try {
             val matchResult = policyEvaluator.evaluate(logRecord)
             if (matchResult != null) {
-                Log.i(TAG, "Policy matched: ${matchResult.policyId}, capturing device metrics and flushing window")
+                Log.i(TAG, "Policy matched: ${matchResult.policyId}, capturing device metrics and flushing with full buffer clear")
 
                 // Capture device metrics on policy match for debugging context
                 val captureReason = when (matchResult.policyId) {
@@ -185,8 +227,8 @@ class MobileLogRecordProcessor private constructor(
                 }
                 deviceMetricsCollector.captureMetrics(captureReason)
 
-                // Flush the time window
-                flushWindow(matchResult.flushWindowMinutes)
+                // Flush 5-minute window and clear entire buffer
+                flushWindowAndClearAll(windowMinutes = 5)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating policies", e)
@@ -194,7 +236,82 @@ class MobileLogRecordProcessor private constructor(
     }
 
     /**
-     * Flushes a time window of events (e.g., "last 2 minutes").
+     * Flushes a time window of events and clears the entire buffer.
+     *
+     * This implements flush with full buffer clear:
+     * 1. Collecting events from RAM buffer within the time window
+     * 2. Collecting events from disk buffer within the time window
+     * 3. Exporting all collected events via OTLP
+     * 4. Clearing ENTIRE buffer (not just the window) on success
+     *
+     * @param windowMinutes Number of minutes to look back (default: 5)
+     * @return CompletableResultCode indicating success/failure
+     */
+    fun flushWindowAndClearAll(windowMinutes: Int = 5): CompletableResultCode {
+        if (isShutdown.get()) {
+            return CompletableResultCode.ofFailure()
+        }
+
+        try {
+            val windowStartMs = System.currentTimeMillis() - (windowMinutes * 60 * 1000L)
+            val eventsToFlush = mutableListOf<LogRecordData>()
+
+            // Collect from RAM buffer (within window)
+            ramBuffer.forEach { logRecord ->
+                if (logRecord.timestampEpochNanos / 1_000_000 >= windowStartMs) {
+                    eventsToFlush.add(logRecord)
+                }
+            }
+
+            // Collect from disk buffer (within window)
+            val diskEvents = runBlocking {
+                diskBuffer.getEventsInWindow(windowStartMs)
+            }
+            eventsToFlush.addAll(diskEvents)
+
+            Log.i(TAG, "Flushing ${eventsToFlush.size} events from last $windowMinutes minutes, will clear entire buffer on success")
+
+            // Export in batches
+            val batchSize = 100
+            val results = eventsToFlush.chunked(batchSize).map { batch ->
+                exporter.export(batch)
+            }
+
+            // Wait for all batches to complete
+            val result = CompletableResultCode.ofAll(results)
+
+            // Clear ENTIRE buffer on success (not just the window)
+            result.whenComplete {
+                if (result.isSuccess) {
+                    try {
+                        // Clear ALL events from RAM buffer
+                        ramBuffer.clear()
+                        ramBufferCount.set(0)
+
+                        // Clear ALL events from disk buffer
+                        runBlocking {
+                            diskBuffer.clearAll()
+                        }
+
+                        Log.i(TAG, "Successfully flushed ${eventsToFlush.size} events and cleared entire buffer")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error clearing buffers after successful flush", e)
+                    }
+                } else {
+                    Log.w(TAG, "Flush failed, keeping all events in buffer")
+                }
+            }
+
+            return result
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error flushing window", e)
+            return CompletableResultCode.ofFailure()
+        }
+    }
+
+    /**
+     * Flushes a time window of events (legacy method, kept for compatibility).
      *
      * This implements selective flushing by:
      * 1. Collecting events from RAM buffer within the time window

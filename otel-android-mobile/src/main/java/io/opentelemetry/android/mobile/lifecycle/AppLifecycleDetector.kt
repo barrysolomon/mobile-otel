@@ -10,6 +10,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributeKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.Executors
 
 /**
  * Detects app lifecycle events: start, background, foreground, force close.
@@ -36,13 +37,21 @@ class AppLifecycleDetector private constructor(
     private val context: Context,
     private val logger: Logger,
     private val captureConfig: io.opentelemetry.android.mobile.metrics.DeviceMetricsCaptureConfig,
-    private val metricsCollector: io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector? = null
+    private val metricsCollector: io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector? = null,
+    private val enableCrashRecoveryFlush: Boolean = true
 ) : Application.ActivityLifecycleCallbacks {
 
     private val isFirstStart = AtomicBoolean(true)
     private val activeActivities = AtomicLong(0)
     private val sessionStartTime = AtomicLong(System.currentTimeMillis())
     private var lastBackgroundTime: Long = 0
+
+    // Background executor for non-blocking flush operations
+    private val backgroundExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "AppLifecycle-Flush").apply {
+            isDaemon = true
+        }
+    }
 
     companion object {
         private const val TAG = "AppLifecycleDetector"
@@ -62,22 +71,24 @@ class AppLifecycleDetector private constructor(
          * @param logger Logger for lifecycle events
          * @param captureConfig Configuration for when to capture device metrics
          * @param metricsCollector Optional metrics collector (if null, metrics not captured)
+         * @param enableCrashRecoveryFlush Enable immediate flush of crash recovery data (default: true)
          */
         fun register(
             app: Application,
             logger: Logger,
             captureConfig: io.opentelemetry.android.mobile.metrics.DeviceMetricsCaptureConfig,
-            metricsCollector: io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector? = null
+            metricsCollector: io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector? = null,
+            enableCrashRecoveryFlush: Boolean = true
         ) {
             if (instance == null) {
                 synchronized(this) {
                     if (instance == null) {
-                        val detector = AppLifecycleDetector(app, logger, captureConfig, metricsCollector)
+                        val detector = AppLifecycleDetector(app, logger, captureConfig, metricsCollector, enableCrashRecoveryFlush)
                         app.registerActivityLifecycleCallbacks(detector)
                         instance = detector
 
-                        // Check for force close on startup
-                        detector.checkForceClose()
+                        // Defer force close check to background thread to avoid blocking startup
+                        detector.deferredCheckForceClose()
                     }
                 }
             }
@@ -87,6 +98,22 @@ class AppLifecycleDetector private constructor(
          * Gets the current instance if registered.
          */
         fun getInstance(): AppLifecycleDetector? = instance
+    }
+
+    /**
+     * Deferred check for force close on background thread.
+     * This avoids blocking app startup and gives time for providers to initialize.
+     */
+    private fun deferredCheckForceClose() {
+        backgroundExecutor.submit {
+            try {
+                // Give app time to initialize
+                Thread.sleep(1000)
+                checkForceClose()
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error in deferred force close check", e)
+            }
+        }
     }
 
     /**
@@ -121,6 +148,55 @@ class AppLifecycleDetector private constructor(
                     io.opentelemetry.android.mobile.metrics.CaptureReason.FORCE_CLOSE,
                     force = true
                 )
+            }
+
+            // Force flush all buffered data (logs, traces, metrics) that survived the crash
+            // This ensures disk-buffered spans/transactions from the crashed session are sent
+            // Run on background thread to avoid blocking app startup
+            if (!enableCrashRecoveryFlush) {
+                android.util.Log.i(TAG, "Crash recovery flush disabled, data will be sent on next regular flush")
+                return
+            }
+
+            backgroundExecutor.submit {
+                try {
+                    // Wait a bit for the app to fully initialize before attempting flush
+                    Thread.sleep(2000)
+
+                    android.util.Log.i(TAG, "Attempting to flush disk-buffered data from crashed session (background)")
+
+                    // Try multiple times with delays in case provider isn't ready yet
+                    var attempts = 0
+                    val maxAttempts = 5
+                    var provider: io.opentelemetry.android.mobile.MobileLoggerProvider? = null
+
+                    while (attempts < maxAttempts && provider == null) {
+                        provider = io.opentelemetry.android.mobile.MobileLoggerProvider.getInstanceOrNull()
+                        if (provider == null) {
+                            attempts++
+                            android.util.Log.d(TAG, "Provider not ready yet, attempt $attempts/$maxAttempts")
+                            Thread.sleep(1000)
+                        }
+                    }
+
+                    if (provider != null) {
+                        android.util.Log.i(TAG, "Provider ready, starting crash recovery flush (5-minute window)")
+                        val flushResult = provider.flushWindowAndClearAll()
+                        flushResult.whenComplete {
+                            if (flushResult.isSuccess) {
+                                android.util.Log.i(TAG, "Successfully flushed crash recovery data (5-minute window)")
+                            } else {
+                                android.util.Log.w(TAG, "Failed to flush crash recovery data")
+                            }
+                        }
+                    } else {
+                        android.util.Log.w(TAG, "MobileLoggerProvider not available after $maxAttempts attempts, skipping crash recovery flush")
+                    }
+                } catch (e: InterruptedException) {
+                    android.util.Log.w(TAG, "Background flush interrupted", e)
+                } catch (e: Exception) {
+                    android.util.Log.e(TAG, "Error during background flush", e)
+                }
             }
         }
 

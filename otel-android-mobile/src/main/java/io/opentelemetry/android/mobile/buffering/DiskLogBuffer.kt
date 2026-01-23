@@ -5,15 +5,13 @@ import android.util.Log
 import androidx.room.*
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
-import io.opentelemetry.api.common.AttributesBuilder
-import io.opentelemetry.api.common.Value
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.resources.Resource
 import kotlinx.coroutines.*
 import org.json.JSONObject
-import java.io.File
 
 /**
  * Persistent disk buffer for log records using Room database.
@@ -90,8 +88,7 @@ class DiskLogBuffer private constructor(
         try {
             val entities = logDao.getEventsAfter(windowStartMs)
             Log.d(TAG, "Retrieved ${entities.size} events from disk for window starting at $windowStartMs")
-            // For now, return empty list since reconstruction is complex
-            emptyList()
+            entities.mapNotNull { it.toLogRecordData() }
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving events from window", e)
             emptyList()
@@ -107,8 +104,7 @@ class DiskLogBuffer private constructor(
         try {
             val entities = logDao.getAllEvents()
             Log.d(TAG, "Retrieved ${entities.size} total events from disk")
-            // For now, return empty list since reconstruction is complex
-            emptyList()
+            entities.mapNotNull { it.toLogRecordData() }
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving all events", e)
             emptyList()
@@ -300,7 +296,7 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
     return LogRecordEntity(
         timestampMs = timestampEpochNanos / 1_000_000,
         severityText = severity?.name,
-        body = body.toString(),
+        body = body.asString(),
         attributes = attributesJson,
         resource = resourceJson,
         instrumentationScopeName = instrumentationScopeInfo.name,
@@ -308,4 +304,77 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
     )
 }
 
-// TODO: Implement LogRecordData reconstruction from entities
+/**
+ * Extension to convert LogRecordEntity back to LogRecordData.
+ */
+private fun LogRecordEntity.toLogRecordData(): LogRecordData? {
+    val entityBody = body // Renamed to avoid shadowing
+    val entitySeverityText = severityText // Renamed to avoid shadowing
+
+    return try {
+        // Parse attributes from JSON
+        val attributesBuilder = Attributes.builder()
+        val attributesJson = JSONObject(attributes)
+        attributesJson.keys().forEach { key ->
+            val value = attributesJson.getString(key)
+            attributesBuilder.put(AttributeKey.stringKey(key), value)
+        }
+
+        // Parse resource attributes from JSON
+        val resourceAttributesBuilder = Attributes.builder()
+        val resourceJson = JSONObject(resource)
+        resourceJson.keys().forEach { key ->
+            val value = resourceJson.getString(key)
+            resourceAttributesBuilder.put(AttributeKey.stringKey(key), value)
+        }
+
+        // Parse severity
+        val parsedSeverity = severityText?.let {
+            try {
+                Severity.valueOf(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        // Create InstrumentationScopeInfo
+        val scopeInfo = InstrumentationScopeInfo.builder(instrumentationScopeName ?: "unknown")
+            .apply {
+                instrumentationScopeVersion?.let { setVersion(it) }
+            }
+            .build()
+
+        // Create Resource
+        val resourceData = Resource.create(resourceAttributesBuilder.build())
+
+        // Create LogRecordData using builder pattern
+        object : LogRecordData {
+            override fun getResource(): Resource = resourceData
+            override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = scopeInfo
+            override fun getTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getObservedTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getSpanContext(): io.opentelemetry.api.trace.SpanContext =
+                io.opentelemetry.api.trace.SpanContext.getInvalid()
+
+            override fun getSeverity(): Severity? = parsedSeverity
+            override fun getSeverityText(): String? = entitySeverityText
+            override fun getBody(): Body {
+                return object : Body {
+                    override fun asString(): String {
+                        return entityBody
+                    }
+
+                    override fun getType(): Body.Type {
+                        return Body.Type.STRING
+                    }
+                }
+            }
+
+            override fun getAttributes(): Attributes = attributesBuilder.build()
+            override fun getTotalAttributeCount(): Int = attributesBuilder.build().size()
+        }
+    } catch (e: Exception) {
+        Log.e("DiskLogBuffer", "Error reconstructing LogRecordData from entity", e)
+        null
+    }
+}
