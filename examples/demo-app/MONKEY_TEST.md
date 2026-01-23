@@ -1,6 +1,6 @@
 # Monkey Test Guide
 
-Automated stress testing for the OpenTelemetry Mobile Demo app with crash/ANR detection and automatic recovery.
+Automated stress testing for the OpenTelemetry Mobile Demo app with crash/ANR detection, activity stretches, and periodic flushes.
 
 ## Overview
 
@@ -10,16 +10,36 @@ The monkey test script performs randomized testing of the demo app to validate:
 - **Crash recovery** workflow triggering
 - **Background/foreground** lifecycle handling
 - **Export reliability** under stress conditions
+- **Realistic usage patterns** with configurable activity stretches
+- **Manual flush validation** with periodic triggers
 
 ## Features
 
+### Activity Stretches (NEW)
+Simulate realistic user behavior with bursts of normal activity:
+- **Short** (5-10 actions): Quick interactions between triggers
+- **Medium** (15-25 actions): Typical user session
+- **Long** (30-50 actions): Extended usage without errors
+- **Mixed**: Random combination of all stretch types (default)
+- **None**: Original weighted random behavior
+
+Stretches perform only normal activities (login, navigate, etc.) without triggering errors, then optionally trigger an error event between stretches.
+
+### Periodic Manual Flushes (NEW)
+Automatically trigger manual flushes at configurable intervals:
+- Default: Every 20 actions
+- Validates telemetry is being buffered correctly
+- Tests export on-demand functionality
+- Configurable or can be disabled
+
 ### Intelligent Action Selection
-- **Weighted random selection**: Regular activity buttons clicked more frequently than trigger buttons
+- **Stretch-aware selection**: Normal activities during stretches, mixed between stretches
 - **Background/foreground transitions**: 10% chance of sending app to background and bringing it back
 - **Smart crash handling**: Detects crashes and restarts app after random delay (5-60s)
 - **ANR detection**: Identifies ANR states and force-kills/restarts app
 
 ### Button Distribution
+When not in stretch mode:
 - **Regular Activities** (70%): Login, Navigate, API Call, Background Task, User Interaction, Form Submit
 - **Trigger Events** (20%): UI Freeze, Network Error (crash/ANR weighted lower)
 - **Manual Controls** (10%): Force Flush
@@ -67,27 +87,33 @@ adb devices
 ```bash
 cd examples/demo-app
 
-# Run 100 random actions
-./monkey-test.sh --actions 100
+# Run 100 actions with mixed stretches (default)
+bash monkey-test.sh --actions 100
 
-# Run for 5 minutes
-./monkey-test.sh --time 300
+# Run for 5 minutes with medium stretches
+bash monkey-test.sh --time 300 --stretch-mode medium
 
-# Run for 10 minutes with verbose output
-./monkey-test.sh --time 600 --verbose
+# Run 50 actions with long stretches and verbose output
+bash monkey-test.sh -a 50 -s long -v
 ```
 
 ### Advanced Options
 
 ```bash
 # Full option list
-./monkey-test.sh --help
+bash monkey-test.sh --help
+
+# Custom flush interval (every 15 actions instead of 20)
+bash monkey-test.sh --actions 100 --flush-interval 15
+
+# Disable automatic flushes
+bash monkey-test.sh -a 100 -f 0
+
+# Use old behavior (no stretches)
+bash monkey-test.sh --actions 50 --stretch-mode none
 
 # Custom package name (if modified)
-./monkey-test.sh --actions 50 --package com.example.custom
-
-# Verbose mode (shows all button clicks and delays)
-./monkey-test.sh -a 100 -v
+bash monkey-test.sh --actions 50 --package com.example.custom
 ```
 
 ## Command Reference
@@ -96,15 +122,67 @@ cd examples/demo-app
 |--------|-------|-------------|---------|
 | `--actions N` | `-a` | Run N random actions | Unlimited |
 | `--time N` | `-t` | Run for N seconds | Unlimited |
+| `--stretch-mode MODE` | `-s` | Activity stretch mode: mixed\|short\|medium\|long\|none | `mixed` |
+| `--flush-interval N` | `-f` | Manual flush every N actions (0=disable) | `20` |
 | `--package PKG` | `-p` | Target package name | `io.opentelemetry.android.demo` |
 | `--verbose` | `-v` | Show detailed debug output | Off |
 | `--help` | `-h` | Show help message | - |
 
+### Stretch Modes
+
+| Mode | Description | Actions Between Triggers |
+|------|-------------|--------------------------|
+| `mixed` | Random mix of short/medium/long (default) | Varies |
+| `short` | Quick bursts of activity | 5-10 |
+| `medium` | Typical user sessions | 15-25 |
+| `long` | Extended usage | 30-50 |
+| `none` | Original weighted random | N/A |
+
 ## What the Test Does
 
-### 1. Random Button Clicks
-Simulates real user behavior by clicking buttons with weighted randomness:
+### 1. Activity Stretches (Default Mode)
+Simulates realistic usage patterns with bursts of normal activity:
 
+```
+During Stretch (5-50 actions depending on mode):
+- Only regular activity buttons: Login, Navigate, API Call, Background, Interaction, Form Submit
+- No trigger events
+- Simulates normal user sessions
+
+Between Stretches:
+- May trigger error events: UI Freeze, Network Error, Crash, Low Memory, ANR
+- Tests error handling and recovery
+
+Example Flow (medium mode):
+1. 20 normal actions (login, navigate, api calls, etc.)
+2. Trigger: UI Freeze
+3. 17 normal actions
+4. Manual Flush (every 20 actions)
+5. 23 normal actions
+6. Trigger: Network Error
+7. Continue...
+```
+
+### 2. Periodic Manual Flushes
+Automatically triggers manual flush button every N actions (default: 20):
+
+```
+Why This Matters:
+- Validates buffering is working correctly
+- Tests export-on-demand functionality
+- Simulates user-triggered sync
+- Helps verify data reaches backend
+```
+
+### 3. Button Click Behavior
+
+**During Stretches** (normal activity only):
+```
+Regular Activity Buttons (equal weight):
+- Login, Navigate, API Call, Background, Interaction, Form Submit
+```
+
+**Between Stretches or "none" mode** (weighted random):
 ```
 Regular Activity Buttons (weight 15 each):
 - Login, Navigate, API Call, Background, Interaction, Form Submit
@@ -120,14 +198,14 @@ Manual Controls (weight 10):
 - Force Flush - sends buffered telemetry
 ```
 
-### 2. Background/Foreground Transitions (10% of actions)
+### 4. Background/Foreground Transitions (10% of actions)
 Tests lifecycle handling by:
 1. Pressing Home button (app goes to background)
 2. Waiting 1-10 seconds
 3. Bringing app back to foreground
 4. Triggers "app.foreground" event → flushes last 5 minutes of events
 
-### 3. Crash Detection & Recovery
+### 5. Crash Detection & Recovery
 When app crashes:
 1. Detects process death
 2. Waits random delay (5-60 seconds)
@@ -136,7 +214,7 @@ When app crashes:
 5. Continues test
 6. App should log "app.crash_recovery" event on restart
 
-### 4. ANR Detection & Recovery
+### 6. ANR Detection & Recovery
 When app enters ANR state:
 1. Detects ANR via `dumpsys activity`
 2. Force-kills app process

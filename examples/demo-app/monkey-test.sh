@@ -5,25 +5,35 @@
 #
 # This script performs randomized testing of the demo app with:
 # - Random button clicks (regular activities and trigger events)
+# - Configurable activity stretches (short/med/long normal activity bursts)
+# - Periodic manual flushes to validate telemetry capture
 # - Background/foreground transitions
 # - Crash and ANR detection
 # - Automatic app restart after crashes
-# - Configurable test duration or action count
 #
 # Usage:
 #   bash monkey-test.sh [OPTIONS]
 #
 # Options:
-#   -a, --actions N     Run N random actions (default: unlimited)
-#   -t, --time N        Run for N seconds (default: unlimited)
-#   -p, --package PKG   Package name (default: io.opentelemetry.android.demo)
-#   -v, --verbose       Verbose output
-#   -h, --help          Show this help
+#   -a, --actions N         Run N random actions (default: unlimited)
+#   -t, --time N            Run for N seconds (default: unlimited)
+#   -s, --stretch-mode MODE Activity stretch mode: mixed|short|medium|long|none (default: mixed)
+#   -f, --flush-interval N  Flush every N actions (default: 20, 0=disable)
+#   -p, --package PKG       Package name (default: io.opentelemetry.android.demo)
+#   -v, --verbose           Verbose output
+#   -h, --help              Show this help
+#
+# Stretch Modes:
+#   mixed  - Random mix of short/medium/long stretches (default)
+#   short  - 5-10 normal actions between triggers
+#   medium - 15-25 normal actions between triggers
+#   long   - 30-50 normal actions between triggers
+#   none   - Always use weighted random (old behavior)
 #
 # Examples:
-#   bash monkey-test.sh --actions 100    # Run 100 random actions
-#   bash monkey-test.sh --time 300       # Run for 5 minutes
-#   bash monkey-test.sh -a 50 -v         # 50 actions with verbose output
+#   bash monkey-test.sh --actions 100 --stretch-mode medium
+#   bash monkey-test.sh --time 300 --flush-interval 15
+#   bash monkey-test.sh -a 50 -s long -f 10 -v
 #
 # Note: Compatible with Bash 3.2+ (macOS default)
 #
@@ -39,9 +49,13 @@ MAX_DURATION=-1
 VERBOSE=0
 ACTION_COUNT=0
 START_TIME=$(date +%s)
+STRETCH_MODE="mixed"
+FLUSH_INTERVAL=20
+STRETCH_COUNTER=0
+CURRENT_STRETCH_SIZE=0
+FLUSH_COUNTER=0
 
 # Button data using parallel arrays for Bash 3.2 compatibility
-# Format: name, x_coord, y_coord, weight
 BUTTON_NAMES=(
     "login" "navigate" "api_call" "background" "interaction" "form_submit"
     "ui_freeze" "crash" "network_error" "low_memory" "anr" "force_flush"
@@ -51,11 +65,16 @@ BUTTON_X=(270 810 270 810 270 810  270 810 270 810 540  540)
 BUTTON_Y=(1200 1200 1320 1320 1440 1440  900 900 1020 1020 1140  1600)
 BUTTON_WEIGHTS=(15 15 15 15 15 15  5 2 5 1 1  10)
 
+# Regular activity buttons (first 6)
+REGULAR_BUTTON_NAMES=("login" "navigate" "api_call" "background" "interaction" "form_submit")
+REGULAR_BUTTON_INDICES=(0 1 2 3 4 5)
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 ################################################################################
@@ -80,6 +99,10 @@ log_debug() {
     fi
 }
 
+log_stretch() {
+    echo -e "${CYAN}[STRETCH]${NC} $1"
+}
+
 show_help() {
     cat << EOF
 OpenTelemetry Mobile Demo - Monkey Test Script
@@ -87,16 +110,30 @@ OpenTelemetry Mobile Demo - Monkey Test Script
 Usage: bash $0 [OPTIONS]
 
 Options:
-  -a, --actions N     Run N random actions (default: unlimited)
-  -t, --time N        Run for N seconds (default: unlimited)
-  -p, --package PKG   Package name (default: $PACKAGE_NAME)
-  -v, --verbose       Verbose output
-  -h, --help          Show this help
+  -a, --actions N         Run N random actions (default: unlimited)
+  -t, --time N            Run for N seconds (default: unlimited)
+  -s, --stretch-mode MODE Activity stretch mode (default: mixed)
+  -f, --flush-interval N  Manual flush every N actions (default: 20, 0=disable)
+  -p, --package PKG       Package name (default: $PACKAGE_NAME)
+  -v, --verbose           Verbose output
+  -h, --help              Show this help
+
+Stretch Modes:
+  mixed  - Random mix of short/medium/long stretches (default)
+  short  - 5-10 normal actions between triggers
+  medium - 15-25 normal actions between triggers
+  long   - 30-50 normal actions between triggers
+  none   - Always use weighted random (old behavior)
 
 Examples:
-  bash $0 --actions 100    # Run 100 random actions
-  bash $0 --time 300       # Run for 5 minutes
-  bash $0 -a 50 -v         # 50 actions with verbose output
+  bash $0 --actions 100 --stretch-mode medium
+  bash $0 --time 300 --flush-interval 15
+  bash $0 -a 50 -s long -f 10 -v
+
+Activity Stretches:
+  The test will perform bursts of normal user activity (login, navigate, etc.)
+  without triggering errors. After each stretch, it may trigger an error event.
+  Manual flushes occur periodically to validate telemetry capture.
 
 EOF
 }
@@ -117,16 +154,12 @@ is_app_running() {
 }
 
 is_app_responding() {
-    # Check if app is in ANR state
     if adb shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
         return 1
     fi
-
-    # Check if app process exists
     if ! is_app_running; then
         return 1
     fi
-
     return 0
 }
 
@@ -198,12 +231,47 @@ select_random_button() {
         done
     done
 
-    # Select random button from weighted array
     local total=${#weighted_buttons[@]}
     local random_idx=$((RANDOM % total))
     local button_idx=${weighted_buttons[$random_idx]}
 
     echo "${BUTTON_NAMES[$button_idx]}"
+}
+
+select_regular_button() {
+    # Select only from regular activity buttons (first 6)
+    local random_idx=$((RANDOM % 6))
+    local button_idx=${REGULAR_BUTTON_INDICES[$random_idx]}
+    echo "${BUTTON_NAMES[$button_idx]}"
+}
+
+get_stretch_size() {
+    case $STRETCH_MODE in
+        short)
+            echo $((RANDOM % 6 + 5))  # 5-10
+            ;;
+        medium)
+            echo $((RANDOM % 11 + 15))  # 15-25
+            ;;
+        long)
+            echo $((RANDOM % 21 + 30))  # 30-50
+            ;;
+        mixed)
+            # Randomly choose short/medium/long
+            local mode=$((RANDOM % 3))
+            case $mode in
+                0) echo $((RANDOM % 6 + 5)) ;;    # short
+                1) echo $((RANDOM % 11 + 15)) ;;  # medium
+                2) echo $((RANDOM % 21 + 30)) ;;  # long
+            esac
+            ;;
+        none)
+            echo 0  # No stretches
+            ;;
+        *)
+            echo 0
+            ;;
+    esac
 }
 
 random_delay() {
@@ -237,7 +305,6 @@ handle_crash() {
 handle_anr() {
     log_warn "App in ANR state! Killing and restarting..."
 
-    # Kill the app forcefully
     kill_app
 
     # Random delay before restart
@@ -245,15 +312,21 @@ handle_anr() {
     log_info "Waiting ${restart_delay}s before restart"
     sleep $restart_delay
 
-    # Clean restart
     stop_app
     start_app
 
     log_info "App restarted after ANR"
 }
 
+trigger_manual_flush() {
+    log_info "🚀 Triggering manual flush (every $FLUSH_INTERVAL actions)"
+    click_button "force_flush"
+    sleep 2
+}
+
 perform_random_action() {
     ACTION_COUNT=$((ACTION_COUNT + 1))
+    FLUSH_COUNTER=$((FLUSH_COUNTER + 1))
 
     # Check if app is still running and responding
     if ! is_app_responding; then
@@ -266,19 +339,65 @@ perform_random_action() {
         fi
     fi
 
-    # 10% chance to do a background/foreground transition
-    if [ $((RANDOM % 10)) -eq 0 ]; then
-        log_info "Action #$ACTION_COUNT: Background/Foreground transition"
-        send_to_background
-        random_background_delay
-        bring_to_foreground
-        sleep 1
+    # Check for manual flush interval
+    if [ $FLUSH_INTERVAL -gt 0 ] && [ $FLUSH_COUNTER -ge $FLUSH_INTERVAL ]; then
+        trigger_manual_flush
+        FLUSH_COUNTER=0
         return
     fi
 
-    # Select and click a random button
-    local button=$(select_random_button)
-    log_info "Action #$ACTION_COUNT: Clicking $button"
+    # 10% chance to do a background/foreground transition (only if not in stretch)
+    if [ "$STRETCH_MODE" = "none" ] || [ $STRETCH_COUNTER -ge $CURRENT_STRETCH_SIZE ]; then
+        if [ $((RANDOM % 10)) -eq 0 ]; then
+            log_info "Action #$ACTION_COUNT: Background/Foreground transition"
+            send_to_background
+            random_background_delay
+            bring_to_foreground
+            sleep 1
+            return
+        fi
+    fi
+
+    # Determine if we're in a stretch or mixing
+    local button
+    if [ "$STRETCH_MODE" = "none" ]; then
+        # Old behavior: weighted random
+        button=$(select_random_button)
+        log_info "Action #$ACTION_COUNT: Clicking $button"
+    else
+        # Stretch mode active
+        if [ $STRETCH_COUNTER -lt $CURRENT_STRETCH_SIZE ]; then
+            # Inside stretch: only regular buttons
+            button=$(select_regular_button)
+            STRETCH_COUNTER=$((STRETCH_COUNTER + 1))
+            log_info "Action #$ACTION_COUNT: Clicking $button (stretch: $STRETCH_COUNTER/$CURRENT_STRETCH_SIZE)"
+        else
+            # End of stretch: trigger event and start new stretch
+            button=$(select_random_button)
+
+            # Prefer trigger buttons at end of stretch
+            local is_trigger=0
+            case $button in
+                ui_freeze|crash|network_error|low_memory|anr)
+                    is_trigger=1
+                    ;;
+            esac
+
+            if [ $is_trigger -eq 1 ]; then
+                log_stretch "End of stretch - triggering: $button"
+            else
+                log_info "Action #$ACTION_COUNT: Clicking $button (between stretches)"
+            fi
+
+            # Start new stretch
+            CURRENT_STRETCH_SIZE=$(get_stretch_size)
+            STRETCH_COUNTER=0
+            if [ $CURRENT_STRETCH_SIZE -gt 0 ]; then
+                log_stretch "Starting new stretch: $CURRENT_STRETCH_SIZE normal actions"
+            fi
+        fi
+    fi
+
     click_button "$button"
 
     # Special handling for crash button
@@ -309,12 +428,10 @@ should_continue() {
     local current_time=$(date +%s)
     local elapsed=$((current_time - START_TIME))
 
-    # Check action count limit
     if [ $MAX_ACTIONS -gt 0 ] && [ $ACTION_COUNT -ge $MAX_ACTIONS ]; then
         return 1
     fi
 
-    # Check time limit
     if [ $MAX_DURATION -gt 0 ] && [ $elapsed -ge $MAX_DURATION ]; then
         return 1
     fi
@@ -337,6 +454,14 @@ while [[ $# -gt 0 ]]; do
             MAX_DURATION="$2"
             shift 2
             ;;
+        -s|--stretch-mode)
+            STRETCH_MODE="$2"
+            shift 2
+            ;;
+        -f|--flush-interval)
+            FLUSH_INTERVAL="$2"
+            shift 2
+            ;;
         -p|--package)
             PACKAGE_NAME="$2"
             shift 2
@@ -357,6 +482,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate stretch mode
+case $STRETCH_MODE in
+    mixed|short|medium|long|none)
+        ;;
+    *)
+        log_error "Invalid stretch mode: $STRETCH_MODE"
+        log_error "Valid modes: mixed, short, medium, long, none"
+        exit 1
+        ;;
+esac
+
 # Print configuration
 log_info "==== Monkey Test Configuration ===="
 log_info "Package: $PACKAGE_NAME"
@@ -370,6 +506,12 @@ if [ $MAX_DURATION -gt 0 ]; then
 else
     log_info "Max duration: unlimited"
 fi
+log_info "Stretch mode: $STRETCH_MODE"
+if [ $FLUSH_INTERVAL -gt 0 ]; then
+    log_info "Flush interval: every $FLUSH_INTERVAL actions"
+else
+    log_info "Flush interval: disabled"
+fi
 log_info "Verbose: $VERBOSE"
 log_info "===================================="
 echo
@@ -381,6 +523,12 @@ check_device
 log_info "Preparing app for monkey test..."
 stop_app
 start_app
+
+# Initialize stretch if needed
+if [ "$STRETCH_MODE" != "none" ]; then
+    CURRENT_STRETCH_SIZE=$(get_stretch_size)
+    log_stretch "Starting with stretch: $CURRENT_STRETCH_SIZE normal actions"
+fi
 
 log_info "Starting monkey test..."
 echo
