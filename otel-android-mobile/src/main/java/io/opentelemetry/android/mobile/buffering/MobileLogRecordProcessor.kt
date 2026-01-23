@@ -111,7 +111,26 @@ class MobileLogRecordProcessor private constructor(
             1, 1, TimeUnit.HOURS
         )
 
-        Log.i(TAG, "Initialized: RAM buffer size=$ramBufferSize, Disk buffer=${diskBufferMb}MB, TTL=${diskBufferTtlHours}h")
+        // Schedule periodic device metrics capture in CONTINUOUS mode
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS) {
+            val captureIntervalSeconds = config.metricExportIntervalSeconds
+            executor.scheduleAtFixedRate(
+                {
+                    try {
+                        deviceMetricsCollector.captureMetrics(CaptureReason.SCHEDULED_FLUSH, force = true)
+                        Log.d(TAG, "Periodic device metrics captured")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error capturing periodic device metrics", e)
+                    }
+                },
+                captureIntervalSeconds,
+                captureIntervalSeconds,
+                TimeUnit.SECONDS
+            )
+            Log.i(TAG, "Periodic device metrics capture enabled: every ${captureIntervalSeconds}s")
+        }
+
+        Log.i(TAG, "Initialized: RAM buffer size=$ramBufferSize, Disk buffer=${diskBufferMb}MB, TTL=${diskBufferTtlHours}h, Export mode=${config.exportMode}")
     }
 
     /**

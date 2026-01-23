@@ -18,6 +18,7 @@
   "maxExportRetries": 3,
   "attachContextAttributes": true,
   "buildChannel": "debug",
+  "samplingRate": 1.0,
 
   "telemetrySettings": {
     "dataCollection": {
