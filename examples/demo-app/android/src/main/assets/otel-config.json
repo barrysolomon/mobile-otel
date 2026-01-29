@@ -19,6 +19,83 @@
   "attachContextAttributes": false,
   "buildChannel": "debug",
 
+  "sessionConfig": {
+    "enabled": true,
+    "inactivityTimeoutMs": 900000,
+    "flushOnTermination": true,
+    "persistSession": true
+  },
+
+  "breadcrumbConfig": {
+    "enabled": true,
+    "maxSize": 50,
+    "captureNavigation": true,
+    "captureUserInput": true,
+    "captureNetwork": true,
+    "captureErrors": true,
+    "scrubElementIds": true,
+    "scrubNetworkUrls": true,
+    "allowedScreens": []
+  },
+
+  "vitalsConfig": {
+    "enabled": true,
+    "measureAppStart": true,
+    "measureTtid": true,
+    "detectJank": true,
+    "trackInputLatency": true,
+    "monitorAnrRisk": true,
+    "monitorMemoryPressure": true,
+    "monitorThermalState": false,
+    "jankThresholdMs": 16.0,
+    "severeJankThresholdMs": 100.0,
+    "inputLatencyThresholdMs": 50.0,
+    "anrRiskThresholdMs": 3000,
+    "coldStartThresholdMs": 5000,
+    "warmStartThresholdMs": 2000,
+    "ttidThresholdMs": 3000,
+    "memoryPressureCriticalMb": 50,
+    "samplingRate": 1.0,
+    "reportingIntervalMs": 60000
+  },
+
+  "networkConfig": {
+    "enabled": true,
+    "propagateTraceContext": true,
+    "captureRequestHeaders": ["Content-Type"],
+    "captureResponseHeaders": ["Content-Type"],
+    "captureRequestBody": false,
+    "captureResponseBody": false,
+    "maxBodyCaptureBytes": 1024,
+    "scrubUrls": true,
+    "scrubHeaders": true,
+    "detectNetworkType": true,
+    "reportNetworkSpeed": false,
+    "bucketSizes": true,
+    "minDurationMs": 0,
+    "errorStatusThreshold": 400,
+    "allowedHosts": [],
+    "blockedHosts": []
+  },
+
+  "errorConfig": {
+    "enabled": true,
+    "captureUncaughtExceptions": true,
+    "captureCoroutineExceptions": true,
+    "captureRxJavaExceptions": false,
+    "deduplicateWindowMs": 300000,
+    "rateLimit": 10,
+    "maxStackTraceDepth": 50,
+    "scrubStackTraces": true,
+    "attachBreadcrumbs": true,
+    "attachVitals": true,
+    "proguardMappingFile": null,
+    "filterExceptions": [],
+    "captureExceptionMessages": true,
+    "captureCauses": true,
+    "flushOnError": true
+  },
+
   "telemetrySettings": {
     "dataCollection": {
       "logs": true,

@@ -181,7 +181,7 @@ class AppLifecycleDetector private constructor(
 
                     if (provider != null) {
                         android.util.Log.i(TAG, "Provider ready, starting crash recovery flush (5-minute window)")
-                        val flushResult = provider.flushWindowAndClearAll()
+                        val flushResult = provider.forceFlush()
                         flushResult.whenComplete {
                             if (flushResult.isSuccess) {
                                 android.util.Log.i(TAG, "Successfully flushed crash recovery data (5-minute window)")

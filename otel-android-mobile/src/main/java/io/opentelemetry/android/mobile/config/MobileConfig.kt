@@ -2,6 +2,11 @@ package io.opentelemetry.android.mobile.config
 
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
+import io.opentelemetry.android.mobile.core.SessionConfig
+import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbConfig
+import io.opentelemetry.android.mobile.vitals.VitalsConfig
+import io.opentelemetry.android.mobile.network.NetworkConfig
+import io.opentelemetry.android.mobile.errors.ErrorConfig
 
 /**
  * Export mode for telemetry data.
@@ -64,6 +69,11 @@ enum class ExportMode {
  * @property buildChannel Build channel for the app: prod/beta/internal/unknown (default: "unknown")
  * @property samplingConfig Sampling configuration for traces (default: 10% dynamic sampling with 100% for high-priority)
  * @property deviceMetricsConfig Configuration for which device metrics to capture on triggers (default: all enabled except location)
+ * @property sessionConfig Configuration for session management (default: enabled with 15min inactivity timeout)
+ * @property breadcrumbConfig Configuration for journey breadcrumb collection (default: all breadcrumbs enabled, 50 max size)
+ * @property vitalsConfig Configuration for mobile vitals monitoring (default: all vitals enabled with standard thresholds)
+ * @property networkConfig Configuration for network instrumentation (default: privacy-first with trace propagation)
+ * @property errorConfig Configuration for error instrumentation (default: all error handlers with deduplication)
  */
 data class MobileConfig(
     val serviceName: String,
@@ -82,7 +92,12 @@ data class MobileConfig(
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
     val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),
-    val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default()
+    val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default(),
+    val sessionConfig: SessionConfig = SessionConfig(),
+    val breadcrumbConfig: BreadcrumbConfig = BreadcrumbConfig.default(),
+    val vitalsConfig: VitalsConfig = VitalsConfig.default(),
+    val networkConfig: NetworkConfig = NetworkConfig.default(),
+    val errorConfig: ErrorConfig = ErrorConfig.default()
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -129,6 +144,11 @@ data class MobileConfig(
         private var buildChannel: String? = null
         private var samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0)
         private var deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default()
+        private var sessionConfig: SessionConfig = SessionConfig()
+        private var breadcrumbConfig: BreadcrumbConfig = BreadcrumbConfig.default()
+        private var vitalsConfig: VitalsConfig = VitalsConfig.default()
+        private var networkConfig: NetworkConfig = NetworkConfig.default()
+        private var errorConfig: ErrorConfig = ErrorConfig.default()
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -147,6 +167,11 @@ data class MobileConfig(
         fun setBuildChannel(channel: String) = apply { this.buildChannel = channel }
         fun setSamplingConfig(config: SamplingConfig) = apply { this.samplingConfig = config }
         fun setDeviceMetricsConfig(config: DeviceMetricsConfig) = apply { this.deviceMetricsConfig = config }
+        fun setSessionConfig(config: SessionConfig) = apply { this.sessionConfig = config }
+        fun setBreadcrumbConfig(config: BreadcrumbConfig) = apply { this.breadcrumbConfig = config }
+        fun setVitalsConfig(config: VitalsConfig) = apply { this.vitalsConfig = config }
+        fun setNetworkConfig(config: NetworkConfig) = apply { this.networkConfig = config }
+        fun setErrorConfig(config: ErrorConfig) = apply { this.errorConfig = config }
 
         fun build(): MobileConfig {
             return MobileConfig(
@@ -166,7 +191,12 @@ data class MobileConfig(
                 attachContextAttributes = attachContextAttributes,
                 buildChannel = buildChannel,
                 samplingConfig = samplingConfig,
-                deviceMetricsConfig = deviceMetricsConfig
+                deviceMetricsConfig = deviceMetricsConfig,
+                sessionConfig = sessionConfig,
+                breadcrumbConfig = breadcrumbConfig,
+                vitalsConfig = vitalsConfig,
+                networkConfig = networkConfig,
+                errorConfig = errorConfig
             )
         }
     }

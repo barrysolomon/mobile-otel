@@ -64,7 +64,6 @@ class MobileLoggerProvider private constructor(
     private val openTelemetrySdk: OpenTelemetrySdk
     private val deviceId: String = getOrCreateDeviceId(context)
     private val sampler: io.opentelemetry.sdk.trace.samplers.Sampler
-    private val mobileProcessor: MobileLogRecordProcessor
 
     init {
         // Create sampler based on configuration
@@ -184,7 +183,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create mobile log processor with ring buffer
-        mobileProcessor = MobileLogRecordProcessor.builder(context)
+        val mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
             .setConfig(config)
             .setMeter(meterProvider.get("device-metrics"))
@@ -287,23 +286,14 @@ class MobileLoggerProvider private constructor(
     }
 
     /**
-     * Triggers a window-based flush with full buffer clear (for crash recovery and policy triggers).
+     * Triggers an immediate flush of buffered events across all signals (logs, traces, metrics).
      *
-     * Flushes events from the last 5 minutes and clears entire buffer on success.
-     * This is the standard flush behavior for both crash recovery and policy triggers.
-     *
-     * @return CompletableResultCode indicating flush success/failure
-     */
-    fun flushWindowAndClearAll(): CompletableResultCode {
-        // Directly call the processor's window flush method
-        return mobileProcessor.flushWindowAndClearAll(windowMinutes = 5)
-    }
-
-    /**
-     * Triggers an immediate flush of ALL buffered events across all signals (logs, traces, metrics).
-     *
-     * This forces all buffered data to be exported immediately, regardless of age.
-     * Used for app shutdown or manual flush operations.
+     * This forces all buffered data to be exported immediately, regardless of policies or schedules.
+     * Essential for:
+     * - Conditional export mode (where scheduled exports are disabled)
+     * - Critical events that must be captured
+     * - App shutdown
+     * - Workflow trigger actions
      *
      * @param timeoutSeconds Maximum time to wait for flush to complete
      * @return CompletableResultCode indicating flush success/failure

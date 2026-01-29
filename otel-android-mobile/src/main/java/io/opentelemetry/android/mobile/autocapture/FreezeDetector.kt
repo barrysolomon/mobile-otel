@@ -132,7 +132,7 @@ class FreezeDetector(
         }
 
         scheduler.execute {
-            provider.flushWindowAndClearAll()
+            provider.forceFlush()
         }
     }
 

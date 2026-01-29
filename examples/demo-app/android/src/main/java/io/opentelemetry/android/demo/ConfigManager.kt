@@ -6,7 +6,6 @@ import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.ExportMode
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
-import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import org.json.JSONObject
 import java.io.IOException
 
@@ -323,14 +322,6 @@ object ConfigManager {
         // Load device metrics config from telemetry settings that were already parsed
         val deviceMetricsConfig = loadDeviceMetricsConfig(context)
 
-        // Parse sampling rate
-        val samplingRate = jsonObj.optDouble("samplingRate", 0.1)
-        val samplingConfig = when {
-            samplingRate >= 1.0 -> SamplingConfig.alwaysOn()
-            samplingRate <= 0.0 -> SamplingConfig.alwaysOff()
-            else -> SamplingConfig.production(samplingRate)
-        }
-
         val config = MobileConfig(
             serviceName = jsonObj.optString("serviceName", DEFAULT_SERVICE_NAME),
             serviceVersion = jsonObj.optString("serviceVersion", DEFAULT_SERVICE_VERSION),
@@ -347,7 +338,6 @@ object ConfigManager {
             headers = headers,
             attachContextAttributes = jsonObj.optBoolean("attachContextAttributes", DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
             buildChannel = jsonObj.optString("buildChannel", DEFAULT_BUILD_CHANNEL),
-            samplingConfig = samplingConfig,
             deviceMetricsConfig = deviceMetricsConfig
         )
 

@@ -2,6 +2,7 @@ plugins {
     id("com.android.library")
     id("com.google.devtools.ksp")
     id("maven-publish")
+    kotlin("plugin.serialization") version "1.9.20"
 }
 
 android {
@@ -72,7 +73,7 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.58.0")
 
     // Semantic Conventions
-    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.37.0")
+    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.39.0")
 
     // Room for local persistence
     implementation("androidx.room:room-runtime:2.8.4")
@@ -83,10 +84,16 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
+    // Kotlin Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
     // Android dependencies
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
+
+    // AndroidX Security for EncryptedSharedPreferences
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // HTTP client for policy fetching
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
