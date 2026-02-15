@@ -64,6 +64,7 @@ class MobileLoggerProvider private constructor(
     private val openTelemetrySdk: OpenTelemetrySdk
     private val deviceId: String = getOrCreateDeviceId(context)
     private val sampler: io.opentelemetry.sdk.trace.samplers.Sampler
+    private val mobileProcessor: MobileLogRecordProcessor
 
     init {
         // Create sampler based on configuration
@@ -183,7 +184,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create mobile log processor with ring buffer
-        val mobileProcessor = MobileLogRecordProcessor.builder(context)
+        mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
             .setConfig(config)
             .setMeter(meterProvider.get("device-metrics"))
@@ -229,6 +230,16 @@ class MobileLoggerProvider private constructor(
      * @return Stable device identifier
      */
     fun getDeviceId(): String = deviceId
+
+    /**
+     * Gets the mobile log record processor for direct buffer/flush control.
+     *
+     * Used by instrumentation modules (ErrorInstrumentation, PredictiveExportPolicy)
+     * to trigger flush on critical events.
+     *
+     * @return The MobileLogRecordProcessor instance
+     */
+    fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
 
     /**
      * Gets the OpenTelemetry SDK instance for advanced usage.

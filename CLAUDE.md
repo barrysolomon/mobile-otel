@@ -125,3 +125,8 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 - **CONDITIONAL** — Event-driven flush (battery efficient, only exports when policy triggers match)
 - **CONTINUOUS** — Periodic time-based export
 - **HYBRID** — Combination of both
+
+## Key Documents
+
+- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts (buffer, policy DSL, flush triggers, session/identity), SDK modules, privacy defaults, OTel compliance, demo scenarios
+- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks: SDK completeness, testing, infrastructure, documentation/OTEPs, upstream contribution

@@ -11,6 +11,29 @@ import io.opentelemetry.api.trace.Tracer
 
 /**
  * Public entry point for automatic mobile instrumentation.
+ *
+ * Calling [start] initializes the full SDK with all auto-instrumentation:
+ * - **Auto-capture**: taps, scrolls, back presses, freezes/ANR, lifecycle, screen views
+ * - **Error capture**: uncaught exceptions, coroutine errors, RxJava errors → auto flush
+ * - **Vitals**: app start, jank, memory pressure, thermal state → OTel metrics
+ * - **Predictive export**: crash/network-loss risk → pre-emptive buffer flush
+ * - **Ring buffer**: RAM (5000 events) → disk (50MB, 24h TTL) → selective export
+ * - **Policy evaluation**: DSL-based trigger conditions → window flush
+ * - **Session & breadcrumbs**: user journey tracking, session lifecycle
+ *
+ * Usage:
+ * ```kotlin
+ * class MyApp : Application() {
+ *     override fun onCreate() {
+ *         super.onCreate()
+ *         OTelMobile.start(this, MobileConfig(
+ *             serviceName = "my-app",
+ *             serviceVersion = "1.0.0",
+ *             collectorEndpoint = "https://collector.example.com:4317"
+ *         ))
+ *     }
+ * }
+ * ```
  */
 object OTelMobile {
     @Volatile
@@ -21,10 +44,14 @@ object OTelMobile {
 
     fun start(application: Application, config: MobileConfig, options: AutoCaptureOptions = AutoCaptureOptions()) {
         synchronized(this) {
-            val instance = provider ?: MobileLoggerProvider.getInstance(application, config).also {
-                provider = it
-            }
-            if (autoCaptureManager == null) {
+            if (provider == null) {
+                // Initialize all modules through MobileOtel facade
+                // This wires: SessionManager, BreadcrumbManager, ErrorInstrumentation,
+                // VitalsCollector, PredictiveExportPolicy, HealthMetricsCollector
+                val instance = MobileOtel.initialize(application, config)
+                provider = instance
+
+                // Start auto-capture (taps, scrolls, freezes, ANR, lifecycle, recovery)
                 autoCaptureManager = AutoCaptureManager(application, instance, options).also {
                     it.start()
                 }
@@ -35,7 +62,7 @@ object OTelMobile {
     fun stop(timeoutSeconds: Long = 30) {
         autoCaptureManager?.stop()
         autoCaptureManager = null
-        provider?.shutdown(timeoutSeconds)
+        MobileOtel.shutdown()
         provider = null
     }
 

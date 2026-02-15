@@ -205,7 +205,7 @@ class MobileLogRecordProcessor private constructor(
      * @param windowMinutes Number of minutes to look back
      * @return CompletableResultCode indicating success/failure
      */
-    private fun flushWindow(windowMinutes: Int): CompletableResultCode {
+    fun flushWindow(windowMinutes: Int): CompletableResultCode {
         if (isShutdown.get()) {
             return CompletableResultCode.ofFailure()
         }

@@ -3,7 +3,10 @@ package io.opentelemetry.android.mobile.predictive
 import android.content.Context
 import android.util.Log
 import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
-import io.opentelemetry.sdk.logs.data.LogRecordData
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.logs.Logger
+import io.opentelemetry.api.logs.Severity
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -16,31 +19,28 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * **Predictive Actions:**
  * 1. **Pre-emptive flush**: Flush buffers when network loss is predicted
- * 2. **Adaptive sampling**: Increase telemetry detail when crash risk is high
+ * 2. **Crash risk flush**: Flush buffers when crash risk is high
  * 3. **Predictive events**: Emit prediction events to OTEL for monitoring
- * 4. **Dynamic policy adjustment**: Modify export behavior based on predictions
  *
  * **Integration with MobileLogRecordProcessor:**
- * The predictor runs in the background and can trigger policy changes
- * that affect how the processor handles buffering and export.
+ * The predictor runs in the background and triggers forceFlush() on the processor
+ * when high-risk conditions are detected, ensuring telemetry is exported before
+ * the predicted failure occurs.
  *
  * Usage:
  * ```kotlin
  * val policy = PredictiveExportPolicy.builder(context)
  *     .setProcessor(mobileProcessor)
+ *     .setLogger(logger)
  *     .setPredictionIntervalSeconds(10)
  *     .setHighRiskThreshold(0.7)
  *     .build()
- *
- * // Policy will automatically:
- * // - Monitor device health
- * // - Generate predictions
- * // - Trigger export actions when needed
  * ```
  */
 class PredictiveExportPolicy private constructor(
     private val context: Context,
     private val processor: MobileLogRecordProcessor?,
+    private val logger: Logger?,
     private val predictor: OnDevicePredictor,
     private val healthMonitor: DeviceHealthMonitor,
     private val predictionIntervalSeconds: Long,
@@ -81,7 +81,7 @@ class PredictiveExportPolicy private constructor(
             val prediction = predictor.predict()
             currentPrediction.set(prediction)
 
-            // Emit prediction event (for monitoring)
+            // Emit prediction event as OTEL log (for backend monitoring/analysis)
             emitPredictionEvent(prediction)
 
             // Take actions based on prediction
@@ -129,21 +129,40 @@ class PredictiveExportPolicy private constructor(
      * enabling analysis of prediction accuracy and model tuning.
      */
     private fun emitPredictionEvent(prediction: Prediction) {
-        // TODO: Emit as OTEL log event
-        // For now, just log
-        Log.d(TAG, "Prediction: crash=${String.format("%.2f", prediction.crashRisk)}, " +
-                "network=${String.format("%.2f", prediction.networkLossRisk)}, " +
-                "perf=${String.format("%.2f", prediction.performanceDegradationRisk)}, " +
-                "battery=${String.format("%.2f", prediction.batteryDrainRisk)}, " +
-                "confidence=${String.format("%.2f", prediction.confidence)}")
+        logger?.logRecordBuilder()
+            ?.setBody("prediction.cycle")
+            ?.setSeverity(Severity.DEBUG)
+            ?.setAllAttributes(
+                Attributes.builder()
+                    .put(AttributeKey.doubleKey("prediction.crash_risk"), prediction.crashRisk)
+                    .put(AttributeKey.doubleKey("prediction.network_loss_risk"), prediction.networkLossRisk)
+                    .put(AttributeKey.doubleKey("prediction.perf_degradation_risk"), prediction.performanceDegradationRisk)
+                    .put(AttributeKey.doubleKey("prediction.battery_drain_risk"), prediction.batteryDrainRisk)
+                    .put(AttributeKey.doubleKey("prediction.confidence"), prediction.confidence)
+                    .put(AttributeKey.doubleKey("prediction.max_risk"), prediction.getMaxRisk())
+                    .build()
+            )
+            ?.emit()
     }
 
     /**
      * Emits a high-risk alert event.
      */
     private fun emitHighRiskAlert(prediction: Prediction) {
-        // TODO: Emit as OTEL log event with high severity
-        Log.w(TAG, "HIGH RISK ALERT: maxRisk=${String.format("%.2f", prediction.getMaxRisk())}")
+        logger?.logRecordBuilder()
+            ?.setBody("prediction.high_risk_alert")
+            ?.setSeverity(Severity.WARN)
+            ?.setAllAttributes(
+                Attributes.builder()
+                    .put(AttributeKey.doubleKey("prediction.crash_risk"), prediction.crashRisk)
+                    .put(AttributeKey.doubleKey("prediction.network_loss_risk"), prediction.networkLossRisk)
+                    .put(AttributeKey.doubleKey("prediction.perf_degradation_risk"), prediction.performanceDegradationRisk)
+                    .put(AttributeKey.doubleKey("prediction.battery_drain_risk"), prediction.batteryDrainRisk)
+                    .put(AttributeKey.doubleKey("prediction.max_risk"), prediction.getMaxRisk())
+                    .put(AttributeKey.booleanKey("prediction.flush_triggered"), true)
+                    .build()
+            )
+            ?.emit()
     }
 
     /**
@@ -195,6 +214,7 @@ class PredictiveExportPolicy private constructor(
      */
     class Builder(private val context: Context) {
         private var processor: MobileLogRecordProcessor? = null
+        private var logger: Logger? = null
         private var predictor: OnDevicePredictor? = null
         private var healthMonitor: DeviceHealthMonitor? = null
         private var predictionIntervalSeconds: Long = 10  // Every 10 seconds
@@ -202,6 +222,10 @@ class PredictiveExportPolicy private constructor(
 
         fun setProcessor(processor: MobileLogRecordProcessor) = apply {
             this.processor = processor
+        }
+
+        fun setLogger(logger: Logger) = apply {
+            this.logger = logger
         }
 
         fun setPredictor(predictor: OnDevicePredictor) = apply {
@@ -224,6 +248,7 @@ class PredictiveExportPolicy private constructor(
             return PredictiveExportPolicy(
                 context = context,
                 processor = processor,
+                logger = logger,
                 predictor = predictor ?: OnDevicePredictor.getInstance(context),
                 healthMonitor = healthMonitor ?: DeviceHealthMonitor.getInstance(context),
                 predictionIntervalSeconds = predictionIntervalSeconds,
