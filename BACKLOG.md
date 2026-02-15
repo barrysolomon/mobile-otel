@@ -13,16 +13,12 @@ Prioritized remaining work. Items are grouped by track, ordered by priority with
 - [ ] **Fix processor.go import** — Line 87: `pdata.Value` → `pcommon.Value` (5 min)
 - [ ] **Implement DiskLogBuffer deserialization** — `toLogRecordData()` throws NotImplementedError. Needs JSON or protobuf round-trip for full fidelity. (2-4 hours)
 
-### P0 — Missing Core Modules
-
-- [ ] **Events module** (`mobile-events/`) — `sendEvent()` API with reserved namespace `mobile.*` protection, event name validation, attribute validation. (~1 day)
-- [ ] **ProGuard/R8 symbolication** — Parse mapping.txt to deobfuscate stack traces in ErrorInstrumentation. (Future enhancement, stubbed)
-
 ### P1 — Auto-Capture Enhancements
 
 - [ ] **Compose Navigation support** — Intercept `NavHostController` navigation events for breadcrumbs
 - [ ] **Fragment lifecycle** — `FragmentManager.registerFragmentLifecycleCallbacks()` for breadcrumbs
 - [ ] **Early event queue** — Buffer up to 100 events before SDK init completes, replay after init
+- [ ] **ProGuard/R8 symbolication** — Parse mapping.txt to deobfuscate stack traces in ErrorInstrumentation. (Future enhancement, stubbed)
 
 ---
 
@@ -127,12 +123,18 @@ Target: >80% coverage. Follow existing patterns in `src/test/`.
 
 - [x] Phase 1-3: Foundation, Android OTEL migration, collector processor
 - [x] Dash0 Web SDK integration (Phases 1-5): Session management, breadcrumbs, vitals, network instrumentation, error instrumentation
-- [x] Auto-capture: tap, scroll, back-press, freeze/ANR detection
+- [x] Auto-capture: tap, scroll, back-press, freeze/ANR detection, lifecycle, recovery
 - [x] CI/CD: GitHub Actions (unit tests, lint, build verification)
 - [x] Control Plane UI: React Flow workflow builder, graph-to-DSL compiler
 - [x] Gateway: Go HTTP server with OTEL export
 - [x] Demo app: Scenarios A/B/C, configuration UI
-- [x] Predictive telemetry module
+- [x] Predictive telemetry module (DeviceHealthMonitor, OnDevicePredictor)
 - [x] Sampling system (dynamic, factory, config)
-- [x] Device metrics collector
+- [x] Device metrics collector (HealthMetricsCollector)
 - [x] Log tailing system
+- [x] **SDK auto-wiring** — MobileOtel.initialize() wires ErrorInstrumentation, VitalsCollector, PredictiveExportPolicy, HealthMetricsCollector automatically
+- [x] **Events module** — `MobileOtel.sendEvent()` API with attribute type coercion
+- [x] **Error reporting** — `MobileOtel.reportError()` with dedup, rate limiting, breadcrumb attachment, auto-flush
+- [x] **OTelMobile delegation** — `OTelMobile.start()` delegates to `MobileOtel.initialize()` for full module wiring
+- [x] **Predictive flush** — PredictiveExportPolicy emits OTel log events for prediction cycles and high-risk alerts
+- [x] **forceFlush(windowMinutes)** — Selective time-window flush via `MobileLogRecordProcessor.flushWindow()`

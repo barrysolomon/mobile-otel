@@ -1,453 +1,193 @@
-# Mobile Observability Demo
+# Mobile OTel SDK
 
-Complete end-to-end mobile observability system with selective event capture, workflow-based data flushing, and visual workflow management.
+OpenTelemetry-native Android observability SDK with intelligent buffering, on-device export policies, and predictive telemetry.
 
-## 🎯 What This Demo Does
+## What It Does
 
-This system demonstrates intelligent mobile app observability:
+The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), evaluates export policies on-device, and selectively flushes only relevant event windows. This dramatically reduces data egress while preserving full context around problems.
 
-1. **Android App** captures events locally (RAM + SQLite ring buffer)
-2. **Export Policy Engine** evaluates trigger conditions in real-time
-3. **Selective Flushing** sends only relevant event windows to backend
-4. **Gateway** converts events to OpenTelemetry Logs format
-5. **OTEL Collector** processes and exports to observability backends
-6. **Control Plane UI** provides visual policy builder for creating triggers
+**Key capabilities:**
+- **Auto-instrumentation** — Errors, vitals, predictive health, UI interactions all wired automatically
+- **Two-tier buffering** — RAM (5000 events) → disk (50MB, 24h TTL), survives crashes and offline
+- **Conditional export** — Zero bandwidth when nothing goes wrong (CONDITIONAL mode)
+- **Selective flush** — Export last N minutes around a problem, not everything
+- **Predictive flush** — Pre-emptive export when crash risk or network loss risk is high
+- **Visual policy builder** — Non-technical users author export policies via drag-and-drop UI
 
-**Result:** Dramatically reduce data egress costs by only sending events when specific conditions occur (crashes, errors, performance issues).
+## Quick Start
 
-### Terminology Note
+### Android SDK Integration
 
-This project uses **export policies** instead of "workflows" and **selective flush** instead of "replay":
-
-| Old Term | New Term | Why |
-|----------|----------|-----|
-| Workflow | Export Policy | More accurate - these are conditional export rules, not orchestration workflows |
-| Replay | Selective Flush | More accurate - we're flushing buffered events, not replaying recorded sessions |
-
-Historical references to "workflows" in the codebase refer to export policies.
-
-## 🚀 Quick Start
-
-```bash
-# 1. Deploy to Kubernetes
-kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
-
-# 2. Port forward gateway
-kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
-
-# 3. Start Control Plane UI
-cd control-plane-ui && npm install && npm run dev &
-
-# 4. Open browser
-open http://localhost:3000
-
-# 5. Build and run Android app
-cd android-app && ./gradlew installDebug
-```
-
-**Access UI:** http://localhost:3000
-**Gateway API:** http://localhost:8080
-
-## 📁 Project Structure
-
-```
-mobile-app/
-├── k8s/                          # Kubernetes manifests
-│   ├── otel-collector.yaml       # OTEL Collector deployment
-│   ├── otel-gateway.yaml         # Gateway deployment with PVC
-│   └── DEPLOYMENT.md             # K8s deployment guide
-│
-├── gateway/                      # Go gateway service
-│   ├── main.go                   # HTTP server and routing
-│   ├── internal/
-│   │   ├── otel/                 # OTEL log exporter
-│   │   ├── db/                   # SQLite persistence
-│   │   ├── config/               # Version management
-│   │   └── handlers/             # HTTP handlers
-│   ├── go.mod, go.sum            # Verified dependencies
-│   └── README.md                 # Gateway docs
-│
-├── android-app/                  # Android demo app
-│   ├── src/main/java/.../
-│   │   ├── ObservabilitySDK.kt  # Main SDK orchestrator
-│   │   ├── buffer/
-│   │   │   └── RingBufferManager.kt  # RAM + Disk buffer
-│   │   ├── workflow/
-│   │   │   └── WorkflowEvaluator.kt  # DSL execution
-│   │   ├── network/
-│   │   │   └── GatewayClient.kt      # HTTP client
-│   │   └── MainActivity.kt            # Demo UI
-│   ├── build.gradle.kts          # Android dependencies
-│   └── README.md                 # Android docs
-│
-├── control-plane-ui/             # React control plane
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── WorkflowBuilder.tsx   # React Flow canvas
-│   │   │   ├── DeviceMonitor.tsx     # Device dashboard
-│   │   │   └── nodes/                # Node components
-│   │   ├── utils/
-│   │   │   └── graphToDSL.ts         # Graph compiler
-│   │   ├── api/
-│   │   │   └── gateway.ts            # Gateway HTTP client
-│   │   └── App.tsx                   # Main app
-│   ├── package.json              # NPM dependencies
-│   ├── vite.config.ts            # Vite config with proxy
-│   └── README.md                 # UI docs
-│
-└── docs/                         # Documentation
-    ├── DEPLOYMENT_GUIDE.md       # Complete deployment steps
-    ├── QUICK_REFERENCE.md        # Command cheat sheet
-    ├── ARCHITECTURE.md           # System architecture diagrams
-    ├── E2E_VERIFICATION_CHECKLIST.md  # Verification steps
-    ├── VERIFICATION_PACK.md      # 30-second smoke test
-    ├── FINAL_STATUS.md           # Project completion status
-    └── STEP{2,3,4}_SUMMARY.md    # Implementation summaries
-```
-
-## 📚 Documentation
-
-### Getting Started
-- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment instructions with troubleshooting
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Command cheat sheet for testing and debugging
-
-### Architecture & Design
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture, data flows, and diagrams
-- **[otel-capture-demo-design.prompt.md](otel-capture-demo-design.prompt.md)** - Original design specification
-
-### Verification & Testing
-- **[E2E_VERIFICATION_CHECKLIST.md](E2E_VERIFICATION_CHECKLIST.md)** - Detailed verification steps with expected outputs
-- **[VERIFICATION_PACK.md](VERIFICATION_PACK.md)** - 30-second smoke test
-
-### Component Documentation
-- **[k8s/DEPLOYMENT.md](k8s/DEPLOYMENT.md)** - Kubernetes deployment details
-- **[gateway/README.md](gateway/README.md)** - Gateway API documentation
-- **[android-app/README.md](android-app/README.md)** - Android SDK usage guide
-- **[control-plane-ui/README.md](control-plane-ui/README.md)** - UI features and usage
-
-### Status & History
-- **[FINAL_STATUS.md](FINAL_STATUS.md)** - Overall project status (all 4 steps complete)
-- **[STEP2_SUMMARY.md](STEP2_SUMMARY.md)** - Gateway implementation details
-- **[STEP3_SUMMARY.md](STEP3_SUMMARY.md)** - Android app implementation details
-- **[STEP4_SUMMARY.md](STEP4_SUMMARY.md)** - Control Plane UI implementation details
-
-## 🏗️ Architecture
-
-```
-Android App                Gateway                 OTEL Collector
-    │                         │                          │
-    │ Capture events          │                          │
-    │ (Ring Buffer)           │                          │
-    │                         │                          │
-    │ Evaluate workflows      │                          │
-    │ (DSL triggers)          │                          │
-    │                         │                          │
-    │ Flush on match          │                          │
-    ├────────────────────────►│                          │
-    │ POST /ingest            │                          │
-    │                         │ Convert to OTEL Logs     │
-    │                         ├─────────────────────────►│
-    │                         │ OTLP/gRPC :4317          │
-    │                         │                          │
-    │                         │                          ├─► Backends
-    │                         │                          │   (Loki, etc)
-    │                         │                          │
-    │ Poll config             │                          │
-    │◄────────────────────────┤                          │
-    │ GET /config             │                          │
-    │                         │                          │
-
-Control Plane UI ──────────►│
-   (React)                   │
-   Publish workflows         │
-   Manage versions           │
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flows.
-
-## ✨ Key Features
-
-### Android App
-- **Two-Tier Ring Buffer**: RAM (ConcurrentLinkedQueue, 5000 events) + Disk (SQLite, 50MB, 24h)
-- **Real-Time Workflow Evaluation**: DSL-based trigger matching on every event
-- **Selective Flushing**: Window-based data export (last N minutes, session or device scope)
-- **Automatic Config Polling**: Fetch updated workflows every 60 seconds
-- **Correlation Tracking**: Auto-inject `demo_run_id` for end-to-end tracing
-- **Crash Recovery**: Persistent crash markers survive app restart
-
-### Gateway
-- **REST API**: /ingest, /config, /admin/* endpoints
-- **OTEL Export**: Real-time conversion from JSON to OTEL Logs format
-- **Version Management**: Atomic config activation, rollback to any version
-- **Persistent Storage**: SQLite with Kubernetes PVC
-- **OTLP/gRPC**: Efficient export to OTEL Collector
-
-### Control Plane UI
-- **Visual Workflow Builder**: React Flow-based drag-and-drop editor
-- **8 Node Types**:
-  - Triggers: Event Match, HTTP Error Match, Crash Marker
-  - Logic: ANY (OR), ALL (AND)
-  - Actions: Flush Window, Annotate Trigger, Set Sampling
-- **Graph Validation**: Cycle detection, edge validation, type checking
-- **Graph to DSL Compiler**: Converts visual graphs to device-executable JSON
-- **Version Control**: Publish, rollback, version history
-- **Device Monitoring**: Dashboard for connected devices (UI ready, polling TBD)
-
-### OTEL Collector
-- **Multi-Protocol Receivers**: OTLP/gRPC (4317) and OTLP/HTTP (4318)
-- **Processing Pipeline**: Memory limiter, batch processor
-- **Flexible Exporters**: Debug console (current), Loki, Prometheus (configurable)
-
-## 🎬 Demo Scenarios
-
-Three pre-built scenarios demonstrate the system:
-
-### 1. UI Freeze Detection
-- **Trigger**: `ui.freeze` event with `duration_ms > 2000`
-- **Action**: Flush last 2 minutes of session events
-- **Use Case**: Capture context around UI performance issues
-
-### 2. Crash Recovery
-- **Trigger**: `crash` event detected
-- **Action**: Flush last 5 minutes of events at next app launch
-- **Use Case**: Understand what led to app crash
-
-### 3. Network Error Escalation
-- **Trigger**: HTTP errors with `status >= 500` on `/appointments` route
-- **Action**: Flush last 2 minutes, set 100% sampling for 10 minutes
-- **Use Case**: Deep dive into backend API failures
-
-## 🧪 Testing
-
-### Verify Deployment
-
-```bash
-# Check all pods running
-kubectl get pods -n mobile-observability
-
-# Test gateway health
-curl http://localhost:8080/health
-
-# View collector logs
-kubectl logs -n mobile-observability -l app=otel-collector --tail=50
-```
-
-### Test End-to-End Flow
-
-```bash
-# 1. Publish workflow via UI
-open http://localhost:3000
-# Create workflow, click Publish
-
-# 2. Trigger from Android app
-# Launch app, tap "Trigger UI Freeze"
-
-# 3. Verify events in logs
-adb logcat | grep "demo_run_id"
-kubectl logs -n mobile-observability -l app=otel-gateway | grep "demo_run_id"
-kubectl logs -n mobile-observability -l app=otel-collector | grep "demo_run_id"
-```
-
-### Manual Event Injection
-
-```bash
-curl -X POST http://localhost:8080/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "events": [{
-      "event_name": "test.event",
-      "timestamp": '$(date +%s000)',
-      "session_id": "test-session",
-      "device_id": "test-device",
-      "app_id": "demo-app",
-      "config_version": 1,
-      "attributes": {"demo_run_id": "manual-test"}
-    }]
-  }'
-```
-
-See [VERIFICATION_PACK.md](VERIFICATION_PACK.md) for comprehensive testing instructions.
-
-## 🔧 Configuration
-
-### Gateway Environment Variables
-
-```bash
-PORT=8080                        # HTTP server port
-DB_PATH=/data/gateway.db         # SQLite database location
-OTEL_COLLECTOR_ENDPOINT=otel-collector.mobile-observability.svc.cluster.local:4317
-```
-
-### Android App Configuration
-
-Edit `MainActivity.kt`:
 ```kotlin
-private const val GATEWAY_URL = "http://10.0.2.2:8080"  // Emulator
-// or
-private const val GATEWAY_URL = "http://192.168.1.100:8080"  // Physical device
+// In Application.onCreate()
+OTelMobile.start(this, MobileConfig(
+    serviceName = "my-app",
+    serviceVersion = "1.0.0",
+    collectorEndpoint = "https://collector.example.com:4317"
+))
+
+// That's it. All auto-instrumentation is now active:
+// - Error capture (uncaught, coroutine, RxJava) → auto flush
+// - Vitals (app start, jank, memory, thermal) → OTel metrics
+// - Predictive export (crash/network risk → pre-emptive flush)
+// - Auto-capture (taps, scrolls, freezes, ANR, lifecycle)
+// - Ring buffer + policy evaluation
 ```
 
-### Control Plane UI Proxy
+### Optional: Custom Events & Error Reporting
 
-Edit `vite.config.ts`:
-```typescript
-server: {
-  proxy: {
-    '/api': {
-      target: 'http://localhost:8080',  // Gateway URL
-      changeOrigin: true
-    }
-  }
+```kotlin
+// Send custom events
+MobileOtel.sendEvent("checkout.completed", mapOf(
+    "item_count" to 3,
+    "total" to 42.99
+))
+
+// Report caught exceptions
+try { riskyOperation() } catch (e: Exception) {
+    MobileOtel.reportError(e, mapOf("context" to "checkout"))
 }
+
+// Coroutine error handling
+val scope = CoroutineScope(
+    Dispatchers.IO + MobileOtel.getCoroutineExceptionHandler()!!
+)
+
+// User identity
+MobileOtel.identify(UserIdentity(userId = "user123"))
+
+// Manual flush (all or windowed)
+MobileOtel.forceFlush()              // Flush everything
+MobileOtel.forceFlush(windowMinutes = 5)  // Last 5 minutes only
 ```
 
-## 📊 Performance Characteristics
+### Optional: Network Instrumentation
 
-| Metric | Value |
-|--------|-------|
-| Android RAM buffer | 5,000 events |
-| Android disk buffer | 50 MB (auto-eviction) |
-| Event retention | 24 hours |
-| Config poll interval | 60 seconds |
-| Gateway throughput | 10,000 events/sec |
-| Collector throughput | 50,000 events/sec |
-| OTEL export latency (p95) | < 50ms |
+```kotlin
+// Add OTel interceptor to your OkHttpClient
+val client = OkHttpClient.Builder()
+    .addInterceptor(OTelNetworkInterceptor.create(
+        context = applicationContext,
+        config = NetworkConfig.production(),
+        tracer = OTelMobile.getTracer("network"),
+        propagator = openTelemetry.propagators.textMapPropagator
+    ))
+    .build()
+```
 
-## 🛠️ Technology Stack
+## Project Structure
 
-### Android App
-- Kotlin 1.9+
-- Room 2.6.1 (SQLite)
-- OkHttp 4.12.0
-- Gson 2.10.1
-- Coroutines 1.7.3
+```
+mobile-otel/
+├── otel-android-mobile/          # Android SDK library (Kotlin)
+│   └── src/main/java/.../mobile/
+│       ├── MobileOtel.kt         # Facade — wires all modules, public API
+│       ├── OTelMobile.kt         # Auto-capture entry point (delegates to MobileOtel)
+│       ├── MobileLoggerProvider.kt  # OTel LoggerProvider + processor
+│       ├── autocapture/          # Tap, scroll, freeze, ANR, lifecycle
+│       ├── breadcrumb/           # Journey breadcrumbs (circular buffer)
+│       ├── buffering/            # Two-tier ring buffer (RAM + SQLite)
+│       ├── config/               # MobileConfig, NetworkConfig, etc.
+│       ├── core/                 # SessionManager, PiiScrubber
+│       ├── errors/               # ErrorInstrumentation (uncaught, coroutine, RxJava)
+│       ├── export/               # EnrichingLogRecordExporter, RetryableExporter
+│       ├── network/              # OTelNetworkInterceptor (OkHttp)
+│       ├── policy/               # PolicyEvaluator (DSL engine)
+│       ├── predictive/           # PredictiveExportPolicy, DeviceHealthMonitor
+│       ├── sampling/             # Dynamic sampling
+│       └── vitals/               # VitalsCollector, JankDetector, AppStart
+│
+├── gateway/                      # Go HTTP server
+│   ├── main.go                   # Routes: /ingest, /config, /health, /admin/*
+│   └── internal/                 # OTEL export, SQLite, config versioning
+│
+├── control-plane-ui/             # React visual policy builder
+│   └── src/
+│       ├── components/WorkflowBuilder.tsx  # React Flow canvas (8 node types)
+│       └── utils/graphToDSL.ts            # Graph → JSON DSL compiler
+│
+├── collector-processor/          # Custom OTEL Collector processor (Go)
+│   └── mobilepolicyprocessor/
+│
+├── examples/demo-app/            # Android demo app
+│   └── android/                  # Demo scenarios (freeze, crash, network error)
+│
+├── k8s/                          # Kubernetes manifests for OTEL Collector
+├── DESIGN.md                     # Architecture & design document
+├── BACKLOG.md                    # Prioritized remaining work
+└── CLAUDE.md                     # AI assistant guidance
+```
 
-### Gateway
-- Go 1.21+
-- OTEL SDK 1.32.0
-- SQLite3 1.14.22
-- gRPC 1.69.2
+## Architecture
 
-### Control Plane UI
-- React 18
-- TypeScript 5.3+
-- React Flow 11.10.4
-- Vite 5
-- Axios 1.6.5
+```
+┌────────────────────┐      ┌─────────────┐      ┌────────────────┐
+│ Android SDK        │      │ Gateway     │      │ OTEL Collector │
+│                    │      │ (Go, :8080) │      │ :4317, :4318   │
+│ OTelMobile.start() │      │             │      │                │
+│  ├─ Errors    ──┐  │      │ /ingest     │      │ + mobilepolicy │
+│  ├─ Vitals    ──┤  │─────►│ /config     │─────►│   processor    │──► Backends
+│  ├─ Predictive──┤  │ OTLP │ /admin/*    │ OTLP │                │
+│  ├─ AutoCapture─┤  │      │             │      │                │
+│  └─ RingBuffer──┘  │      └──────┬──────┘      └────────────────┘
+│                    │             ▲
+│  PolicyEvaluator   │             │ /api proxy
+│  (DSL triggers)    │      ┌──────┴──────┐
+│                    │      │Control Plane│
+│  GET /config ──────│─────►│React + Vite │
+│  (poll 60s)        │      │:3000        │
+└────────────────────┘      └─────────────┘
+```
 
-### Infrastructure
-- Kubernetes (k3s or standard)
-- OpenTelemetry Collector 0.9x+
+## Export Modes
 
-## 🐛 Troubleshooting
+| Mode | Behavior | Battery Impact |
+|------|----------|----------------|
+| **CONDITIONAL** | Export only when policy triggers match | <0.5% |
+| **CONTINUOUS** | Periodic export (traces 30s, metrics 60s) | 3-5% |
+| **HYBRID** | Periodic + trigger-based | 1-2% |
 
-### Gateway can't connect to collector
+## Flush Triggers
+
+1. **Policy match** — DSL conditions met (ui.freeze, crash, http 5xx cascade)
+2. **Error capture** — Uncaught exception / coroutine / RxJava error → immediate flush
+3. **Predictive** — Crash risk ≥ 0.7 or network loss risk ≥ 0.7 → pre-emptive flush
+4. **Low memory** — Android ComponentCallbacks2 memory pressure signal
+5. **App recovery** — Crash/ANR/force-quit marker detected on next launch
+6. **Manual** — `MobileOtel.forceFlush()` or `forceFlush(windowMinutes = 5)`
+7. **Periodic** — CONTINUOUS/HYBRID mode timers
+
+## Technology Stack
+
+| Component | Key Dependencies |
+|-----------|-----------------|
+| Android SDK | Kotlin, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2 |
+| Gateway | Go 1.24, OTEL SDK 1.39.0, gRPC 1.77.0, SQLite3 |
+| Control Plane | React 18, React Flow 11.10.4, TypeScript 5.3, Vite 5 |
+| Infrastructure | Kubernetes, OpenTelemetry Collector |
+
+## Building
 
 ```bash
-# Check collector is running
-kubectl get pods -n mobile-observability -l app=otel-collector
+# Android SDK (via demo app)
+cd examples/demo-app && ./gradlew :otel-android-mobile:build
 
-# Verify service
-kubectl get svc -n mobile-observability otel-collector
+# Gateway
+cd gateway && go build ./...
 
-# Test connectivity
-kubectl exec -n mobile-observability -it <gateway-pod> -- nc -zv otel-collector 4317
+# Control Plane UI
+cd control-plane-ui && npm install && npm run build
+
+# Run all tests
+./run-tests.sh
 ```
 
-### Android app connection refused
+## Documentation
 
-1. **Emulator**: Use `http://10.0.2.2:8080`
-2. **Physical device**: Use your machine's local IP
-3. **Verify port forward**: `lsof -i :8080 | grep kubectl`
+- **[DESIGN.md](DESIGN.md)** — Architecture, core concepts, export policy DSL, privacy defaults, OTel compliance
+- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks
+- **[CLAUDE.md](CLAUDE.md)** — AI assistant context and build commands
 
-### UI shows network error
+## License
 
-1. Check gateway port forward: `curl http://localhost:8080/health`
-2. Check browser console for errors
-3. Verify Vite proxy config in `vite.config.ts`
-
-See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for comprehensive troubleshooting.
-
-## 🚀 Production Considerations
-
-### Security
-- [ ] Add API authentication (JWT tokens)
-- [ ] Enable HTTPS/TLS
-- [ ] Implement rate limiting
-- [ ] Add Kubernetes NetworkPolicies
-- [ ] Use secrets management for credentials
-
-### Scalability
-- [ ] Migrate from SQLite to PostgreSQL
-- [ ] Horizontal gateway scaling (multiple replicas)
-- [ ] Add load balancer
-- [ ] Scale OTEL Collector based on volume
-- [ ] Implement sharding if needed
-
-### Monitoring
-- [ ] Add Prometheus exporters
-- [ ] Create Grafana dashboards
-- [ ] Set up alerting rules
-- [ ] Enable collector metrics endpoint
-- [ ] Track key SLIs (latency, error rate, throughput)
-
-### Reliability
-- [ ] Database backups (PVC snapshots)
-- [ ] Disaster recovery plan
-- [ ] High availability setup
-- [ ] Circuit breakers and retries
-- [ ] Dead letter queue for failed exports
-
-## 📖 Next Steps
-
-After deploying the demo:
-
-1. **Test the three demo scenarios** on Android app
-2. **Create custom workflows** for your use cases
-3. **Add real backend exporters** (Loki, Prometheus, etc.)
-4. **Implement device heartbeat polling** in UI
-5. **Add authentication** to gateway endpoints
-6. **Scale for production** workloads
-
-## 📄 License
-
-Apache 2.0 (for demo purposes)
-
-## 🙋 Support
-
-**Documentation:**
-- Check comprehensive docs in project root
-- Review component READMEs in subdirectories
-
-**Verification:**
-- [E2E_VERIFICATION_CHECKLIST.md](E2E_VERIFICATION_CHECKLIST.md) - Detailed verification
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
-
-**Logs:**
-```bash
-# Gateway logs
-kubectl logs -n mobile-observability -l app=otel-gateway --tail=100
-
-# Collector logs
-kubectl logs -n mobile-observability -l app=otel-collector --tail=100
-
-# Android logs
-adb logcat | grep -E "ObservabilitySDK|WorkflowEvaluator"
-```
-
-## ✅ Project Status
-
-**All 4 implementation steps complete:**
-- ✅ Step 1: OTEL Collector deployed on Kubernetes
-- ✅ Step 2: Go Gateway with verified build (go build ./... passes)
-- ✅ Step 3: Android App with ring buffer and workflow evaluation
-- ✅ Step 4: React Control Plane UI with visual workflow builder
-
-**System Status:** ✅ Demo MVP Complete - Ready for end-to-end testing
-
-See [FINAL_STATUS.md](FINAL_STATUS.md) for detailed status and verification results.
-
----
-
-**Built as a comprehensive demo of modern mobile observability patterns.**
+Apache 2.0

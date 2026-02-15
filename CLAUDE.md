@@ -12,14 +12,16 @@ Mobile observability system built on OpenTelemetry. The Android SDK captures eve
 
 ### Android SDK (`otel-android-mobile/`)
 ```bash
-cd otel-android-mobile
-./gradlew test                        # Unit tests (JUnit 4 + Robolectric + Mockk)
-./gradlew test --tests "*.PolicyEvaluatorGeoDeviceTest"  # Single test class
-./gradlew testDebugUnitTestCoverage   # Coverage report
-./gradlew lint                        # Android lint
-./gradlew build                       # Full build
-./gradlew connectedAndroidTest        # Instrumented tests (requires emulator)
+cd examples/demo-app
+./gradlew :otel-android-mobile:test                        # Unit tests (JUnit 4 + Robolectric + Mockk)
+./gradlew :otel-android-mobile:test --tests "*.PolicyEvaluatorGeoDeviceTest"  # Single test class
+./gradlew :otel-android-mobile:testDebugUnitTestCoverage   # Coverage report
+./gradlew :otel-android-mobile:lint                        # Android lint
+./gradlew :otel-android-mobile:build                       # Full build
+./gradlew :otel-android-mobile:connectedAndroidTest        # Instrumented tests (requires emulator)
 ```
+
+Note: The SDK library (`otel-android-mobile/`) does not have its own `gradlew`. Build it through `examples/demo-app/` which includes it as a project dependency via `settings.gradle.kts`.
 
 ### Go Collector Processor (`collector-processor/mobilepolicyprocessor/`)
 ```bash
@@ -63,13 +65,24 @@ cd examples/demo-app
 ## Architecture
 
 ```
-Android SDK ──POST /ingest──► Gateway ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
-    ▲                            ▲
-    │ GET /config                │
-    └────────────────────────────┘
-                                 ▲
-Control Plane UI ─── /api/* ────┘
-   (React, :3000)      (Go, :8080)
+Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
+    ▲                                    ▲
+    │ GET /config                        │
+    └─────────────────┐                  │
+                      │                  │
+               ┌──────┴─────────┐       │
+               │ Gateway (Go)   │───────┘
+               │ :8080          │ OTLP/gRPC
+               │ /ingest,/config│
+               │ /admin/*       │
+               └──────┬─────────┘
+                      ▲
+                      │ /api proxy
+               ┌──────┴─────────┐
+               │ Control Plane  │
+               │ React + Vite   │
+               │ :3000          │
+               └────────────────┘
 ```
 
 ### Four Independent Components
@@ -86,15 +99,25 @@ Additionally: `collector-processor/mobilepolicyprocessor/` is a custom OTEL Coll
 
 ### Android SDK Internal Architecture
 
-The SDK entry point is `MobileOtel.kt` (facade) and `OTelMobile.kt` (auto-capture drop-in). Key subsystems:
+Two entry points:
+- `OTelMobile.start()` — Auto-capture drop-in. Delegates to `MobileOtel.initialize()`, then starts `AutoCaptureManager`.
+- `MobileOtel.initialize()` — Core facade. Wires all auto-instrumentation modules.
 
-- **Buffering** (`buffering/`): `MobileLogRecordProcessor` routes logs through a dual-tier buffer — RAM via `ConcurrentLinkedQueue` (5000 events) and disk via `DiskLogBuffer` (Room/SQLite, 50MB, 24h TTL). `RetryableExporter` handles export failures.
+**Auto-initialized modules** (wired by `MobileOtel.initialize()`):
+- **Errors** (`errors/`): `ErrorInstrumentation` captures uncaught exceptions, coroutine errors, RxJava errors. Deduplication (5-min window), rate limiting (10/min), stack trace scrubbing, breadcrumb attachment. On error → triggers buffer flush.
+- **Vitals** (`vitals/`): `VitalsCollector`, `JankDetector`, `AppStartInstrumentation` for performance metrics as OTel Meter gauges.
+- **Predictive** (`predictive/`): `PredictiveExportPolicy` monitors device health via `DeviceHealthMonitor` and `OnDevicePredictor`. When crash risk ≥ 0.7 or network loss risk ≥ 0.7, triggers pre-emptive flush. Emits prediction events as OTel logs.
+- **Health Metrics** (`predictive/`): `HealthMetricsCollector` exposes 9-14 device health metrics (memory, battery, thermal, storage, predictions) as OTel gauges.
+
+**Core subsystems:**
+- **Buffering** (`buffering/`): `MobileLogRecordProcessor` routes logs through a dual-tier buffer — RAM via `ConcurrentLinkedQueue` (5000 events) and disk via `DiskLogBuffer` (Room/SQLite, 50MB, 24h TTL). `RetryableExporter` handles export failures. `flushWindow(minutes)` enables selective time-window export.
 - **Policy evaluation** (`policy/`): `PolicyEvaluator` matches events against DSL-defined trigger conditions in real-time.
-- **Auto-capture** (`autocapture/`): `AutoCaptureManager` registers tap, scroll, back-press, freeze, and ANR detectors via `WindowCallbackWrapper`. Privacy modes control data sensitivity.
-- **Vitals** (`vitals/`): `VitalsCollector`, `JankDetector`, `AppStartInstrumentation` for performance metrics.
+- **Auto-capture** (`autocapture/`): `AutoCaptureManager` registers tap, scroll, back-press, freeze, and ANR detectors via `WindowCallbackWrapper`. Privacy modes control data sensitivity. Only activated via `OTelMobile.start()`.
 - **Export** (`export/`): `EnrichingLogRecordExporter` enriches logs with device/session attributes before export. `LoggingHttpExporter` for HTTP-based export.
 - **Session/Breadcrumb** (`core/`, `breadcrumb/`): `SessionManager` for session lifecycle, `BreadcrumbManager` for user journey tracking.
-- **Predictive** (`predictive/`): On-device health monitoring and predictive export policies.
+
+**User-wired modules:**
+- **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor. User adds to their OkHttpClient. Configurable via `NetworkConfig` with privacy presets (default, minimal, debug, production).
 
 ### Control Plane UI Architecture
 

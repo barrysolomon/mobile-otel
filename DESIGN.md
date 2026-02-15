@@ -17,18 +17,28 @@ Build an **OpenTelemetry-native Android observability SDK** that captures events
 ┌──────────────────────────────────────────────────────────────────┐
 │ ANDROID SDK (otel-android-mobile/)                               │
 │                                                                   │
+│  Entry Points                                                    │
+│    OTelMobile.start()  → delegates to MobileOtel.initialize()   │
+│    MobileOtel.initialize() → wires all modules automatically    │
+│                                                                   │
 │  MobileOtel Facade                                               │
 │    ├─ identify() / clearIdentity() / terminateSession()          │
 │    ├─ sendEvent() / reportError()                                │
 │    ├─ addGlobalAttribute() / removeGlobalAttribute()             │
-│    └─ forceFlush() / setModuleEnabled()                          │
+│    ├─ forceFlush(windowMinutes?) / getBufferStats()              │
+│    ├─ getCurrentPrediction() / getErrorStatistics()              │
+│    └─ getCoroutineExceptionHandler()                             │
 │                                                                   │
-│  Instrumentation Modules (opt-in)                                │
+│  Auto-Initialized Modules (all wired by initialize())           │
+│    ├─ ErrorInstrumentation (uncaught, coroutine, RxJava → flush)│
 │    ├─ VitalsCollector (cold/warm start, jank, ANR, memory)       │
+│    ├─ PredictiveExportPolicy (crash/network risk → flush)        │
+│    ├─ HealthMetricsCollector (device health → OTel metrics)      │
+│    └─ AutoCaptureManager (tap, scroll, freeze, ANR detection)    │
+│                                                                   │
+│  User-Wired Modules                                              │
 │    ├─ NavigationInstrumentation (Activity, deep links)           │
-│    ├─ OTelNetworkInterceptor (OkHttp, trace propagation)         │
-│    ├─ ErrorInstrumentation (uncaught, coroutine, RxJava)         │
-│    └─ AutoCaptureManager (tap, scroll, freeze detection)         │
+│    └─ OTelNetworkInterceptor (OkHttp, trace propagation)         │
 │                                                                   │
 │  Core Pipeline                                                    │
 │    SessionManager → BreadcrumbBuffer → MobileLogRecordProcessor  │
@@ -91,10 +101,12 @@ Policies are authored visually in the Control Plane UI (React Flow, 8 node types
 
 ### Flush Triggers
 1. **Policy match** — DSL conditions met (ui.freeze, crash, http 5xx cascade)
-2. **Low memory** — Android ComponentCallbacks2 signals memory pressure
-3. **App recovery** — Crash marker or force-quit detected on restart
-4. **Manual** — User/developer calls `forceFlush()`
-5. **Periodic** — CONTINUOUS/HYBRID mode timers
+2. **Error capture** — Uncaught exception, coroutine error, or RxJava error triggers immediate flush via ErrorInstrumentation callback
+3. **Predictive** — Crash risk ≥ 0.7 or network loss risk ≥ 0.7 triggers pre-emptive flush via PredictiveExportPolicy
+4. **Low memory** — Android ComponentCallbacks2 signals memory pressure
+5. **App recovery** — Crash marker, ANR marker, or force-quit detected on restart
+6. **Manual** — Developer calls `MobileOtel.forceFlush()` or `forceFlush(windowMinutes = 5)`
+7. **Periodic** — CONTINUOUS/HYBRID mode timers
 
 ### Session & Identity
 - Session ID (UUID, persisted) with 15-min inactivity timeout
@@ -107,15 +119,24 @@ Circular buffer (50 entries) of navigation, tap, scroll, network, and error brea
 
 ## SDK Modules
 
-All modules are opt-in via `MobileConfig`. Each uses the `mobile.*` reserved event namespace.
+### Auto-Initialized Modules
+These modules are automatically wired by `MobileOtel.initialize()` / `OTelMobile.start()`. No manual setup needed.
 
-| Module | Key Signals | Privacy |
-|--------|-------------|---------|
-| **Vitals** | cold/warm start, TTID, jank, ANR risk, memory pressure, thermal | Aggregated stats only |
-| **Navigation** | screen transitions, deep links, back presses | URL scrubbing, path ID replacement |
-| **Network** | OkHttp spans, timing, status codes, size buckets | URL scrubbing, header allowlist |
-| **Errors** | uncaught exceptions, coroutine, RxJava | Stack trace scrubbing, 5-min dedupe, 10/min rate limit |
-| **AutoCapture** | tap, scroll, freeze, ANR detection | Coordinate bucketing, privacy modes |
+| Module | Key Signals | Privacy | Wired Via |
+|--------|-------------|---------|-----------|
+| **Errors** | uncaught exceptions, coroutine, RxJava | Stack trace scrubbing, 5-min dedupe, 10/min rate limit | `ErrorInstrumentation.initialize()` |
+| **Vitals** | cold/warm start, TTID, jank, ANR risk, memory, thermal | Aggregated stats only | `VitalsCollector.initialize()` |
+| **Predictive** | crash risk, network loss, performance, battery drain | On-device only, no raw data exported | `PredictiveExportPolicy.builder()` |
+| **Health Metrics** | device memory, battery, storage, thermal as OTel metrics | Device-level aggregates | `HealthMetricsCollector.builder()` |
+| **AutoCapture** | tap, scroll, freeze, ANR, lifecycle, recovery | Coordinate bucketing, privacy modes | `AutoCaptureManager` (via OTelMobile) |
+
+### User-Wired Modules
+These require manual integration because they depend on user's specific HTTP client or navigation setup.
+
+| Module | Key Signals | Privacy | Integration |
+|--------|-------------|---------|-------------|
+| **Network** | OkHttp spans, timing, status codes, size buckets | URL scrubbing, header allowlist | Add `OTelNetworkInterceptor` to OkHttpClient |
+| **Navigation** | screen transitions, deep links, back presses | URL scrubbing, path ID replacement | (Planned: Compose NavHost, Fragment lifecycle) |
 
 ## Privacy Defaults (always-on)
 - Email hashed (SHA-256)
