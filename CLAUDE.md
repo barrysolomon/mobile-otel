@@ -151,6 +151,8 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 
 ## Key Documents
 
+- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts (buffer, policy DSL, flush triggers, session/identity), SDK modules, privacy defaults, OTel compliance, demo scenarios
+- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks: SDK completeness, testing, infrastructure, documentation/OTEPs, upstream contribution
 - **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — System architecture deep dive
 - **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Android SDK integration guide
 - **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — Export mode details

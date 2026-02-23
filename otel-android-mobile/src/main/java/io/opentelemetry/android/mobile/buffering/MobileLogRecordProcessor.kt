@@ -1,3 +1,8 @@
+/*
+ * Copyright The OpenTelemetry Authors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
@@ -205,7 +210,7 @@ class MobileLogRecordProcessor private constructor(
      * @param windowMinutes Number of minutes to look back
      * @return CompletableResultCode indicating success/failure
      */
-    private fun flushWindow(windowMinutes: Int): CompletableResultCode {
+    fun flushWindow(windowMinutes: Int): CompletableResultCode {
         if (isShutdown.get()) {
             return CompletableResultCode.ofFailure()
         }
