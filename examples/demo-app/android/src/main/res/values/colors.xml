@@ -31,4 +31,10 @@
     <!-- Gradient Colors -->
     <color name="gradient_start">#6366F1</color>
     <color name="gradient_end">#EC4899</color>
+
+    <!-- Debug Toolbar -->
+    <color name="debug_toolbar_bg">#FFFDE7</color>
+    <color name="debug_text_color">#F57F17</color>
+    <color name="debug_icon_tint">#F57F17</color>
+    <color name="debug_status_color">#9E9E9E</color>
 </resources>

@@ -3,6 +3,7 @@ plugins {
     id("com.android.application") version "9.0.0" apply false
     id("com.android.library") version "9.0.0" apply false
     id("com.google.devtools.ksp") version "2.3.4" apply false
+    kotlin("android") version "1.9.20" apply false
 }
 
 tasks.register("clean", Delete::class) {
