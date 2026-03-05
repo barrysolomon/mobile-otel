@@ -7,7 +7,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.os.LocaleListCompat
 import io.opentelemetry.android.mobile.MobileLoggerProvider
 import io.opentelemetry.android.mobile.OTelMobile
 import io.opentelemetry.api.common.AttributeKey
@@ -21,6 +23,7 @@ import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.metrics.LongCounter
 import io.opentelemetry.api.metrics.DoubleHistogram
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -278,10 +281,44 @@ class MainActivity : AppCompatActivity() {
                 Log.i(TAG, "Updated demographics: tier=$it")
             }
 
+            extras.getString("language")?.let {
+                editor.putString("user_language", it)
+                updated = true
+                Log.i(TAG, "Updated demographics: language=$it")
+            }
+
             if (updated) {
                 editor.apply()
                 Log.i(TAG, "Demographics updated from intent extras")
             }
+        }
+    }
+
+    /**
+     * Applies app locale from user preferences, if configured.
+     *
+     * Preference key: demo_app_prefs.user_language (BCP-47, e.g. "en-US", "es-ES").
+     */
+    private fun applyUserPreferredLanguage(): Boolean {
+        val prefs = getSharedPreferences("demo_app_prefs", MODE_PRIVATE)
+        val languageTag = prefs.getString("user_language", null)?.trim().orEmpty()
+        if (languageTag.isEmpty()) {
+            return false
+        }
+
+        return try {
+            val locale = Locale.forLanguageTag(languageTag)
+            if (locale.language.isNullOrBlank() || locale.language == "und") {
+                Log.w(TAG, "Skipping invalid preferred language tag: $languageTag")
+                return false
+            }
+
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
+            Log.i(TAG, "Applied user preferred language: $languageTag")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to apply preferred language: $languageTag", e)
+            false
         }
     }
 
@@ -1011,6 +1048,9 @@ class MainActivity : AppCompatActivity() {
                         span.setAttribute("session.id", sessionId)
                         span.setAttribute("transaction.outcome", "PASS")
 
+                        val languageApplied = applyUserPreferredLanguage()
+                        span.setAttribute("user.language.applied", languageApplied)
+
                         logger.logRecordBuilder()
                             .setBody("auth.login.success")
                             .setSeverity(Severity.INFO)
@@ -1022,6 +1062,7 @@ class MainActivity : AppCompatActivity() {
                                     .put("auth.duration_ms", 300L)
                                     .put("transaction.id", transactionId)
                                     .put("transaction.outcome", "PASS")
+                                    .put("user.language.applied", languageApplied)
                                     .build()
                             )
                             .emit()

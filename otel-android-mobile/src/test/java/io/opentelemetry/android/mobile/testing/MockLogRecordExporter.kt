@@ -53,6 +53,10 @@ class MockLogRecordExporter : LogRecordExporter {
         }
     }
 
+    override fun flush(): CompletableResultCode {
+        return CompletableResultCode.ofSuccess()
+    }
+
     override fun shutdown(): CompletableResultCode {
         exportedLogs.clear()
         return CompletableResultCode.ofSuccess()

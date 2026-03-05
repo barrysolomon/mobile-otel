@@ -7,6 +7,7 @@ OpenTelemetry-native Android observability SDK with intelligent buffering, on-de
 The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), evaluates export policies on-device, and selectively flushes only relevant event windows. This dramatically reduces data egress while preserving full context around problems.
 
 **Key capabilities:**
+
 - **Auto-instrumentation** — Errors, vitals, predictive health, UI interactions all wired automatically
 - **Two-tier buffering** — RAM (5000 events) → disk (50MB, 24h TTL), survives crashes and offline
 - **Conditional export** — Zero bandwidth when nothing goes wrong (CONDITIONAL mode)
@@ -77,7 +78,7 @@ val client = OkHttpClient.Builder()
 
 ## Project Structure
 
-```
+```text
 mobile-otel/
 ├── otel-android-mobile/          # Android SDK library (Kotlin)
 │   └── src/main/java/.../mobile/
@@ -120,7 +121,7 @@ mobile-otel/
 
 ## Architecture
 
-```
+```text
 ┌────────────────────┐      ┌─────────────┐      ┌────────────────┐
 │ Android SDK        │      │ Gateway     │      │ OTEL Collector │
 │                    │      │ (Go, :8080) │      │ :4317, :4318   │
@@ -142,7 +143,7 @@ mobile-otel/
 ## Export Modes
 
 | Mode | Behavior | Battery Impact |
-|------|----------|----------------|
+| --- | --- | --- |
 | **CONDITIONAL** | Export only when policy triggers match | <0.5% |
 | **CONTINUOUS** | Periodic export (traces 30s, metrics 60s) | 3-5% |
 | **HYBRID** | Periodic + trigger-based | 1-2% |
@@ -160,7 +161,7 @@ mobile-otel/
 ## Technology Stack
 
 | Component | Key Dependencies |
-|-----------|-----------------|
+| --- | --- |
 | Android SDK | Kotlin, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2 |
 | Gateway | Go 1.24, OTEL SDK 1.39.0, gRPC 1.77.0, SQLite3 |
 | Control Plane | React 18, React Flow 11.10.4, TypeScript 5.3, Vite 5 |
@@ -184,9 +185,40 @@ cd control-plane-ui && npm install && npm run build
 
 ## Documentation
 
-- **[DESIGN.md](DESIGN.md)** — Architecture, core concepts, export policy DSL, privacy defaults, OTel compliance
+### Getting Started
+
+- **[docs/QUICK_START.md](docs/QUICK_START.md)** — SDK integration in 5 minutes, or run the full demo end-to-end
+- **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Complete Android integration guide (auto-instrumentation, network, privacy, flush control)
+
+### SDK Reference
+
+- **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID modes explained
+- **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage, predictions)
+- **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policy DSL
+- **[docs/SAMPLING.md](docs/SAMPLING.md)** — Dynamic sampling configuration
+- **[docs/LOG_TAILING.md](docs/LOG_TAILING.md)** — Log tailing and streaming
+- **[docs/BUNDLED_CONFIG.md](docs/BUNDLED_CONFIG.md)** — Offline/bundled policy configuration
+
+### Control Plane
+
+- **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — Authoring export policies in the React UI
+- **[docs/API_REFERENCE.md](docs/API_REFERENCE.md)** — Gateway REST API reference
+- **[docs/guides/AUTHENTICATION.md](docs/guides/AUTHENTICATION.md)** — Authentication setup
+
+### Operations & Development
+
+- **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** — Extending the system (gateway, UI nodes, SDK)
+- **[docs/OPERATIONS_GUIDE.md](docs/OPERATIONS_GUIDE.md)** — Production deployment
+- **[docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)** — Common issues
+- **[docs/guides/DEPLOYMENT_GUIDE.md](docs/guides/DEPLOYMENT_GUIDE.md)** — Deployment guide
+- **[docs/guides/TESTING_STRATEGY.md](docs/guides/TESTING_STRATEGY.md)** — Testing approach
+
+### Architecture & Design
+
+- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts, DSL, privacy, OTel compliance
 - **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks
-- **[CLAUDE.md](CLAUDE.md)** — AI assistant context and build commands
+- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — Architecture deep dive
+- **[docs/OTEPs/](docs/OTEPs/)** — OpenTelemetry Enhancement Proposals
 
 ## License
 

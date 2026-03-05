@@ -6,21 +6,22 @@
 package io.opentelemetry.android.mobile.policy
 
 import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.context.ContextSnapshot
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.sdk.common.InstrumentationScopeInfo
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.api.trace.SpanContext
-import io.opentelemetry.api.common.Value
+import io.mockk.mockk
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.junit.MockitoJUnitRunner
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -35,10 +36,10 @@ import kotlin.test.assertTrue
  * - Backward compatibility (policies without geo/device still work)
  * - Attribute enrichment when enabled
  */
-@RunWith(MockitoJUnitRunner::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class PolicyEvaluatorGeoDeviceTest {
 
-    @Mock
     private lateinit var mockContext: Context
 
     private lateinit var config: MobileConfig
@@ -53,6 +54,7 @@ class PolicyEvaluatorGeoDeviceTest {
             attachContextAttributes = false
         )
 
+        mockContext = ApplicationProvider.getApplicationContext()
         // Note: PolicyEvaluator needs real context for ContextSnapshotProvider
         // In unit tests, we'll test the matching logic directly via reflection
     }
@@ -491,7 +493,7 @@ class PolicyEvaluatorGeoDeviceTest {
             override fun getSpanContext() = SpanContext.getInvalid()
             override fun getSeverity() = Severity.INFO
             override fun getSeverityText() = "INFO"
-            override fun getBody() = Value.of(eventName)
+            override fun getBody() = Body.string(eventName)
             override fun getAttributes() = attributes
             override fun getTotalAttributeCount() = attributes.size()
         }

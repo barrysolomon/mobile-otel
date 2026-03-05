@@ -342,8 +342,8 @@ func TestConsumeLogs(t *testing.T) {
 	err = processor.ConsumeLogs(context.Background(), logs)
 	require.NoError(t, err)
 
-	// Verify logs were passed to next consumer
-	assert.Equal(t, 1, sink.LogRecordCount())
+	// Verify all logs were passed to next consumer (processor annotates, does not filter)
+	assert.Equal(t, 2, sink.LogRecordCount())
 
 	// Verify annotation was added to matching log only
 	receivedLogs := sink.AllLogs()[0]

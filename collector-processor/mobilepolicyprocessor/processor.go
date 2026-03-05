@@ -95,12 +95,8 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
 		return true
 	})
 
-	// Evaluate policies
+	// Evaluate policies (first match wins for policy.id annotation)
 	for _, policy := range mpp.policies {
-		if !policy.Enabled {
-			continue
-		}
-
 		if mpp.evaluatePolicy(policy, attrs) {
 			mpp.logger.Debug("Policy matched",
 				zap.String("policy_id", policy.ID),
@@ -114,6 +110,9 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
 
 // evaluatePolicy checks if attributes match the policy's match conditions
 func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool {
+	if !policy.Enabled {
+		return false
+	}
 	match := policy.Match
 	results := make([]bool, 0, len(match.Attributes))
 
@@ -212,11 +211,13 @@ func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition
 	return false
 }
 
-// annotateLogRecord adds policy match annotations to the log record
+// annotateLogRecord adds policy match annotations to the log record (first match wins)
 func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) {
-	// Add policy match marker
+	// Add policy match marker; preserve first-matching policy.id
 	lr.Attributes().PutStr("policy.matched", "true")
-	lr.Attributes().PutStr("policy.id", policy.ID)
+	if _, exists := lr.Attributes().Get("policy.id"); !exists {
+		lr.Attributes().PutStr("policy.id", policy.ID)
+	}
 
 	// Add action parameters as annotations
 	for _, action := range policy.Actions {

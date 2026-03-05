@@ -29,21 +29,17 @@ Complete guide for developers extending and customizing the mobile observability
 
 ```bash
 # Clone repository
-cd /Users/barrysolomon/IdeaProjects/mobile-app
+git clone https://github.com/your-org/mobile-otel.git
+cd mobile-otel
 
 # Setup Gateway
-cd gateway
-go mod download
-go build ./...
+cd gateway && go mod download && go build ./... && cd ..
 
 # Setup Control Plane UI
-cd ../control-plane-ui
-npm install
-npm run dev
+cd control-plane-ui && npm install && cd ..
 
-# Setup Android App
-cd ../android-app
-./gradlew build
+# Build Android SDK (via demo app)
+cd examples/demo-app && ./gradlew :otel-android-mobile:build && cd ../..
 ```
 
 ### Development Environment
@@ -61,9 +57,9 @@ npm run dev
 kubectl logs -n mobile-observability -l app=otel-gateway -f
 
 # Terminal 4: Android development
-cd android-app
+cd examples/demo-app
 ./gradlew installDebug
-adb logcat | grep "ObservabilitySDK"
+adb logcat | grep "OTelMobile\|MobileOtel"
 ```
 
 ## Architecture Overview
@@ -319,49 +315,35 @@ const workflow: WorkflowGraph = {
 #### Project Structure
 
 ```
-android-app/src/main/java/com/mobile/observability/
-├── ObservabilitySDK.kt      # Main SDK entry point
-├── buffer/
-│   ├── RingBufferManager.kt # Ring buffer
-│   ├── EventEntity.kt       # Room entity
-│   └── EventDao.kt          # Room DAO
-├── workflow/
-│   ├── WorkflowEvaluator.kt # DSL evaluation
-│   └── Models.kt            # DSL models
-├── network/
-│   └── GatewayClient.kt     # HTTP client
-└── MainActivity.kt           # Demo UI
+otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/
+├── MobileOtel.kt            # Core facade — wires all modules, public API
+├── OTelMobile.kt            # Auto-capture entry point (delegates to MobileOtel)
+├── MobileLoggerProvider.kt  # OTel LoggerProvider + processor
+├── autocapture/             # Tap, scroll, freeze, ANR, lifecycle
+├── buffering/               # Two-tier ring buffer (RAM + SQLite via Room)
+├── config/                  # MobileConfig, NetworkConfig, AutoCaptureOptions
+├── errors/                  # ErrorInstrumentation (uncaught, coroutine, RxJava)
+├── export/                  # EnrichingLogRecordExporter, RetryableExporter
+├── network/                 # OTelNetworkInterceptor (OkHttp)
+├── policy/                  # PolicyEvaluator (DSL engine)
+├── predictive/              # PredictiveExportPolicy, DeviceHealthMonitor
+└── vitals/                  # VitalsCollector, JankDetector, AppStartInstrumentation
 ```
 
 #### SDK Architecture
 
 ```kotlin
-class ObservabilitySDK private constructor(
-    private val context: Context,
-    private val gatewayUrl: String
-) {
-    companion object {
-        @Volatile
-        private var instance: ObservabilitySDK? = null
+// Two entry points:
 
-        fun initialize(context: Context, gatewayUrl: String): ObservabilitySDK {
-            return instance ?: synchronized(this) {
-                instance ?: ObservabilitySDK(context, gatewayUrl).also {
-                    instance = it
-                    it.start()
-                }
-            }
-        }
+// 1. Full auto-instrumentation (errors + vitals + predictive + UI capture)
+OTelMobile.start(applicationContext, MobileConfig(
+    serviceName       = "my-app",
+    serviceVersion    = "1.0.0",
+    collectorEndpoint = "https://collector.example.com:4317"
+))
 
-        fun getInstance(): ObservabilitySDK {
-            return instance ?: throw IllegalStateException("SDK not initialized")
-        }
-    }
-
-    fun captureEvent(eventName: String, attributes: Map<String, Any> = emptyMap()) {
-        // Implementation
-    }
-}
+// 2. Core only (buffering + policy evaluation, no UI auto-capture)
+MobileOtel.initialize(applicationContext, MobileConfig(...))
 ```
 
 ## Adding Custom Node Types
@@ -629,111 +611,52 @@ http.HandleFunc("/admin/publish", authMiddleware(h.HandlePublish))
 
 ## Android SDK Integration
 
-### Integrating SDK into Your App
+See [ANDROID_SDK_GUIDE.md](ANDROID_SDK_GUIDE.md) for the full integration guide. Quick reference:
 
-**1. Add SDK files to your project:**
+**1. Include as local Gradle module:**
 
-```
-your-app/src/main/java/
-└── com/
-    └── yourcompany/
-        └── observability/
-            ├── ObservabilitySDK.kt
-            ├── buffer/
-            ├── workflow/
-            └── network/
+```kotlin
+// settings.gradle.kts
+include(":otel-android-mobile")
+project(":otel-android-mobile").projectDir = file("path/to/otel-android-mobile")
+
+// app/build.gradle.kts
+dependencies { implementation(project(":otel-android-mobile")) }
 ```
 
-**2. Initialize in Application class:**
+**2. Initialize:**
 
 ```kotlin
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-
-        // Initialize SDK
-        ObservabilitySDK.initialize(
-            context = this,
-            gatewayUrl = "https://gateway.yourcompany.com"
-        )
-    }
-}
-```
-
-**3. Capture events throughout app:**
-
-```kotlin
-class MainActivity : AppCompatActivity() {
-    private val sdk = ObservabilitySDK.getInstance()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // Capture screen view
-        sdk.captureEvent("screen.view", mapOf(
-            "screen_name" to "MainActivity"
-        ))
-    }
-
-    private fun onButtonClick() {
-        // Capture user interaction
-        sdk.captureEvent("button.click", mapOf(
-            "button_id" to "submit",
-            "screen" to "MainActivity"
+        OTelMobile.start(this, MobileConfig(
+            serviceName       = "my-app",
+            serviceVersion    = BuildConfig.VERSION_NAME,
+            collectorEndpoint = "https://collector.example.com:4317"
         ))
     }
 }
 ```
 
-**4. Track performance:**
+**3. Custom events and error reporting:**
 
 ```kotlin
-fun measurePerformance(block: () -> Unit) {
-    val startTime = System.currentTimeMillis()
-
-    try {
-        block()
-    } finally {
-        val duration = System.currentTimeMillis() - startTime
-
-        if (duration > 2000) {
-            sdk.captureEvent("ui.freeze", mapOf(
-                "duration_ms" to duration,
-                "function" to "measurePerformance"
-            ))
-        }
-    }
-}
+MobileOtel.sendEvent("checkout.completed", mapOf("total_cents" to 4299))
+MobileOtel.reportError(exception, mapOf("context" to "checkout"))
+MobileOtel.forceFlush(windowMinutes = 5)
 ```
 
-**5. Track network requests (OkHttp Interceptor):**
+**4. Network instrumentation (OkHttp):**
 
 ```kotlin
-class ObservabilityInterceptor(
-    private val sdk: ObservabilitySDK
-) : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val startTime = System.currentTimeMillis()
-
-        val response = chain.proceed(request)
-        val duration = System.currentTimeMillis() - startTime
-
-        // Capture network event
-        sdk.captureEvent("http.request", mapOf(
-            "method" to request.method,
-            "url" to request.url.toString(),
-            "status_code" to response.code,
-            "duration_ms" to duration
-        ))
-
-        return response
-    }
-}
-
-// Add to OkHttpClient
 val client = OkHttpClient.Builder()
-    .addInterceptor(ObservabilityInterceptor(sdk))
+    .addInterceptor(OTelNetworkInterceptor.create(
+        context    = applicationContext,
+        config     = NetworkConfig.production(),
+        tracer     = OTelMobile.getTracer("network"),
+        propagator = openTelemetry.propagators.textMapPropagator
+    ))
     .build()
 ```
 
@@ -814,38 +737,42 @@ describe('graphToDSL', () => {
 });
 ```
 
-#### Android (Kotlin)
+#### Android SDK (Kotlin + Robolectric)
+
+Tests live in `otel-android-mobile/src/test/`. Run via the demo app project:
+
+```bash
+cd examples/demo-app
+./gradlew :otel-android-mobile:test
+./gradlew :otel-android-mobile:test --tests "*.PolicyEvaluatorTest"
+```
+
+Pattern for testing telemetry output — inject `MockLogRecordExporter` with synchronous processor:
 
 ```kotlin
-// android-app/src/test/java/WorkflowEvaluatorTest.kt
-class WorkflowEvaluatorTest {
-    @Test
-    fun `should match event trigger`() {
-        val config = DSLConfig(
-            version = 1,
-            limits = Limits(50, 5000, 24),
-            workflows = listOf(
-                DSLWorkflow(
-                    id = "test",
-                    enabled = true,
-                    trigger = Trigger(
-                        any = listOf(EventTrigger("test.event", emptyList()))
-                    ),
-                    actions = emptyList()
-                )
-            )
-        )
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
+class MyFeatureTest {
+    private lateinit var mockExporter: MockLogRecordExporter
+    private lateinit var logger: Logger
 
-        val evaluator = WorkflowEvaluator(config)
-        val event = Event("test.event", System.currentTimeMillis(), emptyMap())
+    @Before fun setup() {
+        mockExporter = MockLogRecordExporter()
+        val provider = SdkLoggerProvider.builder()
+            .addLogRecordProcessor(SimpleLogRecordProcessor.create(mockExporter))
+            .build()
+        logger = provider.get("test")
+    }
 
-        val results = evaluator.evaluate(event)
-
-        assertEquals(1, results.size)
-        assertTrue(results[0].triggered)
+    @Test fun `emits expected event`() {
+        // exercise the class under test with the injected logger
+        val events = mockExporter.findLogs { it.body.toString() == "app.crash" }
+        assertEquals(1, events.size)
     }
 }
 ```
+
+See `RecoveryTrackerTest` and `PolicyEvaluatorTest` for full examples.
 
 ### Integration Tests
 

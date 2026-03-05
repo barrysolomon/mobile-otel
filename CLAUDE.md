@@ -8,6 +8,15 @@ Mobile observability system built on OpenTelemetry. The Android SDK captures eve
 
 **Terminology:** "Export policies" (not "workflows") and "selective flush" (not "replay"). Legacy code may still reference "workflows."
 
+## Build Environment
+
+- **Android Gradle Plugin**: 9.0.0 (Kotlin support is bundled — do **not** add a separate `org.jetbrains.kotlin.android` plugin)
+- **Gradle**: 8.9 (via wrapper in `examples/demo-app/`)
+- **KSP**: 2.3.4
+- **JDK**: 17 for the library (`otel-android-mobile/`); demo app uses JVM 1.8 + desugaring
+- **Min SDK**: 26 (Android 8.0); **Target/Compile SDK**: 36
+- **AGP 9.0 note**: `targetSdk` must be in `testOptions` and `lint` blocks for library modules, not in `defaultConfig`
+
 ## Build & Test Commands
 
 ### Android SDK (`otel-android-mobile/`)
@@ -148,6 +157,13 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 - **CONDITIONAL** — Event-driven flush (battery efficient, only exports when policy triggers match)
 - **CONTINUOUS** — Periodic time-based export
 - **HYBRID** — Combination of both
+
+## Known Issues & Gotchas
+
+- **`DiskLogBuffer.toLogRecordData()` is a stub** — Throws `NotImplementedError`. Disk events cannot be deserialized for export yet. This means `flushWindow()` only returns RAM-buffered events.
+- **Kotlin `/*` in strings/comments** — The Kotlin compiler misparses `/*` inside string literals in doc comments as a block-comment start. In `PolicyEvaluator.kt`, timezone wildcards like `"America/*"` must be written as `"America/wildcard"` or similar. Symptom: `Unclosed comment` error at end of file.
+- **`factory_test.go` missing** — The collector processor has no factory tests yet (P0 backlog item).
+- **`go.sum` untracked** — `collector-processor/mobilepolicyprocessor/go.sum` is not committed. Run `go mod tidy` before building the processor for the first time.
 
 ## Key Documents
 

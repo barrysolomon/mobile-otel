@@ -6,7 +6,6 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
-	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
 const (
@@ -42,19 +41,5 @@ func createLogsProcessor(
 ) (processor.Logs, error) {
 	processorCfg := cfg.(*Config)
 
-	mpp, err := newMobilePolicyProcessor(processorCfg, set.Logger, nextConsumer)
-	if err != nil {
-		return nil, err
-	}
-
-	return processorhelper.NewLogsProcessor(
-		ctx,
-		set,
-		cfg,
-		nextConsumer,
-		mpp.ConsumeLogs,
-		processorhelper.WithCapabilities(mpp.Capabilities()),
-		processorhelper.WithStart(mpp.Start),
-		processorhelper.WithShutdown(mpp.Shutdown),
-	)
+	return newMobilePolicyProcessor(processorCfg, set.Logger, nextConsumer)
 }
