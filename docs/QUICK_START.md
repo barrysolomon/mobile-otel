@@ -149,6 +149,23 @@ cd examples/demo-app
 ./gradlew installDebug
 ```
 
+> **No connected devices?** `installDebug` requires a running emulator or connected physical device.
+>
+> ```bash
+> # List available AVDs and start one
+> emulator -list-avds
+> emulator -avd <avd_name> &
+> # Wait for boot, then re-run installDebug
+> ```
+>
+> For a physical device: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices`.
+>
+> To build the APK without installing:
+> ```bash
+> ./gradlew assembleDebug
+> # Output: app/build/outputs/apk/debug/app-debug.apk
+> ```
+
 Point the app at the OTEL Collector (direct) or the gateway (if deployed):
 ```kotlin
 // Collector-only — direct OTLP/gRPC (emulator)
