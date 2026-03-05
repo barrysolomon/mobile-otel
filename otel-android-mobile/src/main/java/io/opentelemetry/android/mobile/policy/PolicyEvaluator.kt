@@ -85,6 +85,31 @@ class PolicyEvaluator(
     // Current policy configuration (thread-safe)
     private val policyConfig = AtomicReference<PolicyConfig?>(null)
 
+    // Built-in fallback policies used when no remote config has been fetched yet.
+    // These cover the most critical event types to ensure flush happens even without config.
+    private val defaultPolicies = PolicyConfig(
+        listOf(
+            Policy(
+                id = "ui-freeze-detector",
+                enabled = true,
+                match = Match(
+                    logicalOperator = "and",
+                    attributes = mapOf("event.name" to Condition(equals = "ui.freeze"))
+                ),
+                actions = Actions(flushWindowMinutes = 2)
+            ),
+            Policy(
+                id = "crash-recovery",
+                enabled = true,
+                match = Match(
+                    logicalOperator = "and",
+                    attributes = mapOf("event.name" to Condition(equals = "app.crash"))
+                ),
+                actions = Actions(flushWindowMinutes = 5)
+            )
+        )
+    )
+
     // Coroutine scope for background tasks
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -108,7 +133,7 @@ class PolicyEvaluator(
      * @return PolicyMatchResult if a policy matched, null otherwise
      */
     fun evaluate(logRecord: LogRecordData): PolicyMatchResult? {
-        val policyConf = policyConfig.get() ?: return null
+        val policyConf = policyConfig.get() ?: defaultPolicies
 
         // Get current device/geo context
         val contextSnapshot = ContextSnapshotProvider.getSnapshot(context, config)
@@ -174,7 +199,7 @@ class PolicyEvaluator(
      */
     private fun getAttributeValue(logRecord: LogRecordData, key: String): Any? {
         return when (key) {
-            "event.name" -> logRecord.body.toString()
+            "event.name" -> logRecord.body.asString()
             else -> {
                 val attr = logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey(key))
                 attr?.toString()

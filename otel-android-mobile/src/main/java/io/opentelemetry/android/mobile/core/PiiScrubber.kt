@@ -27,7 +27,7 @@ object PiiScrubber {
     )
 
     private val PHONE_PATTERN = Regex(
-        "\\+?[1-9]\\d{1,14}|\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}"
+        "\\b(\\+?[1-9]\\d{6,14}|\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4})\\b"
     )
 
     private val CREDIT_CARD_PATTERN = Regex(
@@ -70,30 +70,37 @@ object PiiScrubber {
     ): String {
         return try {
             val uri = Uri.parse(url)
-            val builder = uri.buildUpon()
+
+            // Separate path and query
+            val queryIndex = url.indexOf('?')
+            val pathPart = if (queryIndex >= 0) url.substring(0, queryIndex) else url
+            val queryPart = if (queryIndex >= 0) url.substring(queryIndex) else ""
+
+            // Scrub path segments using string replacement to avoid URI encoding of placeholders
+            val scrubbedPath = if (scrubPathSegments) {
+                pathPart
+                    .replace(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOption.IGNORE_CASE), "{uuid}")
+                    .replace(Regex("/\\d+(?=/|$)"), "/{id}")
+            } else {
+                pathPart
+            }
 
             // Handle query parameters
-            if (!allowQueryParams) {
-                builder.clearQuery()
+            if (!allowQueryParams || queryPart.isEmpty()) {
+                scrubbedPath
             } else {
-                // Redact sensitive parameters
-                uri.queryParameterNames.forEach { param ->
-                    if (param.lowercase() in SENSITIVE_QUERY_PARAMS) {
-                        builder.clearQuery()
-                        builder.appendQueryParameter(param, "[REDACTED]")
+                // Redact only sensitive params, keep others
+                val scrubbedQuery = uri.queryParameterNames
+                    .joinToString("&") { param ->
+                        val value = uri.getQueryParameter(param) ?: ""
+                        if (param.lowercase() in SENSITIVE_QUERY_PARAMS) {
+                            "$param=[REDACTED]"
+                        } else {
+                            "$param=$value"
+                        }
                     }
-                }
+                if (scrubbedQuery.isEmpty()) scrubbedPath else "$scrubbedPath?$scrubbedQuery"
             }
-
-            // Scrub path segments
-            if (scrubPathSegments) {
-                val scrubbedPath = uri.path
-                    ?.replace(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"), "{uuid}")
-                    ?.replace(Regex("/\\d+(?=/|$)"), "/{id}")
-                builder.path(scrubbedPath)
-            }
-
-            builder.build().toString()
         } catch (e: Exception) {
             "[INVALID_URL]"
         }

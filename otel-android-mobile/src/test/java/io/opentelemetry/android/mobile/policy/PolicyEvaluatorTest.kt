@@ -298,10 +298,12 @@ class PolicyEvaluatorTest {
 
     @Test
     fun `evaluate returns null when no policy config loaded`() {
-        // No config fetched (network unavailable in tests), so evaluate should return null
-        val log = createLogRecord("ui.freeze")
+        // No remote config fetched (network unavailable in tests). Built-in default policies
+        // apply, but only cover well-known event types like ui.freeze and app.crash.
+        // An event with an unknown type should still return null.
+        val log = createLogRecord("some.unknown.event.not.in.defaults")
         val result = evaluator.evaluate(log)
-        assertNull(result, "evaluate should return null when no policy config is available")
+        assertNull(result, "evaluate should return null for events not matching any built-in default policy")
     }
 
     // ========== Reflection helpers ==========

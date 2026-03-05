@@ -38,7 +38,13 @@
       "Bash(__NEW_LINE_500d8b03aa13b944__ echo \"Testing: /api/v1/logs\")",
       "Bash(./gradlew :otel-android-mobile:compileDebugKotlin:*)",
       "Bash(git pull:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(grep -r \"tests=\"\"\" /Users/barrysolomon/Projects/Dash0/mobile-otel/otel-android-mobile/build/test-results/testDebugUnitTest/*.xml)",
+      "Bash(grep -rh \"failures=\" /Users/barrysolomon/Projects/Dash0/mobile-otel/otel-android-mobile/build/test-results/testDebugUnitTest/*.xml)",
+      "Bash(for i in 1 2 3)",
+      "Bash(do echo \"=== Run $i ===\")",
+      "Bash(done)",
+      "Bash(for i in 1 2 3 4 5)"
     ]
   }
 }

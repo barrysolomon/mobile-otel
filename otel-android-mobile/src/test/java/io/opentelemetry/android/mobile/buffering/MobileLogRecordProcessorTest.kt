@@ -7,12 +7,14 @@ package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.mockk.every
+import io.mockk.mockk
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.testing.MockLogRecordExporter
 import io.opentelemetry.android.mobile.testing.TestUtils
-import io.opentelemetry.api.common.AttributeKey
-import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.context.Context as OtelContext
+import io.opentelemetry.sdk.logs.ReadWriteLogRecord
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import org.junit.After
 import org.junit.Assert.*
@@ -47,6 +49,8 @@ class MobileLogRecordProcessorTest {
 
     @Before
     fun setup() {
+        // Reset DiskLogBuffer singleton so each test starts with a clean disk state
+        DiskLogBuffer.resetForTesting()
         context = ApplicationProvider.getApplicationContext()
         mockExporter = MockLogRecordExporter()
 
@@ -59,16 +63,33 @@ class MobileLogRecordProcessorTest {
             diskBufferTtlHours = 1
         )
 
-        processor = MobileLogRecordProcessor(
-            context = context,
-            config = config,
-            exporter = mockExporter
-        )
+        val meter = OpenTelemetry.noop().meterProvider.get("test")
+        processor = MobileLogRecordProcessor.builder(context)
+            .setExporter(mockExporter)
+            .setConfig(config)
+            .setMeter(meter)
+            .setRamBufferSize(config.ramBufferSize)
+            .setDiskBufferMb(config.diskBufferMb)
+            .setDiskBufferTtlHours(config.diskBufferTtlHours)
+            .build()
     }
 
     @After
     fun teardown() {
-        processor.shutdown(5)
+        processor.shutdown()
+        DiskLogBuffer.resetForTesting()
+    }
+
+    /**
+     * Wraps a LogRecordData in a mock ReadWriteLogRecord suitable for passing to onEmit().
+     *
+     * MobileLogRecordProcessor.onEmit() expects ReadWriteLogRecord; the mock delegates
+     * toLogRecordData() to the provided data so the processor sees the correct content.
+     */
+    private fun wrap(data: LogRecordData): ReadWriteLogRecord {
+        val mock = mockk<ReadWriteLogRecord>(relaxed = true)
+        every { mock.toLogRecordData() } returns data
+        return mock
     }
 
     // ==================== RAM Buffer Tests ====================
@@ -77,7 +98,7 @@ class MobileLogRecordProcessorTest {
     fun `onEmit adds log to RAM buffer`() {
         val logRecord = TestUtils.createTestLogRecord("test.event")
 
-        processor.onEmit(OtelContext.root(), logRecord)
+        processor.onEmit(OtelContext.root(), wrap(logRecord))
 
         val stats = processor.getBufferStats()
         assertEquals(1, stats.ramBufferSize)
@@ -88,7 +109,7 @@ class MobileLogRecordProcessorTest {
     fun `multiple onEmit calls accumulate in RAM buffer`() {
         repeat(10) { i ->
             val logRecord = TestUtils.createTestLogRecord("event.$i")
-            processor.onEmit(OtelContext.root(), logRecord)
+            processor.onEmit(OtelContext.root(), wrap(logRecord))
         }
 
         val stats = processor.getBufferStats()
@@ -99,14 +120,14 @@ class MobileLogRecordProcessorTest {
     fun `RAM buffer respects size limit`() {
         // Fill RAM buffer to capacity (100)
         repeat(100) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("event.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("event.$i")))
         }
 
         val stats = processor.getBufferStats()
         assertEquals(100, stats.ramBufferSize)
 
         // Add one more - should trigger overflow to disk
-        processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("overflow"))
+        processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("overflow")))
 
         Thread.sleep(100) // Wait for async disk write
         val newStats = processor.getBufferStats()
@@ -117,7 +138,7 @@ class MobileLogRecordProcessorTest {
     fun `RAM buffer handles rapid additions`() {
         val count = 50
         repeat(count) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("rapid.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("rapid.$i")))
         }
 
         val stats = processor.getBufferStats()
@@ -130,33 +151,41 @@ class MobileLogRecordProcessorTest {
     fun `RAM overflow moves events to disk`() {
         // Fill RAM buffer beyond capacity
         repeat(150) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("event.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("event.$i")))
         }
 
         Thread.sleep(500) // Wait for async disk writes
 
         val stats = processor.getBufferStats()
-        assertTrue(stats.diskBufferSize > 0, "Events should have overflowed to disk")
+        assertTrue("Events should have overflowed to disk", stats.diskBufferSize > 0)
     }
 
     @Test
     fun `disk buffer persists across processor restarts`() {
         // Add events and let them overflow to disk
         repeat(150) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("persistent.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("persistent.$i")))
         }
 
         Thread.sleep(500) // Wait for disk writes
-        processor.shutdown(5)
+        processor.shutdown()
 
         // Create new processor with same context
-        val newProcessor = MobileLogRecordProcessor(context, config, mockExporter)
+        val meter = OpenTelemetry.noop().meterProvider.get("test")
+        val newProcessor = MobileLogRecordProcessor.builder(context)
+            .setExporter(mockExporter)
+            .setConfig(config)
+            .setMeter(meter)
+            .setRamBufferSize(config.ramBufferSize)
+            .setDiskBufferMb(config.diskBufferMb)
+            .setDiskBufferTtlHours(config.diskBufferTtlHours)
+            .build()
         Thread.sleep(200) // Allow disk buffer to load
 
         val stats = newProcessor.getBufferStats()
-        assertTrue(stats.diskBufferSize > 0, "Disk events should persist")
+        assertTrue("Disk events should persist", stats.diskBufferSize > 0)
 
-        newProcessor.shutdown(5)
+        newProcessor.shutdown()
     }
 
     // ==================== Force Flush Tests ====================
@@ -165,11 +194,11 @@ class MobileLogRecordProcessorTest {
     fun `forceFlush exports all RAM buffer events`() {
         // Add events to RAM buffer
         repeat(10) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("flush.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("flush.$i")))
         }
 
         // Force flush
-        val result = processor.forceFlush(10)
+        val result = processor.forceFlush()
         assertTrue(result.isSuccess)
 
         // Verify events were exported
@@ -180,13 +209,13 @@ class MobileLogRecordProcessorTest {
     fun `forceFlush exports disk buffer events`() {
         // Add events that will overflow to disk
         repeat(150) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("disk.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("disk.$i")))
         }
 
         Thread.sleep(500) // Wait for disk writes
 
         // Force flush
-        val result = processor.forceFlush(10)
+        val result = processor.forceFlush()
         assertTrue(result.isSuccess)
 
         // Verify all events were exported
@@ -196,35 +225,31 @@ class MobileLogRecordProcessorTest {
     @Test
     fun `forceFlush clears buffers after export`() {
         repeat(20) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("clear.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("clear.$i")))
         }
 
-        processor.forceFlush(10)
+        processor.forceFlush()
 
         val stats = processor.getBufferStats()
         assertEquals(0, stats.ramBufferSize)
     }
 
     @Test
-    fun `forceFlush with timeout returns false on failure`() {
+    fun `forceFlush with failed exporter returns failure`() {
         // Configure exporter to fail
         mockExporter.shouldFail = true
 
         repeat(5) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("fail.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("fail.$i")))
         }
 
-        val result = processor.forceFlush(1)
+        val result = processor.forceFlush()
         assertFalse(result.isSuccess)
     }
 
     @Test
-    fun `forceFlush with zero timeout still completes`() {
-        repeat(5) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("quick.$i"))
-        }
-
-        val result = processor.forceFlush(0)
+    fun `forceFlush with empty buffer succeeds`() {
+        val result = processor.forceFlush()
         assertTrue(result.isSuccess)
     }
 
@@ -236,11 +261,11 @@ class MobileLogRecordProcessorTest {
 
         // Add old event (5 minutes ago)
         val oldLog = TestUtils.createTestLogRecordWithTimestamp("old", now - (5 * 60 * 1000))
-        processor.onEmit(OtelContext.root(), oldLog)
+        processor.onEmit(OtelContext.root(), wrap(oldLog))
 
         // Add recent event (1 minute ago)
         val recentLog = TestUtils.createTestLogRecordWithTimestamp("recent", now - (1 * 60 * 1000))
-        processor.onEmit(OtelContext.root(), recentLog)
+        processor.onEmit(OtelContext.root(), wrap(recentLog))
 
         // Flush last 2 minutes
         processor.flushWindow(2)
@@ -253,7 +278,7 @@ class MobileLogRecordProcessorTest {
 
     @Test
     fun `flushWindow with zero minutes exports nothing`() {
-        processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("event"))
+        processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("event")))
 
         processor.flushWindow(0)
         Thread.sleep(100)
@@ -267,36 +292,38 @@ class MobileLogRecordProcessorTest {
     fun `policy match triggers automatic flush`() {
         // Add normal events
         repeat(5) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("normal.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("normal.$i")))
         }
 
         // Add UI freeze event that matches policy
         val freezeLog = TestUtils.createUIFreezeLog(2500)
-        processor.onEmit(OtelContext.root(), freezeLog)
+        processor.onEmit(OtelContext.root(), wrap(freezeLog))
 
-        Thread.sleep(300) // Wait for policy evaluation and flush
+        // Poll until exported (up to 3s) instead of fixed sleep to avoid flakiness
+        mockExporter.waitForLogs(6, timeoutMs = 3000)
 
         // Events should have been flushed
-        assertTrue(mockExporter.exportedLogs.size >= 6, "Policy should trigger flush")
+        assertTrue("Policy should trigger flush (exported ${mockExporter.exportedLogs.size})", mockExporter.exportedLogs.size >= 6)
     }
 
     @Test
     fun `policy match includes window context`() {
         // Add historical events
         repeat(10) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("history.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("history.$i")))
         }
 
         Thread.sleep(100)
 
         // Trigger crash policy
         val crashLog = TestUtils.createCrashLog()
-        processor.onEmit(OtelContext.root(), crashLog)
+        processor.onEmit(OtelContext.root(), wrap(crashLog))
 
-        Thread.sleep(500)
+        // Poll until exported (up to 3s) instead of fixed sleep to avoid flakiness
+        mockExporter.waitForLogs(11, timeoutMs = 3000)
 
         // Should export crash + historical context
-        assertTrue(mockExporter.exportedLogs.size >= 11)
+        assertTrue("Policy should flush history context (exported ${mockExporter.exportedLogs.size})", mockExporter.exportedLogs.size >= 11)
     }
 
     // ==================== Thread Safety Tests ====================
@@ -309,7 +336,7 @@ class MobileLogRecordProcessorTest {
         repeat(10) { threadId ->
             val thread = Thread {
                 repeat(10) { i ->
-                    processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("thread.$threadId.event.$i"))
+                    processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("thread.$threadId.event.$i")))
                 }
                 latch.countDown()
             }
@@ -328,13 +355,13 @@ class MobileLogRecordProcessorTest {
     @Test
     fun `concurrent forceFlush calls are safe`() {
         repeat(50) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("concurrent.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("concurrent.$i")))
         }
 
         val latch = CountDownLatch(5)
         repeat(5) {
             Thread {
-                processor.forceFlush(5)
+                processor.forceFlush()
                 latch.countDown()
             }.start()
         }
@@ -348,10 +375,10 @@ class MobileLogRecordProcessorTest {
     @Test
     fun `shutdown flushes remaining events`() {
         repeat(15) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("shutdown.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("shutdown.$i")))
         }
 
-        processor.shutdown(10)
+        processor.shutdown()
 
         // Events should be exported during shutdown
         assertEquals(15, mockExporter.exportedLogs.size)
@@ -361,11 +388,11 @@ class MobileLogRecordProcessorTest {
     fun `shutdown waits for pending operations`() {
         // Add events
         repeat(100) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("pending.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("pending.$i")))
         }
 
         val startTime = System.currentTimeMillis()
-        processor.shutdown(5)
+        processor.shutdown()
         val duration = System.currentTimeMillis() - startTime
 
         // Should wait but not exceed timeout
@@ -375,8 +402,8 @@ class MobileLogRecordProcessorTest {
 
     @Test
     fun `shutdown is idempotent`() {
-        processor.shutdown(5)
-        processor.shutdown(5) // Should not crash
+        processor.shutdown()
+        processor.shutdown() // Should not crash
     }
 
     // ==================== Buffer Statistics Tests ====================
@@ -384,7 +411,7 @@ class MobileLogRecordProcessorTest {
     @Test
     fun `getBufferStats returns accurate counts`() {
         repeat(25) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("stats.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("stats.$i")))
         }
 
         val stats = processor.getBufferStats()
@@ -395,13 +422,13 @@ class MobileLogRecordProcessorTest {
     @Test
     fun `buffer stats update after flush`() {
         repeat(10) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("update.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("update.$i")))
         }
 
         val beforeFlush = processor.getBufferStats()
         assertEquals(10, beforeFlush.ramBufferSize)
 
-        processor.forceFlush(5)
+        processor.forceFlush()
 
         val afterFlush = processor.getBufferStats()
         assertEquals(0, afterFlush.ramBufferSize)
@@ -414,10 +441,10 @@ class MobileLogRecordProcessorTest {
         mockExporter.shouldFail = true
 
         repeat(5) { i ->
-            processor.onEmit(OtelContext.root(), TestUtils.createTestLogRecord("fail.$i"))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("fail.$i")))
         }
 
-        val result = processor.forceFlush(5)
+        val result = processor.forceFlush()
         assertFalse(result.isSuccess)
 
         // Buffer should still contain events (not lost)
@@ -426,22 +453,11 @@ class MobileLogRecordProcessorTest {
     }
 
     @Test
-    fun `processor handles null context`() {
-        val logRecord = TestUtils.createTestLogRecord("null.context")
-
-        // Should not crash
-        processor.onEmit(OtelContext.root(), logRecord)
-
-        val stats = processor.getBufferStats()
-        assertEquals(1, stats.ramBufferSize)
-    }
-
-    @Test
-    fun `processor handles malformed log records`() {
+    fun `processor handles empty log body`() {
         val logRecord = TestUtils.createTestLogRecord("")
 
         // Should not crash
-        processor.onEmit(OtelContext.root(), logRecord)
+        processor.onEmit(OtelContext.root(), wrap(logRecord))
 
         val stats = processor.getBufferStats()
         assertEquals(1, stats.ramBufferSize)

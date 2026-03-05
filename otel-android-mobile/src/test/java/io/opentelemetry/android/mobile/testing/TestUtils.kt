@@ -5,10 +5,17 @@
 
 package io.opentelemetry.android.mobile.testing
 
+import io.mockk.every
+import io.mockk.mockk
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.sdk.common.InstrumentationScopeInfo
+import io.opentelemetry.sdk.logs.ReadWriteLogRecord
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import io.opentelemetry.sdk.resources.Resource
 
 /**
  * Utility functions for creating test data.
@@ -18,14 +25,11 @@ object TestUtils {
     /**
      * Creates a test LogRecordData with specified properties.
      *
-     * Note: This is a simplified version. In production tests, you would
-     * use the actual SDK to create LogRecordData instances.
-     *
      * @param body Log record body text
      * @param attributes Map of attributes to add
      * @param timestamp Timestamp in epoch milliseconds
      * @param severity Log severity level
-     * @return LogRecordData for testing
+     * @return TestLogRecordData implementing LogRecordData for testing
      */
     fun createTestLogRecord(
         body: String,
@@ -47,10 +51,10 @@ object TestUtils {
         }
 
         return TestLogRecordData(
-            body = body,
-            attributes = attrs.build(),
-            timestampEpochNanos = timestamp * 1_000_000,
-            severity = severity
+            bodyText = body,
+            attrs = attrs.build(),
+            timestampNs = timestamp * 1_000_000,
+            sev = severity
         )
     }
 
@@ -131,22 +135,57 @@ object TestUtils {
             attributes = mapOf("timestamp_ms" to timestampMs)
         )
     }
+
+    /**
+     * Wraps a LogRecordData in a mock ReadWriteLogRecord for use with onEmit().
+     *
+     * MobileLogRecordProcessor.onEmit() expects ReadWriteLogRecord (the mutable form),
+     * not LogRecordData (the immutable data form). This helper bridges the gap.
+     */
+    fun asReadWriteLogRecord(data: LogRecordData): ReadWriteLogRecord {
+        val mock = mockk<ReadWriteLogRecord>(relaxed = true)
+        every { mock.toLogRecordData() } returns data
+        return mock
+    }
 }
 
 /**
  * Simplified LogRecordData implementation for testing.
  *
- * In production, you would capture actual LogRecordData instances
- * from the SDK during tests.
+ * Implements the LogRecordData interface so instances can be passed directly
+ * to APIs expecting LogRecordData (e.g., DiskLogBuffer.persistEvents).
+ *
+ * Note: bodyText is used instead of body to avoid JVM naming conflict with
+ * the interface method getBody() which returns Body (not String).
  */
-data class TestLogRecordData(
-    val body: String,
-    val attributes: Attributes,
-    val timestampEpochNanos: Long,
-    val severity: Severity
-) {
-    fun getBody(): String = body
-    fun getAttributes(): Attributes = attributes
-    fun getTimestampEpochNanos(): Long = timestampEpochNanos
-    fun getSeverity(): Severity = severity
+class TestLogRecordData(
+    val bodyText: String,
+    val attrs: Attributes,
+    val timestampNs: Long,
+    val sev: Severity
+) : LogRecordData {
+
+    override fun getResource(): Resource = Resource.empty()
+
+    override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo =
+        InstrumentationScopeInfo.empty()
+
+    override fun getTimestampEpochNanos(): Long = timestampNs
+
+    override fun getObservedTimestampEpochNanos(): Long = timestampNs
+
+    override fun getSpanContext(): SpanContext = SpanContext.getInvalid()
+
+    override fun getSeverity(): Severity = sev
+
+    override fun getSeverityText(): String = sev.name
+
+    override fun getBody(): Body = object : Body {
+        override fun asString(): String = bodyText
+        override fun getType(): Body.Type = Body.Type.STRING
+    }
+
+    override fun getAttributes(): Attributes = attrs
+
+    override fun getTotalAttributeCount(): Int = attrs.size()
 }

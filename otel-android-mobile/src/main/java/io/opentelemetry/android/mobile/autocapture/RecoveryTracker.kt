@@ -90,8 +90,8 @@ class RecoveryTracker(
 
         lastRecoveryType = when {
             wasCrash -> "crash"
-            wasLowMemory -> "low_memory_kill"
             wasAnr -> "anr_force_kill"
+            wasLowMemory -> "low_memory_kill"
             sessionWasActive -> "system_force_kill"
             else -> "clean_start"
         }

@@ -22,6 +22,7 @@ android {
 
     lint {
         targetSdk = 36
+        baseline = file("lint-baseline.xml")
     }
 
     buildTypes {
@@ -105,6 +106,7 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
+    testImplementation("androidx.test:core:1.6.1")
 
     // Testing - Android Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

@@ -58,7 +58,7 @@ class MockLogRecordExporter : LogRecordExporter {
     }
 
     override fun shutdown(): CompletableResultCode {
-        exportedLogs.clear()
+        // Do not clear exportedLogs — tests must be able to verify exports after shutdown
         return CompletableResultCode.ofSuccess()
     }
 

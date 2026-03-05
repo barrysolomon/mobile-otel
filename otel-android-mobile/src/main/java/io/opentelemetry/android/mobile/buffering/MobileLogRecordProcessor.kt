@@ -215,6 +215,10 @@ class MobileLogRecordProcessor private constructor(
             return CompletableResultCode.ofFailure()
         }
 
+        if (windowMinutes <= 0) {
+            return CompletableResultCode.ofSuccess()
+        }
+
         try {
             val windowStartMs = System.currentTimeMillis() - (windowMinutes * 60 * 1000L)
             val eventsToFlush = mutableListOf<LogRecordData>()
@@ -321,10 +325,6 @@ class MobileLogRecordProcessor private constructor(
      * @return CompletableResultCode indicating success/failure
      */
     override fun forceFlush(): CompletableResultCode {
-        if (isShutdown.get()) {
-            return CompletableResultCode.ofFailure()
-        }
-
         try {
             Log.i(TAG, "Force flush: exporting all buffered events")
 
@@ -386,8 +386,19 @@ class MobileLogRecordProcessor private constructor(
         try {
             Log.i(TAG, "Shutting down processor")
 
-            // Force flush before shutdown
-            val flushResult = forceFlush()
+            // Export and clear the RAM buffer only. Disk events are intentionally preserved
+            // for crash-recovery: the next process start can find and re-export them.
+            val ramEvents = ramBuffer.toList()
+            ramBuffer.clear()
+            ramBufferCount.set(0)
+
+            val flushResult = if (ramEvents.isNotEmpty()) {
+                val batchSize = 100
+                val results = ramEvents.chunked(batchSize).map { batch -> exporter.export(batch) }
+                CompletableResultCode.ofAll(results)
+            } else {
+                CompletableResultCode.ofSuccess()
+            }
 
             // Shutdown executor
             executor.shutdown()

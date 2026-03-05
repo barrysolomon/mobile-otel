@@ -17,6 +17,7 @@ import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.resources.Resource
 import kotlinx.coroutines.*
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Persistent disk buffer for log records using Room database.
@@ -43,7 +44,7 @@ import org.json.JSONObject
  * @property ttlHours Time-to-live for events in hours
  */
 class DiskLogBuffer private constructor(
-    private val context: Context,
+    internal val context: Context,
     private val maxSizeMb: Int,
     private val ttlHours: Int
 ) {
@@ -56,6 +57,11 @@ class DiskLogBuffer private constructor(
     )
         .fallbackToDestructiveMigration()
         .build()
+        .also { db ->
+            // Pre-warm: open the database connection immediately so the first insert
+            // does not incur schema-creation delay (critical for test reliability).
+            runBlocking(Dispatchers.IO) { db.openHelper.writableDatabase }
+        }
 
     private val logDao = database.logDao()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -179,6 +185,37 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Alias for cleanup(). Removes events that have exceeded the TTL.
+     */
+    fun cleanupExpired() = cleanup()
+
+    /**
+     * Returns the current database file size in megabytes.
+     *
+     * Returns 0.0 if the database file does not exist yet.
+     */
+    fun getStorageSizeMb(): Double {
+        val dbFile = context.getDatabasePath("otel_log_buffer.db")
+        return if (dbFile.exists()) dbFile.length() / (1024.0 * 1024.0) else 0.0
+    }
+
+    /**
+     * Runs SQLite VACUUM to reclaim disk space after deletions.
+     *
+     * This compacts the database file. Runs asynchronously in the background.
+     */
+    fun vacuum() {
+        scope.launch {
+            try {
+                database.openHelper.writableDatabase.execSQL("VACUUM")
+                Log.i(TAG, "VACUUM completed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during VACUUM", e)
+            }
+        }
+    }
+
+    /**
      * Enforces the maximum size limit by removing oldest events.
      */
     private suspend fun enforceSizeLimit() {
@@ -221,6 +258,29 @@ class DiskLogBuffer private constructor(
             return instance ?: synchronized(this) {
                 instance ?: DiskLogBuffer(context.applicationContext, maxSizeMb, ttlHours).also {
                     instance = it
+                }
+            }
+        }
+
+        /**
+         * Closes and clears the singleton instance for test isolation.
+         *
+         * IMPORTANT: For testing only. Allows each test to start with a fresh
+         * DiskLogBuffer instance and clean database state.
+         */
+        @Suppress("VisibleForTests")
+        internal fun resetForTesting() {
+            synchronized(this) {
+                val current = instance
+                if (current != null) {
+                    val dbPath = current.context.getDatabasePath("otel_log_buffer.db")
+                    current.close()
+                    instance = null
+                    // Delete database files explicitly so the next test starts with a
+                    // completely empty database (Room does not delete WAL/SHM on close).
+                    dbPath.delete()
+                    File(dbPath.absolutePath + "-wal").delete()
+                    File(dbPath.absolutePath + "-shm").delete()
                 }
             }
         }
