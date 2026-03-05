@@ -108,8 +108,8 @@ The demo app ships with realistic fault scenarios (UI freeze, crash, ANR, OOM, n
 ### Step 1: Deploy OTEL Collector
 
 ```bash
-kubectl apply -f k8s/
-kubectl wait --for=condition=ready pod -n mobile-observability --all --timeout=120s
+kubectl apply -f k8s/otel-collector.yaml
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=120s
 kubectl get pods -n mobile-observability
 ```
 
@@ -117,36 +117,45 @@ Expected:
 ```
 NAME                              READY   STATUS
 otel-collector-xxxxxxxxxx-xxxxx   1/1     Running
-otel-gateway-xxxxxxxxxx-xxxxx     1/1     Running
 ```
 
-### Step 2: Port-Forward the Gateway
+> **Do you need the gateway?** For evaluating telemetry collection, the collector alone
+> is sufficient. The SDK uses built-in default export policies (ui.freeze → 2-min flush,
+> app.crash → 5-min flush) when no remote config is available. Add the gateway only if
+> you need dynamic policy management via the Control Plane UI. See the
+> [Deployment Guide](guides/DEPLOYMENT_GUIDE.md#gateway-vs-collector-only-which-do-you-need)
+> for details.
+
+### Step 2: (Optional) Deploy Gateway and Control Plane UI
+
+Only needed for dynamic policy management:
 
 ```bash
+# The gateway image must be built first — see the Deployment Guide
+kubectl apply -f k8s/otel-gateway.yaml
+kubectl wait --for=condition=ready pod -l app=otel-gateway -n mobile-observability --timeout=60s
+
 kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
-curl http://localhost:8080/health
-# {"status":"healthy"}
-```
+curl http://localhost:8080/health  # {"status":"healthy"}
 
-### Step 3: Start the Control Plane UI
-
-```bash
-cd control-plane-ui
-npm install
-npm run dev
+cd control-plane-ui && npm install && npm run dev
 # Open http://localhost:3000
 ```
 
-### Step 4: Build and Install the Demo App
+### Step 3: Build and Install the Demo App
 
 ```bash
 cd examples/demo-app
 ./gradlew installDebug
 ```
 
-Update `collectorEndpoint` in the app's `MobileConfig` to point to your gateway:
+Point the app at the OTEL Collector (direct) or the gateway (if deployed):
 ```kotlin
-collectorEndpoint = "http://10.0.2.2:8080"  // emulator loopback
+// Collector-only — direct OTLP/gRPC (emulator)
+collectorEndpoint = "http://10.0.2.2:4317"
+
+// With gateway (emulator)
+collectorEndpoint = "http://10.0.2.2:8080"
 ```
 
 ### Step 5: Trigger Fault Scenarios

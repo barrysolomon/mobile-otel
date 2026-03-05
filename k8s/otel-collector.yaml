@@ -43,6 +43,10 @@ data:
             value: demo
             action: upsert
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     exporters:
       debug:
         verbosity: detailed
@@ -55,6 +59,7 @@ data:
         sampling_thereafter: 200
 
     service:
+      extensions: [health_check]
       pipelines:
         logs:
           receivers: [otlp]

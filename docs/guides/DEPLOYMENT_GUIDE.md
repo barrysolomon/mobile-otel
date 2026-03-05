@@ -2,6 +2,35 @@
 
 Complete step-by-step guide to deploy and test all 4 components end-to-end.
 
+## Gateway vs. Collector-Only: Which Do You Need?
+
+The system has two deployment modes. Choose based on your requirements:
+
+| | Collector-Only | Full Stack (with Gateway) |
+|---|---|---|
+| **Receive telemetry from Android app** | ✅ | ✅ |
+| **Export to backends (Loki, Tempo, etc.)** | ✅ | ✅ |
+| **Built-in export policies** (ui.freeze → flush 2min, app.crash → flush 5min) | ✅ | ✅ |
+| **Remote policy config** (change trigger rules without a new app release) | ❌ | ✅ |
+| **Drag-and-drop policy builder UI** | ❌ | ✅ |
+| **Per-device / per-geo policy targeting** | ❌ | ✅ |
+| **Setup complexity** | Simple | Requires building custom Go image |
+
+**Collector-only is the right choice for:**
+- Development and testing
+- Environments where you can't build/deploy the custom gateway image
+- When built-in default policies (ui.freeze, app.crash) are sufficient
+
+**Full stack is needed when:**
+- You want to push new export policies to devices without a new app release
+- You need the visual policy builder (control-plane-ui)
+- You need geo/device-targeted policy routing
+
+> **Note on the gateway image:** The gateway (`otel-gateway:latest`) is a custom Go binary
+> that must be built and loaded into your cluster's container runtime before deployment.
+> It uses `imagePullPolicy: Never` and is not published to a public registry.
+> See the [Building the Gateway Image](#building-the-gateway-image) section below.
+
 ## Prerequisites
 
 - k3s or Kubernetes cluster running
@@ -11,28 +40,49 @@ Complete step-by-step guide to deploy and test all 4 components end-to-end.
 - Android Studio with SDK (for Android app)
 - Terminal access with curl
 
-## Quick Start (30 seconds)
+## Quick Start
+
+### Collector-Only (simplest — works immediately)
 
 ```bash
-# 1. Deploy to Kubernetes
-cd /Users/barrysolomon/IdeaProjects/mobile-app
+# Deploy collector
+kubectl apply -f k8s/otel-collector.yaml
+
+# Wait for pod to be ready
+kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
+
+# Port-forward OTLP endpoint to localhost
+kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318 &
+
+# Verify
+kubectl get pods -n mobile-observability
+```
+
+The Android SDK sends OTLP directly to the collector. Built-in default export policies
+(ui.freeze → 2-min flush, app.crash → 5-min flush) apply automatically with no further config.
+
+### Full Stack (collector + gateway + control plane UI)
+
+```bash
+# 1. Build and load the gateway image into your cluster first — see
+#    "Building the Gateway Image" section below
+
+# 2. Deploy both components
 kubectl apply -f k8s/otel-collector.yaml
 kubectl apply -f k8s/otel-gateway.yaml
 
-# 2. Wait for pods to be ready
+# 3. Wait for pods to be ready
 kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=60s
 kubectl wait --for=condition=ready pod -l app=otel-gateway -n mobile-observability --timeout=60s
 
-# 3. Port forward for local access
+# 4. Port forward for local access
 kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
 kubectl port-forward -n mobile-observability svc/otel-collector 4317:4317 4318:4318 &
 
-# 4. Start Control Plane UI
-cd control-plane-ui
-npm install
-npm run dev &
+# 5. Start Control Plane UI
+cd control-plane-ui && npm install && npm run dev &
 
-# 5. Test gateway
+# 6. Test gateway
 curl http://localhost:8080/health
 ```
 
@@ -60,7 +110,15 @@ kubectl logs -n mobile-observability -l app=otel-collector --tail=50
 - `otel-collector.mobile-observability.svc.cluster.local:4317` - OTLP/gRPC
 - `otel-collector.mobile-observability.svc.cluster.local:4318` - OTLP/HTTP
 
-### Step 2: Deploy Gateway
+### Step 2: Deploy Gateway (Optional)
+
+> Skip this step if you only need telemetry collection. The collector-only setup is
+> sufficient for development, testing, and production use when the built-in export
+> policies (ui.freeze, app.crash) meet your requirements.
+>
+> **Prerequisite:** The `otel-gateway:latest` image must be present in your cluster's
+> container runtime before applying this manifest. See
+> [Building the Gateway Image](#building-the-gateway-image).
 
 ```bash
 # Deploy gateway with persistent storage
@@ -76,8 +134,7 @@ kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 # Expected output: "Starting server on :8080" and "Connected to OTEL Collector"
 ```
 
-**Service endpoint:**
-- `otel-gateway.mobile-observability.svc.cluster.local:8080` - Gateway API
+**Service endpoint:** `otel-gateway.mobile-observability.svc.cluster.local:8080`
 
 ### Step 3: Port Forward for Local Access
 
@@ -286,6 +343,62 @@ Use this checklist to verify full system operation:
 - [ ] demo_run_id preserved end-to-end
 - [ ] Rollback functionality works in UI
 - [ ] Android app fetches updated config
+
+## Building the Gateway Image
+
+The gateway is a custom Go binary not published to any public registry. It uses
+`imagePullPolicy: Never`, so the image must exist in your cluster's container runtime
+before `kubectl apply -f k8s/otel-gateway.yaml`.
+
+### k3s cluster (Raspberry Pi or similar)
+
+```bash
+# On your development machine: build for linux/arm64 and save to a tarball
+docker buildx build --platform linux/arm64 \
+  -t otel-gateway:latest \
+  --output type=docker,dest=otel-gateway.tar \
+  gateway/
+
+# Copy tarball to the k3s node
+scp otel-gateway.tar <user>@<node-ip>:/tmp/
+
+# On the k3s node: import into containerd
+sudo k3s ctr images import /tmp/otel-gateway.tar
+```
+
+### k3s cluster (same machine as Docker)
+
+```bash
+cd gateway
+docker build -t otel-gateway:latest .
+docker save otel-gateway:latest | sudo k3s ctr images import -
+```
+
+### kind cluster
+
+```bash
+cd gateway
+docker build -t otel-gateway:latest .
+kind load docker-image otel-gateway:latest
+```
+
+### minikube
+
+```bash
+eval $(minikube docker-env)
+cd gateway
+docker build -t otel-gateway:latest .
+```
+
+### Using a registry instead
+
+If loading images directly isn't practical, push to a registry and update
+`imagePullPolicy` in `k8s/otel-gateway.yaml`:
+
+```yaml
+image: ghcr.io/your-org/otel-gateway:latest
+imagePullPolicy: Always
+```
 
 ## Troubleshooting
 
