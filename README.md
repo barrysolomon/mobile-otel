@@ -95,7 +95,7 @@ mobile-otel/
 │       ├── network/              # OTelNetworkInterceptor (OkHttp)
 │       ├── policy/               # PolicyEvaluator (DSL engine)
 │       ├── predictive/           # PredictiveExportPolicy, DeviceHealthMonitor
-│       ├── sampling/             # Dynamic sampling
+│       ├── sampling/             # DynamicSampler (page spans force sampling.priority=high)
 │       └── vitals/               # VitalsCollector, JankDetector, AppStart
 │
 ├── gateway/                      # Go HTTP server
@@ -110,8 +110,11 @@ mobile-otel/
 ├── collector-processor/          # Custom OTEL Collector processor (Go)
 │   └── mobilepolicyprocessor/
 │
-├── examples/demo-app/            # Android demo app
-│   └── android/                  # Demo scenarios (freeze, crash, network error)
+├── examples/demo-app/            # Android demo app — Schedulr (medical scheduling)
+│   └── android/
+│       ├── ConfigActivity.kt         # OTel SDK settings (buffering, export, sampling)
+│       ├── Dash0ConfigActivity.kt    # Dash0 backend connection (endpoint, auth, dataset)
+│       └── SchedulingActivity.kt     # Main activity with debug toolbar + fault injection
 │
 ├── k8s/                          # Kubernetes manifests for OTEL Collector
 ├── DESIGN.md                     # Architecture & design document

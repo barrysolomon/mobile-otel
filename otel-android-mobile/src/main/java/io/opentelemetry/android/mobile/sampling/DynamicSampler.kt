@@ -29,17 +29,30 @@ import kotlin.concurrent.write
  *
  * Thread-safe implementation using read-write locks.
  *
+ * ## Interaction with auto-capture trace hierarchy
+ *
+ * Page spans (created by [AutoCaptureManager.startPageSpan]) set `sampling.priority=high` so
+ * they always sample regardless of the baseline rate. This is required for correct trace
+ * structure: if a page span is dropped, [TapCapture] detects `isSampled=false` on the parent
+ * and falls back to emitting taps as standalone log records instead of child spans. The entire
+ * trace waterfall for that screen session breaks — taps appear flat in Dash0, and manually
+ * created child spans like `booking.submit` start a new root trace disconnected from the page.
+ *
+ * Spans that should always be captured regardless of baseline rate:
+ *   - page.* spans (set sampling.priority=high in AutoCaptureManager)
+ *   - Error/crash spans (set sampling.priority=critical in ErrorInstrumentation)
+ *
  * Usage:
  * ```kotlin
  * val sampler = DynamicSampler(
- *     baselineSamplingRate = 0.1,  // 10% baseline
- *     highPrioritySamplingRate = 1.0  // 100% for high-priority
+ *     baselineSamplingRate = 0.1,  // 10% baseline for high-volume spans (taps, API calls)
+ *     highPrioritySamplingRate = 1.0  // 100% for page spans, errors, crashes
  * )
  *
  * // Temporarily increase sampling for 10 minutes after error
  * sampler.setSamplingRate(1.0, durationMinutes = 10)
  *
- * // Mark span as high priority to force sampling
+ * // Force a span to always sample (used by page spans and error spans)
  * span.setAttribute("sampling.priority", "high")
  * ```
  */

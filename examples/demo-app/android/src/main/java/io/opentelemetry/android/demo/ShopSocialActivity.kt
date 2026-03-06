@@ -6,7 +6,9 @@ import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import android.content.Intent
 import io.opentelemetry.android.demo.ui.debug.DebugToolbar
+import io.opentelemetry.android.demo.ui.debug.RingBufferActivity
 import io.opentelemetry.android.demo.ui.feed.FeedFragment
 import io.opentelemetry.android.demo.ui.profile.ProfileFragment
 import io.opentelemetry.android.demo.ui.shop.ShopFragment
@@ -144,5 +146,9 @@ class ShopSocialActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
         if (BreadcrumbManager.isInitialized()) {
             BreadcrumbManager.clear()
         }
+    }
+
+    override fun onOpenRingBuffer() {
+        startActivity(Intent(this, RingBufferActivity::class.java))
     }
 }

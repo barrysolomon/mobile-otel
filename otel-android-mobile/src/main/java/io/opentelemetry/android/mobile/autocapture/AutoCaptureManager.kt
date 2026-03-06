@@ -23,6 +23,11 @@ import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.context.Scope
 import java.util.WeakHashMap
 
+@Deprecated(
+    message = "Use OTelMobileBuilder with individual MobileInstrumentation modules instead.",
+    replaceWith = ReplaceWith("OTelMobileBuilder", "io.opentelemetry.android.mobile.instrumentation.OTelMobileBuilder"),
+    level = DeprecationLevel.WARNING
+)
 class AutoCaptureManager(
     private val application: Application,
     private val provider: MobileLoggerProvider,
@@ -53,6 +58,28 @@ class AutoCaptureManager(
 
     /**
      * Ends any existing page span and starts a fresh one named "page.<screenName>".
+     *
+     * Page spans are the root of the trace hierarchy for all user interactions on a screen:
+     *
+     *   page.BookFragment  ← always sampled (sampling.priority=high)
+     *   ├── ui.tap          ← auto-captured child span (TapCapture)
+     *   ├── ui.tap
+     *   ├── booking.submit  ← manually created child span in BookFragment
+     *   │   └── POST /posts ← OkHttp child span
+     *   └── ui.swipe
+     *
+     * WHY sampling.priority=high:
+     * DynamicSampler makes a probabilistic decision per trace ID (default 0.65 baseline).
+     * If a page span is dropped (35% of sessions), TapCapture.emit() detects isSampled=false
+     * and falls back to emitting taps as standalone log records instead of child spans.
+     * This breaks the trace waterfall — taps appear flat in Dash0 with no parent context,
+     * and manually-created child spans like booking.submit start a new root trace.
+     *
+     * Forcing page spans to always sample ensures:
+     * - All taps/swipes on the screen become child spans (waterfall visible)
+     * - booking.submit and similar manual spans are correctly nested under the page
+     * - Sampling rate on individual taps/API spans still applies for volume control
+     *
      * Called on fragment resume and explicitly by fragments after an API call completes
      * (so the next user interaction starts a clean span).
      */
@@ -64,6 +91,12 @@ class AutoCaptureManager(
             .setAttribute("session.id", sessionTracker.getSessionId())
             .setAttribute("view.id", sessionTracker.getViewId())
             .setAttribute("screen.name", screenName)
+            // Force page spans to always sample so that:
+            //   1. TapCapture emits taps as child spans (not flat logs)
+            //   2. Manually-created child spans (booking.submit, etc.) are nested correctly
+            // Without this, DynamicSampler drops ~35% of page spans at the default 0.65
+            // baseline, breaking the trace waterfall for all interactions on those screens.
+            .setAttribute("sampling.priority", "high")
             .startSpan()
         pageScope = pageSpan!!.makeCurrent()
     }

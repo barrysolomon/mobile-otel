@@ -36,6 +36,32 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
+/**
+ * Appointment booking form.
+ *
+ * ## Trace hierarchy
+ *
+ * Auto-capture wires a page span automatically via [AutoCaptureManager.startPageSpan] on
+ * fragment resume. That span is always sampled (sampling.priority=high), so every user
+ * interaction on this screen appears in the same trace waterfall:
+ *
+ *   page.BookFragment  ← auto-created, always sampled
+ *   ├── ui.tap          ← spinner/button taps auto-captured as child spans
+ *   ├── ui.tap
+ *   ├── booking.submit  ← explicit child span created in bookAppointment()
+ *   │   └── POST /posts ← OkHttp auto-instrumented child span
+ *   └── ui.swipe
+ *
+ * Spinner events (form.provider_selected etc.) are attached to Span.current() which resolves
+ * to the active page span — they appear as span events, not separate spans.
+ *
+ * ## Manual span: booking.submit
+ *
+ * bookAppointment() captures pageContext = Context.current() before launching the coroutine
+ * to preserve the page span reference across the thread switch. booking.submit is then
+ * started with that context as explicit parent, so it nests correctly under page.BookFragment
+ * even after withContext(Dispatchers.IO) inside AppointmentRepository.
+ */
 class BookFragment : Fragment() {
 
     private lateinit var spinnerProvider: Spinner

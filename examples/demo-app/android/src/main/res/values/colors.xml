@@ -37,4 +37,8 @@
     <color name="debug_text_color">#F57F17</color>
     <color name="debug_icon_tint">#F57F17</color>
     <color name="debug_status_color">#9E9E9E</color>
+    <color name="debug_btn_danger_bg">#FFEBEE</color>
+    <color name="debug_btn_danger_text">#C62828</color>
+    <color name="debug_btn_neutral_bg">#E8EAF6</color>
+    <color name="debug_btn_neutral_text">#3949AB</color>
 </resources>

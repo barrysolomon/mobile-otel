@@ -164,16 +164,25 @@ cd examples/demo-app
 > To build the APK without installing:
 > ```bash
 > ./gradlew assembleDebug
-> # Output: app/build/outputs/apk/debug/app-debug.apk
+> # Output: android/build/outputs/apk/debug/android-debug.apk
 > ```
 
-Point the app at the OTEL Collector (direct) or the gateway (if deployed):
-```kotlin
-// Collector-only — direct OTLP/gRPC (emulator)
-collectorEndpoint = "http://10.0.2.2:4317"
+Point the app at the OTEL Collector (direct) or the gateway (if deployed). Open **Profile → Dash0 Connection** in the running app to update the endpoint at runtime:
 
-// With gateway (emulator)
-collectorEndpoint = "http://10.0.2.2:8080"
+```text
+Collector-only (emulator):  http://10.0.2.2:4317
+With gateway (emulator):    http://10.0.2.2:8080
+Dash0 cloud (direct):       https://ingress.<region>.aws.dash0.com:4317
+```
+
+Or set it at build time in `assets/otel-config.json`:
+
+```json
+{
+  "collectorEndpoint": "http://10.0.2.2:4317",
+  "serviceName": "schedulr",
+  "serviceVersion": "1.1.0"
+}
 ```
 
 ### Step 4: Explore the App and Generate Telemetry
@@ -188,7 +197,8 @@ Schedulr has five tabs. Fault scenarios emerge from normal app usage:
 | **Book** → successful booking | Appointment confirmed | `appointment.booked` log (INFO), `page.BookFragment` trace with `form.*` events and `POST /posts` child span |
 | **Directions** → Search | Calls Nominatim + OSRM routing APIs | `page.DirectionsFragment` trace with geocode + route HTTP child spans |
 | **Calendar** → menu → Load Full History | Allocates 500 appointments | `calendar.history_loaded` log, memory pressure → `app.recovery` on next launch |
-| **Profile** → OTel Config | Opens configuration screen | Sampling rate slider takes effect immediately — no restart needed |
+| **Profile** → OTel SDK Configuration | Opens OTel SDK settings (buffering, export, sampling, capture toggles) | Sampling rate slider takes effect immediately — no restart needed |
+| **Profile** → Dash0 Connection | Opens backend connection settings (endpoint, protocol, auth token, dataset) | Saved; requires restart to reconnect |
 | **Tab navigation** | Each tab switch | New `page.<TabName>` span starts on fragment resume |
 | **Debug toolbar** (tap bar at top to expand) | | |
 | → HTTP 500 | Forces next refresh to fail | `appointment.fetch_failed` **(ERROR)** |
@@ -199,7 +209,7 @@ Schedulr has five tabs. Fault scenarios emerge from normal app usage:
 
 All error-class events (`ui.freeze`, `app.crash`, `app.anr`, `app.recovery`, HTTP 5xx) emit at **ERROR** severity.
 
-**Page-level span model** — `AutoCaptureManager` automatically opens a `page.<ScreenName>` parent span when any Fragment resumes, and closes it when the fragment pauses or an API call completes. All auto-captured taps, scrolls, and network calls on that screen become child spans, giving you a full trace waterfall for every user interaction. After a booking or route search completes, `OTelMobile.restartPageSpan()` ends the current page span and opens a fresh one so the next action begins a clean trace.
+**Page-level span model** — `AutoCaptureManager` opens a `page.<ScreenName>` parent span when any Fragment resumes, and closes it on pause or when an API call completes. All auto-captured taps, scrolls, and network calls on that screen become child spans, giving you a full trace waterfall for every user interaction. Page spans are always forced to sample (`sampling.priority=high`) so taps and scrolls always appear as child spans in the waterfall rather than flat logs. After a booking or route search completes, `OTelMobile.restartPageSpan()` ends the current page span and opens a fresh one so the next action begins a clean trace.
 
 ### Step 6: Verify Telemetry
 

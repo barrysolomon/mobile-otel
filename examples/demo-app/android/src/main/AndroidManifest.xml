@@ -41,8 +41,13 @@
 
         <activity
             android:name=".ConfigActivity"
-            android:label="Configuration"
-            android:parentActivityName=".MainActivity" />
+            android:label="OTel Configuration"
+            android:exported="false" />
+
+        <activity
+            android:name=".Dash0ConfigActivity"
+            android:label="Dash0 Connection"
+            android:exported="false" />
 
         <activity
             android:name=".AboutActivity"
@@ -63,6 +68,12 @@
             android:name=".auth.LoginActivity"
             android:label="Login"
             android:theme="@style/AppTheme" />
+
+        <activity
+            android:name=".ui.debug.RingBufferActivity"
+            android:label="Ring Buffer"
+            android:parentActivityName=".SchedulingActivity"
+            android:exported="false" />
 
         <!-- FileProvider for sharing exported logs -->
         <provider

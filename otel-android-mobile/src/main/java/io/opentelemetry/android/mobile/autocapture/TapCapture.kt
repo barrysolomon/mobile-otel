@@ -25,12 +25,37 @@ import java.util.concurrent.TimeUnit
 /**
  * Captures tap and long-press events from the Window's touch stream.
  *
- * When a parent span is active on the main thread (e.g. a booking or directions span),
- * taps are emitted as zero-duration child spans so they appear in the trace waterfall.
- * When no parent span is active, taps are emitted as log records (original behaviour).
+ * ## Trace hierarchy
  *
- * Context is always captured on the main thread at touch time (ACTION_UP), then
- * carried through the coalesce queue so the scheduler thread emits with the correct parent.
+ * Page spans are created by [AutoCaptureManager.startPageSpan] on every fragment resume and are
+ * forced to always sample (sampling.priority=high). This makes the page span the root of all
+ * interactions on a screen:
+ *
+ *   page.BookFragment  ← always-sampled root (AutoCaptureManager)
+ *   ├── ui.tap          ← zero-duration child span (this class, emit path A)
+ *   ├── ui.tap
+ *   ├── booking.submit  ← manually created in BookFragment, parented to pageContext
+ *   │   └── POST /posts ← OkHttp child span
+ *   └── ui.swipe        ← zero-duration child span (ScrollCapture, same pattern)
+ *
+ * ## Emit path A vs B
+ *
+ * At touch time (ACTION_UP on main thread), the current OTel context is captured. The emit()
+ * function then inspects the captured context:
+ *
+ *   A. Valid + sampled parent span present → emit as zero-duration child span.
+ *      The tap appears in the trace waterfall under the page (or booking) span.
+ *
+ *   B. No valid/sampled parent → emit as log record with context attached.
+ *      Used when auto-capture is disabled or the page span was somehow not active.
+ *
+ * The page span being forced to always sample (see AutoCaptureManager) means path A is taken
+ * for all normal page interactions. Without that, the DynamicSampler at the default 0.65
+ * baseline would drop ~35% of page spans, causing all taps on those screens to take path B
+ * and appear as flat, unconnected log entries in Dash0.
+ *
+ * Context is captured on the main thread and carried through the coalesce queue so the
+ * scheduler thread emits with the correct parent.
  */
 class TapCapture(
     private val logger: Logger,

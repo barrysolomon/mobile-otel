@@ -155,7 +155,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Configure the OTel Collector endpoint, Dash0 auth token, export mode, and buffer settings."
+                    android:text="Configure OTel SDK parameters or update the Dash0 backend connection."
                     android:textSize="13sp"
                     android:textColor="@color/text_secondary"
                     android:layout_marginBottom="12dp" />
@@ -165,10 +165,29 @@
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="OTel / Dash0 Configuration" />
+                    android:text="OTel SDK Configuration"
+                    android:layout_marginBottom="8dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnOpenDash0Config"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Dash0 Connection" />
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
+
+        <!-- Version footer -->
+        <TextView
+            android:id="@+id/tvAppVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:textSize="11sp"
+            android:textColor="@color/text_secondary"
+            android:alpha="0.6" />
 
     </LinearLayout>
 

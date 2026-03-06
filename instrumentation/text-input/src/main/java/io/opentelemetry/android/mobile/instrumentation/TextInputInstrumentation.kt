@@ -1,0 +1,97 @@
+// Copyright 2025 The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package io.opentelemetry.android.mobile.instrumentation
+
+import android.app.Activity
+import android.app.Application
+import android.os.Bundle
+import android.view.View
+import android.view.ViewTreeObserver
+import android.view.Window
+import android.widget.EditText
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.logs.Logger
+import io.opentelemetry.api.logs.Severity
+import java.util.WeakHashMap
+
+class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
+
+    override val instrumentationName = "io.opentelemetry.android.mobile.text_input"
+
+    private var hub: WindowEventHub? = null
+    private var ctx: InstrumentationContext? = null
+    private var logger: Logger? = null
+    private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
+    private val attached = WeakHashMap<ViewTreeObserver, ViewTreeObserver.OnGlobalFocusChangeListener>()
+
+    override fun install(application: Application, context: InstrumentationContext) {
+        ctx = context
+        hub = context.windowEventHub
+        logger = context.logger(instrumentationName)
+        context.windowEventHub.addListener(this)
+
+        val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: Activity) {
+                val root = activity.window?.decorView ?: return
+                attachTo(root)
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        }
+        lifecycleCallbacks = callbacks
+        application.registerActivityLifecycleCallbacks(callbacks)
+    }
+
+    override fun uninstall() {
+        lifecycleCallbacks?.let { ctx?.application?.unregisterActivityLifecycleCallbacks(it) }
+        hub?.removeListener(this)
+        hub = null
+        ctx = null
+        logger = null
+        lifecycleCallbacks = null
+        attached.clear()
+    }
+
+    private fun attachTo(root: View) {
+        val observer = root.viewTreeObserver
+        if (!observer.isAlive || attached.containsKey(observer)) return
+        val listener = ViewTreeObserver.OnGlobalFocusChangeListener { oldFocus, _ ->
+            if (oldFocus is EditText) onFieldLeft(oldFocus)
+        }
+        observer.addOnGlobalFocusChangeListener(listener)
+        attached[observer] = listener
+    }
+
+    /** Visible for testing — emit a text-input log record for the given field. */
+    internal fun emitTextInput(resourceId: String?, enabled: Boolean) {
+        val log = logger ?: return
+        val context = ctx ?: return
+        val sessionProvider = context.sessionProvider
+        val attrs = Attributes.builder()
+            .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
+            .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
+            .apply {
+                resourceId?.let { put(MobileSemconv.UI_ELEMENT_ID, it) }
+                sessionProvider.getCurrentScreenName()?.let { put(MobileSemconv.SCREEN_NAME, it) }
+                put(io.opentelemetry.api.common.AttributeKey.booleanKey("ui.element.enabled"), enabled)
+            }
+            .build()
+        log.logRecordBuilder()
+            .setBody(MobileSemconv.UI_TEXT_INPUT)
+            .setSeverity(Severity.INFO)
+            .setAllAttributes(attrs)
+            .emit()
+    }
+
+    private fun onFieldLeft(field: EditText) {
+        val resourceId: String? = if (field.id != View.NO_ID) {
+            try { field.resources.getResourceEntryName(field.id) } catch (_: Exception) { null }
+        } else null
+        emitTextInput(resourceId, field.isEnabled)
+    }
+}

@@ -9,6 +9,9 @@ import android.app.Application
 import io.opentelemetry.android.mobile.autocapture.AutoCaptureManager
 import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.instrumentation.OTelMobileBuilder
+import io.opentelemetry.android.mobile.instrumentation.OTelMobileHandle
+import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.Span
@@ -110,5 +113,22 @@ object OTelMobile {
         val manager = autoCaptureManager
         return manager?.startJourney(name)
             ?: getTracer("journey").spanBuilder(name).startSpan()
+    }
+
+    /**
+     * Returns a new [OTelMobileBuilder] for fine-grained SDK configuration.
+     *
+     * Use this instead of [start] when you want to control exactly which
+     * instrumentations are active.
+     *
+     * ```kotlin
+     * val handle = OTelMobile.builder(app, openTelemetry)
+     *     .addInstrumentation(TapInstrumentation())
+     *     .addInstrumentation(LifecycleInstrumentation())
+     *     .build()
+     * ```
+     */
+    fun builder(application: Application, openTelemetry: OpenTelemetry): OTelMobileBuilder {
+        return OTelMobileBuilder(application, openTelemetry)
     }
 }

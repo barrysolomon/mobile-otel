@@ -4,6 +4,7 @@
 package io.opentelemetry.android.demo.ui.scheduling
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +13,7 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.google.android.material.button.MaterialButton
 import io.opentelemetry.android.demo.ConfigActivity
+import io.opentelemetry.android.demo.Dash0ConfigActivity
 import io.opentelemetry.android.demo.R
 import io.opentelemetry.android.demo.data.AppointmentRepository
 import io.opentelemetry.android.demo.data.model.AppointmentStatus
@@ -48,5 +50,14 @@ class SchedulingProfileFragment : Fragment() {
         view.findViewById<MaterialButton>(R.id.btnOpenOtelConfig).setOnClickListener {
             startActivity(Intent(requireContext(), ConfigActivity::class.java))
         }
+        view.findViewById<MaterialButton>(R.id.btnOpenDash0Config).setOnClickListener {
+            startActivity(Intent(requireContext(), Dash0ConfigActivity::class.java))
+        }
+
+        val versionName = try {
+            requireContext().packageManager
+                .getPackageInfo(requireContext().packageName, 0).versionName
+        } catch (_: PackageManager.NameNotFoundException) { "unknown" }
+        view.findViewById<TextView>(R.id.tvAppVersion).text = "v$versionName"
     }
 }

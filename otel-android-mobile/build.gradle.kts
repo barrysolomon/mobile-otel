@@ -62,6 +62,17 @@ android {
 }
 
 dependencies {
+    // New: Core interfaces and 6 instrumentation modules (no circular dependency)
+    // Note: instrumentation-tap is excluded because TapConfig imports PrivacyMode
+    // from otel-android-mobile.autocapture, which would create a circular dependency.
+    api(project(":otel-android-mobile-core"))
+    api(project(":instrumentation-lifecycle"))
+    api(project(":instrumentation-screen"))
+    api(project(":instrumentation-scroll"))
+    api(project(":instrumentation-text-input"))
+    api(project(":instrumentation-back-press"))
+    api(project(":instrumentation-freeze"))
+
     // OpenTelemetry SDK - Core dependencies
     api("io.opentelemetry:opentelemetry-api:1.58.0")
     api("io.opentelemetry:opentelemetry-sdk:1.58.0")

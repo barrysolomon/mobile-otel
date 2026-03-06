@@ -1,6 +1,6 @@
 {
   "serviceName": "otel-mobile-demo",
-  "serviceVersion": "1.0.0-dev",
+  "serviceVersion": "1.1.0-20260306",
   "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "headers": {

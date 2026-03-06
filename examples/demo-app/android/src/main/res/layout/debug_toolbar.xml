@@ -71,54 +71,63 @@
 
                 <Button
                     android:id="@+id/btnTriggerCrash"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/crash"
                     android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
                     app:icon="@drawable/ic_crash"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
 
                 <Button
                     android:id="@+id/btnTriggerAnr"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/anr"
                     android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
                     app:icon="@drawable/ic_freeze"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
 
                 <Button
                     android:id="@+id/btnTriggerHttp500"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/http_500"
                     android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
                     app:icon="@drawable/ic_error"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
             </LinearLayout>
 
             <!-- Row 2 -->
@@ -130,55 +139,90 @@
 
                 <Button
                     android:id="@+id/btnTriggerMemory"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/memory"
                     android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
                     app:icon="@drawable/ic_memory"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_neutral_text" />
 
                 <Button
                     android:id="@+id/btnTriggerJank"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/jank"
                     android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
                     app:icon="@drawable/ic_jank"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_neutral_text" />
 
                 <Button
                     android:id="@+id/btnClear"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:layout_margin="4dp"
                     android:text="@string/clear"
                     android:textSize="11sp"
+                    android:textColor="@color/text_secondary"
                     android:paddingHorizontal="4dp"
                     android:minWidth="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     app:icon="@drawable/ic_clear"
                     app:iconSize="16dp"
-                    app:iconPadding="2dp" />
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/text_secondary" />
             </LinearLayout>
+
+            <!-- Row 3: Diagnostics -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="4dp">
+
+                <Button
+                    android:id="@+id/btnRingBuffer"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_margin="4dp"
+                    android:text="Buffer Diagnostics"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
+                    app:iconSize="16dp"
+                    app:iconPadding="4dp" />
+
+            </LinearLayout>
+
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

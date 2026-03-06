@@ -91,6 +91,11 @@ class FreezeDetector(
     }
 
     private fun emitPendingFreeze() {
+        // Main thread has recovered — reset the tick baseline so the watchdog doesn't
+        // immediately re-fire once the cooldown expires with an ever-growing stale delay.
+        lastTickAtMs = SystemClock.uptimeMillis()
+        mainHandler.post(tick)
+
         val pending = synchronized(pendingLock) {
             val value = pendingFreeze
             pendingFreeze = null

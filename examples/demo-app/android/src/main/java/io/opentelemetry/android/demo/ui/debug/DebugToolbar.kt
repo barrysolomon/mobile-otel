@@ -86,6 +86,11 @@ class DebugToolbar @JvmOverloads constructor(
             listener?.onClear()
             showStatus("Cleared")
         }
+
+        findViewById<MaterialButton>(R.id.btnRingBuffer).setOnClickListener {
+            listener?.onOpenRingBuffer()
+            showStatus("Opening buffer diagnostics...")
+        }
     }
 
     private fun toggleExpanded() {
@@ -146,5 +151,6 @@ class DebugToolbar @JvmOverloads constructor(
         fun onTriggerMemoryPressure()
         fun onTriggerJank()
         fun onClear()
+        fun onOpenRingBuffer()
     }
 }

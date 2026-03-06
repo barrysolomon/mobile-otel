@@ -3,15 +3,18 @@
 
 package io.opentelemetry.android.demo
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import io.opentelemetry.android.demo.data.AppointmentRepository
 import io.opentelemetry.android.demo.ui.book.BookFragment
 import io.opentelemetry.android.demo.ui.calendar.CalendarFragment
+import io.opentelemetry.android.demo.ui.debug.RingBufferActivity
 import io.opentelemetry.android.demo.ui.appointments.AppointmentsFragment
 import io.opentelemetry.android.demo.ui.debug.DebugToolbar
 import io.opentelemetry.android.demo.ui.directions.DirectionsFragment
@@ -33,6 +36,7 @@ class SchedulingActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
         debugToolbar = findViewById(R.id.debugToolbar)
         bottomNav = findViewById(R.id.bottom_navigation)
         debugToolbar.listener = this
+        debugToolbar.visibility = if (TelemetryFlags.showDebugToolbar) View.VISIBLE else View.GONE
 
         setupBottomNavigation()
 
@@ -124,5 +128,9 @@ class SchedulingActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
     override fun onClear() {
         crumb("clear_breadcrumbs", "DebugToolbar")
         if (BreadcrumbManager.isInitialized()) BreadcrumbManager.clear()
+    }
+
+    override fun onOpenRingBuffer() {
+        startActivity(Intent(this, RingBufferActivity::class.java))
     }
 }
