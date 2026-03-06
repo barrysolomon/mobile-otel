@@ -130,6 +130,7 @@ object MobileOtel {
         predictivePolicy = PredictiveExportPolicy.builder(appContext)
             .setProcessor(processor)
             .setLogger(loggerProvider.get("predictive-export"))
+            .setPredictionIntervalSeconds(config.predictionIntervalSeconds)
             .build()
 
         // Wire HealthMetricsCollector — exposes device health & predictions as OTel metrics

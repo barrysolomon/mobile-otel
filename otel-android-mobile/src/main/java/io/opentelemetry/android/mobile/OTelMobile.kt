@@ -98,6 +98,14 @@ object OTelMobile {
         autoCaptureManager?.markAnrForNextStart()
     }
 
+    /**
+     * Ends the current page span and starts a fresh one for the same screen.
+     * Call this after an API action completes so the next user interaction starts a clean span.
+     */
+    fun restartPageSpan(screenName: String) {
+        autoCaptureManager?.startPageSpan(screenName)
+    }
+
     fun startJourney(name: String): Span {
         val manager = autoCaptureManager
         return manager?.startJourney(name)

@@ -20,6 +20,7 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.context.Scope
 import java.util.WeakHashMap
 
 class AutoCaptureManager(
@@ -31,9 +32,10 @@ class AutoCaptureManager(
     private val tracer = provider.getOpenTelemetrySdk().getTracer("auto-capture", "1.0.0")
 
     private val sessionTracker = SessionTracker(options)
-    private val tapCapture = TapCapture(logger, sessionTracker, options)
+    private val tapCapture = TapCapture(logger, tracer, sessionTracker, options)
     private val backPressCapture = if (options.captureBackPress) BackPressCapture(logger, sessionTracker) else null
-    private val scrollCapture = ScrollCapture(logger, sessionTracker, options)
+    private val scrollCapture = ScrollCapture(logger, tracer, sessionTracker, options)
+    private val textInputCapture = TextInputCapture(logger, tracer, sessionTracker, options)
     private val freezeDetector = FreezeDetector(
         logger,
         provider,
@@ -43,6 +45,36 @@ class AutoCaptureManager(
         onAnrRecovered = { recoveryTracker.clearAnrMarker() }
     )
     private val recoveryTracker = RecoveryTracker(application, logger, provider, sessionTracker)
+
+    // Current page-level span — parent for all taps, scrolls, and API calls on this screen.
+    // Runs on the main thread; no locking needed.
+    private var pageSpan: Span? = null
+    private var pageScope: Scope? = null
+
+    /**
+     * Ends any existing page span and starts a fresh one named "page.<screenName>".
+     * Called on fragment resume and explicitly by fragments after an API call completes
+     * (so the next user interaction starts a clean span).
+     */
+    fun startPageSpan(screenName: String) {
+        pageScope?.close()
+        pageScope = null
+        pageSpan?.takeIf { it.isRecording }?.end()
+        pageSpan = tracer.spanBuilder("page.$screenName")
+            .setAttribute("session.id", sessionTracker.getSessionId())
+            .setAttribute("view.id", sessionTracker.getViewId())
+            .setAttribute("screen.name", screenName)
+            .startSpan()
+        pageScope = pageSpan!!.makeCurrent()
+    }
+
+    /** Ends the current page span (e.g. on fragment pause or explicit close). */
+    fun endPageSpan() {
+        pageScope?.close()
+        pageScope = null
+        pageSpan?.takeIf { it.isRecording }?.end()
+        pageSpan = null
+    }
 
     private val wrappedCallbacks = WeakHashMap<Window, Window.Callback>()
     private val fragmentCallbacks = FragmentCallbacks()
@@ -69,6 +101,7 @@ class AutoCaptureManager(
     }
 
     fun stop() {
+        endPageSpan()
         application.unregisterActivityLifecycleCallbacks(this)
         recoveryTracker.stop()
         freezeDetector.stop()
@@ -133,6 +166,7 @@ class AutoCaptureManager(
         val root = activity.window?.decorView
         if (root != null) {
             scrollCapture.attachTo(root)
+            textInputCapture.attachTo(root)
         }
     }
 
@@ -278,6 +312,12 @@ class AutoCaptureManager(
             val screenName = f.javaClass.simpleName
             sessionTracker.onScreenView(screenName)
             logScreenView(screenName)
+            startPageSpan(screenName)
+        }
+
+        override fun onFragmentPaused(fm: FragmentManager, f: Fragment) {
+            if (!options.captureFragments) return
+            endPageSpan()
         }
     }
 }

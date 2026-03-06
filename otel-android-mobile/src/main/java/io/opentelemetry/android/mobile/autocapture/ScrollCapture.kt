@@ -13,10 +13,20 @@ import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import java.util.WeakHashMap
 
+/**
+ * Captures scroll events from RecyclerViews in the active window.
+ *
+ * When a parent span is active, scrolls are emitted as zero-duration child spans
+ * so they appear in the trace waterfall. When idle, they are emitted as correlated logs.
+ */
 class ScrollCapture(
     private val logger: Logger,
+    private val tracer: Tracer,
     private val sessionTracker: SessionTracker,
     private val options: AutoCaptureOptions
 ) {
@@ -50,6 +60,9 @@ class ScrollCapture(
             if (now - lastScrollAtMs < options.scrollThrottleMs) return
             if (dx == 0 && dy == 0) return
 
+            // Capture context on the main thread (scroll listener fires on main thread)
+            val capturedContext = Context.current()
+
             lastScrollAtMs = now
             val direction = if (kotlin.math.abs(dy) >= kotlin.math.abs(dx)) {
                 if (dy > 0) "down" else "up"
@@ -77,11 +90,23 @@ class ScrollCapture(
                 }
                 .build()
 
-            logger.logRecordBuilder()
-                .setBody("ui.scroll")
-                .setSeverity(Severity.INFO)
-                .setAllAttributes(attributes)
-                .emit()
+            val parentSpan = Span.fromContext(capturedContext)
+            if (parentSpan.spanContext.isValid && parentSpan.spanContext.isSampled) {
+                // Active parent — emit as child span
+                val childSpan = tracer.spanBuilder("ui.scroll")
+                    .setParent(capturedContext)
+                    .setAllAttributes(attributes)
+                    .startSpan()
+                childSpan.end()
+            } else {
+                // No active parent — emit as correlated log
+                logger.logRecordBuilder()
+                    .setBody("ui.scroll")
+                    .setSeverity(Severity.INFO)
+                    .setAllAttributes(attributes)
+                    .setContext(capturedContext)
+                    .emit()
+            }
         }
     }
 }

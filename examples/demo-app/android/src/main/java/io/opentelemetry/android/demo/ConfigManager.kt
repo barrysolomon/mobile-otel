@@ -5,7 +5,12 @@ import android.content.SharedPreferences
 import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.ExportMode
+import io.opentelemetry.android.mobile.core.SessionConfig
+import io.opentelemetry.android.mobile.vitals.VitalsConfig
+import io.opentelemetry.android.mobile.network.NetworkConfig
+import io.opentelemetry.android.mobile.errors.ErrorConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import java.io.IOException
 
@@ -35,6 +40,7 @@ object ConfigManager {
     private const val KEY_EXPORT_MODE = "export_mode"
     private const val KEY_TRACE_EXPORT_INTERVAL_SECONDS = "trace_export_interval_seconds"
     private const val KEY_METRIC_EXPORT_INTERVAL_SECONDS = "metric_export_interval_seconds"
+    private const val KEY_PREDICTION_INTERVAL_SECONDS = "prediction_interval_seconds"
     private const val KEY_PROTOCOL = "protocol"
     private const val KEY_AUTH_TOKEN = "auth_token"
     private const val KEY_DATASET = "dataset"
@@ -46,14 +52,42 @@ object ConfigManager {
     private const val KEY_MAX_EXPORT_RETRIES = "max_export_retries"
     private const val KEY_ATTACH_CONTEXT_ATTRIBUTES = "attach_context_attributes"
     private const val KEY_BUILD_CHANNEL = "build_channel"
+    private const val KEY_SAMPLING_RATE = "sampling_rate"
+
+    // Session
+    private const val KEY_SESSION_ENABLED = "session_enabled"
+    private const val KEY_SESSION_INACTIVITY_TIMEOUT_MINUTES = "session_inactivity_timeout_minutes"
+    private const val KEY_SESSION_FLUSH_ON_TERMINATION = "session_flush_on_termination"
+    private const val KEY_SESSION_PERSIST = "session_persist"
+
+    // Vitals
+    private const val KEY_VITALS_ENABLED = "vitals_enabled"
+    private const val KEY_VITALS_DETECT_JANK = "vitals_detect_jank"
+    private const val KEY_VITALS_MONITOR_THERMAL = "vitals_monitor_thermal"
+    private const val KEY_VITALS_ANR_THRESHOLD_MS = "vitals_anr_threshold_ms"
+
+    // Network
+    private const val KEY_NETWORK_SCRUB_URLS = "network_scrub_urls"
+    private const val KEY_NETWORK_SCRUB_HEADERS = "network_scrub_headers"
+    private const val KEY_NETWORK_ERROR_THRESHOLD = "network_error_threshold"
+    private const val KEY_NETWORK_MIN_DURATION_MS = "network_min_duration_ms"
+
+    // Error handling
+    private const val KEY_ERROR_CAPTURE_UNCAUGHT = "error_capture_uncaught"
+    private const val KEY_ERROR_CAPTURE_COROUTINES = "error_capture_coroutines"
+    private const val KEY_ERROR_SCRUB_STACK_TRACES = "error_scrub_stack_traces"
+    private const val KEY_ERROR_FLUSH_ON_ERROR = "error_flush_on_error"
+    private const val KEY_ERROR_RATE_LIMIT = "error_rate_limit"
+    private const val KEY_ERROR_DEDUPE_WINDOW_MINUTES = "error_dedupe_window_minutes"
 
     // Defaults
     private const val DEFAULT_SERVICE_NAME = "otel-mobile-demo"
     private const val DEFAULT_SERVICE_VERSION = "1.0.0"
     private const val DEFAULT_COLLECTOR_ENDPOINT = "http://10.0.2.2:4317"
-    private const val DEFAULT_EXPORT_MODE = "CONDITIONAL"  // Battery-friendly by default
+    private const val DEFAULT_EXPORT_MODE = "CONTINUOUS"  // Export on schedule for demo visibility
     private const val DEFAULT_TRACE_EXPORT_INTERVAL_SECONDS = 30L
     private const val DEFAULT_METRIC_EXPORT_INTERVAL_SECONDS = 60L
+    private const val DEFAULT_PREDICTION_INTERVAL_SECONDS = 30L
     private const val DEFAULT_PROTOCOL = "grpc"
     private const val DEFAULT_AUTH_TOKEN = ""
     private const val DEFAULT_DATASET = ""
@@ -65,6 +99,44 @@ object ConfigManager {
     private const val DEFAULT_MAX_EXPORT_RETRIES = 3
     private const val DEFAULT_ATTACH_CONTEXT_ATTRIBUTES = false
     private const val DEFAULT_BUILD_CHANNEL = "debug"
+    private const val DEFAULT_SAMPLING_RATE = 1.0f  // 100% for demo visibility
+
+    // Session defaults
+    private const val DEFAULT_SESSION_ENABLED = true
+    private const val DEFAULT_SESSION_INACTIVITY_TIMEOUT_MINUTES = 15
+    private const val DEFAULT_SESSION_FLUSH_ON_TERMINATION = true
+    private const val DEFAULT_SESSION_PERSIST = true
+
+    // Vitals defaults
+    private const val DEFAULT_VITALS_ENABLED = true
+    private const val DEFAULT_VITALS_DETECT_JANK = true
+    private const val DEFAULT_VITALS_MONITOR_THERMAL = false
+    private const val DEFAULT_VITALS_ANR_THRESHOLD_MS = 3000L
+
+    // Network defaults
+    private const val DEFAULT_NETWORK_SCRUB_URLS = true
+    private const val DEFAULT_NETWORK_SCRUB_HEADERS = true
+    private const val DEFAULT_NETWORK_ERROR_THRESHOLD = 400
+    private const val DEFAULT_NETWORK_MIN_DURATION_MS = 0L
+
+    // Error handling defaults
+    private const val DEFAULT_ERROR_CAPTURE_UNCAUGHT = true
+    private const val DEFAULT_ERROR_CAPTURE_COROUTINES = true
+    private const val DEFAULT_ERROR_SCRUB_STACK_TRACES = true
+    private const val DEFAULT_ERROR_FLUSH_ON_ERROR = true
+    private const val DEFAULT_ERROR_RATE_LIMIT = 10
+    private const val DEFAULT_ERROR_DEDUPE_WINDOW_MINUTES = 5
+
+    // Capture options keys
+    private const val KEY_CAPTURE_LIFECYCLE = "capture_lifecycle"
+    private const val KEY_CAPTURE_SCREENS = "capture_screens"
+    private const val KEY_CAPTURE_TAPS = "capture_taps"
+    private const val KEY_CAPTURE_LONG_PRESS = "capture_long_press"
+    private const val KEY_CAPTURE_SWIPE = "capture_swipe"
+    private const val KEY_CAPTURE_SCROLL = "capture_scroll"
+    private const val KEY_CAPTURE_TEXT_INPUT = "capture_text_input"
+    private const val KEY_CAPTURE_BACK_PRESS = "capture_back_press"
+    private const val KEY_CAPTURE_FRAGMENTS = "capture_fragments"
 
     /**
      * Gets the SharedPreferences instance.
@@ -136,13 +208,20 @@ object ConfigManager {
             headers["Dash0-Dataset"] = dataset
         }
 
+        val samplingRate = prefs.getFloat(KEY_SAMPLING_RATE, DEFAULT_SAMPLING_RATE).toDouble()
+
         return MobileConfig(
             serviceName = prefs.getString(KEY_SERVICE_NAME, DEFAULT_SERVICE_NAME)!!,
             serviceVersion = prefs.getString(KEY_SERVICE_VERSION, DEFAULT_SERVICE_VERSION)!!,
             collectorEndpoint = prefs.getString(KEY_COLLECTOR_ENDPOINT, DEFAULT_COLLECTOR_ENDPOINT)!!,
             exportMode = exportMode,
+            samplingConfig = io.opentelemetry.android.mobile.sampling.SamplingConfig.dynamic(
+                normalRate = samplingRate,
+                highPriorityRate = 1.0
+            ),
             traceExportIntervalSeconds = prefs.getLong(KEY_TRACE_EXPORT_INTERVAL_SECONDS, DEFAULT_TRACE_EXPORT_INTERVAL_SECONDS),
             metricExportIntervalSeconds = prefs.getLong(KEY_METRIC_EXPORT_INTERVAL_SECONDS, DEFAULT_METRIC_EXPORT_INTERVAL_SECONDS),
+            predictionIntervalSeconds = prefs.getLong(KEY_PREDICTION_INTERVAL_SECONDS, DEFAULT_PREDICTION_INTERVAL_SECONDS),
             ramBufferSize = prefs.getInt(KEY_RAM_BUFFER_SIZE, DEFAULT_RAM_BUFFER_SIZE),
             diskBufferMb = prefs.getInt(KEY_DISK_BUFFER_MB, DEFAULT_DISK_BUFFER_MB),
             diskBufferTtlHours = prefs.getInt(KEY_DISK_BUFFER_TTL_HOURS, DEFAULT_DISK_BUFFER_TTL_HOURS),
@@ -152,7 +231,33 @@ object ConfigManager {
             headers = headers.ifEmpty { null },
             attachContextAttributes = prefs.getBoolean(KEY_ATTACH_CONTEXT_ATTRIBUTES, DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
             buildChannel = prefs.getString(KEY_BUILD_CHANNEL, DEFAULT_BUILD_CHANNEL),
-            deviceMetricsConfig = loadDeviceMetricsConfig(context)
+            deviceMetricsConfig = loadDeviceMetricsConfig(context),
+            sessionConfig = SessionConfig(
+                enabled = prefs.getBoolean(KEY_SESSION_ENABLED, DEFAULT_SESSION_ENABLED),
+                inactivityTimeoutMs = prefs.getInt(KEY_SESSION_INACTIVITY_TIMEOUT_MINUTES, DEFAULT_SESSION_INACTIVITY_TIMEOUT_MINUTES).toLong() * 60_000L,
+                flushOnTermination = prefs.getBoolean(KEY_SESSION_FLUSH_ON_TERMINATION, DEFAULT_SESSION_FLUSH_ON_TERMINATION),
+                persistSession = prefs.getBoolean(KEY_SESSION_PERSIST, DEFAULT_SESSION_PERSIST)
+            ),
+            vitalsConfig = VitalsConfig(
+                enabled = prefs.getBoolean(KEY_VITALS_ENABLED, DEFAULT_VITALS_ENABLED),
+                detectJank = prefs.getBoolean(KEY_VITALS_DETECT_JANK, DEFAULT_VITALS_DETECT_JANK),
+                monitorThermalState = prefs.getBoolean(KEY_VITALS_MONITOR_THERMAL, DEFAULT_VITALS_MONITOR_THERMAL),
+                anrRiskThresholdMs = prefs.getLong(KEY_VITALS_ANR_THRESHOLD_MS, DEFAULT_VITALS_ANR_THRESHOLD_MS)
+            ),
+            networkConfig = NetworkConfig(
+                scrubUrls = prefs.getBoolean(KEY_NETWORK_SCRUB_URLS, DEFAULT_NETWORK_SCRUB_URLS),
+                scrubHeaders = prefs.getBoolean(KEY_NETWORK_SCRUB_HEADERS, DEFAULT_NETWORK_SCRUB_HEADERS),
+                errorStatusThreshold = prefs.getInt(KEY_NETWORK_ERROR_THRESHOLD, DEFAULT_NETWORK_ERROR_THRESHOLD),
+                minDurationMs = prefs.getLong(KEY_NETWORK_MIN_DURATION_MS, DEFAULT_NETWORK_MIN_DURATION_MS)
+            ),
+            errorConfig = ErrorConfig(
+                captureUncaughtExceptions = prefs.getBoolean(KEY_ERROR_CAPTURE_UNCAUGHT, DEFAULT_ERROR_CAPTURE_UNCAUGHT),
+                captureCoroutineExceptions = prefs.getBoolean(KEY_ERROR_CAPTURE_COROUTINES, DEFAULT_ERROR_CAPTURE_COROUTINES),
+                scrubStackTraces = prefs.getBoolean(KEY_ERROR_SCRUB_STACK_TRACES, DEFAULT_ERROR_SCRUB_STACK_TRACES),
+                flushOnError = prefs.getBoolean(KEY_ERROR_FLUSH_ON_ERROR, DEFAULT_ERROR_FLUSH_ON_ERROR),
+                rateLimit = prefs.getInt(KEY_ERROR_RATE_LIMIT, DEFAULT_ERROR_RATE_LIMIT),
+                deduplicateWindowMs = prefs.getInt(KEY_ERROR_DEDUPE_WINDOW_MINUTES, DEFAULT_ERROR_DEDUPE_WINDOW_MINUTES).toLong() * 60_000L
+            )
         )
     }
 
@@ -187,6 +292,13 @@ object ConfigManager {
     /**
      * Saves protocol preference (grpc or http).
      */
+    fun getSamplingRate(context: Context): Float =
+        getPrefs(context).getFloat(KEY_SAMPLING_RATE, DEFAULT_SAMPLING_RATE)
+
+    fun saveSamplingRate(context: Context, rate: Float) {
+        getPrefs(context).edit().putFloat(KEY_SAMPLING_RATE, rate).apply()
+    }
+
     fun saveProtocol(context: Context, protocol: String) {
         getPrefs(context).edit().putString(KEY_PROTOCOL, protocol).apply()
     }
@@ -199,6 +311,46 @@ object ConfigManager {
     }
 
     /**
+     * Loads AutoCaptureOptions booleans from SharedPreferences.
+     * Returns a map of flag name → value that callers use to construct AutoCaptureOptions.
+     */
+    fun loadCaptureOptions(context: Context): Map<String, Boolean> {
+        val prefs = getPrefs(context)
+        return mapOf(
+            KEY_CAPTURE_LIFECYCLE   to prefs.getBoolean(KEY_CAPTURE_LIFECYCLE, true),
+            KEY_CAPTURE_SCREENS     to prefs.getBoolean(KEY_CAPTURE_SCREENS, true),
+            KEY_CAPTURE_TAPS        to prefs.getBoolean(KEY_CAPTURE_TAPS, true),
+            KEY_CAPTURE_LONG_PRESS  to prefs.getBoolean(KEY_CAPTURE_LONG_PRESS, true),
+            KEY_CAPTURE_SWIPE       to prefs.getBoolean(KEY_CAPTURE_SWIPE, true),
+            KEY_CAPTURE_SCROLL      to prefs.getBoolean(KEY_CAPTURE_SCROLL, true),
+            KEY_CAPTURE_TEXT_INPUT  to prefs.getBoolean(KEY_CAPTURE_TEXT_INPUT, true),
+            KEY_CAPTURE_BACK_PRESS  to prefs.getBoolean(KEY_CAPTURE_BACK_PRESS, true),
+            KEY_CAPTURE_FRAGMENTS   to prefs.getBoolean(KEY_CAPTURE_FRAGMENTS, true)
+        )
+    }
+
+    fun saveCaptureOptions(context: Context, options: Map<String, Boolean>) {
+        getPrefs(context).edit().apply {
+            options.forEach { (key, value) -> putBoolean(key, value) }
+            apply()
+        }
+    }
+
+    // Key name accessors (for ConfigActivity to avoid depending on private constants)
+    fun captureKey(name: String) = when (name) {
+        "lifecycle"   -> KEY_CAPTURE_LIFECYCLE
+        "screens"     -> KEY_CAPTURE_SCREENS
+        "taps"        -> KEY_CAPTURE_TAPS
+        "long_press"  -> KEY_CAPTURE_LONG_PRESS
+        "swipe"       -> KEY_CAPTURE_SWIPE
+        "scroll"      -> KEY_CAPTURE_SCROLL
+        "text_input"  -> KEY_CAPTURE_TEXT_INPUT
+        "back_press"  -> KEY_CAPTURE_BACK_PRESS
+        "fragments"   -> KEY_CAPTURE_FRAGMENTS
+        else -> name
+    }
+
+    /**
      * Saves a MobileConfig to SharedPreferences.
      * Extracts auth token and dataset from headers if present.
      */
@@ -208,8 +360,10 @@ object ConfigManager {
             putString(KEY_SERVICE_VERSION, config.serviceVersion)
             putString(KEY_COLLECTOR_ENDPOINT, config.collectorEndpoint)
             putString(KEY_EXPORT_MODE, config.exportMode.name)
+            putFloat(KEY_SAMPLING_RATE, config.samplingConfig.samplingRate.toFloat())
             putLong(KEY_TRACE_EXPORT_INTERVAL_SECONDS, config.traceExportIntervalSeconds)
             putLong(KEY_METRIC_EXPORT_INTERVAL_SECONDS, config.metricExportIntervalSeconds)
+            putLong(KEY_PREDICTION_INTERVAL_SECONDS, config.predictionIntervalSeconds)
             putInt(KEY_RAM_BUFFER_SIZE, config.ramBufferSize)
             putInt(KEY_DISK_BUFFER_MB, config.diskBufferMb)
             putInt(KEY_DISK_BUFFER_TTL_HOURS, config.diskBufferTtlHours)
@@ -218,6 +372,32 @@ object ConfigManager {
             putInt(KEY_MAX_EXPORT_RETRIES, config.maxExportRetries)
             putBoolean(KEY_ATTACH_CONTEXT_ATTRIBUTES, config.attachContextAttributes)
             putString(KEY_BUILD_CHANNEL, config.buildChannel)
+
+            // Session
+            putBoolean(KEY_SESSION_ENABLED, config.sessionConfig.enabled)
+            putInt(KEY_SESSION_INACTIVITY_TIMEOUT_MINUTES, (config.sessionConfig.inactivityTimeoutMs / 60_000L).toInt())
+            putBoolean(KEY_SESSION_FLUSH_ON_TERMINATION, config.sessionConfig.flushOnTermination)
+            putBoolean(KEY_SESSION_PERSIST, config.sessionConfig.persistSession)
+
+            // Vitals
+            putBoolean(KEY_VITALS_ENABLED, config.vitalsConfig.enabled)
+            putBoolean(KEY_VITALS_DETECT_JANK, config.vitalsConfig.detectJank)
+            putBoolean(KEY_VITALS_MONITOR_THERMAL, config.vitalsConfig.monitorThermalState)
+            putLong(KEY_VITALS_ANR_THRESHOLD_MS, config.vitalsConfig.anrRiskThresholdMs)
+
+            // Network
+            putBoolean(KEY_NETWORK_SCRUB_URLS, config.networkConfig.scrubUrls)
+            putBoolean(KEY_NETWORK_SCRUB_HEADERS, config.networkConfig.scrubHeaders)
+            putInt(KEY_NETWORK_ERROR_THRESHOLD, config.networkConfig.errorStatusThreshold)
+            putLong(KEY_NETWORK_MIN_DURATION_MS, config.networkConfig.minDurationMs)
+
+            // Error
+            putBoolean(KEY_ERROR_CAPTURE_UNCAUGHT, config.errorConfig.captureUncaughtExceptions)
+            putBoolean(KEY_ERROR_CAPTURE_COROUTINES, config.errorConfig.captureCoroutineExceptions)
+            putBoolean(KEY_ERROR_SCRUB_STACK_TRACES, config.errorConfig.scrubStackTraces)
+            putBoolean(KEY_ERROR_FLUSH_ON_ERROR, config.errorConfig.flushOnError)
+            putInt(KEY_ERROR_RATE_LIMIT, config.errorConfig.rateLimit)
+            putInt(KEY_ERROR_DEDUPE_WINDOW_MINUTES, (config.errorConfig.deduplicateWindowMs / 60_000L).toInt())
 
             // Extract and save headers
             config.headers?.let { headers ->

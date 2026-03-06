@@ -222,7 +222,7 @@ class PredictiveExportPolicy private constructor(
         private var logger: Logger? = null
         private var predictor: OnDevicePredictor? = null
         private var healthMonitor: DeviceHealthMonitor? = null
-        private var predictionIntervalSeconds: Long = 10  // Every 10 seconds
+        private var predictionIntervalSeconds: Long = 30  // Every 30 seconds
         private var highRiskThreshold: Double = 0.7
 
         fun setProcessor(processor: MobileLogRecordProcessor) = apply {

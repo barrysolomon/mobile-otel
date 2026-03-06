@@ -44,7 +44,31 @@
       "Bash(for i in 1 2 3)",
       "Bash(do echo \"=== Run $i ===\")",
       "Bash(done)",
-      "Bash(for i in 1 2 3 4 5)"
+      "Bash(for i in 1 2 3 4 5)",
+      "Bash(git push origin main)",
+      "Bash(kubectl describe pod -n mobile-observability -l app=otel-gateway)",
+      "Bash(kubectl describe pod -n mobile-observability -l app=otel-collector)",
+      "Bash(kubectl logs -n mobile-observability -l app=otel-collector --tail=20)",
+      "Bash(kubectl logs -n mobile-observability -l app=otel-collector --previous)",
+      "Bash(kubectl get deployment otel-collector -n mobile-observability -o yaml)",
+      "Bash(kubectl get configmap otel-collector-config -n mobile-observability -o yaml)",
+      "Bash(kubectl apply -f /Users/barrysolomon/Projects/Dash0/mobile-otel/k8s/otel-collector.yaml)",
+      "Bash(kubectl rollout restart deployment/otel-collector -n mobile-observability)",
+      "Bash(kubectl rollout status deployment/otel-collector -n mobile-observability --timeout=90s)",
+      "Bash(docker build -t otel-gateway:latest .)",
+      "Bash(docker build --progress=plain -t otel-gateway:latest .)",
+      "Bash(docker save otel-gateway:latest)",
+      "Bash(sudo k3s ctr images import -)",
+      "Bash(kubectl get nodes -o wide)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=5 pi@192.168.1.149 \"echo connected\")",
+      "Read(//Users/barrysolomon/.ssh/**)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=5 -i ~/.ssh/id_ed25519 barry@192.168.1.149 \"echo connected\")",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=5 -i ~/.ssh/id_rsa barry@192.168.1.149 \"echo connected\")",
+      "Bash(grep -l \"gateway\\\\|Gateway\" /Users/barrysolomon/Projects/Dash0/mobile-otel/docs/*.md /Users/barrysolomon/Projects/Dash0/mobile-otel/docs/guides/*.md /Users/barrysolomon/Projects/Dash0/mobile-otel/docs/reference/*.md)",
+      "Bash(emulator -list-avds)",
+      "Bash(adb devices)",
+      "Bash(adb wait-for-device shell getprop sys.boot_completed)",
+      "Bash(/Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/ui/scheduling/SchedulingProfileFragment.kt:*)"
     ]
   }
 }

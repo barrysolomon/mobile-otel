@@ -15,12 +15,26 @@ import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
+/**
+ * Captures tap and long-press events from the Window's touch stream.
+ *
+ * When a parent span is active on the main thread (e.g. a booking or directions span),
+ * taps are emitted as zero-duration child spans so they appear in the trace waterfall.
+ * When no parent span is active, taps are emitted as log records (original behaviour).
+ *
+ * Context is always captured on the main thread at touch time (ACTION_UP), then
+ * carried through the coalesce queue so the scheduler thread emits with the correct parent.
+ */
 class TapCapture(
     private val logger: Logger,
+    private val tracer: Tracer,
     private val sessionTracker: SessionTracker,
     private val options: AutoCaptureOptions
 ) {
@@ -31,13 +45,58 @@ class TapCapture(
     private var pending: PendingTap? = null
     private var pendingFuture: ScheduledFuture<*>? = null
 
+    // Track down position for swipe detection — only accessed on the main thread.
+    private var downX: Float = 0f
+    private var downY: Float = 0f
+
     fun handleTouchEvent(window: Window, event: MotionEvent) {
-        if (!options.captureTaps && !options.captureLongPress) return
-        if (event.actionMasked != MotionEvent.ACTION_UP) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.rawX
+                downY = event.rawY
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                downX = 0f
+                downY = 0f
+            }
+            MotionEvent.ACTION_UP -> handleActionUp(window, event)
+        }
+    }
+
+    private fun handleActionUp(window: Window, event: MotionEvent) {
+        if (!options.captureTaps && !options.captureLongPress && !options.captureSwipe) return
+
+        // Capture OTel context on the main thread — carries any active parent span.
+        val capturedContext = Context.current()
 
         val rootView = window.decorView ?: return
         val rawX = event.rawX.toInt()
         val rawY = event.rawY.toInt()
+
+        // Check if this is a swipe before doing the more expensive hit-test.
+        val dx = event.rawX - downX
+        val dy = event.rawY - downY
+        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (options.captureSwipe && distance >= options.swipeMinDistancePx) {
+            val direction = when {
+                kotlin.math.abs(dy) >= kotlin.math.abs(dx) -> if (dy > 0) "down" else "up"
+                else -> if (dx > 0) "right" else "left"
+            }
+            val screenName = sessionTracker.getCurrentScreenName()
+            val attrs = Attributes.builder()
+                .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
+                .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                .put(AttributeKey.stringKey("ui.swipe.direction"), direction)
+                .apply { if (screenName != null) put(AttributeKey.stringKey("screen.name"), screenName) }
+                .build()
+            emit("ui.swipe", attrs, 1, capturedContext)
+            downX = 0f
+            downY = 0f
+            return
+        }
+        downX = 0f
+        downY = 0f
+
         val hitResult = ViewHitTester.hitTest(rootView, rawX, rawY, options.maxHitTestDepth)
         val target = hitResult.view
         val screenName = sessionTracker.getCurrentScreenName()
@@ -48,9 +107,9 @@ class TapCapture(
         val eventName = if (isLongPress && options.captureLongPress) "ui.long_press" else "ui.tap"
         if (eventName == "ui.tap" && !options.captureTaps) return
         if (eventName == "ui.tap") {
-            queueTap(eventName, attributes)
+            queueTap(eventName, attributes, capturedContext)
         } else {
-            emit(eventName, attributes, 1)
+            emit(eventName, attributes, 1, capturedContext)
         }
     }
 
@@ -145,7 +204,7 @@ class TapCapture(
         return true
     }
 
-    private fun queueTap(eventName: String, attributes: Attributes) {
+    private fun queueTap(eventName: String, attributes: Attributes, capturedContext: Context) {
         val now = SystemClock.elapsedRealtime()
         val previous = pending
 
@@ -159,7 +218,7 @@ class TapCapture(
         }
 
         flushPending()
-        pending = PendingTap(eventName, attributes, now, 1)
+        pending = PendingTap(eventName, attributes, capturedContext, now, 1)
         scheduleEmit()
     }
 
@@ -180,27 +239,53 @@ class TapCapture(
 
     private fun flushPending() {
         val current = pending ?: return
-        emit(current.eventName, current.attributes, current.count)
+        emit(current.eventName, current.attributes, current.count, current.capturedContext)
         pending = null
     }
 
-    private fun emit(eventName: String, attributes: Attributes, count: Int) {
-        val builder = Attributes.builder().putAll(attributes)
-        if (count > 1) {
-            builder.put(AttributeKey.longKey("ui.tap.count"), count.toLong())
-            builder.put(AttributeKey.longKey("ui.tap.window_ms"), options.tapCoalesceWindowMs)
+    /**
+     * Emits a tap as a child span when a parent span is active, or as a log when idle.
+     *
+     * Child span approach: zero-duration span parented to the active transaction span.
+     * This makes taps appear in the trace waterfall under the booking/directions span.
+     *
+     * Log approach (no active parent): preserves existing behaviour while attaching the
+     * OTel context so the log is correlated to any trace in flight.
+     */
+    private fun emit(eventName: String, attributes: Attributes, count: Int, capturedContext: Context) {
+        val allAttrs = if (count > 1) {
+            Attributes.builder()
+                .putAll(attributes)
+                .put(AttributeKey.longKey("ui.tap.count"), count.toLong())
+                .put(AttributeKey.longKey("ui.tap.window_ms"), options.tapCoalesceWindowMs)
+                .build()
+        } else {
+            attributes
         }
 
-        logger.logRecordBuilder()
-            .setBody(eventName)
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(builder.build())
-            .emit()
+        val parentSpan = Span.fromContext(capturedContext)
+        if (parentSpan.spanContext.isValid && parentSpan.spanContext.isSampled) {
+            // Active parent span — emit as child span for trace waterfall visibility
+            val childSpan = tracer.spanBuilder(eventName)
+                .setParent(capturedContext)
+                .setAllAttributes(allAttrs)
+                .startSpan()
+            childSpan.end()
+        } else {
+            // No active parent — emit as log, but attach context for trace correlation
+            logger.logRecordBuilder()
+                .setBody(eventName)
+                .setSeverity(Severity.INFO)
+                .setAllAttributes(allAttrs)
+                .setContext(capturedContext)
+                .emit()
+        }
     }
 
     private data class PendingTap(
         val eventName: String,
         val attributes: Attributes,
+        val capturedContext: Context,
         var lastTapAtMs: Long,
         var count: Int
     )

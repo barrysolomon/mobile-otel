@@ -4,7 +4,9 @@ The Mobile OTEL SDK supports three export modes to balance observability needs w
 
 ## Export Modes
 
-### 1. CONDITIONAL (Default - Most Battery Efficient)
+> **Demo app default:** The Schedulr demo app uses **CONTINUOUS** mode so traces and logs export on a 30s schedule without requiring a running policy gateway. For production use, switch to **CONDITIONAL** or **HYBRID**.
+
+### 1. CONDITIONAL (Most Battery Efficient)
 
 **Best for: Production apps, battery-sensitive scenarios**
 

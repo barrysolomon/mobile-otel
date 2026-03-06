@@ -272,6 +272,17 @@ loggerProvider.resetSamplingToBaseline()
 val currentRate = loggerProvider.getCurrentSamplingRate()  // e.g., 0.05
 ```
 
+### Via MobileOtel facade (no restart required)
+
+`MobileOtel.getProvider().setSamplingRate(rate)` is the preferred call site when you don't hold a direct reference to the logger provider. Changes take effect immediately for all new spans:
+
+```kotlin
+// Live update — new spans use this rate immediately
+MobileOtel.getProvider().setSamplingRate(0.5)
+```
+
+The demo app exposes this as a drag slider in **Profile → OTel Config**. The slider calls `setSamplingRate()` on every change event, so the rate updates in real time as you drag — no restart needed.
+
 ## Sampling Decision Attributes
 
 Sampling decisions are recorded as span attributes (following OTEL spec):

@@ -78,9 +78,11 @@ dependencies {
 
     // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")
     testImplementation("org.robolectric:robolectric:4.16.1")
-    testImplementation("androidx.test.core:core:1.6.1")
+    testImplementation("androidx.test:core:1.6.1")
     testImplementation("io.mockk:mockk:1.14.7")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
 
     // Testing - Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

@@ -138,20 +138,58 @@ All exported as OTel Meter gauges (not logs).
 
 Prediction events are emitted as OTel logs.
 
+### Page-Level Span Model
+
+`AutoCaptureManager` automatically creates a `page.<ScreenName>` parent span when any Fragment resumes and closes it when the fragment pauses. All auto-captured UI events and network calls on that screen become child spans, producing a full trace waterfall per user interaction.
+
+```text
+page.BookFragment              ← starts on onFragmentResumed
+  ├── ui.tap (auto-captured)
+  ├── form.provider_selected   ← Span.current().addEvent()
+  ├── form.submitted
+  ├── POST /posts              ← OTelNetworkInterceptor child span
+  └── result.appointment_id   ← Span.current().setAttribute()
+                               ← ends when fragment pauses or restartPageSpan() is called
+page.BookFragment              ← fresh span starts for the next booking
+```
+
+After an API call completes (booking confirmed, route fetched), call `OTelMobile.restartPageSpan(screenName)` to end the current page span and open a fresh one — the next user action starts a clean trace.
+
+```kotlin
+// In any fragment, after completing an API call:
+OTelMobile.restartPageSpan("BookFragment")
+```
+
+Within your fragment code, use `Span.current()` to annotate the active page span:
+
+```kotlin
+// Add events (shown as timeline points in the trace waterfall)
+Span.current().addEvent("form.submitted", Attributes.of(
+    AttributeKey.stringKey("provider"), provider,
+    AttributeKey.stringKey("time_slot"), timeSlot
+))
+
+// Set attributes on the page span
+Span.current().setAttribute(AttributeKey.stringKey("result.appointment_id"), appt.id)
+Span.current().setStatus(StatusCode.OK)
+```
+
 ### UI Auto-Capture
 
 `AutoCaptureManager` registers a `WindowCallbackWrapper` on each Activity:
 
 | Signal | Event name | Notes |
 | ------ | ---------- | ----- |
-| Tap | `ui.tap` | Bucketed to 3x3 grid by default |
+| Tap | `ui.tap` | Bucketed to 3x3 grid by default; long-press detected by down→up duration |
 | Long press | `ui.long_press` | |
-| Scroll | `ui.scroll` | Throttled to 500ms |
+| Scroll | `ui.scroll` | RecyclerView only; throttled to 500ms |
 | Back press | `ui.back_press` | |
 | UI freeze | `ui.freeze` | Threshold: 2000ms, cooldown: 30s |
 | ANR | `app.anr` | Threshold: 5000ms |
 | Lifecycle | `app.lifecycle.*` | start, stop, foreground, background |
-| Fragment | `fragment.*` | attach, detach |
+| Screen | `ui.screen_view` | Per-fragment on resume |
+
+> **Note:** Scroll capture attaches to `RecyclerView` instances found at activity resume. Views created dynamically inside fragments may not be picked up until the next activity resume.
 
 Control via `AutoCaptureOptions` in `MobileConfig`:
 
@@ -232,6 +270,43 @@ val client = OkHttpClient.Builder()
 | `NetworkConfig.production()` | method, status, duration, sanitized URL |
 
 Request/response bodies are never captured in non-debug presets. URLs are sanitized to remove query parameters containing credentials.
+
+### OTel Context in Coroutines
+
+`withContext(Dispatchers.IO)` may resume on a different thread, losing the thread-local OTel context. HTTP calls made inside `withContext` would appear as root spans instead of children of the active page span. Fix: capture the context before switching, then restore it inside:
+
+```kotlin
+suspend fun fetchData(): Result {
+    val otelCtx = io.opentelemetry.context.Context.current()  // capture on caller thread
+
+    return withContext(Dispatchers.IO) {
+        val scope = otelCtx.makeCurrent()                      // restore on IO thread
+        try {
+            httpClient.get(url)                                // HTTP span parented correctly
+        } finally {
+            scope.close()
+        }
+    }
+}
+```
+
+This pattern is used throughout `AppointmentRepository` and is required whenever `OTelNetworkInterceptor` spans need to nest under an active page span.
+
+## Live Sampling Rate Adjustment
+
+Call `MobileOtel.getProvider().setSamplingRate(rate)` to update the sampling rate immediately for all new spans — no restart required:
+
+```kotlin
+// Bump to 100% temporarily (e.g. while debugging)
+MobileOtel.getProvider().setSamplingRate(1.0)
+
+// Drop to 10% for production
+MobileOtel.getProvider().setSamplingRate(0.1)
+```
+
+The change takes effect for the next span created; in-flight spans are not affected. The rate is also persisted via `ConfigManager.saveSamplingRate()` so it survives process death.
+
+The demo app exposes this as a live slider in **Profile → OTel Config**. Moving the slider calls `setSamplingRate()` directly — the next booking or route search immediately reflects the new rate.
 
 ## Export Modes & Flush Control
 

@@ -16,6 +16,8 @@ import io.opentelemetry.sdk.logs.LogRecordProcessor
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.ReadWriteLogRecord
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -116,7 +118,7 @@ class MobileLogRecordProcessor private constructor(
             1, 1, TimeUnit.HOURS
         )
 
-        // Schedule periodic device metrics capture in CONTINUOUS mode
+        // Schedule periodic device metrics capture and log flush in CONTINUOUS mode
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS) {
             val captureIntervalSeconds = config.metricExportIntervalSeconds
             executor.scheduleAtFixedRate(
@@ -132,7 +134,27 @@ class MobileLogRecordProcessor private constructor(
                 captureIntervalSeconds,
                 TimeUnit.SECONDS
             )
-            Log.i(TAG, "Periodic device metrics capture enabled: every ${captureIntervalSeconds}s")
+            // Flush all buffered log records on the same schedule as traces
+            val flushIntervalSeconds = config.traceExportIntervalSeconds
+            executor.scheduleAtFixedRate(
+                {
+                    if (!isShutdown.get()) {
+                        try {
+                            val count = ramBufferCount.get()
+                            if (count > 0) {
+                                Log.d(TAG, "Periodic log flush: exporting $count buffered events")
+                                forceFlush()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in periodic log flush", e)
+                        }
+                    }
+                },
+                flushIntervalSeconds,
+                flushIntervalSeconds,
+                TimeUnit.SECONDS
+            )
+            Log.i(TAG, "Periodic export enabled: metrics every ${captureIntervalSeconds}s, logs every ${flushIntervalSeconds}s")
         }
 
         Log.i(TAG, "Initialized: RAM buffer size=$ramBufferSize, Disk buffer=${diskBufferMb}MB, TTL=${diskBufferTtlHours}h, Export mode=${config.exportMode}")
@@ -221,55 +243,57 @@ class MobileLogRecordProcessor private constructor(
 
         try {
             val windowStartMs = System.currentTimeMillis() - (windowMinutes * 60 * 1000L)
-            val eventsToFlush = mutableListOf<LogRecordData>()
 
-            // Collect from RAM buffer
+            // Snapshot the RAM events to export. Track by object identity so we can remove
+            // exactly these objects later without touching events that arrived during export.
+            val ramEventsToFlush = mutableListOf<LogRecordData>()
             ramBuffer.forEach { logRecord ->
                 if (logRecord.timestampEpochNanos / 1_000_000 >= windowStartMs) {
-                    eventsToFlush.add(logRecord)
+                    ramEventsToFlush.add(logRecord)
                 }
             }
 
-            // Collect from disk buffer
-            val diskEvents = runBlocking {
-                diskBuffer.getEventsInWindow(windowStartMs)
-            }
-            eventsToFlush.addAll(diskEvents)
+            val diskEventsToFlush = runBlocking { diskBuffer.getEventsInWindow(windowStartMs) }
+            val allEventsToFlush = ramEventsToFlush + diskEventsToFlush
 
-            Log.i(TAG, "Flushing ${eventsToFlush.size} events from last $windowMinutes minutes")
+            if (allEventsToFlush.isEmpty()) return CompletableResultCode.ofSuccess()
 
-            // Export in batches
-            val batchSize = 100
-            val results = eventsToFlush.chunked(batchSize).map { batch ->
-                exporter.export(batch)
-            }
+            Log.i(TAG, "Flushing ${allEventsToFlush.size} events " +
+                "(${ramEventsToFlush.size} RAM + ${diskEventsToFlush.size} disk) " +
+                "from last $windowMinutes minutes")
 
-            // Wait for all batches to complete
+            val results = allEventsToFlush.chunked(100).map { batch -> exporter.export(batch) }
             val result = CompletableResultCode.ofAll(results)
 
-            // Clear successfully exported events from buffers
             result.whenComplete {
                 if (result.isSuccess) {
                     try {
-                        // Remove exported events from RAM buffer
-                        val remainingEvents = ramBuffer.filter { logRecord ->
-                            logRecord.timestampEpochNanos / 1_000_000 < windowStartMs
-                        }
-                        ramBuffer.clear()
-                        ramBuffer.addAll(remainingEvents)
-                        ramBufferCount.set(remainingEvents.size)
+                        // Remove ONLY the exact exported objects from the RAM buffer.
+                        // Using an identity set avoids the clear()+addAll() race condition
+                        // that would silently drop events written during the export window.
+                        val exportedIds = Collections.newSetFromMap(
+                            IdentityHashMap<LogRecordData, Boolean>()
+                        )
+                        exportedIds.addAll(ramEventsToFlush)
 
-                        // Remove exported events from disk buffer
-                        runBlocking {
-                            diskBuffer.deleteEventsInWindow(windowStartMs)
+                        var removed = 0
+                        ramBuffer.removeIf { event ->
+                            exportedIds.contains(event).also { matched ->
+                                if (matched) removed++
+                            }
                         }
+                        ramBufferCount.addAndGet(-removed)
 
-                        Log.i(TAG, "Successfully flushed and cleared ${eventsToFlush.size} events from window")
+                        // Remove the disk window — disk events don't have the same race risk
+                        // because DiskLogBuffer uses Room transactions for atomicity.
+                        runBlocking { diskBuffer.deleteEventsInWindow(windowStartMs) }
+
+                        Log.i(TAG, "Cleared $removed RAM + ${diskEventsToFlush.size} disk events after successful flush")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error clearing events after successful flush", e)
                     }
                 } else {
-                    Log.w(TAG, "Window flush failed, keeping events in buffer")
+                    Log.w(TAG, "Window flush failed, keeping events in buffer for retry")
                 }
             }
 

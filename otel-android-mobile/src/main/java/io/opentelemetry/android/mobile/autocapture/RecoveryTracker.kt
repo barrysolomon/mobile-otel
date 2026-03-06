@@ -131,7 +131,7 @@ class RecoveryTracker(
 
             logger.logRecordBuilder()
                 .setBody("app.recovery")
-                .setSeverity(Severity.WARN)
+                .setSeverity(Severity.ERROR)
                 .setAllAttributes(
                     Attributes.builder()
                         .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())

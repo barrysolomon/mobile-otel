@@ -107,6 +107,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
     testImplementation("androidx.test:core:1.6.1")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
 
     // Testing - Android Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

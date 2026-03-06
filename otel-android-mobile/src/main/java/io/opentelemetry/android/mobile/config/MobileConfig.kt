@@ -63,6 +63,7 @@ enum class ExportMode {
  * @property exportMode Export behavior mode (default: CONDITIONAL for battery efficiency)
  * @property traceExportIntervalSeconds Export interval for traces in CONTINUOUS mode (default: 30)
  * @property metricExportIntervalSeconds Export interval for metrics in CONTINUOUS mode (default: 60)
+ * @property predictionIntervalSeconds How often the predictive export policy runs its risk assessment cycle (default: 30)
  * @property ramBufferSize Maximum number of events to buffer in RAM (default: 5000)
  * @property diskBufferMb Maximum disk space for persisted events in MB (default: 50)
  * @property diskBufferTtlHours Time-to-live for disk-persisted events in hours (default: 24)
@@ -87,6 +88,7 @@ data class MobileConfig(
     val exportMode: ExportMode = ExportMode.CONDITIONAL,
     val traceExportIntervalSeconds: Long = 30,
     val metricExportIntervalSeconds: Long = 60,
+    val predictionIntervalSeconds: Long = 30,
     val ramBufferSize: Int = 5000,
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
@@ -110,6 +112,7 @@ data class MobileConfig(
         require(collectorEndpoint.isNotBlank()) { "collectorEndpoint must not be blank" }
         require(traceExportIntervalSeconds > 0) { "traceExportIntervalSeconds must be positive" }
         require(metricExportIntervalSeconds > 0) { "metricExportIntervalSeconds must be positive" }
+        require(predictionIntervalSeconds > 0) { "predictionIntervalSeconds must be positive" }
         require(ramBufferSize > 0) { "ramBufferSize must be positive" }
         require(diskBufferMb > 0) { "diskBufferMb must be positive" }
         require(diskBufferTtlHours > 0) { "diskBufferTtlHours must be positive" }
@@ -138,6 +141,7 @@ data class MobileConfig(
         private var exportMode: ExportMode = ExportMode.CONDITIONAL
         private var traceExportIntervalSeconds: Long = 30
         private var metricExportIntervalSeconds: Long = 60
+        private var predictionIntervalSeconds: Long = 30
         private var ramBufferSize: Int = 5000
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
@@ -161,6 +165,7 @@ data class MobileConfig(
         fun setExportMode(exportMode: ExportMode) = apply { this.exportMode = exportMode }
         fun setTraceExportIntervalSeconds(interval: Long) = apply { this.traceExportIntervalSeconds = interval }
         fun setMetricExportIntervalSeconds(interval: Long) = apply { this.metricExportIntervalSeconds = interval }
+        fun setPredictionIntervalSeconds(seconds: Long) = apply { this.predictionIntervalSeconds = seconds }
         fun setRamBufferSize(ramBufferSize: Int) = apply { this.ramBufferSize = ramBufferSize }
         fun setDiskBufferMb(diskBufferMb: Int) = apply { this.diskBufferMb = diskBufferMb }
         fun setDiskBufferTtlHours(diskBufferTtlHours: Int) = apply { this.diskBufferTtlHours = diskBufferTtlHours }
@@ -186,6 +191,7 @@ data class MobileConfig(
                 exportMode = exportMode,
                 traceExportIntervalSeconds = traceExportIntervalSeconds,
                 metricExportIntervalSeconds = metricExportIntervalSeconds,
+                predictionIntervalSeconds = predictionIntervalSeconds,
                 ramBufferSize = ramBufferSize,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours,

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ShopSocial</string>
+    <string name="app_name">Schedulr</string>
 
     <!-- Debug Toolbar -->
     <string name="debug_tools">Debug Tools</string>

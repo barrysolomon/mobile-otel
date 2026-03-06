@@ -96,7 +96,7 @@ MobileOtel.forceFlush(windowMinutes = 5)  // last 5 minutes only
 
 ## Run the Demo
 
-The demo app ships with realistic fault scenarios (UI freeze, crash, ANR, OOM, network errors) wired to the full observability pipeline.
+The demo app is **Schedulr**, a medical appointment scheduling app. Fault scenarios are triggered through realistic app interactions rather than test buttons, so the telemetry reflects what you'd see in production.
 
 ### Prerequisites
 
@@ -142,20 +142,21 @@ cd control-plane-ui && npm install && npm run dev
 # Open http://localhost:3000
 ```
 
-### Step 3: Build and Install the Demo App
+### Step 3: Build, Install, and Launch the Demo App
 
 ```bash
 cd examples/demo-app
-./gradlew installDebug
+./gradlew installDebug && adb shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
 ```
 
 > **No connected devices?** `installDebug` requires a running emulator or connected physical device.
 >
 > ```bash
-> # List available AVDs and start one
+> # List available AVDs and start one (Pixel 3a uses less RAM than Pixel 7)
 > emulator -list-avds
-> emulator -avd <avd_name> &
-> # Wait for boot, then re-run installDebug
+> emulator -avd Pixel_3a -memory 2048 &
+> adb wait-for-device shell getprop sys.boot_completed  # wait for "1"
+> # Then re-run the install command above
 > ```
 >
 > For a physical device: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices`.
@@ -175,17 +176,30 @@ collectorEndpoint = "http://10.0.2.2:4317"
 collectorEndpoint = "http://10.0.2.2:8080"
 ```
 
-### Step 5: Trigger Fault Scenarios
+### Step 4: Explore the App and Generate Telemetry
 
-Launch the demo app and tap the fault scenario buttons:
+Schedulr has five tabs. Fault scenarios emerge from normal app usage:
 
-| Button           | What it triggers                    | Telemetry emitted                          |
-| ---------------- | ----------------------------------- | ------------------------------------------ |
-| UI Freeze        | Random 2-11s ANR simulation         | `ui.freeze` log, freeze duration attribute |
-| Real Crash       | Throws RuntimeException             | `app.crash` log on next launch             |
-| Network Errors   | HTTP requests returning 4xx/5xx     | `http.error` logs                          |
-| Low Memory Kill  | Allocates until OOM                 | `app.recovery` with `low_memory_kill`      |
-| True ANR         | 30-second main thread block         | `app.anr` log on next launch               |
+| Tab / Action | What happens | Telemetry emitted (Severity) |
+| --- | --- | --- |
+| **Appointments** → pull to refresh | 30% chance of API failure | `appointment.fetch_failed` log **(ERROR)**, `http.status_code` attribute |
+| **Book** → tap Book | 25% chance of booking failure | `appointment.booking_failed` log **(ERROR)**, full `page.BookFragment` trace |
+| **Book** → duplicate booking | Same provider/day/slot already booked | `appointment.duplicate` span event **(WARN)**, no HTTP call made |
+| **Book** → successful booking | Appointment confirmed | `appointment.booked` log (INFO), `page.BookFragment` trace with `form.*` events and `POST /posts` child span |
+| **Directions** → Search | Calls Nominatim + OSRM routing APIs | `page.DirectionsFragment` trace with geocode + route HTTP child spans |
+| **Calendar** → menu → Load Full History | Allocates 500 appointments | `calendar.history_loaded` log, memory pressure → `app.recovery` on next launch |
+| **Profile** → OTel Config | Opens configuration screen | Sampling rate slider takes effect immediately — no restart needed |
+| **Tab navigation** | Each tab switch | New `page.<TabName>` span starts on fragment resume |
+| **Debug toolbar** (tap bar at top to expand) | | |
+| → HTTP 500 | Forces next refresh to fail | `appointment.fetch_failed` **(ERROR)** |
+| → Crash | Throws RuntimeException | `app.crash` log **(ERROR)** on next launch |
+| → ANR | Blocks main thread 6s | `ui.freeze` log **(ERROR)** with `freeze.duration_ms`, then `app.anr` |
+| → Memory | Allocates 100MB | `app.recovery` **(ERROR)** on next launch |
+| → Jank | 200ms busy-wait on UI thread | `ui.freeze` log **(ERROR)** with `freeze.duration_ms` |
+
+All error-class events (`ui.freeze`, `app.crash`, `app.anr`, `app.recovery`, HTTP 5xx) emit at **ERROR** severity.
+
+**Page-level span model** — `AutoCaptureManager` automatically opens a `page.<ScreenName>` parent span when any Fragment resumes, and closes it when the fragment pauses or an API call completes. All auto-captured taps, scrolls, and network calls on that screen become child spans, giving you a full trace waterfall for every user interaction. After a booking or route search completes, `OTelMobile.restartPageSpan()` ends the current page span and opens a fresh one so the next action begins a clean trace.
 
 ### Step 6: Verify Telemetry
 
@@ -197,13 +211,26 @@ kubectl logs -n mobile-observability -l app=otel-collector -f
 kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 ```
 
-Expected in collector output:
+Expected in collector output (UI freeze from ANR trigger):
 ```
+SeverityText: ERROR
 Body: Str(ui.freeze)
 Attributes:
   -> session_id: Str(...)
-  -> freeze_duration_ms: Int(2340)
-  -> event.name: Str(ui.freeze)
+  -> freeze.duration_ms: Int(6230)
+  -> screen.name: Str(SchedulingActivity)
+
+SeverityText: ERROR
+Body: Str(appointment.fetch_failed)
+Attributes:
+  -> http.status_code: Int(503)
+  -> error.message: Str(Service Unavailable — scheduling API is down)
+```
+
+To watch events in real-time on the device:
+
+```bash
+adb logcat | grep -E "OTel|appointment|ui\.freeze|app\.(crash|anr|recovery)"
 ```
 
 ---
