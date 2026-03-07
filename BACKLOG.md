@@ -34,12 +34,22 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [x] **PiiScrubberTest** — done
 - [x] **SessionTrackerTest** — done
 - [x] **DynamicSamplerTest** — done
+- [x] **ExportModeTest** — CONDITIONAL/CONTINUOUS/HYBRID mode behavior, policy trigger gates (~60 tests)
+- [x] **UserJourneyExportModeTest** — 18 scenario tests across 4 journey families, cross-mode comparisons (~40 tests)
 - [ ] **JourneyBreadcrumbBufferTest** — FIFO eviction, thread safety, time-window filtering, JSON serialization (~15 tests)
 - [ ] **NavigationInstrumentationTest** — Activity lifecycle, deep link capture, manual navigation (~20 tests)
 
 ### P0 — Unit Tests (Go)
 
 - [x] **factory_test.go** — Factory creation, default config, processor creation, capabilities, invalid config, start/shutdown (7 tests)
+
+### P1 — Espresso Scenario Tests (Dash0 telemetry generation)
+
+- [x] **UserJourneyScenarios** — happy-path booking, browse-without-booking, network error recovery, get-directions (4 tests)
+- [x] **FaultScenarios** — jank detection, memory pressure, ANR detection, crash recovery (4 tests)
+- [x] **ConditionalFlushScenarios** — quiet-buffer-then-crash-flush, http-error-flush with buffer inspection (2 tests)
+- [x] **EmulatorStressScenarios** — battery drain, thermal throttle, memory pressure, network degradation, rapid drain, combined stress, extreme low battery (7 tests via UIAutomation shell commands)
+- [x] **run-dash0-scenarios.sh** — CLI script to run scenario suites with `--all/--journeys/--faults/--conditional/--stress`, single test, device selection, repeat, run-id tagging
 
 ### P1 — Integration Tests
 
@@ -81,6 +91,7 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 ### P1 — API Documentation
 
+- [x] **Auto-instrumentation reference** — `docs/AUTO_INSTRUMENTATION.md`: page span hierarchy, UI signals, screen nav, lifecycle, errors, network, vitals, predictive export, ring buffer metrics, sampling, privacy controls
 - [ ] Add KDoc to all public Android classes and methods
 - [ ] Add GoDoc to all exported types and functions in collector processor
 - [ ] Generate HTML documentation sites
@@ -143,3 +154,8 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [x] **Page span sampling** — `sampling.priority=high` on all page spans ensures TapCapture/ScrollCapture emit child spans (trace waterfall) not flat logs
 - [x] **Split OTel/Dash0 config** — `ConfigActivity` (OTel SDK settings) + `Dash0ConfigActivity` (backend connection) as separate screens
 - [x] **Demo polish** — Version on Profile tab, `TelemetryFlags.showDebugToolbar`, CalVer versioning `1.1.0-20260306`
+- [x] **BookFragment comprehensive instrumentation** — device context snapshot (battery/network/memory), form fill time, retry tracking, changed fields, booking date look-ahead, span events for all outcomes
+- [x] **Espresso scenario test suites** — 17 tests in 4 suites (journeys, faults, conditional flush, emulator stress) generating live Dash0 telemetry
+- [x] **run-dash0-scenarios.sh** — unified CLI for running scenario suites with suite/test/device selection, repeat, Dash0 run-id tagging
+- [x] **Auto-instrumentation documentation** — `docs/AUTO_INSTRUMENTATION.md` covering all captured signals, trace hierarchy, privacy controls
+- [x] **ExportModeTest + UserJourneyExportModeTest** — 100+ unit tests validating CONDITIONAL/CONTINUOUS/HYBRID behavior across realistic user journeys

@@ -147,6 +147,93 @@ object TestUtils {
         every { mock.toLogRecordData() } returns data
         return mock
     }
+
+    // ── Journey-specific event factories ─────────────────────────────────────
+
+    /** Simulates a screen navigation breadcrumb (body = "screen.navigation"). */
+    fun createNavigationEvent(
+        screen: String,
+        previousScreen: String = "unknown",
+        timestamp: Long = System.currentTimeMillis()
+    ) = createTestLogRecord(
+        body = "screen.navigation",
+        attributes = mapOf(
+            "screen.name"          to screen,
+            "screen.previous"      to previousScreen,
+            "navigation.type"      to "bottom_nav"
+        ),
+        timestamp = timestamp,
+        severity = Severity.INFO
+    )
+
+    /** Simulates a user tap/interaction breadcrumb (body = "user.action"). */
+    fun createBreadcrumb(
+        action: String,
+        screen: String,
+        timestamp: Long = System.currentTimeMillis()
+    ) = createTestLogRecord(
+        body = "user.action",
+        attributes = mapOf(
+            "action.name"  to action,
+            "screen.name"  to screen
+        ),
+        timestamp = timestamp,
+        severity = Severity.INFO
+    )
+
+    /** Simulates a business transaction event (body = "user.transaction"). */
+    fun createTransactionEvent(
+        index: Int,
+        type: String = "appointment_view",
+        timestamp: Long = System.currentTimeMillis()
+    ) = createTestLogRecord(
+        body = "user.transaction",
+        attributes = mapOf(
+            "transaction.index"  to index,
+            "transaction.type"   to type,
+            "transaction.result" to "success"
+        ),
+        timestamp = timestamp,
+        severity = Severity.INFO
+    )
+
+    /** Simulates an outbound API request event (body = "api.request" or "http.error"). */
+    fun createApiRequestEvent(
+        index: Int,
+        endpoint: String = "/appointments",
+        statusCode: Int = 200,
+        durationMs: Int = 85,
+        timestamp: Long = System.currentTimeMillis()
+    ): TestLogRecordData {
+        val isError = statusCode >= 400
+        return createTestLogRecord(
+            body = if (isError) "http.error" else "api.request",
+            attributes = mapOf(
+                "request.index"       to index,
+                "request.endpoint"    to endpoint,
+                "request.status_code" to statusCode,
+                "request.duration_ms" to durationMs
+            ),
+            timestamp = timestamp,
+            severity = if (isError) Severity.ERROR else Severity.INFO
+        )
+    }
+
+    /**
+     * Emits a sequence of events on [processor] via onEmit().
+     * Returns the list of ReadWriteLogRecord wrappers emitted.
+     */
+    fun emitAll(
+        processor: io.opentelemetry.sdk.logs.LogRecordProcessor,
+        records: List<LogRecordData>
+    ) {
+        records.forEach { record ->
+            processor.onEmit(
+                io.opentelemetry.context.Context.root(),
+                asReadWriteLogRecord(record)
+            )
+        }
+    }
 }
 
 /**

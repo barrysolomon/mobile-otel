@@ -182,8 +182,14 @@ cd gateway && go build ./...
 # Control Plane UI
 cd control-plane-ui && npm install && npm run build
 
-# Run all tests
+# Run unit tests (Android + Go)
 ./run-tests.sh
+
+# Run Dash0 telemetry scenario tests (requires connected emulator/device)
+./run-dash0-scenarios.sh --all                        # All 4 suites
+./run-dash0-scenarios.sh --journeys --faults          # Specific suites
+./run-dash0-scenarios.sh --stress --test batteryDrain # Single test
+./run-dash0-scenarios.sh --all --run-id "sprint42"    # Tag telemetry with run ID
 ```
 
 ## Documentation
@@ -195,6 +201,7 @@ cd control-plane-ui && npm install && npm run build
 
 ### SDK Reference
 
+- **[docs/AUTO_INSTRUMENTATION.md](docs/AUTO_INSTRUMENTATION.md)** — All auto-captured signals, trace hierarchy, privacy controls
 - **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID modes explained
 - **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage, predictions)
 - **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policy DSL
@@ -215,6 +222,7 @@ cd control-plane-ui && npm install && npm run build
 - **[docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)** — Common issues
 - **[docs/guides/DEPLOYMENT_GUIDE.md](docs/guides/DEPLOYMENT_GUIDE.md)** — Deployment guide
 - **[docs/guides/TESTING_STRATEGY.md](docs/guides/TESTING_STRATEGY.md)** — Testing approach
+- **[docs/reference/TESTING_IMPLEMENTATION.md](docs/reference/TESTING_IMPLEMENTATION.md)** — Test inventory, run scripts, CI/CD
 
 ### Architecture & Design
 

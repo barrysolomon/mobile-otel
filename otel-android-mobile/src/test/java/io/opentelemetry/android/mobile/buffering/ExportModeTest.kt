@@ -172,12 +172,13 @@ class ExportModeTest {
     fun `CONDITIONAL - events with non-policy body do NOT trigger export`() {
         val processor = buildProcessor(ExportMode.CONDITIONAL)
         try {
-            // Emit events with bodies that don't match any default policy trigger
-            // (default policies watch for "ui.freeze" and "app.crash" body text)
+            // Emit events with bodies that don't match any default policy trigger.
+            // Default policies match: "ui.freeze", "app.crash", "http.error".
+            // These bodies are all deliberately different.
             repeat(5) { i ->
-                processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("http.request.$i")))
+                processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("api.request.$i")))
             }
-            processor.onEmit(OtelContext.root(), wrap(TestUtils.createHttpErrorLog(404, "/api/items")))
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("screen.navigation")))
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("user.action")))
 
             Thread.sleep(500)

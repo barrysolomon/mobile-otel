@@ -4,6 +4,12 @@
 package io.opentelemetry.android.demo.ui.book
 
 import android.app.DatePickerDialog
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -35,9 +41,11 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Appointment booking form.
+ * Appointment booking form — fully instrumented.
  *
  * ## Trace hierarchy
  *
@@ -45,11 +53,13 @@ import java.util.Locale
  * fragment resume. That span is always sampled by DynamicSampler (name prefix `page.*`),
  * so every user interaction on this screen appears in the same trace waterfall:
  *
- *   page.BookFragment  ← auto-created, always sampled
- *   ├── ui.tap          ← spinner/button taps auto-captured as child spans
+ *   page.BookFragment      ← auto-created, always sampled
+ *   ├── ui.tap             ← spinner/button taps auto-captured as child spans
  *   ├── ui.tap
- *   ├── booking.submit  ← explicit child span created in bookAppointment()
- *   │   └── POST /posts ← OkHttp auto-instrumented child span
+ *   ├── booking.submit     ← explicit child span created in bookAppointment()
+ *   │   ├── (span event) form.validation_passed
+ *   │   ├── (span event) booking.device_context
+ *   │   └── POST /posts    ← OkHttp auto-instrumented child span
  *   └── ui.swipe
  *
  * Spinner events (form.provider_selected etc.) are attached to Span.current() which resolves
@@ -61,6 +71,30 @@ import java.util.Locale
  * to preserve the page span reference across the thread switch. booking.submit is then
  * started with that context as explicit parent, so it nests correctly under page.BookFragment
  * even after withContext(Dispatchers.IO) inside AppointmentRepository.
+ *
+ * ## What is captured
+ *
+ * Booking span attributes:
+ *   - provider, appointment.type, time_slot, booking.notes_provided
+ *   - booking.date_days_ahead — how far ahead is the appointment
+ *   - booking.form_fill_time_ms — elapsed time from screen open to submit tap
+ *   - booking.retry_count — how many times the user has hit "Book" in this session
+ *   - device.battery_level — integer 0-100 at submit time
+ *   - device.battery_charging — whether device is plugged in
+ *   - device.network_type — wifi / cellular / ethernet / none
+ *   - device.low_memory — ActivityManager.isLowRamDevice()
+ *   - session.id — current session UUID from MobileOtel
+ *
+ * Booking span events:
+ *   - form.submitted — with all form field values at submit time
+ *   - booking.device_context — battery + network snapshot
+ *   - form.validation_passed / form.validation_failed
+ *   - booking.success / appointment.duplicate / booking.api_error / booking.unexpected_error
+ *
+ * Success log event (body="appointment.booked"):
+ *   - provider, appointment.type, time_slot, result.appointment_id
+ *   - booking.duration_ms — time from span start to HTTP response
+ *   - booking.form_fill_time_ms — time from screen open to submit
  */
 class BookFragment : Fragment() {
 
@@ -81,6 +115,15 @@ class BookFragment : Fragment() {
         Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }.timeInMillis
     }
 
+    /** Timestamp when this screen was opened — used for form-fill-time measurement. */
+    private var screenOpenedAtMs: Long = 0L
+
+    /** Number of booking attempts in this screen session. */
+    private val bookingAttemptCount = AtomicInteger(0)
+
+    /** Tracks which form fields were changed from their defaults. */
+    private val changedFields = mutableSetOf<String>()
+
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -89,6 +132,7 @@ class BookFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        screenOpenedAtMs = System.currentTimeMillis()
 
         spinnerProvider   = view.findViewById(R.id.spinnerProvider)
         spinnerTimeSlot   = view.findViewById(R.id.spinnerTimeSlot)
@@ -100,7 +144,9 @@ class BookFragment : Fragment() {
         progressIndicator = view.findViewById(R.id.progressIndicator)
         tvResult          = view.findViewById(R.id.tvResult)
 
-        MobileOtel.sendEvent("screen.viewed", mapOf("screen.name" to "BookFragment"), Severity.INFO)
+        MobileOtel.sendEvent("screen.viewed", mapOf(
+            "screen.name" to "BookFragment"
+        ), Severity.INFO)
 
         setupSpinners()
         updateDateDisplay()
@@ -120,9 +166,13 @@ class BookFragment : Fragment() {
         spinnerProvider.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, v: View?, pos: Int, id: Long) {
                 if (!spinnersReady) return
+                changedFields.add("provider")
                 Span.current().addEvent(
                     "form.provider_selected",
-                    Attributes.of(AttributeKey.stringKey("provider"), parent.getItemAtPosition(pos).toString())
+                    Attributes.of(
+                        AttributeKey.stringKey("provider"), parent.getItemAtPosition(pos).toString(),
+                        AttributeKey.longKey("form.elapsed_ms"), System.currentTimeMillis() - screenOpenedAtMs
+                    )
                 )
             }
             override fun onNothingSelected(parent: AdapterView<*>) {}
@@ -137,9 +187,13 @@ class BookFragment : Fragment() {
         spinnerTimeSlot.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, v: View?, pos: Int, id: Long) {
                 if (!spinnersReady) return
+                changedFields.add("time_slot")
                 Span.current().addEvent(
                     "form.time_slot_selected",
-                    Attributes.of(AttributeKey.stringKey("time_slot"), parent.getItemAtPosition(pos).toString())
+                    Attributes.of(
+                        AttributeKey.stringKey("time_slot"), parent.getItemAtPosition(pos).toString(),
+                        AttributeKey.longKey("form.elapsed_ms"), System.currentTimeMillis() - screenOpenedAtMs
+                    )
                 )
             }
             override fun onNothingSelected(parent: AdapterView<*>) {}
@@ -154,9 +208,13 @@ class BookFragment : Fragment() {
         spinnerType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, v: View?, pos: Int, id: Long) {
                 if (!spinnersReady) return
+                changedFields.add("appointment_type")
                 Span.current().addEvent(
                     "form.type_selected",
-                    Attributes.of(AttributeKey.stringKey("appointment.type"), parent.getItemAtPosition(pos).toString())
+                    Attributes.of(
+                        AttributeKey.stringKey("appointment.type"), parent.getItemAtPosition(pos).toString(),
+                        AttributeKey.longKey("form.elapsed_ms"), System.currentTimeMillis() - screenOpenedAtMs
+                    )
                 )
             }
             override fun onNothingSelected(parent: AdapterView<*>) {}
@@ -176,9 +234,14 @@ class BookFragment : Fragment() {
                     set(year, month, day, 9, 0, 0)
                 }.timeInMillis
                 updateDateDisplay()
+                changedFields.add("date")
                 Span.current().addEvent(
                     "form.date_selected",
-                    Attributes.of(AttributeKey.stringKey("date"), tvSelectedDate.text.toString())
+                    Attributes.of(
+                        AttributeKey.stringKey("date"), tvSelectedDate.text.toString(),
+                        AttributeKey.longKey("date.days_ahead"), daysAhead(selectedDateMs),
+                        AttributeKey.longKey("form.elapsed_ms"), System.currentTimeMillis() - screenOpenedAtMs
+                    )
                 )
             },
             cal.get(Calendar.YEAR),
@@ -193,16 +256,36 @@ class BookFragment : Fragment() {
         val typeLabel = spinnerType.selectedItem.toString()
         val type      = AppointmentType.values().first { it.label == typeLabel }
         val notes     = etNotes.text.toString().trim()
+        val retryCount = bookingAttemptCount.getAndIncrement()
+        val formFillMs = System.currentTimeMillis() - screenOpenedAtMs
 
-        // Add a form.submitted event to the current page span so every interaction
-        // on this screen is visible in one trace (page.BookFragment).
+        // --- form validation ---
+        if (provider.isBlank() || timeSlot.isBlank()) {
+            Span.current().addEvent(
+                "form.validation_failed",
+                Attributes.of(
+                    AttributeKey.stringKey("reason"), "missing required fields",
+                    AttributeKey.longKey("booking.retry_count"), retryCount.toLong()
+                )
+            )
+            showError("Please select a provider and time slot.")
+            return
+        }
+
+        // Attach all form inputs as a single span event on the page span.
         Span.current().addEvent(
             "form.submitted",
-            Attributes.of(
-                AttributeKey.stringKey("provider"), provider,
-                AttributeKey.stringKey("appointment.type"), type.label,
-                AttributeKey.stringKey("time_slot"), timeSlot
-            )
+            Attributes.builder()
+                .put(AttributeKey.stringKey("provider"), provider)
+                .put(AttributeKey.stringKey("appointment.type"), type.label)
+                .put(AttributeKey.stringKey("time_slot"), timeSlot)
+                .put(AttributeKey.booleanKey("booking.notes_provided"), notes.isNotEmpty())
+                .put(AttributeKey.longKey("booking.notes_length"), notes.length.toLong())
+                .put(AttributeKey.longKey("booking.date_days_ahead"), daysAhead(selectedDateMs))
+                .put(AttributeKey.longKey("booking.form_fill_time_ms"), formFillMs)
+                .put(AttributeKey.longKey("booking.retry_count"), retryCount.toLong())
+                .put(AttributeKey.stringKey("booking.changed_fields"), changedFields.sorted().joinToString(","))
+                .build()
         )
 
         setLoading(true)
@@ -212,24 +295,68 @@ class BookFragment : Fragment() {
         // even after withContext(Dispatchers.IO) switches threads.
         val pageContext = io.opentelemetry.context.Context.current()
 
+        // Snapshot device state at submit time — cheap reads, captured once.
+        val deviceContext = captureDeviceContext()
+
         viewLifecycleOwner.lifecycleScope.launch {
-            // Create an explicit child span for this booking attempt so each booking
-            // is a distinct unit in the trace waterfall without ending the page span.
+            val bookingStartMs = System.currentTimeMillis()
+
+            // Explicit child span for this booking attempt — nested under page.BookFragment.
             val bookingSpan = OTelMobile.getTracer("schedulr.interactions")
                 .spanBuilder("booking.submit")
                 .setParent(pageContext)
+                // form inputs
                 .setAttribute("provider", provider)
                 .setAttribute("appointment.type", type.label)
                 .setAttribute("time_slot", timeSlot)
+                .setAttribute("booking.notes_provided", notes.isNotEmpty())
+                .setAttribute("booking.notes_length", notes.length.toLong())
+                .setAttribute("booking.date_days_ahead", daysAhead(selectedDateMs))
+                // timing & retry
+                .setAttribute("booking.form_fill_time_ms", formFillMs)
+                .setAttribute("booking.retry_count", retryCount.toLong())
+                .setAttribute("booking.changed_fields", changedFields.sorted().joinToString(","))
+                // session id is auto-attached by SessionManager.enrichAttributes()
+                // device state at submit time
+                .setAttribute("device.battery_level", deviceContext.batteryLevel.toLong())
+                .setAttribute("device.battery_charging", deviceContext.isCharging)
+                .setAttribute("device.network_type", deviceContext.networkType)
+                .setAttribute("device.low_memory", deviceContext.isLowMemory)
                 .startSpan()
             val bookingScope = bookingSpan.makeCurrent()
+
+            // Attach device context as a span event for easy querying.
+            bookingSpan.addEvent(
+                "booking.device_context",
+                Attributes.builder()
+                    .put(AttributeKey.longKey("device.battery_level"), deviceContext.batteryLevel.toLong())
+                    .put(AttributeKey.booleanKey("device.battery_charging"), deviceContext.isCharging)
+                    .put(AttributeKey.stringKey("device.network_type"), deviceContext.networkType)
+                    .put(AttributeKey.booleanKey("device.low_memory"), deviceContext.isLowMemory)
+                    .put(AttributeKey.longKey("device.available_memory_mb"), deviceContext.availableMemoryMb)
+                    .put(AttributeKey.longKey("device.total_memory_mb"), deviceContext.totalMemoryMb)
+                    .build()
+            )
+
+            bookingSpan.addEvent("form.validation_passed")
+
             try {
                 val appt = AppointmentRepository.bookAppointment(
                     requireContext(), provider, selectedDateMs, timeSlot, type, notes
                 )
+                val bookingDurationMs = System.currentTimeMillis() - bookingStartMs
 
                 bookingSpan.setAttribute(AttributeKey.stringKey("result.appointment_id"), appt.id)
+                bookingSpan.setAttribute(AttributeKey.longKey("booking.duration_ms"), bookingDurationMs)
                 bookingSpan.setStatus(StatusCode.OK)
+
+                bookingSpan.addEvent(
+                    "booking.success",
+                    Attributes.of(
+                        AttributeKey.stringKey("result.appointment_id"), appt.id,
+                        AttributeKey.longKey("booking.duration_ms"), bookingDurationMs
+                    )
+                )
 
                 setLoading(false)
                 showSuccess(
@@ -237,50 +364,85 @@ class BookFragment : Fragment() {
                     "${dateFormat.format(java.util.Date(appt.dateMs))} at ${appt.timeSlot}"
                 )
                 MobileOtel.sendEvent("appointment.booked", mapOf(
-                    "provider"         to provider,
-                    "appointment.type" to type.label,
-                    "time_slot"        to timeSlot
+                    "provider"              to provider,
+                    "appointment.type"      to type.label,
+                    "time_slot"             to timeSlot,
+                    "result.appointment_id" to appt.id,
+                    "booking.duration_ms"   to bookingDurationMs,
+                    "booking.form_fill_time_ms" to formFillMs,
+                    "booking.retry_count"   to retryCount
                 ), Severity.INFO)
                 etNotes.text.clear()
+                changedFields.clear()
 
             } catch (e: DuplicateAppointmentException) {
+                val bookingDurationMs = System.currentTimeMillis() - bookingStartMs
                 bookingSpan.addEvent(
                     "appointment.duplicate",
                     Attributes.of(
                         AttributeKey.stringKey("provider"), provider,
                         AttributeKey.stringKey("time_slot"), timeSlot,
-                        AttributeKey.stringKey("error.message"), e.message ?: ""
+                        AttributeKey.stringKey("error.message"), e.message ?: "",
+                        AttributeKey.longKey("booking.duration_ms"), bookingDurationMs
                     )
                 )
                 bookingSpan.setStatus(StatusCode.ERROR, "duplicate appointment")
                 setLoading(false)
                 showError("Duplicate booking: ${e.message}")
                 MobileOtel.sendEvent("appointment.duplicate", mapOf(
-                    "provider"      to provider,
-                    "time_slot"     to timeSlot,
-                    "error.message" to (e.message ?: "")
+                    "provider"            to provider,
+                    "time_slot"           to timeSlot,
+                    "error.message"       to (e.message ?: ""),
+                    "booking.retry_count" to retryCount
                 ), Severity.WARN)
 
             } catch (e: ApiException) {
+                val bookingDurationMs = System.currentTimeMillis() - bookingStartMs
                 bookingSpan.recordException(e)
                 bookingSpan.setAttribute(AttributeKey.longKey("http.status_code"), e.httpStatus.toLong())
+                bookingSpan.setAttribute(AttributeKey.longKey("booking.duration_ms"), bookingDurationMs)
+                bookingSpan.addEvent(
+                    "booking.api_error",
+                    Attributes.of(
+                        AttributeKey.longKey("http.status_code"), e.httpStatus.toLong(),
+                        AttributeKey.stringKey("error.message"), e.message ?: "",
+                        AttributeKey.longKey("booking.duration_ms"), bookingDurationMs,
+                        AttributeKey.stringKey("device.network_type"), deviceContext.networkType
+                    )
+                )
                 bookingSpan.setStatus(StatusCode.ERROR, e.message ?: "")
                 setLoading(false)
                 showError("Booking failed (HTTP ${e.httpStatus}): ${e.message}")
                 MobileOtel.sendEvent("appointment.booking_failed", mapOf(
-                    "http.status_code" to e.httpStatus,
-                    "provider"         to provider,
-                    "error.message"    to (e.message ?: "unknown")
+                    "http.status_code"    to e.httpStatus,
+                    "provider"            to provider,
+                    "error.message"       to (e.message ?: "unknown"),
+                    "booking.retry_count" to retryCount,
+                    "device.network_type" to deviceContext.networkType,
+                    "device.battery_level" to deviceContext.batteryLevel
                 ), Severity.ERROR)
 
             } catch (e: Exception) {
+                val bookingDurationMs = System.currentTimeMillis() - bookingStartMs
                 bookingSpan.recordException(e)
+                bookingSpan.setAttribute(AttributeKey.longKey("booking.duration_ms"), bookingDurationMs)
+                bookingSpan.addEvent(
+                    "booking.unexpected_error",
+                    Attributes.of(
+                        AttributeKey.stringKey("exception.type"), e.javaClass.name,
+                        AttributeKey.stringKey("error.message"), e.message ?: "",
+                        AttributeKey.longKey("booking.duration_ms"), bookingDurationMs
+                    )
+                )
                 bookingSpan.setStatus(StatusCode.ERROR, e.message ?: "")
                 setLoading(false)
                 showError("Unexpected error: ${e.message}")
                 MobileOtel.reportError(e, mapOf(
-                    "context"  to "appointment_booking",
-                    "provider" to provider
+                    "context"               to "appointment_booking",
+                    "provider"              to provider,
+                    "booking.retry_count"   to retryCount.toString(),
+                    "device.battery_level"  to deviceContext.batteryLevel.toString(),
+                    "device.network_type"   to deviceContext.networkType
                 ))
 
             } finally {
@@ -289,6 +451,8 @@ class BookFragment : Fragment() {
             }
         }
     }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
 
     private fun setLoading(loading: Boolean) {
         btnBook.isEnabled = !loading
@@ -307,4 +471,68 @@ class BookFragment : Fragment() {
         tvResult.setTextColor(requireContext().getColor(R.color.error))
         tvResult.isVisible = true
     }
+
+    /** Days from now until the selected appointment date (minimum 0). */
+    private fun daysAhead(dateMs: Long): Long {
+        val diff = dateMs - System.currentTimeMillis()
+        return TimeUnit.MILLISECONDS.toDays(diff).coerceAtLeast(0)
+    }
+
+    /**
+     * Snapshot of device health indicators at booking submit time.
+     *
+     * All reads are fast (no I/O). Captured once per booking attempt and attached
+     * to the booking span as attributes and as a "booking.device_context" span event.
+     * This lets you correlate booking failures with poor device conditions in Dash0.
+     */
+    private fun captureDeviceContext(): DeviceContext {
+        val ctx = requireContext()
+
+        // Battery state
+        val batteryIntent = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level  = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale  = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val batteryPct = if (scale > 0) (level * 100 / scale) else -1
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                         status == BatteryManager.BATTERY_STATUS_FULL
+
+        // Network type
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val networkType = cm?.let {
+            val caps = it.getNetworkCapabilities(it.activeNetwork)
+            when {
+                caps == null -> "none"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)     -> "wifi"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                else -> "other"
+            }
+        } ?: "unknown"
+
+        // Memory
+        val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val memInfo = android.app.ActivityManager.MemoryInfo().also { am?.getMemoryInfo(it) }
+        val availMb = memInfo.availMem / (1024 * 1024)
+        val totalMb = memInfo.totalMem / (1024 * 1024)
+        val isLowMemory = memInfo.lowMemory
+
+        return DeviceContext(
+            batteryLevel     = batteryPct,
+            isCharging       = isCharging,
+            networkType      = networkType,
+            isLowMemory      = isLowMemory,
+            availableMemoryMb = availMb,
+            totalMemoryMb    = totalMb
+        )
+    }
+
+    private data class DeviceContext(
+        val batteryLevel: Int,
+        val isCharging: Boolean,
+        val networkType: String,
+        val isLowMemory: Boolean,
+        val availableMemoryMb: Long,
+        val totalMemoryMb: Long
+    )
 }

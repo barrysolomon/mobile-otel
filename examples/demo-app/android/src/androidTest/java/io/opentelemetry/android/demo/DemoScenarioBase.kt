@@ -6,6 +6,8 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.platform.app.InstrumentationRegistry
+import io.opentelemetry.android.mobile.MobileOtel
+import io.opentelemetry.api.logs.Severity
 import org.junit.After
 import org.junit.Before
 
@@ -68,5 +70,26 @@ abstract class DemoScenarioBase {
     protected fun clickDebugButton(buttonId: Int) {
         expandDebugToolbar()
         onView(withId(buttonId)).perform(click())
+    }
+
+    /**
+     * Emits a buffer.snapshot event showing current RAM/disk ring buffer occupancy.
+     * Visible in Dash0 as a log event with buffer stats as attributes.
+     *
+     * @param label Descriptive label for this snapshot (e.g. "pre_flush", "post_flush")
+     */
+    protected fun emitBufferStats(label: String) {
+        val stats = MobileOtel.getBufferStats()
+        MobileOtel.sendEvent(
+            "buffer.snapshot",
+            mapOf(
+                "buffer.label"         to label,
+                "buffer.ram.events"    to (stats?.ramBufferSize ?: -1),
+                "buffer.ram.capacity"  to (stats?.ramBufferCapacity ?: -1),
+                "buffer.disk.events"   to (stats?.diskBufferSize ?: -1),
+                "demo.run_id"          to pace.runId
+            ),
+            Severity.INFO
+        )
     }
 }

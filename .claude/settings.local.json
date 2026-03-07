@@ -98,7 +98,17 @@
       "Bash(adb -s emulator-5556 shell monkey -p io.opentelemetry.android.demo -c android.intent.category.LAUNCHER 1)",
       "Bash(APK=/Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/build/outputs/apk/debug/android-debug.apk)",
       "Bash(adb -s emulator-5554 install -r \"$APK\")",
-      "Bash(adb -s emulator-5556 install -r \"$APK\")"
+      "Bash(adb -s emulator-5556 install -r \"$APK\")",
+      "Bash(grep -r 'tests=' /Users/barrysolomon/Projects/Dash0/mobile-otel/otel-android-mobile/build/test-results/testDebugUnitTest/*.xml)",
+      "Bash(grep -h 'testsuite name' /Users/barrysolomon/Projects/Dash0/mobile-otel/otel-android-mobile/build/test-results/testDebugUnitTest/*.xml)",
+      "Bash(docker --version)",
+      "Read(//Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/**)",
+      "Bash(grep -r 'failures=' /Users/barrysolomon/Projects/Dash0/mobile-otel/otel-android-mobile/build/test-results/testDebugUnitTest/*.xml)",
+      "Bash(adb -s emulator-5554 shell pm list packages)",
+      "Bash(adb -s emulator-5556 shell pm list packages)",
+      "Bash(adb -s emulator-5554 shell dumpsys package io.opentelemetry.android.demo)",
+      "Bash(./run-tests.sh)",
+      "Bash(go tool cover -func=coverage.txt)"
     ]
   }
 }

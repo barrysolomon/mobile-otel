@@ -1,0 +1,591 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>mobilepolicyprocessor: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/config.go (100.0%)</option>
+				
+				<option value="file1">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/factory.go (100.0%)</option>
+				
+				<option value="file2">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/processor.go (76.3%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package mobilepolicyprocessor
+
+import (
+        "fmt"
+
+        "go.opentelemetry.io/collector/component"
+)
+
+// Config defines configuration for the mobile policy processor
+type Config struct {
+        // Policies is the list of policy rules to evaluate
+        Policies []Policy `mapstructure:"policies"`
+}
+
+// Policy represents a single mobile observability policy
+type Policy struct {
+        // ID is a unique identifier for the policy
+        ID string `mapstructure:"id"`
+
+        // Enabled indicates whether the policy is active
+        Enabled bool `mapstructure:"enabled"`
+
+        // Match defines the conditions that must be met
+        Match Match `mapstructure:"match"`
+
+        // Actions defines what to do when the policy matches
+        Actions []Action `mapstructure:"actions"`
+}
+
+// Match defines the matching logic for a policy
+type Match struct {
+        // LogicalOperator combines attribute conditions ("and" or "or")
+        LogicalOperator string `mapstructure:"logical_operator"`
+
+        // Attributes maps attribute names to their match conditions
+        Attributes map[string]Condition `mapstructure:"attributes"`
+}
+
+// Condition defines a single matching condition for an attribute
+type Condition struct {
+        // Equals checks for exact string match
+        Equals *string `mapstructure:"equals,omitempty"`
+
+        // Gt checks if numeric value is greater than
+        Gt *float64 `mapstructure:"gt,omitempty"`
+
+        // Lt checks if numeric value is less than
+        Lt *float64 `mapstructure:"lt,omitempty"`
+
+        // Gte checks if numeric value is greater than or equal
+        Gte *float64 `mapstructure:"gte,omitempty"`
+
+        // Lte checks if numeric value is less than or equal
+        Lte *float64 `mapstructure:"lte,omitempty"`
+
+        // Contains checks if string contains substring
+        Contains *string `mapstructure:"contains,omitempty"`
+
+        // Regex checks if string matches regular expression
+        Regex *string `mapstructure:"regex,omitempty"`
+}
+
+// Action defines what to do when a policy matches
+type Action struct {
+        // Type specifies the action type ("annotate", "sample", "drop", etc.)
+        Type string `mapstructure:"type"`
+
+        // Parameters provides action-specific configuration
+        Parameters interface{} `mapstructure:"parameters,omitempty"`
+}
+
+// Validate checks if the configuration is valid
+func (cfg *Config) Validate() error <span class="cov8" title="23">{
+        if len(cfg.Policies) == 0 </span><span class="cov1" title="1">{
+                return fmt.Errorf("at least one policy must be defined")
+        }</span>
+
+        <span class="cov8" title="22">for i, policy := range cfg.Policies </span><span class="cov9" title="24">{
+                if policy.ID == "" </span><span class="cov1" title="1">{
+                        return fmt.Errorf("policy %d: id is required", i)
+                }</span>
+
+                <span class="cov8" title="23">if policy.Match.LogicalOperator != "and" &amp;&amp; policy.Match.LogicalOperator != "or" </span><span class="cov5" title="5">{
+                        return fmt.Errorf("policy %s: logical_operator must be 'and' or 'or'", policy.ID)
+                }</span>
+
+                <span class="cov8" title="18">if len(policy.Match.Attributes) == 0 </span><span class="cov1" title="1">{
+                        return fmt.Errorf("policy %s: at least one match attribute is required", policy.ID)
+                }</span>
+
+                <span class="cov8" title="17">for attrKey, condition := range policy.Match.Attributes </span><span class="cov9" title="26">{
+                        if err := validateCondition(attrKey, condition); err != nil </span><span class="cov1" title="1">{
+                                return fmt.Errorf("policy %s: %w", policy.ID, err)
+                        }</span>
+                }
+
+                <span class="cov8" title="16">if len(policy.Actions) == 0 </span><span class="cov1" title="1">{
+                        return fmt.Errorf("policy %s: at least one action is required", policy.ID)
+                }</span>
+
+                <span class="cov7" title="15">for j, action := range policy.Actions </span><span class="cov8" title="16">{
+                        if action.Type == "" </span><span class="cov1" title="1">{
+                                return fmt.Errorf("policy %s, action %d: type is required", policy.ID, j)
+                        }</span>
+                }
+        }
+
+        <span class="cov7" title="12">return nil</span>
+}
+
+// validateCondition ensures a condition has at least one operator
+func validateCondition(attrKey string, condition Condition) error <span class="cov10" title="35">{
+        hasOperator := condition.Equals != nil ||
+                condition.Gt != nil ||
+                condition.Lt != nil ||
+                condition.Gte != nil ||
+                condition.Lte != nil ||
+                condition.Contains != nil ||
+                condition.Regex != nil
+
+        if !hasOperator </span><span class="cov2" title="2">{
+                return fmt.Errorf("attribute %s: at least one condition operator is required", attrKey)
+        }</span>
+
+        <span class="cov9" title="33">return nil</span>
+}
+
+var _ component.Config = (*Config)(nil)
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package mobilepolicyprocessor
+
+import (
+        "context"
+
+        "go.opentelemetry.io/collector/component"
+        "go.opentelemetry.io/collector/consumer"
+        "go.opentelemetry.io/collector/processor"
+)
+
+const (
+        // typeStr is the processor type string
+        typeStr = "mobilepolicy"
+
+        // stability is the processor stability level
+        stability = component.StabilityLevelAlpha
+)
+
+// NewFactory creates a new mobile policy processor factory
+func NewFactory() processor.Factory <span class="cov10" title="5">{
+        return processor.NewFactory(
+                typeStr,
+                createDefaultConfig,
+                processor.WithLogs(createLogsProcessor, stability),
+        )
+}</span>
+
+// createDefaultConfig creates the default configuration
+func createDefaultConfig() component.Config <span class="cov1" title="1">{
+        return &amp;Config{
+                Policies: []Policy{},
+        }
+}</span>
+
+// createLogsProcessor creates a logs processor
+func createLogsProcessor(
+        ctx context.Context,
+        set processor.CreateSettings,
+        cfg component.Config,
+        nextConsumer consumer.Logs,
+) (processor.Logs, error) <span class="cov4" title="2">{
+        processorCfg := cfg.(*Config)
+
+        return newMobilePolicyProcessor(processorCfg, set.Logger, nextConsumer)
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package mobilepolicyprocessor
+
+import (
+        "context"
+        "fmt"
+        "regexp"
+        "strconv"
+
+        "go.opentelemetry.io/collector/component"
+        "go.opentelemetry.io/collector/consumer"
+        "go.opentelemetry.io/collector/pdata/pcommon"
+        "go.opentelemetry.io/collector/pdata/plog"
+        "go.uber.org/zap"
+)
+
+// mobilePolicyProcessor implements policy-based annotation and filtering for mobile telemetry
+type mobilePolicyProcessor struct {
+        logger   *zap.Logger
+        config   *Config
+        policies []Policy
+        next     consumer.Logs
+}
+
+// newMobilePolicyProcessor creates a new mobile policy processor
+func newMobilePolicyProcessor(
+        cfg *Config,
+        logger *zap.Logger,
+        next consumer.Logs,
+) (*mobilePolicyProcessor, error) <span class="cov9" title="19">{
+        return &amp;mobilePolicyProcessor{
+                logger:   logger,
+                config:   cfg,
+                policies: cfg.Policies,
+                next:     next,
+        }, nil
+}</span>
+
+// Start is called when the processor is started
+func (mpp *mobilePolicyProcessor) Start(ctx context.Context, host component.Host) error <span class="cov1" title="1">{
+        mpp.logger.Info("Starting mobile policy processor",
+                zap.Int("policy_count", len(mpp.policies)))
+        return nil
+}</span>
+
+// Shutdown is called when the processor is shut down
+func (mpp *mobilePolicyProcessor) Shutdown(ctx context.Context) error <span class="cov1" title="1">{
+        mpp.logger.Info("Shutting down mobile policy processor")
+        return nil
+}</span>
+
+// Capabilities returns the consumer capabilities
+func (mpp *mobilePolicyProcessor) Capabilities() consumer.Capabilities <span class="cov1" title="1">{
+        return consumer.Capabilities{MutatesData: true}
+}</span>
+
+// ConsumeLogs processes log records according to policies
+func (mpp *mobilePolicyProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error <span class="cov1" title="1">{
+        // Process each resource log
+        for i := 0; i &lt; ld.ResourceLogs().Len(); i++ </span><span class="cov1" title="1">{
+                resourceLog := ld.ResourceLogs().At(i)
+
+                // Process each scope log
+                for j := 0; j &lt; resourceLog.ScopeLogs().Len(); j++ </span><span class="cov1" title="1">{
+                        scopeLog := resourceLog.ScopeLogs().At(j)
+
+                        // Process each log record
+                        for k := 0; k &lt; scopeLog.LogRecords().Len(); k++ </span><span class="cov3" title="2">{
+                                logRecord := scopeLog.LogRecords().At(k)
+                                mpp.processLogRecord(logRecord, resourceLog.Resource().Attributes())
+                        }</span>
+                }
+        }
+
+        // Pass to next consumer
+        <span class="cov1" title="1">return mpp.next.ConsumeLogs(ctx, ld)</span>
+}
+
+// processLogRecord evaluates policies and annotates the log record
+func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) <span class="cov6" title="6">{
+        // Extract attributes for policy evaluation
+        attrs := make(map[string]interface{})
+
+        // Add log record body as "event.name"
+        attrs["event.name"] = lr.Body().AsString()
+
+        // Add all log record attributes
+        lr.Attributes().Range(func(k string, v pcommon.Value) bool </span><span class="cov1" title="1">{
+                attrs[k] = convertValue(v)
+                return true
+        }</span>)
+
+        // Add resource attributes (prefixed with "resource.")
+        <span class="cov6" title="6">resourceAttrs.Range(func(k string, v pcommon.Value) bool </span><span class="cov1" title="1">{
+                attrs["resource."+k] = convertValue(v)
+                return true
+        }</span>)
+
+        // Evaluate policies (first match wins for policy.id annotation)
+        <span class="cov6" title="6">for _, policy := range mpp.policies </span><span class="cov6" title="7">{
+                if mpp.evaluatePolicy(policy, attrs) </span><span class="cov6" title="6">{
+                        mpp.logger.Debug("Policy matched",
+                                zap.String("policy_id", policy.ID),
+                                zap.String("event.name", attrs["event.name"].(string)))
+
+                        // Annotate log record with policy match
+                        mpp.annotateLogRecord(lr, policy)
+                }</span>
+        }
+}
+
+// evaluatePolicy checks if attributes match the policy's match conditions
+func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool <span class="cov9" title="18">{
+        if !policy.Enabled </span><span class="cov1" title="1">{
+                return false
+        }</span>
+        <span class="cov9" title="17">match := policy.Match
+        results := make([]bool, 0, len(match.Attributes))
+
+        // Evaluate each attribute condition
+        for attrKey, condition := range match.Attributes </span><span class="cov10" title="20">{
+                attrValue, exists := attrs[attrKey]
+                if !exists </span><span class="cov0" title="0">{
+                        results = append(results, false)
+                        continue</span>
+                }
+
+                <span class="cov10" title="20">matched := mpp.evaluateCondition(attrValue, condition)
+                results = append(results, matched)</span>
+        }
+
+        // Apply logical operator
+        <span class="cov9" title="17">if match.LogicalOperator == "and" </span><span class="cov9" title="16">{
+                for _, result := range results </span><span class="cov9" title="18">{
+                        if !result </span><span class="cov5" title="4">{
+                                return false
+                        }</span>
+                }
+                <span class="cov8" title="12">return len(results) &gt; 0</span>
+        } else<span class="cov1" title="1"> if match.LogicalOperator == "or" </span><span class="cov1" title="1">{
+                for _, result := range results </span><span class="cov1" title="1">{
+                        if result </span><span class="cov1" title="1">{
+                                return true
+                        }</span>
+                }
+                <span class="cov0" title="0">return false</span>
+        }
+
+        <span class="cov0" title="0">return false</span>
+}
+
+// evaluateCondition checks if a value matches a condition
+func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition Condition) bool <span class="cov10" title="20">{
+        // Equals
+        if condition.Equals != nil </span><span class="cov8" title="11">{
+                return fmt.Sprintf("%v", value) == *condition.Equals
+        }</span>
+
+        // Greater than
+        <span class="cov7" title="9">if condition.Gt != nil </span><span class="cov6" title="6">{
+                numValue, err := toFloat64(value)
+                if err != nil </span><span class="cov0" title="0">{
+                        return false
+                }</span>
+                <span class="cov6" title="6">return numValue &gt; *condition.Gt</span>
+        }
+
+        // Less than
+        <span class="cov4" title="3">if condition.Lt != nil </span><span class="cov1" title="1">{
+                numValue, err := toFloat64(value)
+                if err != nil </span><span class="cov0" title="0">{
+                        return false
+                }</span>
+                <span class="cov1" title="1">return numValue &lt; *condition.Lt</span>
+        }
+
+        // Greater than or equal
+        <span class="cov3" title="2">if condition.Gte != nil </span><span class="cov0" title="0">{
+                numValue, err := toFloat64(value)
+                if err != nil </span><span class="cov0" title="0">{
+                        return false
+                }</span>
+                <span class="cov0" title="0">return numValue &gt;= *condition.Gte</span>
+        }
+
+        // Less than or equal
+        <span class="cov3" title="2">if condition.Lte != nil </span><span class="cov0" title="0">{
+                numValue, err := toFloat64(value)
+                if err != nil </span><span class="cov0" title="0">{
+                        return false
+                }</span>
+                <span class="cov0" title="0">return numValue &lt;= *condition.Lte</span>
+        }
+
+        // Contains
+        <span class="cov3" title="2">if condition.Contains != nil </span><span class="cov1" title="1">{
+                strValue := fmt.Sprintf("%v", value)
+                return containsString(strValue, *condition.Contains)
+        }</span>
+
+        // Regex
+        <span class="cov1" title="1">if condition.Regex != nil </span><span class="cov1" title="1">{
+                strValue := fmt.Sprintf("%v", value)
+                matched, err := regexp.MatchString(*condition.Regex, strValue)
+                if err != nil </span><span class="cov0" title="0">{
+                        mpp.logger.Warn("Invalid regex", zap.String("regex", *condition.Regex), zap.Error(err))
+                        return false
+                }</span>
+                <span class="cov1" title="1">return matched</span>
+        }
+
+        <span class="cov0" title="0">return false</span>
+}
+
+// annotateLogRecord adds policy match annotations to the log record (first match wins)
+func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) <span class="cov6" title="6">{
+        // Add policy match marker; preserve first-matching policy.id
+        lr.Attributes().PutStr("policy.matched", "true")
+        if _, exists := lr.Attributes().Get("policy.id"); !exists </span><span class="cov5" title="5">{
+                lr.Attributes().PutStr("policy.id", policy.ID)
+        }</span>
+
+        // Add action parameters as annotations
+        <span class="cov6" title="6">for _, action := range policy.Actions </span><span class="cov6" title="6">{
+                switch action.Type </span>{
+                case "annotate":<span class="cov5" title="5">
+                        // Add custom annotations from action parameters
+                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov5" title="4">{
+                                for k, v := range params </span><span class="cov5" title="5">{
+                                        lr.Attributes().PutStr(fmt.Sprintf("policy.%s", k), fmt.Sprintf("%v", v))
+                                }</span>
+                        }
+
+                case "sample":<span class="cov1" title="1">
+                        // Add sampling annotation
+                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov1" title="1">{
+                                if sampleRate, ok := params["sample_rate"].(float64); ok </span><span class="cov1" title="1">{
+                                        lr.Attributes().PutDouble("policy.sample_rate", sampleRate)
+                                }</span>
+                                <span class="cov1" title="1">if duration, ok := params["duration_minutes"].(float64); ok </span><span class="cov1" title="1">{
+                                        lr.Attributes().PutDouble("policy.sample_duration_minutes", duration)
+                                }</span>
+                        }
+                }
+        }
+
+        <span class="cov6" title="6">mpp.logger.Debug("Annotated log record",
+                zap.String("policy_id", policy.ID),
+                zap.Int("action_count", len(policy.Actions)))</span>
+}
+
+// Helper functions
+
+func convertValue(v pcommon.Value) interface{} <span class="cov7" title="9">{
+        switch v.Type() </span>{
+        case pcommon.ValueTypeStr:<span class="cov3" title="2">
+                return v.Str()</span>
+        case pcommon.ValueTypeInt:<span class="cov6" title="7">
+                return v.Int()</span>
+        case pcommon.ValueTypeDouble:<span class="cov0" title="0">
+                return v.Double()</span>
+        case pcommon.ValueTypeBool:<span class="cov0" title="0">
+                return v.Bool()</span>
+        default:<span class="cov0" title="0">
+                return v.AsString()</span>
+        }
+}
+
+func toFloat64(v interface{}) (float64, error) <span class="cov6" title="7">{
+        switch val := v.(type) </span>{
+        case float64:<span class="cov0" title="0">
+                return val, nil</span>
+        case float32:<span class="cov0" title="0">
+                return float64(val), nil</span>
+        case int:<span class="cov0" title="0">
+                return float64(val), nil</span>
+        case int64:<span class="cov6" title="7">
+                return float64(val), nil</span>
+        case int32:<span class="cov0" title="0">
+                return float64(val), nil</span>
+        case string:<span class="cov0" title="0">
+                return strconv.ParseFloat(val, 64)</span>
+        default:<span class="cov0" title="0">
+                return 0, fmt.Errorf("cannot convert %T to float64", v)</span>
+        }
+}
+
+func containsString(s, substr string) bool <span class="cov1" title="1">{
+        return len(s) &gt;= len(substr) &amp;&amp; (s == substr || findSubstring(s, substr))
+}</span>
+
+func findSubstring(s, substr string) bool <span class="cov1" title="1">{
+        for i := 0; i &lt;= len(s)-len(substr); i++ </span><span class="cov5" title="5">{
+                if s[i:i+len(substr)] == substr </span><span class="cov1" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov0" title="0">return false</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

@@ -315,11 +315,14 @@ class MobileLoggerProvider private constructor(
      * @return CompletableResultCode indicating flush success/failure
      */
     fun forceFlush(timeoutSeconds: Long = 30): CompletableResultCode {
-        val logResult = sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
-        val traceResult = openTelemetrySdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+        val logResult    = sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+        val traceResult  = openTelemetrySdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
         val metricResult = openTelemetrySdk.sdkMeterProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
-
+        // Join the combined result so callers always receive a completed (done) code.
+        // CompletableResultCode.ofAll() is async internally; without this join the returned
+        // code may not yet be marked done even though all inputs are already complete.
         return CompletableResultCode.ofAll(listOf(logResult, traceResult, metricResult))
+            .join(timeoutSeconds, TimeUnit.SECONDS)
     }
 
     /**

@@ -35,6 +35,13 @@ class MockLogRecordExporter : LogRecordExporter {
         private set
 
     /**
+     * Each element is one export() call's batch of logs.
+     * Use this to assert batching behaviour (e.g. one large flush vs. many small ones).
+     */
+    val exportBatches: MutableList<List<LogRecordData>> =
+        Collections.synchronizedList(mutableListOf())
+
+    /**
      * Simulated network delay in milliseconds.
      */
     var simulatedDelayMs = 0L
@@ -48,7 +55,9 @@ class MockLogRecordExporter : LogRecordExporter {
             if (simulatedDelayMs > 0) {
                 Thread.sleep(simulatedDelayMs)
             }
-            exportedLogs.addAll(logs)
+            val batch = logs.toList()
+            exportBatches.add(batch)
+            exportedLogs.addAll(batch)
             CompletableResultCode.ofSuccess()
         }
     }
@@ -63,10 +72,11 @@ class MockLogRecordExporter : LogRecordExporter {
     }
 
     /**
-     * Clears all captured logs.
+     * Clears all captured logs and batch history.
      */
     fun clear() {
         exportedLogs.clear()
+        exportBatches.clear()
         exportCallCount = 0
     }
 

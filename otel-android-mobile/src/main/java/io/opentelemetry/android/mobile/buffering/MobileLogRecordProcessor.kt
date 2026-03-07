@@ -105,6 +105,23 @@ class MobileLogRecordProcessor private constructor(
     // Shutdown flag
     private val isShutdown = AtomicBoolean(false)
 
+    // Ring buffer OTel gauges — held to prevent GC of async callbacks
+    private val ramEventsGauge = meter.gaugeBuilder("buffer.ram.events")
+        .setDescription("Current number of events in the RAM ring buffer")
+        .setUnit("{events}")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(ramBufferCount.get().toLong()) }
+    private val ramCapacityGauge = meter.gaugeBuilder("buffer.ram.capacity")
+        .setDescription("Maximum capacity of the RAM ring buffer")
+        .setUnit("{events}")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(ramBufferSize.toLong()) }
+    private val diskEventsGauge = meter.gaugeBuilder("buffer.disk.events")
+        .setDescription("Current number of events in the disk ring buffer")
+        .setUnit("{events}")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(diskBuffer.getEventCount().toLong()) }
+
     init {
         // Schedule periodic disk overflow (every 5 seconds)
         executor.scheduleAtFixedRate(

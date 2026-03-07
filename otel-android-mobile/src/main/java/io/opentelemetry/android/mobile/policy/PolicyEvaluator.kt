@@ -106,6 +106,15 @@ class PolicyEvaluator(
                     attributes = mapOf("event.name" to Condition(equals = "app.crash"))
                 ),
                 actions = Actions(flushWindowMinutes = 5)
+            ),
+            Policy(
+                id = "http-error-detector",
+                enabled = true,
+                match = Match(
+                    logicalOperator = "and",
+                    attributes = mapOf("event.name" to Condition(equals = "http.error"))
+                ),
+                actions = Actions(flushWindowMinutes = 5)
             )
         )
     )
