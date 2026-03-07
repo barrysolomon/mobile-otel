@@ -1,9 +1,11 @@
 package io.opentelemetry.android.demo
 
+import android.view.View
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Before
 
@@ -23,6 +25,14 @@ abstract class DemoScenarioBase {
     @Before
     fun setUp() {
         pace = DemoScenarioPace()
+        // Pre-grant location permissions to avoid system permission dialog in getDirections
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        uiAutomation.executeShellCommand(
+            "pm grant io.opentelemetry.android.demo android.permission.ACCESS_COARSE_LOCATION"
+        ).close()
+        uiAutomation.executeShellCommand(
+            "pm grant io.opentelemetry.android.demo android.permission.ACCESS_FINE_LOCATION"
+        ).close()
         scenario = ActivityScenario.launch(SchedulingActivity::class.java)
         // Allow activity to fully render before tests begin
         Thread.sleep(1000)
@@ -42,7 +52,16 @@ abstract class DemoScenarioBase {
     /** Expand the DebugToolbar so its buttons become visible */
     protected fun expandDebugToolbar() {
         onView(withId(R.id.debugToolbarHeader)).perform(click())
-        Thread.sleep(300) // allow expand animation
+        // Cancel alpha animation and force full visibility for reliable Espresso clicks.
+        // toggleExpanded() starts content at alpha=0 then animates to 1 via ViewPropertyAnimator.
+        // Even with animator_duration_scale=0, the animation is scheduled on the next Choreographer
+        // frame. We bypass this by cancelling and directly setting the final state.
+        scenario.onActivity { activity ->
+            val content = activity.findViewById<View>(R.id.debugToolbarContent)
+            content.animate().cancel()
+            content.visibility = View.VISIBLE
+            content.alpha = 1f
+        }
     }
 
     /** Click a button inside the DebugToolbar. Expands toolbar first if needed. */

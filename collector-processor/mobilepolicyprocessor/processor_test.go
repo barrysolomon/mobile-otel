@@ -518,6 +518,136 @@ func createTestLogRecord(body string, attributes map[string]interface{}) plog.Lo
 	return lr
 }
 
+// TestEvaluateConditionGteLte covers gte/lte operators and error paths
+func TestEvaluateConditionGteLte(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, _ := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+
+	gte := 100.0
+	lte := 200.0
+
+	assert.True(t, processor.evaluateCondition(100.0, Condition{Gte: &gte}))
+	assert.True(t, processor.evaluateCondition(150.0, Condition{Gte: &gte}))
+	assert.False(t, processor.evaluateCondition(99.0, Condition{Gte: &gte}))
+	assert.True(t, processor.evaluateCondition(200.0, Condition{Lte: &lte}))
+	assert.True(t, processor.evaluateCondition(150.0, Condition{Lte: &lte}))
+	assert.False(t, processor.evaluateCondition(201.0, Condition{Lte: &lte}))
+
+	// non-numeric value → toFloat64 error path
+	assert.False(t, processor.evaluateCondition("not-a-number", Condition{Gte: &gte}))
+	assert.False(t, processor.evaluateCondition("not-a-number", Condition{Lte: &lte}))
+	assert.False(t, processor.evaluateCondition("not-a-number", Condition{Gt: &gte}))
+	assert.False(t, processor.evaluateCondition("not-a-number", Condition{Lt: &lte}))
+
+	// invalid regex → warn and return false
+	badRegex := "["
+	assert.False(t, processor.evaluateCondition("value", Condition{Regex: &badRegex}))
+
+	// no condition set → false
+	assert.False(t, processor.evaluateCondition("value", Condition{}))
+}
+
+// TestToFloat64 covers all type branches
+func TestToFloat64(t *testing.T) {
+	cases := []struct {
+		input    interface{}
+		expected float64
+		wantErr  bool
+	}{
+		{float64(1.5), 1.5, false},
+		{float32(2.5), 2.5, false},
+		{int(3), 3.0, false},
+		{int64(4), 4.0, false},
+		{int32(5), 5.0, false},
+		{"6.5", 6.5, false},
+		{"not-a-float", 0, true},
+		{true, 0, true}, // unsupported type
+	}
+
+	for _, c := range cases {
+		result, err := toFloat64(c.input)
+		if c.wantErr {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
+			assert.InDelta(t, c.expected, result, 0.001)
+		}
+	}
+}
+
+// TestConvertValue covers all pcommon.Value type branches
+func TestConvertValue(t *testing.T) {
+	strVal := pcommon.NewValueStr("hello")
+	assert.Equal(t, "hello", convertValue(strVal))
+
+	intVal := pcommon.NewValueInt(42)
+	assert.Equal(t, int64(42), convertValue(intVal))
+
+	doubleVal := pcommon.NewValueDouble(3.14)
+	assert.Equal(t, 3.14, convertValue(doubleVal))
+
+	boolVal := pcommon.NewValueBool(true)
+	assert.Equal(t, true, convertValue(boolVal))
+
+	// default branch: map type falls through to AsString
+	mapVal := pcommon.NewValueMap()
+	mapVal.Map().PutStr("key", "val")
+	result := convertValue(mapVal)
+	assert.NotNil(t, result)
+}
+
+// TestFindSubstring covers the not-found branch
+func TestFindSubstring(t *testing.T) {
+	assert.True(t, findSubstring("hello world", "world"))
+	assert.False(t, findSubstring("hello world", "xyz"))
+	assert.True(t, containsString("hello", "hello"))
+}
+
+// TestEvaluatePolicyUnknownOperator covers the fallthrough return false at line 148
+func TestEvaluatePolicyUnknownOperator(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, _ := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+
+	policy := Policy{
+		ID:      "unknown-op-policy",
+		Enabled: true,
+		Match: Match{
+			LogicalOperator: "xor", // unsupported
+			Attributes: map[string]Condition{
+				"event.name": {Equals: stringPtr("ui.freeze")},
+			},
+		},
+		Actions: []Action{{Type: "annotate"}},
+	}
+
+	assert.False(t, processor.evaluatePolicy(policy, map[string]interface{}{"event.name": "ui.freeze"}))
+}
+
+// TestEvaluatePolicyMissingAttribute covers the missing-attr branch in evaluatePolicy
+func TestEvaluatePolicyMissingAttribute(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, _ := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+
+	policy := Policy{
+		ID:      "missing-attr-policy",
+		Enabled: true,
+		Match: Match{
+			LogicalOperator: "and",
+			Attributes: map[string]Condition{
+				"nonexistent.attr": {Equals: stringPtr("value")},
+			},
+		},
+		Actions: []Action{{Type: "annotate"}},
+	}
+
+	// attribute doesn't exist → appends false → and returns false
+	assert.False(t, processor.evaluatePolicy(policy, map[string]interface{}{}))
+
+	// or operator with missing attr → false
+	policy.Match.LogicalOperator = "or"
+	assert.False(t, processor.evaluatePolicy(policy, map[string]interface{}{}))
+}
+
 func stringPtr(s string) *string {
 	return &s
 }

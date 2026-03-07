@@ -42,8 +42,8 @@ import java.util.Locale
  * ## Trace hierarchy
  *
  * Auto-capture wires a page span automatically via [AutoCaptureManager.startPageSpan] on
- * fragment resume. That span is always sampled (sampling.priority=high), so every user
- * interaction on this screen appears in the same trace waterfall:
+ * fragment resume. That span is always sampled by DynamicSampler (name prefix `page.*`),
+ * so every user interaction on this screen appears in the same trace waterfall:
  *
  *   page.BookFragment  ← auto-created, always sampled
  *   ├── ui.tap          ← spinner/button taps auto-captured as child spans

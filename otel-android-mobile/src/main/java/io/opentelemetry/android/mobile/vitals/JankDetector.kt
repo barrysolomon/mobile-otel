@@ -193,5 +193,18 @@ class JankDetector private constructor(
          * Check if jank detector is initialized.
          */
         fun isInitialized(): Boolean = instance != null
+
+        /**
+         * Resets the singleton for testing.
+         *
+         * Stops monitoring and clears the instance so the next [initialize] call
+         * receives a fresh detector with the desired config. Only call from tests.
+         */
+        fun resetForTesting() {
+            synchronized(this) {
+                instance?.stopMonitoring()
+                instance = null
+            }
+        }
     }
 }

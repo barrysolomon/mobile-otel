@@ -78,21 +78,21 @@ done
 if [ "$RUN_ANDROID" = true ]; then
     print_section "Running Android Unit Tests"
 
-    cd otel-android-mobile
+    cd examples/demo-app
 
-    if ./gradlew test; then
+    if ./gradlew :otel-android-mobile:test; then
         echo -e "${GREEN}✓ Android unit tests passed${NC}"
     else
         handle_error "Android unit tests"
     fi
 
     # Generate coverage report
-    if ./gradlew testDebugUnitTestCoverage 2>/dev/null; then
+    if ./gradlew :otel-android-mobile:testDebugUnitTestCoverage 2>/dev/null; then
         echo -e "${GREEN}✓ Coverage report generated${NC}"
-        echo "   Report location: build/reports/coverage/test/debug/index.html"
+        echo "   Report location: otel-android-mobile/build/reports/coverage/test/debug/index.html"
     fi
 
-    cd ..
+    cd ../..
 fi
 
 # Go Unit Tests
@@ -129,11 +129,11 @@ if [ "$RUN_INTEGRATION" = true ] && [ "$RUN_ANDROID" = true ]; then
     echo -e "${YELLOW}Note: This requires a running Android emulator${NC}"
     echo ""
 
-    cd otel-android-mobile
+    cd examples/demo-app
 
     # Check if emulator is running
     if adb devices | grep -q "emulator"; then
-        if ./gradlew connectedAndroidTest; then
+        if ./gradlew :android:connectedDebugAndroidTest; then
             echo -e "${GREEN}✓ Android integration tests passed${NC}"
         else
             handle_error "Android integration tests"
@@ -143,7 +143,7 @@ if [ "$RUN_INTEGRATION" = true ] && [ "$RUN_ANDROID" = true ]; then
         echo "  Start an emulator with: emulator -avd <avd_name>"
     fi
 
-    cd ..
+    cd ../..
 fi
 
 # Summary

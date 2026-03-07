@@ -31,29 +31,25 @@ import kotlin.concurrent.write
  *
  * ## Interaction with auto-capture trace hierarchy
  *
- * Page spans (created by [AutoCaptureManager.startPageSpan]) set `sampling.priority=high` so
- * they always sample regardless of the baseline rate. This is required for correct trace
- * structure: if a page span is dropped, [TapCapture] detects `isSampled=false` on the parent
- * and falls back to emitting taps as standalone log records instead of child spans. The entire
- * trace waterfall for that screen session breaks — taps appear flat in Dash0, and manually
- * created child spans like `booking.submit` start a new root trace disconnected from the page.
+ * `page.*` spans (created by [AutoCaptureManager.startPageSpan]) are always sampled based on
+ * their name using the standard OTel `shouldSample()` `name` parameter — no span attribute
+ * needed. This ensures the trace waterfall is always intact: if a page span were dropped, all
+ * taps, scrolls, and manually-created child spans on that screen would lose their parent context
+ * and appear as disconnected flat logs.
  *
- * Spans that should always be captured regardless of baseline rate:
- *   - page.* spans (set sampling.priority=high in AutoCaptureManager)
- *   - Error/crash spans (set sampling.priority=critical in ErrorInstrumentation)
+ * Spans always captured regardless of baseline rate:
+ *   - `page.*` — detected by name prefix (OTel-native, no attribute needed)
+ *   - `app.startup` — detected by name
  *
  * Usage:
  * ```kotlin
  * val sampler = DynamicSampler(
- *     baselineSamplingRate = 0.1,  // 10% baseline for high-volume spans (taps, API calls)
+ *     baselineSamplingRate = 0.1,  // 10% for high-volume spans (taps, API calls)
  *     highPrioritySamplingRate = 1.0  // 100% for page spans, errors, crashes
  * )
  *
  * // Temporarily increase sampling for 10 minutes after error
  * sampler.setSamplingRate(1.0, durationMinutes = 10)
- *
- * // Force a span to always sample (used by page spans and error spans)
- * span.setAttribute("sampling.priority", "high")
  * ```
  */
 class DynamicSampler(
@@ -81,9 +77,11 @@ class DynamicSampler(
         // Check if scheduled revert time has passed
         checkScheduledRevert()
 
-        // Check for high-priority attribute
-        val priority = attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("sampling.priority"))
-        val isHighPriority = priority == "high" || priority == "critical"
+        // OTel-native: always sample page and startup spans by name.
+        // page.* spans are the root of the trace waterfall for every screen; dropping them
+        // breaks all child spans (taps, scrolls, API calls) for that screen session.
+        val isPageSpan = name.startsWith("page.") || name == "app.startup"
+        val isHighPriority = isPageSpan
 
         // Determine sampling rate
         val rate = if (isHighPriority) {
@@ -104,9 +102,7 @@ class DynamicSampler(
             .put("sampling.rate", rate)
             .put("sampling.strategy", "dynamic")
             .apply {
-                if (isHighPriority) {
-                    put("sampling.high_priority", true)
-                }
+                if (isPageSpan) put("sampling.page_span", true)
             }
             .build()
 

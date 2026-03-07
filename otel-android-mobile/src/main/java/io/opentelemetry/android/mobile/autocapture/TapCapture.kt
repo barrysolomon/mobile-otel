@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
  * ## Trace hierarchy
  *
  * Page spans are created by [AutoCaptureManager.startPageSpan] on every fragment resume and are
- * forced to always sample (sampling.priority=high). This makes the page span the root of all
- * interactions on a screen:
+ * always sampled by [DynamicSampler] based on name prefix (`page.*`) — no attribute needed.
+ * This makes the page span the root of all interactions on a screen:
  *
  *   page.BookFragment  ← always-sampled root (AutoCaptureManager)
  *   ├── ui.tap          ← zero-duration child span (this class, emit path A)

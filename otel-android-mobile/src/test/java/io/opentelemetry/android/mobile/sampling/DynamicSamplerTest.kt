@@ -77,43 +77,47 @@ class DynamicSamplerTest {
         }
     }
 
-    // ── High-priority attribute ───────────────────────────────────────────
+    // ── Page span name-based force-sampling (OTel-native) ────────────────
 
     @Test
-    fun `high priority attribute forces sampling even when rate is 0`() {
+    fun `page prefix spans always sampled regardless of rate`() {
         val sampler = DynamicSampler(baselineSamplingRate = 0.0, highPrioritySamplingRate = 1.0)
-        val attrs = io.opentelemetry.api.common.Attributes.of(
-            io.opentelemetry.api.common.AttributeKey.stringKey("sampling.priority"), "high"
-        )
+        val traceId = "0000000000000000ffffffffffffffff"
+        listOf("page.BookFragment", "page.CalendarFragment", "page.HomeScreen").forEach { name ->
+            val result = sampler.shouldSample(noParent, traceId, name,
+                io.opentelemetry.api.trace.SpanKind.INTERNAL, noop, noLinks)
+            assertEquals("$name should always sample", SamplingDecision.RECORD_AND_SAMPLE, result.decision)
+        }
+    }
+
+    @Test
+    fun `app startup span always sampled`() {
+        val sampler = DynamicSampler(baselineSamplingRate = 0.0, highPrioritySamplingRate = 1.0)
         val result = sampler.shouldSample(noParent, "0000000000000000ffffffffffffffff",
-            "my-span", io.opentelemetry.api.trace.SpanKind.INTERNAL, attrs, noLinks)
+            "app.startup", io.opentelemetry.api.trace.SpanKind.INTERNAL, noop, noLinks)
         assertEquals(SamplingDecision.RECORD_AND_SAMPLE, result.decision)
     }
 
     @Test
-    fun `critical priority attribute forces sampling even when rate is 0`() {
+    fun `page span result includes sampling_page_span attribute`() {
         val sampler = DynamicSampler(baselineSamplingRate = 0.0, highPrioritySamplingRate = 1.0)
-        val attrs = io.opentelemetry.api.common.Attributes.of(
-            io.opentelemetry.api.common.AttributeKey.stringKey("sampling.priority"), "critical"
-        )
         val result = sampler.shouldSample(noParent, "0000000000000000ffffffffffffffff",
-            "my-span", io.opentelemetry.api.trace.SpanKind.INTERNAL, attrs, noLinks)
-        assertEquals(SamplingDecision.RECORD_AND_SAMPLE, result.decision)
+            "page.SomeScreen", io.opentelemetry.api.trace.SpanKind.INTERNAL, noop, noLinks)
+        val flag = result.attributes.get(
+            io.opentelemetry.api.common.AttributeKey.booleanKey("sampling.page_span")
+        )
+        assertTrue("sampling.page_span should be true for page spans", flag == true)
     }
 
     @Test
-    fun `unknown priority value uses baseline rate`() {
-        val sampler = DynamicSampler(baselineSamplingRate = 0.0, highPrioritySamplingRate = 1.0)
-        val attrs = io.opentelemetry.api.common.Attributes.of(
-            io.opentelemetry.api.common.AttributeKey.stringKey("sampling.priority"), "low"
-        )
-        val result = sampler.shouldSample(noParent, "0000000000000000ffffffffffffffff",
-            "my-span", io.opentelemetry.api.trace.SpanKind.INTERNAL, attrs, noLinks)
+    fun `non-page span with rate 0 is dropped`() {
+        val sampler = DynamicSampler(baselineSamplingRate = 0.0)
+        val result = sample(sampler, "0000000000000000ffffffffffffffff")
         assertEquals(SamplingDecision.DROP, result.decision)
     }
 
     @Test
-    fun `no priority attribute uses baseline rate`() {
+    fun `non-named-span with rate 0 drops regardless of attributes`() {
         val sampler = DynamicSampler(baselineSamplingRate = 0.0)
         val result = sample(sampler, "0000000000000000ffffffffffffffff")
         assertEquals(SamplingDecision.DROP, result.decision)
@@ -140,20 +144,6 @@ class DynamicSamplerTest {
             io.opentelemetry.api.common.AttributeKey.stringKey("sampling.strategy")
         )
         assertEquals("dynamic", strategy)
-    }
-
-    @Test
-    fun `sampling_high_priority attribute is present for high priority spans`() {
-        val sampler = DynamicSampler(baselineSamplingRate = 1.0, highPrioritySamplingRate = 1.0)
-        val attrs = io.opentelemetry.api.common.Attributes.of(
-            io.opentelemetry.api.common.AttributeKey.stringKey("sampling.priority"), "high"
-        )
-        val result = sampler.shouldSample(noParent, "abcdef0000000000ffffffff12345678",
-            "span", io.opentelemetry.api.trace.SpanKind.INTERNAL, attrs, noLinks)
-        val hp = result.attributes.get(
-            io.opentelemetry.api.common.AttributeKey.booleanKey("sampling.high_priority")
-        )
-        assertTrue("sampling.high_priority should be true for high-priority spans", hp == true)
     }
 
     // ── setSamplingRate ───────────────────────────────────────────────────

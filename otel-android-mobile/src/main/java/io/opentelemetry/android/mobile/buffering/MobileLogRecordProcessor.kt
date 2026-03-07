@@ -118,8 +118,10 @@ class MobileLogRecordProcessor private constructor(
             1, 1, TimeUnit.HOURS
         )
 
-        // Schedule periodic device metrics capture and log flush in CONTINUOUS mode
-        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS) {
+        // Schedule periodic device metrics capture and log flush in CONTINUOUS and HYBRID modes.
+        // HYBRID adds the same periodic export as CONTINUOUS, plus policy-triggered flush windows.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS ||
+            config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
             val captureIntervalSeconds = config.metricExportIntervalSeconds
             executor.scheduleAtFixedRate(
                 {
@@ -187,8 +189,15 @@ class MobileLogRecordProcessor private constructor(
             executor.submit { overflowToDisk() }
         }
 
-        // Evaluate policies to see if we should flush
-        executor.submit { evaluatePolicies(logRecordData) }
+        // Evaluate export policies only in modes where policy triggers drive export.
+        // CONDITIONAL: policy match is the only export path — always evaluate.
+        // HYBRID:      policy match supplements the periodic export — always evaluate.
+        // CONTINUOUS:  periodic flush is the only export path — policy evaluation is
+        //              not needed and would cause spurious out-of-schedule exports.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL ||
+            config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+            executor.submit { evaluatePolicies(logRecordData) }
+        }
     }
 
     /**
@@ -352,35 +361,36 @@ class MobileLogRecordProcessor private constructor(
         try {
             Log.i(TAG, "Force flush: exporting all buffered events")
 
-            val allEvents = mutableListOf<LogRecordData>()
+            // Snapshot the RAM buffer before exporting. New events that arrive during the
+            // export must not be lost — we remove only the exact snapshotted objects via
+            // identity equality, the same pattern used in flushWindow().
+            val ramSnapshot = ramBuffer.toList()
 
-            // Collect all events from RAM
-            allEvents.addAll(ramBuffer)
+            val diskEvents = runBlocking { diskBuffer.getAllEvents() }
+            val allEvents = ramSnapshot + diskEvents
 
-            // Collect all events from disk
-            val diskEvents = runBlocking {
-                diskBuffer.getAllEvents()
-            }
-            allEvents.addAll(diskEvents)
+            Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskEvents.size} disk)")
 
-            Log.i(TAG, "Force flushing ${allEvents.size} events")
+            if (allEvents.isEmpty()) return CompletableResultCode.ofSuccess()
 
-            // Export in batches
-            val batchSize = 100
-            val results = allEvents.chunked(batchSize).map { batch ->
-                exporter.export(batch)
-            }
-
-            // Clear buffers after successful export
+            val results = allEvents.chunked(100).map { batch -> exporter.export(batch) }
             val result = CompletableResultCode.ofAll(results)
+
             result.whenComplete {
                 if (result.isSuccess) {
-                    ramBuffer.clear()
-                    ramBufferCount.set(0)
-                    runBlocking {
-                        diskBuffer.clearAll()
+                    // Remove exactly the snapshotted RAM events by object identity.
+                    // Events that arrived after the snapshot was taken are preserved.
+                    val exportedIds = Collections.newSetFromMap(
+                        IdentityHashMap<LogRecordData, Boolean>()
+                    )
+                    exportedIds.addAll(ramSnapshot)
+                    var removed = 0
+                    ramBuffer.removeIf { event ->
+                        exportedIds.contains(event).also { matched -> if (matched) removed++ }
                     }
-                    Log.i(TAG, "Force flush completed successfully")
+                    ramBufferCount.addAndGet(-removed)
+                    runBlocking { diskBuffer.clearAll() }
+                    Log.i(TAG, "Force flush completed: removed $removed RAM + ${diskEvents.size} disk events")
                 } else {
                     Log.w(TAG, "Force flush failed, keeping events in buffer")
                 }

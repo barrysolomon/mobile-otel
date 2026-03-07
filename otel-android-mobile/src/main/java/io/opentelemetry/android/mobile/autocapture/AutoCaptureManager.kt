@@ -61,24 +61,17 @@ class AutoCaptureManager(
      *
      * Page spans are the root of the trace hierarchy for all user interactions on a screen:
      *
-     *   page.BookFragment  ← always sampled (sampling.priority=high)
+     *   page.BookFragment  ← always sampled — DynamicSampler force-samples all "page.*" by name
      *   ├── ui.tap          ← auto-captured child span (TapCapture)
      *   ├── ui.tap
      *   ├── booking.submit  ← manually created child span in BookFragment
      *   │   └── POST /posts ← OkHttp child span
      *   └── ui.swipe
      *
-     * WHY sampling.priority=high:
-     * DynamicSampler makes a probabilistic decision per trace ID (default 0.65 baseline).
-     * If a page span is dropped (35% of sessions), TapCapture.emit() detects isSampled=false
-     * and falls back to emitting taps as standalone log records instead of child spans.
-     * This breaks the trace waterfall — taps appear flat in Dash0 with no parent context,
-     * and manually-created child spans like booking.submit start a new root trace.
-     *
-     * Forcing page spans to always sample ensures:
-     * - All taps/swipes on the screen become child spans (waterfall visible)
-     * - booking.submit and similar manual spans are correctly nested under the page
-     * - Sampling rate on individual taps/API spans still applies for volume control
+     * DynamicSampler always records spans whose name starts with "page." regardless of the
+     * baseline sampling rate. This keeps the trace waterfall intact: if a page span were dropped,
+     * TapCapture would detect isSampled=false and fall back to flat log records, and manually
+     * created child spans like booking.submit would start a disconnected root trace.
      *
      * Called on fragment resume and explicitly by fragments after an API call completes
      * (so the next user interaction starts a clean span).
@@ -87,16 +80,13 @@ class AutoCaptureManager(
         pageScope?.close()
         pageScope = null
         pageSpan?.takeIf { it.isRecording }?.end()
+        // DynamicSampler force-samples all "page.*" spans by name — no attribute needed.
+        // See DynamicSampler for the reasoning: dropping a page span breaks the entire
+        // trace waterfall for that screen session (taps, scrolls, API calls lose their parent).
         pageSpan = tracer.spanBuilder("page.$screenName")
             .setAttribute("session.id", sessionTracker.getSessionId())
             .setAttribute("view.id", sessionTracker.getViewId())
             .setAttribute("screen.name", screenName)
-            // Force page spans to always sample so that:
-            //   1. TapCapture emits taps as child spans (not flat logs)
-            //   2. Manually-created child spans (booking.submit, etc.) are nested correctly
-            // Without this, DynamicSampler drops ~35% of page spans at the default 0.65
-            // baseline, breaking the trace waterfall for all interactions on those screens.
-            .setAttribute("sampling.priority", "high")
             .startSpan()
         pageScope = pageSpan!!.makeCurrent()
     }
