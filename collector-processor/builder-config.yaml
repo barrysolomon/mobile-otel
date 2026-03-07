@@ -1,0 +1,38 @@
+# OpenTelemetry Collector Builder (OCB) configuration for otelcol-mobile.
+#
+# This builds a custom OTel Collector binary that embeds the mobilepolicyprocessor
+# alongside the standard receivers, processors, and exporters needed for mobile
+# telemetry pipelines.
+#
+# Usage (with ocb installed):
+#   ocb --config builder-config.yaml
+#
+# Or use the provided Dockerfile instead — no local toolchain required:
+#   docker build -t otelcol-mobile:latest .
+
+dist:
+  name: otelcol-mobile
+  description: "OpenTelemetry Collector with Mobile Policy Processor"
+  output_path: ./dist
+  otelcol_version: "0.91.0"
+  module: github.com/open-telemetry/mobile-otel/cmd/otelcol-mobile
+
+# Standard OTLP receiver — accepts telemetry from Android SDK on gRPC :4317 and HTTP :4318
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.91.0
+
+# Processors bundled in the image
+processors:
+  # Mobile policy processor — annotates matching log records with policy.matched=true
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor v0.0.0
+    path: ./mobilepolicyprocessor
+
+  # Standard batch and memory limiter
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.91.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.91.0
+
+# Exporters — forward to any OTLP backend (Dash0, Jaeger, Grafana, etc.)
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.91.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.91.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.91.0

@@ -1,0 +1,56 @@
+# Collector config used exclusively for integration tests.
+# Uses the mobilepolicyprocessor with two well-known test policies:
+#   - freeze-policy: matches event.name=ui.freeze AND duration_ms>2000
+#   - low-battery-policy: matches battery_level<20
+#
+# The debug exporter prints every record to stdout so the test script can
+# grep for "policy.matched = true" in the container logs.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  mobilepolicy:
+    policies:
+      - id: freeze-policy
+        enabled: true
+        match:
+          logical_operator: and
+          attributes:
+            event.name:
+              equals: "ui.freeze"
+            duration_ms:
+              gt: 2000.0
+        actions:
+          - type: annotate
+
+      - id: low-battery-policy
+        enabled: true
+        match:
+          logical_operator: and
+          attributes:
+            battery_level:
+              lt: 20.0
+        actions:
+          - type: annotate
+
+exporters:
+  debug:
+    verbosity: detailed
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [mobilepolicy]
+      exporters: [debug]
