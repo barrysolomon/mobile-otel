@@ -10,8 +10,8 @@ Prioritized remaining work. Items are grouped by track, ordered by priority with
 
 ### P0 — Bugs / Blockers
 
-- [ ] **Fix processor.go import** — Line 87: `pdata.Value` → `pcommon.Value` (5 min)
-- [ ] **Implement DiskLogBuffer deserialization** — `toLogRecordData()` throws NotImplementedError. Needs JSON or protobuf round-trip for full fidelity. (2-4 hours)
+- [x] **Fix processor.go import** — `pdata.Value` → `pcommon.Value` (done)
+- [x] **Implement DiskLogBuffer deserialization** — `toLogRecordData()` fully implemented with JSON round-trip (attributes, resource attrs, severity, scope, body)
 
 ### P1 — Auto-Capture Enhancements
 
@@ -26,19 +26,20 @@ Prioritized remaining work. Items are grouped by track, ordered by priority with
 
 ### P0 — Unit Tests (Android)
 
-Target: >80% coverage. Follow existing patterns in `src/test/`.
+Target: >80% coverage. All core test files exist. Gaps remaining:
 
-- [~] **MobileLogRecordProcessorTest** — RAM buffer, overflow to disk, policy flush, thread safety, shutdown (~30 tests)
-- [~] **DiskLogBufferTest** — Persistence, time window queries, TTL cleanup, size eviction, concurrent writes (~25 tests)
-- [ ] **PolicyEvaluatorTest** — All operators (equals, gt, lt, contains, regex), AND/OR logic, config fetch, network failure, MockWebServer (~40 tests)
-- [ ] **SessionManagerTest** — Session creation/termination, identity, global attributes, inactivity timeout (~20 tests)
-- [ ] **PiiScrubberTest** — URL, deep link, exception message, stack trace scrubbing, PII pattern detection (~25 tests)
+- [x] **MobileLogRecordProcessorTest** — done
+- [x] **DiskLogBufferTest** — done
+- [x] **PolicyEvaluatorTest** — done (including geo/device extension)
+- [x] **PiiScrubberTest** — done
+- [x] **SessionTrackerTest** — done
+- [x] **DynamicSamplerTest** — done
 - [ ] **JourneyBreadcrumbBufferTest** — FIFO eviction, thread safety, time-window filtering, JSON serialization (~15 tests)
 - [ ] **NavigationInstrumentationTest** — Activity lifecycle, deep link capture, manual navigation (~20 tests)
 
 ### P0 — Unit Tests (Go)
 
-- [ ] **factory_test.go** — Factory creation, default config, processor creation, capabilities, invalid config (~10 tests)
+- [x] **factory_test.go** — Factory creation, default config, processor creation, capabilities, invalid config, start/shutdown (7 tests)
 
 ### P1 — Integration Tests
 
@@ -138,3 +139,7 @@ Target: >80% coverage. Follow existing patterns in `src/test/`.
 - [x] **OTelMobile delegation** — `OTelMobile.start()` delegates to `MobileOtel.initialize()` for full module wiring
 - [x] **Predictive flush** — PredictiveExportPolicy emits OTel log events for prediction cycles and high-risk alerts
 - [x] **forceFlush(windowMinutes)** — Selective time-window flush via `MobileLogRecordProcessor.flushWindow()`
+- [x] **FreezeDetector infinite loop** — Reset `lastTickAtMs` + re-post tick in `emitPendingFreeze()` to prevent ever-growing freeze.duration_ms after ANR
+- [x] **Page span sampling** — `sampling.priority=high` on all page spans ensures TapCapture/ScrollCapture emit child spans (trace waterfall) not flat logs
+- [x] **Split OTel/Dash0 config** — `ConfigActivity` (OTel SDK settings) + `Dash0ConfigActivity` (backend connection) as separate screens
+- [x] **Demo polish** — Version on Profile tab, `TelemetryFlags.showDebugToolbar`, CalVer versioning `1.1.0-20260306`
