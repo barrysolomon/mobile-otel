@@ -94,6 +94,8 @@ class TapInstrumentation(
                 .setSeverity(Severity.INFO)
                 .setAllAttributes(attrs)
                 .emit()
+            if (config.addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_SWIPE)
+                ?.startSpan()?.apply { setAllAttributes(attrs); end() }
             downX = 0f
             downY = 0f
             return
@@ -119,5 +121,7 @@ class TapInstrumentation(
             .setSeverity(Severity.INFO)
             .setAllAttributes(attrs)
             .emit()
+        if (config.addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(eventName)
+            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
     }
 }

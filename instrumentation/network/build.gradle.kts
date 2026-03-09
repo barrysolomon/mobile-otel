@@ -42,10 +42,11 @@ android {
 
 dependencies {
     api(project(":otel-android-mobile-core"))
-    api(project(":otel-android-mobile"))
     // OTelNetworkInterceptor implements okhttp3.Interceptor; expose it as api so
     // consumers can reference the okhttp3.Interceptor type returned by getInterceptor().
     api("com.squareup.okhttp3:okhttp:4.12.0")
+    // Semantic conventions for HTTP span attributes
+    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.39.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")

@@ -31,7 +31,7 @@ import kotlin.concurrent.write
  *
  * ## Interaction with auto-capture trace hierarchy
  *
- * `page.*` spans (created by [AutoCaptureManager.startPageSpan]) are always sampled based on
+ * `page.*` spans (created by page-span instrumentation) are always sampled based on
  * their name using the standard OTel `shouldSample()` `name` parameter — no span attribute
  * needed. This ensures the trace waterfall is always intact: if a page span were dropped, all
  * taps, scrolls, and manually-created child spans on that screen would lose their parent context

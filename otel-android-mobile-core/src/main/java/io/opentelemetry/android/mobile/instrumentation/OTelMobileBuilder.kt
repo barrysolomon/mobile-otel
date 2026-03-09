@@ -66,9 +66,11 @@ class OTelMobileBuilder(
      */
     fun build(): OTelMobileHandle {
         val hub = WindowEventHub()
+        val hubInstaller = WindowEventHubInstaller(application, hub)
+        hubInstaller.install()
         val context = InstrumentationContext(openTelemetry, sessionProvider, hub, application)
         val registry = InstrumentationRegistry(instrumentations.toList())
         registry.install(application, context)
-        return OTelMobileHandle(openTelemetry, registry)
+        return OTelMobileHandle(openTelemetry, registry, hubInstaller)
     }
 }

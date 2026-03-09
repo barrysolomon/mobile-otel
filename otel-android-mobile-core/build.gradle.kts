@@ -4,6 +4,7 @@
 plugins {
     id("com.android.library")
     id("maven-publish")
+    kotlin("plugin.serialization") version "1.9.20"
 }
 
 android {
@@ -50,6 +51,8 @@ dependencies {
     api("io.opentelemetry:opentelemetry-sdk:1.58.0")
     api("io.opentelemetry:opentelemetry-sdk-logs:1.58.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    // Kotlin Serialization (used by JourneyBreadcrumb / JourneyBreadcrumbBuffer)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")

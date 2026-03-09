@@ -21,7 +21,9 @@ import io.opentelemetry.api.logs.Severity
  * Thread note: onTouchEvent and RecyclerView scroll listeners fire on the main thread.
  */
 class ScrollInstrumentation(
-    private val throttleMs: Long = 500
+    private val throttleMs: Long = 500,
+    /** Also attach scroll events as span events on [Span.current()]. Default true. */
+    private val addSpanEvents: Boolean = true
 ) : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.scroll"
@@ -124,5 +126,7 @@ class ScrollInstrumentation(
             .setSeverity(Severity.INFO)
             .setAllAttributes(attrs)
             .emit()
+        if (addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_SCROLL)
+            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
     }
 }
