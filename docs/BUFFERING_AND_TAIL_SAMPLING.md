@@ -152,7 +152,82 @@ private fun overflowToDisk() {
 }
 ```
 
-This is scheduled every 5 seconds and also triggered immediately (on the executor) whenever `onEmit()` detects `count > ramBufferSize`.
+This is scheduled every 5 seconds and also triggered immediately (on the executor) whenever `onEmit()` detects `count > ramBufferSize`. The 5-second schedule is a safety net for the case where events trickle in slowly and never hit the threshold in a single burst.
+
+### Serialization: LogRecordData → SQLite Row
+
+`persistEvents()` calls `toEntity()` on each record, which converts the in-memory OTel object into a flat SQLite-friendly struct:
+
+```
+LogRecordData (in-memory OTel object)
+    │
+    ▼ toEntity()
+LogRecordEntity {
+    id:                        Long    ← AUTOINCREMENT (not from OTel)
+    timestampMs:               Long    ← timestampEpochNanos / 1_000_000 (indexed)
+    severityText:              String? ← "ERROR", "INFO", null
+    body:                      String  ← logRecord.body.asString()
+    attributes:                String  ← JSON: {"event.name":"ui.tap","view.id":"btn_book"}
+    resource:                  String  ← JSON: {"service.name":"schedulr","session.id":"xyz"}
+    instrumentationScopeName:  String?
+    instrumentationScopeVersion: String?
+}
+    │
+    ▼ Room DAO (INSERT INTO log_records ...)
+    SQLite row
+```
+
+**Important: type information is lost.** Attributes are serialized as `JSONObject.put(key, value.toString())` — every value becomes a string. An event that enters via the RAM tier with a numeric attribute `http.duration_ms = 847L` will be read back after a crash as `http.duration_ms = "847"`. This only affects disk-recovered events; RAM-tier events always retain their original types.
+
+The conversion back — `LogRecordEntity.toLogRecordData()` — reconstructs a concrete anonymous `LogRecordData` implementation with all string-typed attributes and an invalid `SpanContext` (trace/span ID is not persisted).
+
+### Complete Data Flow Diagram
+
+```
+App thread emits event
+    │
+    ▼ onEmit() — synchronous, O(1), microseconds
+┌─────────────────────────────────────────────────────────────┐
+│  RAM Buffer: ConcurrentLinkedQueue<LogRecordData>           │
+│  • 5,000 events max (configurable)                          │
+│  • Volatile — contents lost on process kill without flush   │
+│  • FIFO — oldest at head, newest at tail                    │
+│  • Lock-free — no blocking at insert time                   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ two triggers for overflow:
+                          │  1. immediate: onEmit() sees count > 5000
+                          │     → executor.submit { overflowToDisk() }
+                          │  2. scheduled: every 5 seconds as safety net
+                          ▼
+                    overflowToDisk()
+                    poll() N oldest events from RAM head
+                    call persistEvents(eventsToMove)
+                          │
+                          ▼ toEntity() per event (JSON-serialize attributes)
+┌─────────────────────────────────────────────────────────────┐
+│  Disk Buffer: SQLite via Room  (otel_log_buffer.db)         │
+│  • 50 MB max (configurable)                                 │
+│  • 24h TTL — hourly cleanup job deletes expired rows        │
+│  • Indexed on timestampMs for fast flushWindow() scans      │
+│  • Durable — survives process kill, OOM kill, crash         │
+│  • Size enforcement: deletes oldest rows + VACUUM if > 50MB │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What Never Reaches Disk
+
+Not every event goes through overflow. Three scenarios where disk is bypassed entirely:
+
+**1. CONTINUOUS mode with short flush interval.** The periodic flush exports all RAM events every 30 seconds (default). On a typical app with a few hundred events per 30s, the RAM buffer never approaches 5,000. Events are exported from RAM and removed — they never overflow.
+
+**2. Policy fires before RAM fills.** In CONDITIONAL mode on a low-traffic screen, a single `http.error` event may trigger `flushWindow(5)` while the RAM buffer is still at, say, 200 events. All 200 are exported from RAM and removed. No overflow occurs.
+
+**3. Events in the export window.** `flushWindow()` exports events that are still in RAM. Only events **outside** the flush window, and **older than the flush window**, get evicted to disk next time overflow runs. Events that have already been exported are removed from RAM by the identity-set removal, reducing pressure on the overflow path.
+
+Disk is mostly used in these situations:
+- **CONDITIONAL mode on a high-traffic screen** — taps, scrolls, and text-input events accumulate quickly. A 60-second session with active interaction can easily produce 500–2,000 events, pushing the RAM buffer toward overflow before any policy fires.
+- **Offline sessions** — exports fail, RAM fills, older events push to disk. When connectivity returns, `flushWindow()` scans both tiers.
+- **Post-crash recovery** — on `shutdown()`, RAM is flushed but disk is intentionally left intact so the next process start can recover the events around the crash.
 
 ### Capacity, TTL, and Eviction
 
