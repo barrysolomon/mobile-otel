@@ -6,11 +6,21 @@
 package io.opentelemetry.android.mobile
 
 import android.app.Application
-import io.opentelemetry.android.mobile.autocapture.AutoCaptureManager
 import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
+import io.opentelemetry.android.mobile.autocapture.RecoveryTracker
+import io.opentelemetry.android.mobile.autocapture.SessionTracker
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.instrumentation.BackPressInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.ErrorsInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.FreezeInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.LifecycleInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.OTelMobileBuilder
 import io.opentelemetry.android.mobile.instrumentation.OTelMobileHandle
+import io.opentelemetry.android.mobile.instrumentation.ScreenViewInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.ScrollInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.TapInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.TextInputInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.VitalsInstrumentation
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -48,9 +58,12 @@ object OTelMobile {
     private var provider: MobileLoggerProvider? = null
 
     @Volatile
-    private var autoCaptureManager: AutoCaptureManager? = null
+    private var handle: OTelMobileHandle? = null
 
-    fun start(application: Application, config: MobileConfig, options: AutoCaptureOptions = AutoCaptureOptions()) {
+    @Volatile
+    private var recoveryTracker: RecoveryTracker? = null
+
+    fun start(application: Application, config: MobileConfig) {
         synchronized(this) {
             if (provider == null) {
                 // Initialize all modules through MobileOtel facade
@@ -59,17 +72,36 @@ object OTelMobile {
                 val instance = MobileOtel.initialize(application, config)
                 provider = instance
 
-                // Start auto-capture (taps, scrolls, freezes, ANR, lifecycle, recovery)
-                autoCaptureManager = AutoCaptureManager(application, instance, options).also {
-                    it.start()
-                }
+                // RecoveryTracker still needs SessionTracker (legacy); will be cleaned up in Task 7
+                val rt = RecoveryTracker(
+                    application,
+                    instance.get("recovery"),
+                    instance,
+                    SessionTracker(AutoCaptureOptions())
+                )
+                recoveryTracker = rt
+                rt.start()
+
+                handle = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
+                    .addInstrumentation(LifecycleInstrumentation())
+                    .addInstrumentation(ScreenViewInstrumentation())
+                    .addInstrumentation(TapInstrumentation())
+                    .addInstrumentation(ScrollInstrumentation())
+                    .addInstrumentation(TextInputInstrumentation())
+                    .addInstrumentation(BackPressInstrumentation())
+                    .addInstrumentation(FreezeInstrumentation())
+                    .addInstrumentation(ErrorsInstrumentation())
+                    .addInstrumentation(VitalsInstrumentation())
+                    .build()
             }
         }
     }
 
     fun stop(timeoutSeconds: Long = 30) {
-        autoCaptureManager?.stop()
-        autoCaptureManager = null
+        handle?.stop(timeoutSeconds)
+        handle = null
+        recoveryTracker?.let { /* no stop() needed — it lives for app lifetime */ }
+        recoveryTracker = null
         MobileOtel.shutdown()
         provider = null
     }
@@ -87,32 +119,31 @@ object OTelMobile {
 
     fun getMeter(scope: String): Meter = getLoggerProvider().getOpenTelemetrySdk().getMeter(scope)
 
-    fun getLastRecoveryType(): String? = autoCaptureManager?.getLastRecoveryType()
+    fun getLastRecoveryType(): String? = recoveryTracker?.getLastRecoveryType()
 
     fun markCrashForNextStart() {
-        autoCaptureManager?.markCrashForNextStart()
+        recoveryTracker?.markCrashForNextStart()
     }
 
     fun markLowMemoryForNextStart() {
-        autoCaptureManager?.markLowMemoryForNextStart()
+        recoveryTracker?.markLowMemoryForNextStart()
     }
 
     fun markAnrForNextStart() {
-        autoCaptureManager?.markAnrForNextStart()
+        recoveryTracker?.markAnrForNextStart()
     }
 
     /**
      * Ends the current page span and starts a fresh one for the same screen.
-     * Call this after an API action completes so the next user interaction starts a clean span.
+     * Page spans are now managed by ScreenViewInstrumentation; this is a no-op kept for API
+     * compatibility and will be removed in the cleanup pass (Task 7).
      */
     fun restartPageSpan(screenName: String) {
-        autoCaptureManager?.startPageSpan(screenName)
+        // Page spans are managed by ScreenViewInstrumentation — no-op here
     }
 
     fun startJourney(name: String): Span {
-        val manager = autoCaptureManager
-        return manager?.startJourney(name)
-            ?: getTracer("journey").spanBuilder(name).startSpan()
+        return getTracer("journey").spanBuilder(name).startSpan()
     }
 
     /**

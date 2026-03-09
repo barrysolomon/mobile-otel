@@ -15,7 +15,10 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import java.util.WeakHashMap
 
-class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
+class TextInputInstrumentation(
+    /** Also attach text-input events as span events on [Span.current()]. Default true. */
+    private val addSpanEvents: Boolean = true
+) : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.text_input"
 
@@ -86,6 +89,8 @@ class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
             .setSeverity(Severity.INFO)
             .setAllAttributes(attrs)
             .emit()
+        if (addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_TEXT_INPUT)
+            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
     }
 
     private fun onFieldLeft(field: EditText) {

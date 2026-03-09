@@ -42,7 +42,10 @@ android {
 
 dependencies {
     api(project(":otel-android-mobile-core"))
-    api(project(":otel-android-mobile"))
+    api(project(":instrumentation-vitals"))
+    // Coroutines for CoroutineExceptionHandler
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")

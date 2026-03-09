@@ -8,11 +8,6 @@ package io.opentelemetry.android.mobile.autocapture
 /**
  * Configuration for automatic UI capture.
  */
-@Deprecated(
-    message = "Use individual InstrumentationConfig classes (TapConfig, FreezeConfig, etc.) instead.",
-    replaceWith = ReplaceWith(""),
-    level = DeprecationLevel.WARNING
-)
 data class AutoCaptureOptions(
     val captureLifecycle: Boolean = true,
     val captureScreens: Boolean = true,

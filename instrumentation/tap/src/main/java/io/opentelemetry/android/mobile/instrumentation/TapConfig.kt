@@ -3,7 +3,6 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
-import io.opentelemetry.android.mobile.autocapture.PrivacyMode
 
 /**
  * Configuration for [TapInstrumentation].
@@ -20,6 +19,9 @@ data class TapConfig(
     val captureTaps: Boolean = true,
     val captureLongPress: Boolean = true,
     val captureSwipe: Boolean = true,
+    /** Also attach tap/swipe/long-press as span events on [Span.current()], making them
+     *  visible in the trace waterfall alongside the page span. Default true. */
+    val addSpanEvents: Boolean = true,
     val swipeMinDistancePx: Float = 50f,
     val coalesceWindowMs: Long = 800,
     val bucketGridSize: Int = 3,

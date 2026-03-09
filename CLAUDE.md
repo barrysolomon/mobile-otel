@@ -108,24 +108,47 @@ Additionally: `collector-processor/mobilepolicyprocessor/` is a custom OTEL Coll
 
 ### Android SDK Internal Architecture
 
-Two entry points:
-- `OTelMobile.start()` — Auto-capture drop-in. Delegates to `MobileOtel.initialize()`, then starts `AutoCaptureManager`.
-- `MobileOtel.initialize()` — Core facade. Wires all auto-instrumentation modules.
+Entry point: `OTelMobile.start()` — calls `OTelMobileBuilder` which wires all instrumentation modules and installs the `WindowEventHubInstaller`.
 
-**Auto-initialized modules** (wired by `MobileOtel.initialize()`):
-- **Errors** (`errors/`): `ErrorInstrumentation` captures uncaught exceptions, coroutine errors, RxJava errors. Deduplication (5-min window), rate limiting (10/min), stack trace scrubbing, breadcrumb attachment. On error → triggers buffer flush.
-- **Vitals** (`vitals/`): `VitalsCollector`, `JankDetector`, `AppStartInstrumentation` for performance metrics as OTel Meter gauges.
-- **Predictive** (`predictive/`): `PredictiveExportPolicy` monitors device health via `DeviceHealthMonitor` and `OnDevicePredictor`. When crash risk ≥ 0.7 or network loss risk ≥ 0.7, triggers pre-emptive flush. Emits prediction events as OTel logs.
-- **Health Metrics** (`predictive/`): `HealthMetricsCollector` exposes 9-14 device health metrics (memory, battery, thermal, storage, predictions) as OTel gauges.
+**Modular instrumentation system** (`otel-android-mobile-core/`):
+
+- `OTelMobileBuilder` — fluent builder; creates `WindowEventHub`, installs `WindowEventHubInstaller`, wires `InstrumentationContext`, calls `InstrumentationRegistry.install()`.
+- `WindowEventHubInstaller` — registers `ActivityLifecycleCallbacks` that wraps each activity's `Window.Callback` with a `HubDispatcher`. The dispatcher fans all touch/key events to the hub before delegating to the original callback. This is what connects Espresso and real user input to `TapInstrumentation` etc.
+- `WindowEventHub` — `CopyOnWriteArrayList`-backed fan-out dispatcher. Any `WindowEventListener` implementation registered via `addListener()` receives all touch and key events from all activity windows.
+- `InstrumentationContext` — carries `OpenTelemetry`, `MobileSessionProvider`, `WindowEventHub`, and `Application` to each instrumentation at install time.
+
+**UI instrumentation modules** (each under `instrumentation/<name>/`):
+
+- **Tap** (`tap/`): `TapInstrumentation` + `TapConfig` — emits OTel log records AND zero-duration child spans (`ui.tap`, `ui.long_press`, `ui.swipe`) nested under the active page span. Gate via `TapConfig.addSpanEvents`. Swipe threshold: `swipeMinDistancePx` (default 50px).
+- **Scroll** (`scroll/`): `ScrollInstrumentation` — throttled `RecyclerView.OnScrollListener`; emits `ui.scroll` child spans.
+- **Text Input** (`text-input/`): `TextInputInstrumentation` — fires on `EditText` focus-leave; emits `ui.text_input` child spans.
+- **Back Press** (`back-press/`): `BackPressInstrumentation` — fires on `KEYCODE_BACK ACTION_UP`; emits `ui.back_press` child spans.
+- **Screen** (`screen/`): `ScreenViewInstrumentation` — fragment/activity lifecycle; emits `ui.screen_view` log + starts/ends `page.<ScreenName>` span as current on main thread.
+- **Errors** (`errors/`): `ErrorInstrumentation` — uncaught exceptions, coroutine errors. Deduplication (5-min window), rate limiting (10/min).
+- **Vitals** (`vitals/`): OTel Meter gauges for memory, battery, jank, app-start.
+- **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor; user-wired.
+
+**Journey span pattern** (used in Espresso tests and production flows):
+
+```kotlin
+InstrumentationRegistry.getInstrumentation().runOnMainSync {
+    journeySpan = OTelMobile.startJourney("journeyName")
+    journeyScope = journeySpan!!.makeCurrent()   // sets parent on main thread
+}
+// All page spans started after this are automatically nested under the journey span.
+```
+
+`ScreenViewInstrumentation.startPageSpan()` calls `spanBuilder("page.X").startSpan()` which reads `Context.current()` from the main thread, so any span made current on the main thread becomes the implicit parent.
 
 **Core subsystems:**
+
 - **Buffering** (`buffering/`): `MobileLogRecordProcessor` routes logs through a dual-tier buffer — RAM via `ConcurrentLinkedQueue` (5000 events) and disk via `DiskLogBuffer` (Room/SQLite, 50MB, 24h TTL). `RetryableExporter` handles export failures. `flushWindow(minutes)` enables selective time-window export.
 - **Policy evaluation** (`policy/`): `PolicyEvaluator` matches events against DSL-defined trigger conditions in real-time.
-- **Auto-capture** (`autocapture/`): `AutoCaptureManager` registers tap, scroll, back-press, freeze, and ANR detectors via `WindowCallbackWrapper`. Privacy modes control data sensitivity. Only activated via `OTelMobile.start()`.
-- **Export** (`export/`): `EnrichingLogRecordExporter` enriches logs with device/session attributes before export. `LoggingHttpExporter` for HTTP-based export.
-- **Session/Breadcrumb** (`core/`, `breadcrumb/`): `SessionManager` for session lifecycle, `BreadcrumbManager` for user journey tracking.
+- **Export** (`export/`): `EnrichingLogRecordExporter` enriches logs with device/session attributes before export.
+- **Session** (`core/`): `SessionManager` for session lifecycle.
 
 **User-wired modules:**
+
 - **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor. User adds to their OkHttpClient. Configurable via `NetworkConfig` with privacy presets (default, minimal, debug, production).
 
 ### Control Plane UI Architecture

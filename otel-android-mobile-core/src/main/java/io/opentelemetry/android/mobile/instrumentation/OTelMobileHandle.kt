@@ -20,7 +20,8 @@ import io.opentelemetry.api.trace.Tracer
 @Incubating
 class OTelMobileHandle internal constructor(
     private val openTelemetry: OpenTelemetry,
-    private val registry: InstrumentationRegistry
+    private val registry: InstrumentationRegistry,
+    private val hubInstaller: WindowEventHubInstaller? = null
 ) {
     /** Returns a [Tracer] scoped to [scope]. */
     fun getTracer(scope: String): Tracer = openTelemetry.getTracer(scope)
@@ -39,6 +40,7 @@ class OTelMobileHandle internal constructor(
      * TODO: wire to OpenTelemetry SDK forceFlush when aggregator module is wired (Task 15).
      */
     fun stop(timeoutSeconds: Long = 30) {
+        hubInstaller?.uninstall()
         registry.uninstall()
         // TODO: call openTelemetry SDK shutdown/forceFlush with timeoutSeconds (Task 15)
     }

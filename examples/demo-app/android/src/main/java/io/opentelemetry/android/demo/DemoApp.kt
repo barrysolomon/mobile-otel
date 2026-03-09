@@ -3,7 +3,6 @@ package io.opentelemetry.android.demo
 import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.OTelMobile
-import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
 
 class DemoApp : Application() {
 
@@ -11,7 +10,6 @@ class DemoApp : Application() {
         var handle: io.opentelemetry.android.mobile.instrumentation.OTelMobileHandle? = null
     }
 
-    @Suppress("DEPRECATION")
     override fun onCreate() {
         super.onCreate()
 
@@ -21,18 +19,6 @@ class DemoApp : Application() {
             .edit().putString("export_mode", "CONTINUOUS").apply()
 
         val config = ConfigManager.loadConfig(this)
-        val capture = ConfigManager.loadCaptureOptions(this)
-        val captureOptions = AutoCaptureOptions(
-            captureLifecycle  = capture[ConfigManager.captureKey("lifecycle")]   ?: true,
-            captureScreens    = capture[ConfigManager.captureKey("screens")]     ?: true,
-            captureTaps       = capture[ConfigManager.captureKey("taps")]        ?: true,
-            captureLongPress  = capture[ConfigManager.captureKey("long_press")]  ?: true,
-            captureSwipe      = capture[ConfigManager.captureKey("swipe")]       ?: true,
-            captureScroll     = capture[ConfigManager.captureKey("scroll")]      ?: true,
-            captureTextInput  = capture[ConfigManager.captureKey("text_input")]  ?: true,
-            captureBackPress  = capture[ConfigManager.captureKey("back_press")]  ?: true,
-            captureFragments  = capture[ConfigManager.captureKey("fragments")]   ?: true
-        )
 
         /*
          * Alternative: use OTelMobileBuilder for explicit instrumentation control.
@@ -66,11 +52,7 @@ class DemoApp : Application() {
          * through the builder API.
          */
 
-        OTelMobile.start(
-            application = this,
-            config = config,
-            options = captureOptions
-        )
+        OTelMobile.start(application = this, config = config)
 
         Log.i("OTELDemoApp", "OTelMobile started (auto-capture enabled)")
     }

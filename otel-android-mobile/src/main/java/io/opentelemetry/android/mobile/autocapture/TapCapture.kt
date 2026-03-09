@@ -27,11 +27,11 @@ import java.util.concurrent.TimeUnit
  *
  * ## Trace hierarchy
  *
- * Page spans are created by [AutoCaptureManager.startPageSpan] on every fragment resume and are
+ * Page spans are created by the page-span instrumentation on every fragment resume and are
  * always sampled by [DynamicSampler] based on name prefix (`page.*`) — no attribute needed.
  * This makes the page span the root of all interactions on a screen:
  *
- *   page.BookFragment  ← always-sampled root (AutoCaptureManager)
+ *   page.BookFragment  ← always-sampled root (page-span instrumentation)
  *   ├── ui.tap          ← zero-duration child span (this class, emit path A)
  *   ├── ui.tap
  *   ├── booking.submit  ← manually created in BookFragment, parented to pageContext
@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit
  *   B. No valid/sampled parent → emit as log record with context attached.
  *      Used when auto-capture is disabled or the page span was somehow not active.
  *
- * The page span being forced to always sample (see AutoCaptureManager) means path A is taken
+ * The page span being forced to always sample (via page-span instrumentation) means path A is taken
  * for all normal page interactions. Without that, the DynamicSampler at the default 0.65
  * baseline would drop ~35% of page spans, causing all taps on those screens to take path B
  * and appear as flat, unconnected log entries in Dash0.
