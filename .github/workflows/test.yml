@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, develop, database-refactor-2 ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
 
@@ -22,18 +22,15 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./otel-android-mobile/gradlew
-
       - name: Run unit tests
         run: |
-          cd otel-android-mobile
-          ./gradlew test --stacktrace
+          cd examples/demo-app
+          ./gradlew :otel-android-mobile:testDebugUnitTest --stacktrace
 
       - name: Generate coverage report
         run: |
-          cd otel-android-mobile
-          ./gradlew testDebugUnitTestCoverage
+          cd examples/demo-app
+          ./gradlew :otel-android-mobile:testDebugUnitTestCoverage
 
       - name: Upload test results
         if: always()
@@ -82,10 +79,19 @@ jobs:
           name: go-coverage
 
   android-integration-tests:
-    name: Android Integration Tests
+    name: Android Integration Tests (API ${{ matrix.api-level }}, ${{ matrix.target }})
     runs-on: macos-latest
-    # Only run on main branch to save CI time
+    # Only run on pushes to main to keep PR feedback fast
     if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [26, 30, 33, 35]
+        target: [default, google_apis]
+        exclude:
+          # google_atd only available 30+; skip to avoid "image not found" errors
+          - api-level: 26
+            target: google_apis
 
     steps:
       - name: Checkout code
@@ -98,22 +104,38 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./otel-android-mobile/gradlew
+      - name: Inject Dash0 config
+        # Sets service.version to "api33-google_apis" etc. so each matrix leg
+        # appears as a distinct device profile in Dash0 traces.
+        env:
+          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
+        run: |
+          mkdir -p examples/demo-app/android/src/debug/assets
+          cat > examples/demo-app/android/src/debug/assets/otel-config.json <<EOF
+          {
+            "endpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
+            "auth_token": "${DASH0_AUTH_TOKEN}",
+            "dataset": "otel-mobile",
+            "service_name": "schedulr-android-ci",
+            "service_version": "api${{ matrix.api-level }}-${{ matrix.target }}"
+          }
+          EOF
 
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
           arch: x86_64
-          script: cd otel-android-mobile && ./gradlew connectedAndroidTest
+          profile: pixel_4
+          script: cd examples/demo-app && ./gradlew :android:connectedDebugAndroidTest
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-integration-test-results
-          path: otel-android-mobile/build/reports/androidTests/
+          name: integration-results-api${{ matrix.api-level }}-${{ matrix.target }}
+          path: examples/demo-app/android/build/reports/androidTests/
 
   lint:
     name: Code Quality
@@ -132,9 +154,9 @@ jobs:
 
       - name: Run Android lint
         run: |
-          cd otel-android-mobile
+          cd examples/demo-app
           chmod +x ./gradlew
-          ./gradlew lint
+          ./gradlew :otel-android-mobile:lint
 
       - name: Upload lint results
         if: always()
@@ -176,9 +198,9 @@ jobs:
 
       - name: Build Android library
         run: |
-          cd otel-android-mobile
+          cd examples/demo-app
           chmod +x ./gradlew
-          ./gradlew build
+          ./gradlew :otel-android-mobile:build
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -192,6 +214,5 @@ jobs:
 
       - name: Verify demo app builds
         run: |
-          cd examples/demo-app/android
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+          cd examples/demo-app
+          ./gradlew :android:assembleDebug
