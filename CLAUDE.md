@@ -181,6 +181,16 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 - **CONTINUOUS** — Periodic time-based export
 - **HYBRID** — Combination of both
 
+## Demo App Credentials
+
+Dash0 credentials (endpoint, auth token, dataset) are **not committed**. The file `examples/demo-app/android/src/debug/assets/otel-config.json` is excluded from git via `.gitignore`. To run the demo app locally, copy the template and fill in real values:
+
+```bash
+cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
+   examples/demo-app/android/src/debug/assets/otel-config.json
+# Edit otel-config.json: replace YOUR_COLLECTOR_ENDPOINT, YOUR_AUTH_TOKEN, YOUR_DATASET_NAME
+```
+
 ## Known Issues & Gotchas
 
 - **`DiskLogBuffer.toLogRecordData()` is a stub** — Throws `NotImplementedError`. Disk events cannot be deserialized for export yet. This means `flushWindow()` only returns RAM-buffered events.

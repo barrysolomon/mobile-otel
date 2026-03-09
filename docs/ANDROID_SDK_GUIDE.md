@@ -62,6 +62,19 @@ Key transitive dependencies pulled in automatically:
 
 ## Initialization
 
+### Demo App Credential Setup
+
+The demo app reads its collector endpoint and auth token from `examples/demo-app/android/src/debug/assets/otel-config.json`. This file is excluded from git to prevent credential leakage. To configure it locally:
+
+```bash
+cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
+   examples/demo-app/android/src/debug/assets/otel-config.json
+# Then edit otel-config.json and replace the placeholder values:
+#   YOUR_COLLECTOR_ENDPOINT → e.g. ingress.us-west-2.aws.dash0.com:4317
+#   YOUR_AUTH_TOKEN         → your Dash0 (or other backend) auth token
+#   YOUR_DATASET_NAME       → e.g. otel-mobile
+```
+
 ### Minimal Setup
 
 ```kotlin

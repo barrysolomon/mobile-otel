@@ -1,11 +1,11 @@
 {
   "serviceName": "otel-mobile-demo",
   "serviceVersion": "1.1.0-20260306",
-  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
+  "collectorEndpoint": "https://YOUR_COLLECTOR_ENDPOINT:4317",
   "exportMode": "CONTINUOUS",
   "headers": {
-    "Authorization": "Bearer auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh",
-    "Dash0-Dataset": "otel-mobile"
+    "Authorization": "Bearer YOUR_AUTH_TOKEN",
+    "Dash0-Dataset": "YOUR_DATASET_NAME"
   },
 
   "traceExportIntervalSeconds": 10,
