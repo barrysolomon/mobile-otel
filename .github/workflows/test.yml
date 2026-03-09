@@ -27,24 +27,12 @@ jobs:
           cd examples/demo-app
           ./gradlew :otel-android-mobile:testDebugUnitTest --stacktrace
 
-      - name: Generate coverage report
-        run: |
-          cd examples/demo-app
-          ./gradlew :otel-android-mobile:testDebugUnitTestCoverage
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-test-results
           path: otel-android-mobile/build/reports/tests/
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./otel-android-mobile/build/reports/coverage/test/debug/report.xml
-          flags: android
-          name: android-coverage
 
   go-tests:
     name: Go Tests (Collector Processor)
