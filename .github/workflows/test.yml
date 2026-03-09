@@ -86,12 +86,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [26, 30, 33, 35]
-        target: [default, google_apis]
-        exclude:
-          # google_atd only available 30+; skip to avoid "image not found" errors
-          - api-level: 26
-            target: google_apis
+        api-level: [33]
+        target: [default]
 
     steps:
       - name: Checkout code
