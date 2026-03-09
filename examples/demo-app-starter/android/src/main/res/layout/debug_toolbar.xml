@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/debugToolbarCard"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardBackgroundColor="@color/debug_toolbar_bg"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="4dp">
+
+        <!-- Collapsed header -->
+        <LinearLayout
+            android:id="@+id/debugToolbarHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="4dp"
+            android:paddingHorizontal="8dp">
+
+            <ImageView
+                android:id="@+id/debugExpandIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_expand_more"
+                android:contentDescription="@string/expand_debug_toolbar"
+                android:rotation="0"
+                app:tint="@color/debug_icon_tint" />
+
+            <TextView
+                android:id="@+id/debugLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="@string/debug_tools"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/debug_text_color" />
+
+            <TextView
+                android:id="@+id/debugStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ready"
+                android:textSize="10sp"
+                android:textColor="@color/debug_status_color" />
+        </LinearLayout>
+
+        <!-- Expandable content -->
+        <LinearLayout
+            android:id="@+id/debugToolbarContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Row 1 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="4dp">
+
+                <Button
+                    android:id="@+id/btnTriggerCrash"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/crash"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
+                    app:icon="@drawable/ic_crash"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
+
+                <Button
+                    android:id="@+id/btnTriggerAnr"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/anr"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
+                    app:icon="@drawable/ic_freeze"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
+
+                <Button
+                    android:id="@+id/btnTriggerHttp500"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/http_500"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_danger_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_danger_bg"
+                    app:icon="@drawable/ic_error"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_danger_text" />
+            </LinearLayout>
+
+            <!-- Row 2 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="4dp">
+
+                <Button
+                    android:id="@+id/btnTriggerMemory"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/memory"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
+                    app:icon="@drawable/ic_memory"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_neutral_text" />
+
+                <Button
+                    android:id="@+id/btnTriggerJank"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/jank"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
+                    app:icon="@drawable/ic_jank"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/debug_btn_neutral_text" />
+
+                <Button
+                    android:id="@+id/btnClear"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:layout_margin="4dp"
+                    android:text="@string/clear"
+                    android:textSize="11sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:icon="@drawable/ic_clear"
+                    app:iconSize="16dp"
+                    app:iconPadding="2dp"
+                    app:iconTint="@color/text_secondary" />
+            </LinearLayout>
+
+            <!-- Row 3: Diagnostics -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="4dp">
+
+                <Button
+                    android:id="@+id/btnRingBuffer"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_margin="4dp"
+                    android:text="Buffer Diagnostics"
+                    android:textSize="11sp"
+                    android:textColor="@color/debug_btn_neutral_text"
+                    android:paddingHorizontal="4dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="@color/debug_btn_neutral_bg"
+                    app:iconSize="16dp"
+                    app:iconPadding="4dp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

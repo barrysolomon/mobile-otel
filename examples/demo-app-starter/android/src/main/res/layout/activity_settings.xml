@@ -1,0 +1,485 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="@color/background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Telemetry Settings"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Configure telemetry collection, triggers, and device metrics"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Data Collection Settings Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/surface_variant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="📊 Data Collection"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Logs Collection -->
+                <CheckBox
+                    android:id="@+id/checkboxCollectLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Collect Logs"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Application log events (errors, warnings, info)"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Traces Collection -->
+                <CheckBox
+                    android:id="@+id/checkboxCollectTraces"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Collect Traces"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Distributed tracing spans for request flows"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Metrics Collection -->
+                <CheckBox
+                    android:id="@+id/checkboxCollectMetrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Collect Metrics"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Counters, histograms, and gauges"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Device Metrics Collection -->
+                <CheckBox
+                    android:id="@+id/checkboxCollectDeviceMetrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Collect Device Metrics"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Device health signals (memory, battery, CPU, network)"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Device Metrics Categories Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/surface_variant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="📱 Device Metric Categories"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select which device metrics to capture on triggers"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Memory Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricMemory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Memory (heap, available, used)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Battery Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricBattery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Battery (level, charging, temperature)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- CPU Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricCpu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="CPU (usage, cores, frequency)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Network Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricNetwork"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Network (type, signal, bytes sent/received)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Storage Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricStorage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Storage (available, used, cache size)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Thermal Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricThermal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Thermal (device temperature, throttling)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="false"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Display Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricDisplay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Display (FPS, frame drops, orientation)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- System Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricSystem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="System (OS version, API level, uptime)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- App Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="App (version, foreground time, threads)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Location Metrics -->
+                <CheckBox
+                    android:id="@+id/checkboxMetricLocation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Location (region, timezone - privacy safe)"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="false" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Trigger Settings Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/surface_variant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="⚡ Automatic Export Triggers"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Events that automatically trigger telemetry export"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- UI Freeze Trigger -->
+                <CheckBox
+                    android:id="@+id/checkboxUiFreeze"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="UI Freeze Detection"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Flush telemetry when UI freeze (>2s) is detected"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Crash Trigger -->
+                <CheckBox
+                    android:id="@+id/checkboxCrash"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Crash Recovery"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Send buffered telemetry on app restart after crash"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Network Error Trigger -->
+                <CheckBox
+                    android:id="@+id/checkboxNetworkError"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Network Error Escalation"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Flush when HTTP 5xx errors occur"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Low Memory Trigger -->
+                <CheckBox
+                    android:id="@+id/checkboxLowMemory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Low Memory Detection"
+                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Flush telemetry when low memory condition is detected"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="0dp" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Info Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/surface_variant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ℹ️ Note"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/info"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="These settings can be configured in the bundled JSON or updated remotely via Control Plane. Changes take effect immediately without app restart."
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:lineSpacingExtra="2dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginBottom="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClose"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:text="Close"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:layout_marginEnd="8dp"
+                app:strokeColor="@color/primary"
+                app:strokeWidth="2dp"
+                app:cornerRadius="14dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnResetDefaults"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:text="Reset"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                android:layout_marginEnd="8dp"
+                app:backgroundTint="@color/button_regular"
+                app:cornerRadius="14dp"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSave"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:text="Save"
+                android:textSize="14sp"
+                android:textAllCaps="false"
+                app:backgroundTint="@color/button_control"
+                app:cornerRadius="14dp"
+                style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>

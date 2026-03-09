@@ -196,12 +196,14 @@ cd control-plane-ui && npm install && npm run build
 
 ### Getting Started
 
+- **[docs/guides/TUTORIAL_ANDROID_QUICKSTART.md](docs/guides/TUTORIAL_ANDROID_QUICKSTART.md)** — Step-by-step tutorial: add OTel to the Schedulr starter app and see live data in Dash0 in ~20 minutes. Uses `examples/demo-app-starter/`.
 - **[docs/QUICK_START.md](docs/QUICK_START.md)** — SDK integration in 5 minutes, or run the full demo end-to-end
 - **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Complete Android integration guide (auto-instrumentation, network, privacy, flush control)
 
 ### SDK Reference
 
 - **[docs/AUTO_INSTRUMENTATION.md](docs/AUTO_INSTRUMENTATION.md)** — All auto-captured signals, trace hierarchy, privacy controls
+- **[docs/BUFFERING_AND_TAIL_SAMPLING.md](docs/BUFFERING_AND_TAIL_SAMPLING.md)** — Two-tier ring buffer internals, tail sampling via export policies, flushWindow mechanics, crash recovery
 - **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID modes explained
 - **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage, predictions)
 - **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policy DSL

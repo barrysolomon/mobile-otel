@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/surface_variant">
+
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/primary_dark"
+        app:titleTextColor="@color/text_on_primary"
+        app:subtitleTextColor="@color/text_on_primary"
+        app:title="OpenTelemetry"
+        app:subtitle="SDK Configuration"
+        app:navigationIconTint="@color/text_on_primary" />
+
+    <!-- Tagline strip -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/primary"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Buffering · Sampling · Capture · Vitals · Errors"
+            android:textColor="@color/text_on_primary"
+            android:textSize="11sp"
+            android:alpha="0.85" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v2"
+            android:textColor="@color/text_on_primary"
+            android:textSize="10sp"
+            android:background="#33FFFFFF"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:alpha="0.8" />
+    </LinearLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- ─── SERVICE IDENTITY ─────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SERVICE IDENTITY" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="Service Name" android:layout_marginBottom="12dp">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editServiceName"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="text" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="Service Version">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editServiceVersion"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="text" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── BUFFERING ────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="BUFFERING" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="12dp">
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="RAM events" android:layout_marginEnd="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editRamBufferSize"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Disk (MB)" android:layout_marginStart="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editDiskBufferMb"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="Disk TTL (hours)">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editDiskBufferTtl"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="number" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── EXPORT ────────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="EXPORT" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Export Mode" android:textSize="11sp" android:textColor="@color/text_secondary" android:layout_marginBottom="6dp" />
+                        <RadioGroup
+                            android:id="@+id/radioGroupExportMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginBottom="4dp">
+                            <RadioButton android:id="@+id/radioConditional" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Conditional" android:textSize="13sp" />
+                            <RadioButton android:id="@+id/radioContinuous" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Continuous" android:textSize="13sp" />
+                            <RadioButton android:id="@+id/radioHybrid" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Hybrid" android:textSize="13sp" />
+                        </RadioGroup>
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Conditional = on trigger · Continuous = scheduled · Hybrid = both" android:textSize="10sp" android:textColor="@color/text_secondary" android:textStyle="italic" android:layout_marginBottom="12dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="12dp">
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Trace interval (s)" android:layout_marginEnd="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editTraceExportInterval"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Metric interval (s)" android:layout_marginStart="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editMetricExportInterval"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Timeout (s)" android:layout_marginEnd="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editExportTimeout"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Max retries" android:layout_marginStart="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editMaxRetries"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── SAMPLING ──────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="TRACE SAMPLING" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                        <TextView android:id="@+id/tvSamplingRateValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="65%" android:textColor="@color/text_on_primary" android:textSize="16sp" android:textStyle="bold" android:background="#33FFFFFF" android:paddingHorizontal="10dp" android:paddingVertical="2dp" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/sliderSamplingRate"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:valueFrom="0"
+                            android:valueTo="100"
+                            android:stepSize="1"
+                            android:layout_marginBottom="4dp" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Applied immediately — no restart needed. page.* spans always sample at 100%." android:textSize="11sp" android:textStyle="italic" android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── PREDICTION INTERVAL ────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="PREDICTIVE EXPORT" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                        <TextView android:id="@+id/tvPredictionIntervalValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="30s" android:textColor="@color/text_on_primary" android:textSize="16sp" android:textStyle="bold" android:background="#33FFFFFF" android:paddingHorizontal="10dp" android:paddingVertical="2dp" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/sliderPredictionInterval"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:valueFrom="10"
+                            android:valueTo="120"
+                            android:stepSize="10"
+                            android:layout_marginBottom="4dp" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Crash/network-loss risk check interval. Lower = more responsive, higher = better battery. Requires restart." android:textSize="11sp" android:textStyle="italic" android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── ADVANCED ─────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ADVANCED" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxAttachContext"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Attach context attributes (geo / device)"
+                            android:layout_marginBottom="12dp" />
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="Build channel (e.g. debug, beta, prod)">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editBuildChannel"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="text" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── SESSION ───────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SESSION" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxSessionEnabled"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Enable session tracking"
+                            android:layout_marginBottom="12dp" />
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="Inactivity timeout (minutes)"
+                            android:layout_marginBottom="12dp">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editSessionTimeoutMinutes"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="number" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxFlushOnSessionEnd"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Flush telemetry on session end"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxPersistSession"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Persist session across restarts" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── VITALS ────────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="VITALS &amp; ANR" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxVitalsEnabled"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Enable vitals monitoring"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxDetectJank"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Detect jank / dropped frames"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxMonitorThermal"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Monitor thermal state"
+                            android:layout_marginBottom="12dp" />
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:hint="ANR risk threshold (ms)">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editAnrThresholdMs"
+                                android:layout_width="match_parent" android:layout_height="wrap_content"
+                                android:inputType="number" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── NETWORK ───────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="NETWORK" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxScrubUrls"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Scrub query parameters from URLs"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxScrubHeaders"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Scrub sensitive request headers"
+                            android:layout_marginBottom="12dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="HTTP error threshold" android:layout_marginEnd="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editHttpErrorThreshold"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Min duration (ms)" android:layout_marginStart="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editMinRequestDurationMs"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── ERROR HANDLING ────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/error" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ERROR HANDLING" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxCaptureUncaughtExceptions"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Capture uncaught exceptions"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxCaptureCoroutineExceptions"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Capture coroutine exceptions"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxScrubStackTraces"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Scrub PII from stack traces"
+                            android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxFlushOnError"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Flush buffer immediately on error"
+                            android:layout_marginBottom="12dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Rate limit (/ min)" android:layout_marginEnd="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editErrorRateLimit"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                                android:hint="Dedupe window (min)" android:layout_marginStart="6dp">
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/editErrorDedupeWindowMinutes"
+                                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                                    android:inputType="number" />
+                            </com.google.android.material.textfield.TextInputLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── WHAT TO CAPTURE ───────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="WHAT TO CAPTURE" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureLifecycle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Lifecycle" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureScreens" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Screens" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureTaps" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Taps" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureLongPress" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Long Press" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureSwipe" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Swipe" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureScroll" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Scroll" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureTextInput" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Text Input" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/checkboxCaptureBackPress" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Back Press" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/checkboxCaptureFragments"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Fragment Transitions" android:textSize="13sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ─── ACTIONS ───────────────────────────────────────── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnResetDefaults"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Reset"
+                    android:layout_marginEnd="8dp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSave"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:text="Save &amp; Apply"
+                    app:backgroundTint="@color/primary" />
+            </LinearLayout>
+
+            <!-- hidden close button kept for compat -->
+            <Button android:id="@+id/btnClose" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Requires app restart to fully take effect (except Trace Sampling)"
+                android:textSize="11sp"
+                android:textStyle="italic"
+                android:textColor="@color/text_secondary"
+                android:gravity="center"
+                android:layout_marginBottom="8dp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>
