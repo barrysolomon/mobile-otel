@@ -500,18 +500,16 @@ func createTestLogRecord(body string, attributes map[string]interface{}) plog.Lo
 	lr.Body().SetStr(body)
 	lr.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 
-	if attributes != nil {
-		for k, v := range attributes {
-			switch val := v.(type) {
-			case string:
-				lr.Attributes().PutStr(k, val)
-			case int64:
-				lr.Attributes().PutInt(k, val)
-			case float64:
-				lr.Attributes().PutDouble(k, val)
-			case bool:
-				lr.Attributes().PutBool(k, val)
-			}
+	for k, v := range attributes {
+		switch val := v.(type) {
+		case string:
+			lr.Attributes().PutStr(k, val)
+		case int64:
+			lr.Attributes().PutInt(k, val)
+		case float64:
+			lr.Attributes().PutDouble(k, val)
+		case bool:
+			lr.Attributes().PutBool(k, val)
 		}
 	}
 
