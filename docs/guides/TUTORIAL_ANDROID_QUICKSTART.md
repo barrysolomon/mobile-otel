@@ -116,7 +116,7 @@ class DemoApp : Application() {
             MobileConfig(
                 serviceName = "schedulr-android",
                 serviceVersion = "1.0.0",
-                collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com:4317",
+                collectorEndpoint = "https://your-collector-endpoint:4317",
                 headers = mapOf(
                     "Authorization" to "Bearer YOUR_DASH0_TOKEN",
                     "Dash0-Dataset" to "default"
@@ -302,7 +302,7 @@ The 100% force-sample on `page.*` ensures the trace waterfall is always intact.
 
 **No data in Dash0 after 60 seconds:**
 - Verify your auth token is correct (Settings → Auth Tokens in Dash0)
-- Check the endpoint URL: `https://ingress.us-west-2.aws.dash0.com:4317` (adjust region if needed)
+- Check the endpoint URL: `https://your-collector-endpoint:4317` (adjust region if needed)
 - Check logcat for `MobileLogRecordProcessor` or `RetryableExporter` errors
 
 **Data appears but traces are flat (no waterfall):**

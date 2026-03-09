@@ -204,7 +204,7 @@ log "Suites       : ${BOLD}${SUITES[*]:-<from --class/--test>}${NC}"
 log "Repeat       : ${BOLD}${REPEAT}x${NC}"
 log "Dry run      : ${BOLD}${DRY_RUN}${NC}"
 echo ""
-log "Telemetry → Dash0 endpoint: https://ingress.us-west-2.aws.dash0.com:4317 (dataset: otel-mobile)"
+log "Telemetry → Dash0 endpoint: https://your-collector-endpoint:4317 (dataset: otel-mobile)"
 echo ""
 
 # ── Dry run: build only ────────────────────────────────────────────────────────

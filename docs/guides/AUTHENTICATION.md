@@ -26,8 +26,8 @@ All authentication is configured via the Settings UI - no code changes required.
 
 From your Dash0 account:
 1. Navigate to Settings → API Tokens
-2. Create or copy your authentication token (e.g., `YOUR_AUTH_TOKEN_HERE`)
-3. Note your dataset name (e.g., `pi5-k3s`)
+2. Create or copy your authentication token (e.g., `YOUR_AUTH_TOKEN`)
+3. Note your dataset name (e.g., `your-dataset-name`)
 
 ### Step 2: Configure the App
 
@@ -39,16 +39,16 @@ From your Dash0 account:
 ```
 Protocol: Select "gRPC (port 4317)"
 Collector Endpoint: https://your-collector-endpoint:4317
-Authorization Token: YOUR_AUTH_TOKEN_HERE
-Dataset: pi5-k3s
+Authorization Token: YOUR_AUTH_TOKEN
+Dataset: your-dataset-name
 ```
 
 **For HTTP**:
 ```
 Protocol: Select "HTTP (path /v1/signal)"
 Collector Endpoint: https://your-collector-endpoint/v1/logs
-Authorization Token: YOUR_AUTH_TOKEN_HERE
-Dataset: pi5-k3s
+Authorization Token: YOUR_AUTH_TOKEN
+Dataset: your-dataset-name
 ```
 
 **Note**: The Authorization Token is the same for both protocols. The app automatically formats it correctly (as gRPC metadata or HTTP header) based on your protocol selection.
@@ -233,8 +233,8 @@ val certificatePinner = CertificatePinner.Builder()
 ```bash
 curl https://your-collector-endpoint/v1/traces \
   -X POST \
-  -H "Authorization: Bearer YOUR_AUTH_TOKEN_HERE" \
-  -H "Dash0-Dataset: pi5-k3s" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Dash0-Dataset: your-dataset-name" \
   -H "Content-Type: application/json" \
   -d '{"resourceSpans":[]}'
 ```
@@ -281,7 +281,7 @@ Dataset: (leave empty)
 
 ```
 Endpoint: https://your-collector-endpoint:4317
-Authorization Token: YOUR_AUTH_TOKEN_HERE
+Authorization Token: YOUR_AUTH_TOKEN
 Dataset: production-mobile
 ```
 
@@ -289,7 +289,7 @@ Dataset: production-mobile
 
 ```
 Endpoint: https://your-collector-endpoint/v1/logs
-Authorization Token: YOUR_AUTH_TOKEN_HERE
+Authorization Token: YOUR_AUTH_TOKEN
 Dataset: production-mobile
 ```
 

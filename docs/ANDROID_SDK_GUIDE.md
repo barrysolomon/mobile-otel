@@ -70,7 +70,7 @@ The demo app reads its collector endpoint and auth token from `examples/demo-app
 cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
    examples/demo-app/android/src/debug/assets/otel-config.json
 # Then edit otel-config.json and replace the placeholder values:
-#   YOUR_COLLECTOR_ENDPOINT → e.g. ingress.us-west-2.aws.dash0.com:4317
+#   YOUR_COLLECTOR_ENDPOINT → e.g. your-collector-endpoint:4317
 #   YOUR_AUTH_TOKEN         → your Dash0 (or other backend) auth token
 #   YOUR_DATASET_NAME       → e.g. otel-mobile
 ```

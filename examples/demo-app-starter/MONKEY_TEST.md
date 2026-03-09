@@ -287,7 +287,7 @@ adb logcat | grep -E "Action #|Clicking|Crash|ANR|Export"
 adb logcat | grep -i "flush"
 
 # Expected:
-# ✅ Export successful to https://ingress.us-west-2.aws.dash0.com:4317/v1/logs
+# ✅ Export successful to https://your-collector-endpoint:4317/v1/logs
 ```
 
 ### In Dash0/Jaeger

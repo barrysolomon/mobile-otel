@@ -175,7 +175,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Local collector (emulator):\nhttp://10.0.2.2:4317\n\nDash0 (gRPC):\nhttps://ingress.us-west-2.aws.dash0.com:4317\n\nDash0 (HTTP):\nhttps://ingress.us-west-2.aws.dash0.com/v1/logs\n\nCustom collector:\nhttps://otel-collector.example.com:4317"
+            android:text="Local collector (emulator):\nhttp://10.0.2.2:4317\n\nDash0 (gRPC):\nhttps://your-collector-endpoint:4317\n\nDash0 (HTTP):\nhttps://your-collector-endpoint/v1/logs\n\nCustom collector:\nhttps://otel-collector.example.com:4317"
             android:textSize="14sp"
             android:lineSpacingMultiplier="1.3"
             android:fontFamily="monospace"

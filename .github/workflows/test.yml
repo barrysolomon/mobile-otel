@@ -97,7 +97,7 @@ jobs:
           mkdir -p examples/demo-app/android/src/debug/assets
           cat > examples/demo-app/android/src/debug/assets/otel-config.json <<EOF
           {
-            "endpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
+            "endpoint": "https://your-collector-endpoint:4317",
             "auth_token": "${DASH0_AUTH_TOKEN}",
             "dataset": "otel-mobile",
             "service_name": "schedulr-android-ci",

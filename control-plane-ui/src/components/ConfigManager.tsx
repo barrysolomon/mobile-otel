@@ -38,7 +38,7 @@ export const ConfigManager: React.FC = () => {
   const [deviceGroups, setDeviceGroups] = useState<any[]>([]);
   const [otelConfig, setOtelConfig] = useState<OTELConfig>({
     protocol: 'grpc',
-    collector_endpoint: 'https://ingress.us-west-2.aws.dash0.com:4317',
+    collector_endpoint: 'https://your-collector-endpoint:4317',
     auth_token: '',
     dataset: '',
     ram_buffer_size: 5000,
@@ -223,8 +223,8 @@ export const ConfigManager: React.FC = () => {
 
   const getEndpointPlaceholder = () => {
     return otelConfig.protocol === 'grpc'
-      ? 'https://ingress.us-west-2.aws.dash0.com:4317'
-      : 'https://ingress.us-west-2.aws.dash0.com/v1/logs';
+      ? 'https://your-collector-endpoint:4317'
+      : 'https://your-collector-endpoint/v1/logs';
   };
 
   return (

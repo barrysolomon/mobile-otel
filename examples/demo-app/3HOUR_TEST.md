@@ -156,7 +156,7 @@ I OTELDemoApp: Logged api.call event
 I OTELDemoApp: Logged page.navigation event
 D LoggingHttpExporter: === EXPORT ATTEMPT ===
 D LoggingHttpExporter: Log count: 45
-I LoggingHttpExporter: ✅ Export successful to https://ingress.us-west-2.aws.dash0.com:4317/v1/logs (45 logs)
+I LoggingHttpExporter: ✅ Export successful to https://your-collector-endpoint:4317/v1/logs (45 logs)
 I OTELDemoApp: Logged app.background event
 I OTELDemoApp: Logged app.foreground event
 I MobileLogger: Flushed 23 events to collector
@@ -274,7 +274,7 @@ adb shell dumpsys meminfo io.opentelemetry.android.demo
 
 ```bash
 # Check network connectivity
-adb shell ping -c 3 ingress.us-west-2.aws.dash0.com
+adb shell ping -c 3 your-collector-endpoint
 
 # Check export logs
 adb logcat | grep LoggingHttpExporter

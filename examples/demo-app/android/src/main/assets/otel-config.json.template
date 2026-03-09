@@ -4,7 +4,7 @@
   "collectorEndpoint": "https://your-collector-endpoint:4317",
   "exportMode": "CONDITIONAL",
   "headers": {
-    "Authorization": "Bearer YOUR_AUTH_TOKEN_HERE",
+    "Authorization": "Bearer YOUR_AUTH_TOKEN",
     "Dash0-Dataset": "otel-mobile"
   },
 

@@ -234,6 +234,9 @@ examples/demo-app/android/src/release/assets/otel-config.json
 examples/demo-app/android/src/debug/assets/otel-config.json
 # Main config contains real credentials — use otel-config.json.template instead
 examples/demo-app/android/src/main/assets/otel-config.json
+examples/demo-app-starter/android/src/debug/assets/otel-config.json
+examples/demo-app-starter/android/src/main/assets/otel-config.json
+examples/demo-app-starter/android/src/release/assets/otel-config.json
 
 # Keep templates only
 !**/*.template
