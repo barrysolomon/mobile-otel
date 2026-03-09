@@ -152,6 +152,36 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Retrieves all events that share a specific OTel trace ID.
+     *
+     * @param traceId The OTel trace ID hex string to match (32 hex chars)
+     * @return List of log records belonging to that trace
+     */
+    suspend fun getEventsByTraceId(traceId: String): List<LogRecordData> = withContext(Dispatchers.IO) {
+        try {
+            logDao.getEventsByTraceId(traceId).mapNotNull { it.toLogRecordData() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving events by traceId", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Deletes all events that share a specific OTel trace ID.
+     *
+     * @param traceId The OTel trace ID hex string to match (32 hex chars)
+     * @return Number of deleted rows
+     */
+    suspend fun deleteEventsByTraceId(traceId: String): Int = withContext(Dispatchers.IO) {
+        try {
+            logDao.deleteEventsByTraceId(traceId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting events by traceId", e)
+            0
+        }
+    }
+
+    /**
      * Gets the current number of events in disk buffer.
      */
     fun getEventCount(): Int {
@@ -290,7 +320,7 @@ class DiskLogBuffer private constructor(
 /**
  * Room entity for persisting log records.
  */
-@Entity(tableName = "log_records", indices = [Index("timestampMs")])
+@Entity(tableName = "log_records", indices = [Index("timestampMs"), Index("traceId")])
 data class LogRecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestampMs: Long,
@@ -299,7 +329,10 @@ data class LogRecordEntity(
     val attributes: String, // JSON-encoded attributes
     val resource: String,   // JSON-encoded resource attributes
     val instrumentationScopeName: String?,
-    val instrumentationScopeVersion: String?
+    val instrumentationScopeVersion: String?,
+    val traceId: String? = null,        // OTel traceId hex string (32 chars), null if invalid
+    val spanId: String? = null,         // OTel spanId hex string (16 chars), null if invalid
+    val attributeTypes: String? = null  // JSON: {"http.duration_ms":"long","event.name":"string"}
 )
 
 /**
@@ -330,12 +363,18 @@ interface LogDao {
 
     @Query("DELETE FROM log_records")
     suspend fun deleteAll(): Int
+
+    @Query("SELECT * FROM log_records WHERE traceId = :traceId ORDER BY timestampMs ASC")
+    suspend fun getEventsByTraceId(traceId: String): List<LogRecordEntity>
+
+    @Query("DELETE FROM log_records WHERE traceId = :traceId")
+    suspend fun deleteEventsByTraceId(traceId: String): Int
 }
 
 /**
  * Room database definition.
  */
-@Database(entities = [LogRecordEntity::class], version = 1, exportSchema = false)
+@Database(entities = [LogRecordEntity::class], version = 2, exportSchema = false)
 abstract class LogDatabase : RoomDatabase() {
     abstract fun logDao(): LogDao
 }
@@ -344,12 +383,18 @@ abstract class LogDatabase : RoomDatabase() {
  * Extension to convert LogRecordData to LogRecordEntity.
  */
 private fun LogRecordData.toEntity(): LogRecordEntity {
-    // Serialize attributes to JSON
-    val attributesJson = JSONObject().apply {
-        attributes.forEach { key, value ->
-            put(key.key, value.toString())
-        }
-    }.toString()
+    // Extract trace/span context
+    val spanCtx = spanContext
+    val traceId = if (spanCtx.isValid) spanCtx.traceId else null
+    val spanId = if (spanCtx.isValid) spanCtx.spanId else null
+
+    // Serialize attributes to JSON (values as strings) and record original types
+    val attributesJson = JSONObject()
+    val attributeTypesJson = JSONObject()
+    attributes.forEach { key, value ->
+        attributesJson.put(key.key, value.toString())
+        attributeTypesJson.put(key.key, key.type.name.lowercase())
+    }
 
     // Serialize resource attributes to JSON
     val resourceJson = JSONObject().apply {
@@ -362,10 +407,13 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
         timestampMs = timestampEpochNanos / 1_000_000,
         severityText = severity?.name,
         body = body.asString(),
-        attributes = attributesJson,
+        attributes = attributesJson.toString(),
         resource = resourceJson,
         instrumentationScopeName = instrumentationScopeInfo.name,
-        instrumentationScopeVersion = instrumentationScopeInfo.version
+        instrumentationScopeVersion = instrumentationScopeInfo.version,
+        traceId = traceId,
+        spanId = spanId,
+        attributeTypes = attributeTypesJson.toString().takeIf { it != "{}" }
     )
 }
 
@@ -377,12 +425,18 @@ private fun LogRecordEntity.toLogRecordData(): LogRecordData? {
     val entitySeverityText = severityText // Renamed to avoid shadowing
 
     return try {
-        // Parse attributes from JSON
+        // Parse attributes from JSON, reconstructing original typed AttributeKeys
         val attributesBuilder = Attributes.builder()
         val attributesJson = JSONObject(attributes)
+        val typesJson = attributeTypes?.let { JSONObject(it) } ?: JSONObject()
         attributesJson.keys().forEach { key ->
-            val value = attributesJson.getString(key)
-            attributesBuilder.put(AttributeKey.stringKey(key), value)
+            val valueStr = attributesJson.getString(key)
+            when (typesJson.optString(key, "string")) {
+                "long" -> attributesBuilder.put(AttributeKey.longKey(key), valueStr.toLongOrNull() ?: 0L)
+                "double" -> attributesBuilder.put(AttributeKey.doubleKey(key), valueStr.toDoubleOrNull() ?: 0.0)
+                "boolean" -> attributesBuilder.put(AttributeKey.booleanKey(key), valueStr.toBooleanStrictOrNull() ?: false)
+                else -> attributesBuilder.put(AttributeKey.stringKey(key), valueStr)
+            }
         }
 
         // Parse resource attributes from JSON
@@ -412,14 +466,27 @@ private fun LogRecordEntity.toLogRecordData(): LogRecordData? {
         // Create Resource
         val resourceData = Resource.create(resourceAttributesBuilder.build())
 
+        // Reconstruct SpanContext from persisted traceId/spanId if available
+        val spanCtx = if (traceId != null && spanId != null) {
+            io.opentelemetry.api.trace.SpanContext.create(
+                traceId,
+                spanId,
+                io.opentelemetry.api.trace.TraceFlags.getSampled(),
+                io.opentelemetry.api.trace.TraceState.getDefault()
+            )
+        } else {
+            io.opentelemetry.api.trace.SpanContext.getInvalid()
+        }
+
+        val builtAttributes = attributesBuilder.build()
+
         // Create LogRecordData using builder pattern
         object : LogRecordData {
             override fun getResource(): Resource = resourceData
             override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = scopeInfo
             override fun getTimestampEpochNanos(): Long = timestampMs * 1_000_000
             override fun getObservedTimestampEpochNanos(): Long = timestampMs * 1_000_000
-            override fun getSpanContext(): io.opentelemetry.api.trace.SpanContext =
-                io.opentelemetry.api.trace.SpanContext.getInvalid()
+            override fun getSpanContext(): io.opentelemetry.api.trace.SpanContext = spanCtx
 
             override fun getSeverity(): Severity? = parsedSeverity
             override fun getSeverityText(): String? = entitySeverityText
@@ -435,8 +502,8 @@ private fun LogRecordEntity.toLogRecordData(): LogRecordData? {
                 }
             }
 
-            override fun getAttributes(): Attributes = attributesBuilder.build()
-            override fun getTotalAttributeCount(): Int = attributesBuilder.build().size()
+            override fun getAttributes(): Attributes = builtAttributes
+            override fun getTotalAttributeCount(): Int = builtAttributes.size()
         }
     } catch (e: Exception) {
         Log.e("DiskLogBuffer", "Error reconstructing LogRecordData from entity", e)

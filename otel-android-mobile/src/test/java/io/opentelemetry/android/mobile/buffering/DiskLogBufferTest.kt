@@ -10,7 +10,15 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.opentelemetry.android.mobile.testing.TestUtils
 import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
+import io.opentelemetry.sdk.common.InstrumentationScopeInfo
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import io.opentelemetry.sdk.resources.Resource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -138,8 +146,8 @@ class DiskLogBufferTest {
         assertEquals(1, retrieved.size)
 
         val retrievedLog = retrieved[0]
-        // Attributes are stored as strings via JSON serialization in DiskLogBuffer
-        assertNotNull(retrievedLog.attributes.get(AttributeKey.stringKey("duration_ms")))
+        // Typed attributes round-trip correctly: duration_ms is a Long
+        assertNotNull(retrievedLog.attributes.get(AttributeKey.longKey("duration_ms")))
     }
 
     // ==================== Time Window Tests ====================
@@ -443,5 +451,137 @@ class DiskLogBufferTest {
         assertEquals(first.size, second.size)
         assertEquals(second.size, third.size)
         assertEquals(10, first.size)
+    }
+
+    // ==================== TraceId / SpanId Round-trip Tests ====================
+
+    /**
+     * Helper that creates a LogRecordData with a valid SpanContext so traceId/spanId
+     * are persisted to the database.
+     */
+    private fun createLogRecordWithTrace(
+        body: String,
+        traceId: String,
+        spanId: String,
+        timestampMs: Long = System.currentTimeMillis()
+    ): LogRecordData {
+        val spanCtx = SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault())
+        return object : LogRecordData {
+            override fun getResource(): Resource = Resource.empty()
+            override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = InstrumentationScopeInfo.empty()
+            override fun getTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getObservedTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getSpanContext(): SpanContext = spanCtx
+            override fun getSeverity(): Severity = Severity.INFO
+            override fun getSeverityText(): String = "INFO"
+            override fun getBody(): Body = object : Body {
+                override fun asString() = body
+                override fun getType() = Body.Type.STRING
+            }
+            override fun getAttributes(): Attributes = Attributes.empty()
+            override fun getTotalAttributeCount(): Int = 0
+        }
+    }
+
+    @Test
+    fun `traceId and spanId round-trip through SQLite`() = runBlocking {
+        val traceId = "0af7651916cd43dd8448eb211c80319c"
+        val spanId = "b7ad6b7169203331"
+        val record = createLogRecordWithTrace("trace.event", traceId, spanId)
+
+        diskBuffer.persistEvents(listOf(record))
+        Thread.sleep(200)
+
+        val retrieved = diskBuffer.getAllEvents()
+        assertEquals(1, retrieved.size)
+        val retrievedSpanCtx = retrieved[0].spanContext
+        assertTrue("SpanContext should be valid after round-trip", retrievedSpanCtx.isValid)
+        assertEquals(traceId, retrievedSpanCtx.traceId)
+        assertEquals(spanId, retrievedSpanCtx.spanId)
+    }
+
+    @Test
+    fun `getEventsByTraceId returns only matching events`() = runBlocking {
+        val traceId1 = "aaaabbbbccccdddd1111222233334444"
+        val traceId2 = "eeeeffffaaaabbbb5555666677778888"
+        val span1 = "1111222233334444"
+        val span2 = "5555666677778888"
+
+        diskBuffer.persistEvents(listOf(
+            createLogRecordWithTrace("trace1.event1", traceId1, span1),
+            createLogRecordWithTrace("trace1.event2", traceId1, span1),
+            createLogRecordWithTrace("trace2.event1", traceId2, span2)
+        ))
+        Thread.sleep(200)
+
+        val trace1Events = diskBuffer.getEventsByTraceId(traceId1)
+        assertEquals(2, trace1Events.size)
+        assertTrue(trace1Events.all { it.spanContext.traceId == traceId1 })
+
+        val trace2Events = diskBuffer.getEventsByTraceId(traceId2)
+        assertEquals(1, trace2Events.size)
+        assertEquals("trace2.event1", trace2Events[0].body.asString())
+    }
+
+    @Test
+    fun `deleteEventsByTraceId removes only matching events`() = runBlocking {
+        val traceId1 = "aaaabbbbccccdddd1111222233334444"
+        val traceId2 = "eeeeffffaaaabbbb5555666677778888"
+        val span1 = "1111222233334444"
+        val span2 = "5555666677778888"
+
+        diskBuffer.persistEvents(listOf(
+            createLogRecordWithTrace("trace1.event1", traceId1, span1),
+            createLogRecordWithTrace("trace1.event2", traceId1, span1),
+            createLogRecordWithTrace("trace2.event1", traceId2, span2)
+        ))
+        Thread.sleep(200)
+
+        val deleted = diskBuffer.deleteEventsByTraceId(traceId1)
+        assertEquals(2, deleted)
+
+        val remaining = diskBuffer.getAllEvents()
+        assertEquals(1, remaining.size)
+        assertEquals("trace2.event1", remaining[0].body.asString())
+    }
+
+    @Test
+    fun `typed attribute round-trip - Long value stored as long retrieved as LongAttribute`() = runBlocking {
+        val log = TestUtils.createTestLogRecord(
+            body = "typed.event",
+            attributes = mapOf(
+                "http.duration_ms" to 1234L,
+                "event.name" to "page_load",
+                "cache.hit" to true,
+                "response.ratio" to 0.95
+            )
+        )
+
+        diskBuffer.persistEvents(listOf(log))
+        Thread.sleep(200)
+
+        val retrieved = diskBuffer.getAllEvents()
+        assertEquals(1, retrieved.size)
+
+        val attrs = retrieved[0].attributes
+
+        // Long attribute should come back as a Long, not a String
+        val longVal = attrs.get(AttributeKey.longKey("http.duration_ms"))
+        assertNotNull("Long attribute should be retrievable as longKey", longVal)
+        assertEquals(1234L, longVal)
+
+        // String attribute should round-trip correctly
+        val strVal = attrs.get(AttributeKey.stringKey("event.name"))
+        assertEquals("page_load", strVal)
+
+        // Boolean attribute should round-trip correctly
+        val boolVal = attrs.get(AttributeKey.booleanKey("cache.hit"))
+        assertNotNull("Boolean attribute should be retrievable as booleanKey", boolVal)
+        assertEquals(true, boolVal)
+
+        // Double attribute should round-trip correctly
+        val dblVal = attrs.get(AttributeKey.doubleKey("response.ratio"))
+        assertNotNull("Double attribute should be retrievable as doubleKey", dblVal)
+        assertEquals(0.95, dblVal!!, 0.001)
     }
 }

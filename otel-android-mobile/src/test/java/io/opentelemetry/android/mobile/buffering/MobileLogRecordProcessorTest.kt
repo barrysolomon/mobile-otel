@@ -13,9 +13,17 @@ import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.testing.MockLogRecordExporter
 import io.opentelemetry.android.mobile.testing.TestUtils
 import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.context.Context as OtelContext
+import io.opentelemetry.sdk.common.InstrumentationScopeInfo
 import io.opentelemetry.sdk.logs.ReadWriteLogRecord
+import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import io.opentelemetry.sdk.resources.Resource
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -461,5 +469,153 @@ class MobileLogRecordProcessorTest {
 
         val stats = processor.getBufferStats()
         assertEquals(1, stats.ramBufferSize)
+    }
+
+    // ==================== Tail Sampling Improvement Tests ====================
+
+    /**
+     * Creates a LogRecordData with a valid SpanContext for use in trace-flush tests.
+     */
+    private fun createLogRecordWithTrace(
+        body: String,
+        traceId: String,
+        spanId: String,
+        timestampMs: Long = System.currentTimeMillis()
+    ): LogRecordData {
+        val spanCtx = SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault())
+        return object : LogRecordData {
+            override fun getResource(): Resource = Resource.empty()
+            override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = InstrumentationScopeInfo.empty()
+            override fun getTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getObservedTimestampEpochNanos(): Long = timestampMs * 1_000_000
+            override fun getSpanContext(): SpanContext = spanCtx
+            override fun getSeverity(): Severity = Severity.INFO
+            override fun getSeverityText(): String = "INFO"
+            override fun getBody(): Body = object : Body {
+                override fun asString() = body
+                override fun getType() = Body.Type.STRING
+            }
+            override fun getAttributes(): Attributes = Attributes.empty()
+            override fun getTotalAttributeCount(): Int = 0
+        }
+    }
+
+    @Test
+    fun `flushByTraceId exports only events with matching traceId`() {
+        val traceId1 = "aaaabbbbccccdddd1111222233334444"
+        val traceId2 = "eeeeffffaaaabbbb5555666677778888"
+        val span1 = "1111222233334444"
+        val span2 = "5555666677778888"
+
+        // Emit 3 events for trace1 and 2 events for trace2
+        repeat(3) { i ->
+            processor.onEmit(OtelContext.root(), wrap(createLogRecordWithTrace("trace1.event.$i", traceId1, span1)))
+        }
+        repeat(2) { i ->
+            processor.onEmit(OtelContext.root(), wrap(createLogRecordWithTrace("trace2.event.$i", traceId2, span2)))
+        }
+
+        val result = processor.flushByTraceId(traceId1)
+        assertTrue(result.isSuccess)
+        Thread.sleep(200)
+
+        // Should have exported exactly the 3 trace1 events
+        assertEquals(3, mockExporter.exportedLogs.size)
+        assertTrue(mockExporter.exportedLogs.all { it.spanContext.traceId == traceId1 })
+    }
+
+    @Test
+    fun `flushByTraceId falls back to flushWindow when trace has at most 1 event`() {
+        val now = System.currentTimeMillis()
+        val traceId = "aaaabbbbccccdddd1111222233334444"
+        val span = "1111222233334444"
+
+        // Emit several events WITHOUT a trace context (they should be in the window)
+        repeat(5) { i ->
+            processor.onEmit(OtelContext.root(), wrap(
+                TestUtils.createTestLogRecordWithTimestamp("normal.event.$i", now - (30 * 1000))
+            ))
+        }
+        // Emit only 1 event with the target traceId (below fallback threshold)
+        processor.onEmit(OtelContext.root(), wrap(
+            createLogRecordWithTrace("single.trace.event", traceId, span, now - (10 * 1000))
+        ))
+
+        // flushByTraceId should fall back to flushWindow because only 1 event matches the trace
+        val result = processor.flushByTraceId(traceId, fallbackWindowMinutes = 2)
+        assertTrue(result.isSuccess)
+        Thread.sleep(200)
+
+        // All 6 events are within last 2 minutes, so flushWindow(2) exports them all
+        assertEquals(6, mockExporter.exportedLogs.size)
+    }
+
+    @Test
+    fun `flush deduplication suppresses second flushWindow within cooldown on overlapping range`() {
+        val now = System.currentTimeMillis()
+
+        // Emit events within the last 2 minutes
+        repeat(5) { i ->
+            processor.onEmit(OtelContext.root(), wrap(
+                TestUtils.createTestLogRecordWithTimestamp("dedup.event.$i", now - (60 * 1000))
+            ))
+        }
+
+        // First flush — should succeed and export 5 events
+        val first = processor.flushWindow(2)
+        assertTrue(first.isSuccess)
+        Thread.sleep(100)
+        val firstCount = mockExporter.exportedLogs.size
+
+        // Second flush within 10s cooldown on the same overlapping range — should be suppressed
+        val second = processor.flushWindow(2)
+        assertTrue("Suppressed flush should succeed (no-op)", second.isSuccess)
+        Thread.sleep(100)
+
+        // Exported count should not have grown
+        assertEquals("Second flush within cooldown should be suppressed", firstCount, mockExporter.exportedLogs.size)
+    }
+
+    @Test
+    fun `flushWindow extends backward to include screen start when screen started before window`() {
+        val now = System.currentTimeMillis()
+
+        // Emit a screen.view event 4 minutes ago
+        val screenViewTime = now - (4 * 60 * 1000)
+        val screenViewLog = object : LogRecordData {
+            override fun getResource(): Resource = Resource.empty()
+            override fun getInstrumentationScopeInfo(): InstrumentationScopeInfo = InstrumentationScopeInfo.empty()
+            override fun getTimestampEpochNanos(): Long = screenViewTime * 1_000_000
+            override fun getObservedTimestampEpochNanos(): Long = screenViewTime * 1_000_000
+            override fun getSpanContext(): SpanContext = SpanContext.getInvalid()
+            override fun getSeverity(): Severity = Severity.INFO
+            override fun getSeverityText(): String = "INFO"
+            override fun getBody(): Body = object : Body {
+                override fun asString() = "screen.view"
+                override fun getType() = Body.Type.STRING
+            }
+            override fun getAttributes(): Attributes = Attributes.empty()
+            override fun getTotalAttributeCount(): Int = 0
+        }
+        processor.onEmit(OtelContext.root(), wrap(screenViewLog))
+
+        // Emit a regular event 1 minute ago (within a 2-minute window)
+        processor.onEmit(OtelContext.root(), wrap(
+            TestUtils.createTestLogRecordWithTimestamp("in.window.event", now - (60 * 1000))
+        ))
+
+        // flushWindow(2) with no screen extension would only get the 1-minute-ago event.
+        // With screen-start extension it should also capture the screen.view from 4 min ago.
+        val result = processor.flushWindow(2)
+        assertTrue(result.isSuccess)
+        Thread.sleep(200)
+
+        // Both the screen.view (4 min ago) and the in-window event should have been exported
+        assertEquals(
+            "Screen start extension should include screen.view event from 4 minutes ago",
+            2,
+            mockExporter.exportedLogs.size
+        )
+        assertTrue(mockExporter.exportedLogs.any { it.body.asString() == "screen.view" })
     }
 }

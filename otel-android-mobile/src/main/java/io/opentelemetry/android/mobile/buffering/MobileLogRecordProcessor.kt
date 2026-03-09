@@ -24,6 +24,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -104,6 +105,16 @@ class MobileLogRecordProcessor private constructor(
 
     // Shutdown flag
     private val isShutdown = AtomicBoolean(false)
+
+    // Tracks the start timestamp of the most recently seen screen view event.
+    // Used to extend flushWindow() backward to capture the full current-screen context.
+    private val currentScreenStartMs = AtomicLong(0L)
+
+    // Tracks the last successfully flushed window to prevent re-exporting the same
+    // data when overlapping policies fire within a short window.
+    private val lastFlushEndMs = AtomicLong(0L)
+    private val lastFlushStartMs = AtomicLong(0L)
+    private val flushCooldownMs = 10_000L  // 10 seconds
 
     // Ring buffer OTel gauges — held to prevent GC of async callbacks
     private val ramEventsGauge = meter.gaugeBuilder("buffer.ram.events")
@@ -201,6 +212,11 @@ class MobileLogRecordProcessor private constructor(
         ramBuffer.offer(logRecordData)
         val count = ramBufferCount.incrementAndGet()
 
+        // Track screen start for window extension
+        if (logRecordData.body.asString() == "screen.view") {
+            currentScreenStartMs.set(logRecordData.timestampEpochNanos / 1_000_000)
+        }
+
         // Check if we need to overflow to disk
         if (count > ramBufferSize) {
             executor.submit { overflowToDisk() }
@@ -227,19 +243,21 @@ class MobileLogRecordProcessor private constructor(
         try {
             val matchResult = policyEvaluator.evaluate(logRecord)
             if (matchResult != null) {
-                Log.i(TAG, "Policy matched: ${matchResult.policyId}, capturing device metrics and flushing window")
+                Log.i(TAG, "Policy matched: ${matchResult.policyId}")
 
-                // Capture device metrics on policy match for debugging context
-                val captureReason = when (matchResult.policyId) {
+                deviceMetricsCollector.captureMetrics(when (matchResult.policyId) {
                     "ui-freeze-detector" -> CaptureReason.WORKFLOW_TRIGGER
                     "crash-recovery" -> CaptureReason.CRASH
                     "app-foreground" -> CaptureReason.APP_START
                     else -> CaptureReason.WORKFLOW_TRIGGER
-                }
-                deviceMetricsCollector.captureMetrics(captureReason)
+                })
 
-                // Flush the time window
-                flushWindow(matchResult.flushWindowMinutes)
+                // Prefer trace-correlated flush for precise context; fall back to window
+                if (logRecord.spanContext.isValid) {
+                    flushByTraceId(logRecord.spanContext.traceId, matchResult.flushWindowMinutes)
+                } else {
+                    flushWindow(matchResult.flushWindowMinutes)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating policies", e)
@@ -268,7 +286,34 @@ class MobileLogRecordProcessor private constructor(
         }
 
         try {
-            val windowStartMs = System.currentTimeMillis() - (windowMinutes * 60 * 1000L)
+            val now = System.currentTimeMillis()
+            val lastEnd = lastFlushEndMs.get()
+            val lastStart = lastFlushStartMs.get()
+
+            // Suppress if the proposed window overlaps with the last flush AND the last
+            // flush completed within the cooldown period.
+            if (lastEnd > 0 && (now - lastEnd) < flushCooldownMs) {
+                val proposedStart = now - (windowMinutes * 60 * 1000L)
+                if (proposedStart < lastEnd && now > lastStart) {
+                    Log.d(TAG, "flushWindow: suppressed duplicate flush — last flush ended ${now - lastEnd}ms ago and window overlaps")
+                    return CompletableResultCode.ofSuccess()
+                }
+            }
+
+            val requestedWindowStartMs = now - (windowMinutes * 60 * 1000L)
+
+            // Extend backward to capture the full current page span, capped at 30 minutes
+            val maxExtensionMs = now - (30 * 60 * 1000L)
+            val screenStartMs = currentScreenStartMs.get()
+            val windowStartMs = if (screenStartMs > 0 && screenStartMs < requestedWindowStartMs) {
+                maxOf(screenStartMs, maxExtensionMs)
+            } else {
+                requestedWindowStartMs
+            }
+
+            if (windowStartMs < requestedWindowStartMs) {
+                Log.d(TAG, "flushWindow: extending window from ${windowMinutes}min to include screen start at ${requestedWindowStartMs - windowStartMs}ms earlier")
+            }
 
             // Snapshot the RAM events to export. Track by object identity so we can remove
             // exactly these objects later without touching events that arrived during export.
@@ -294,6 +339,9 @@ class MobileLogRecordProcessor private constructor(
             result.whenComplete {
                 if (result.isSuccess) {
                     try {
+                        lastFlushStartMs.set(windowStartMs)
+                        lastFlushEndMs.set(System.currentTimeMillis())
+
                         // Remove ONLY the exact exported objects from the RAM buffer.
                         // Using an identity set avoids the clear()+addAll() race condition
                         // that would silently drop events written during the export window.
@@ -327,6 +375,70 @@ class MobileLogRecordProcessor private constructor(
 
         } catch (e: Exception) {
             Log.e(TAG, "Error flushing window", e)
+            return CompletableResultCode.ofFailure()
+        }
+    }
+
+    /**
+     * Flushes all events matching a specific trace ID from both buffer tiers.
+     *
+     * This is more precise than flushWindow() when the triggering event has a valid
+     * SpanContext — it exports exactly the events belonging to the same trace, not
+     * everything in a time window.
+     *
+     * Falls back to flushWindow(fallbackWindowMinutes) if traceId is blank or if the
+     * trace has ≤1 event (too few to be useful without time-window context).
+     *
+     * @param traceId The OTel trace ID hex string to match (32 hex chars)
+     * @param fallbackWindowMinutes Window to use if no trace-matched events found
+     */
+    fun flushByTraceId(traceId: String, fallbackWindowMinutes: Int = 5): CompletableResultCode {
+        if (isShutdown.get()) return CompletableResultCode.ofFailure()
+        if (traceId.isBlank()) return flushWindow(fallbackWindowMinutes)
+
+        try {
+            // Collect RAM events matching traceId
+            val ramEventsToFlush = mutableListOf<LogRecordData>()
+            ramBuffer.forEach { logRecord ->
+                if (logRecord.spanContext.isValid && logRecord.spanContext.traceId == traceId) {
+                    ramEventsToFlush.add(logRecord)
+                }
+            }
+
+            val diskEventsToFlush = runBlocking { diskBuffer.getEventsByTraceId(traceId) }
+            val allEventsToFlush = ramEventsToFlush + diskEventsToFlush
+
+            // If trace-matched events are very few (e.g., only the trigger event itself),
+            // fall back to time-window for fuller context
+            if (allEventsToFlush.size <= 1) {
+                Log.d(TAG, "flushByTraceId: only ${allEventsToFlush.size} events for trace $traceId, falling back to flushWindow($fallbackWindowMinutes)")
+                return flushWindow(fallbackWindowMinutes)
+            }
+
+            Log.i(TAG, "flushByTraceId: exporting ${allEventsToFlush.size} events for trace $traceId (${ramEventsToFlush.size} RAM + ${diskEventsToFlush.size} disk)")
+
+            val results = allEventsToFlush.chunked(100).map { batch -> exporter.export(batch) }
+            val result = CompletableResultCode.ofAll(results)
+
+            result.whenComplete {
+                if (result.isSuccess) {
+                    val exportedIds = Collections.newSetFromMap(IdentityHashMap<LogRecordData, Boolean>())
+                    exportedIds.addAll(ramEventsToFlush)
+                    var removed = 0
+                    ramBuffer.removeIf { event ->
+                        exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                    }
+                    ramBufferCount.addAndGet(-removed)
+                    runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
+                    Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
+                } else {
+                    Log.w(TAG, "flushByTraceId failed, keeping events in buffer for retry")
+                }
+            }
+
+            return result
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in flushByTraceId", e)
             return CompletableResultCode.ofFailure()
         }
     }
