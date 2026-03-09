@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [33]
+        api-level: [30]
         target: [default]
 
     steps:
@@ -114,7 +114,7 @@ jobs:
           profile: pixel_4
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd examples/demo-app && ./gradlew :android:connectedDebugAndroidTest
 
       - name: Upload test results
