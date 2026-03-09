@@ -144,7 +144,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:inputType="textPassword"
-                                android:hint="auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh" />
+                                android:hint="auth_your_token_here" />
                         </com.google.android.material.textfield.TextInputLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
