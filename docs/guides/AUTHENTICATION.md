@@ -26,7 +26,7 @@ All authentication is configured via the Settings UI - no code changes required.
 
 From your Dash0 account:
 1. Navigate to Settings → API Tokens
-2. Create or copy your authentication token (e.g., `auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh`)
+2. Create or copy your authentication token (e.g., `YOUR_AUTH_TOKEN_HERE`)
 3. Note your dataset name (e.g., `pi5-k3s`)
 
 ### Step 2: Configure the App
@@ -38,16 +38,16 @@ From your Dash0 account:
 **For gRPC (recommended)**:
 ```
 Protocol: Select "gRPC (port 4317)"
-Collector Endpoint: https://ingress.us-west-2.aws.dash0.com:4317
-Authorization Token: auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+Collector Endpoint: https://your-collector-endpoint:4317
+Authorization Token: YOUR_AUTH_TOKEN_HERE
 Dataset: pi5-k3s
 ```
 
 **For HTTP**:
 ```
 Protocol: Select "HTTP (path /v1/signal)"
-Collector Endpoint: https://ingress.us-west-2.aws.dash0.com/v1/logs
-Authorization Token: auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+Collector Endpoint: https://your-collector-endpoint/v1/logs
+Authorization Token: YOUR_AUTH_TOKEN_HERE
 Dataset: pi5-k3s
 ```
 
@@ -231,9 +231,9 @@ val certificatePinner = CertificatePinner.Builder()
 **Solutions**:
 - Test with curl to verify credentials:
 ```bash
-curl https://ingress.us-west-2.aws.dash0.com/v1/traces \
+curl https://your-collector-endpoint/v1/traces \
   -X POST \
-  -H "Authorization: Bearer auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN_HERE" \
   -H "Dash0-Dataset: pi5-k3s" \
   -H "Content-Type: application/json" \
   -d '{"resourceSpans":[]}'
@@ -280,16 +280,16 @@ Dataset: (leave empty)
 ### Dash0 US West 2
 
 ```
-Endpoint: https://ingress.us-west-2.aws.dash0.com:4317
-Authorization Token: auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+Endpoint: https://your-collector-endpoint:4317
+Authorization Token: YOUR_AUTH_TOKEN_HERE
 Dataset: production-mobile
 ```
 
 ### Dash0 HTTP (Logs only)
 
 ```
-Endpoint: https://ingress.us-west-2.aws.dash0.com/v1/logs
-Authorization Token: auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+Endpoint: https://your-collector-endpoint/v1/logs
+Authorization Token: YOUR_AUTH_TOKEN_HERE
 Dataset: production-mobile
 ```
 
@@ -355,7 +355,7 @@ Headers are passed to the OTLP exporter and included in all requests.
 ### Test with curl (Dash0 Logs)
 
 ```bash
-curl https://ingress.us-west-2.aws.dash0.com/v1/logs \
+curl https://your-collector-endpoint/v1/logs \
   -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Dash0-Dataset: YOUR_DATASET" \
@@ -383,7 +383,7 @@ Expected response: `200 OK` or `202 Accepted`
 ### Test with curl (Dash0 Traces)
 
 ```bash
-curl https://ingress.us-west-2.aws.dash0.com/v1/traces \
+curl https://your-collector-endpoint/v1/traces \
   -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Dash0-Dataset: YOUR_DATASET" \

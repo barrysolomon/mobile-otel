@@ -21,7 +21,7 @@ nano local.properties
 dash0.authToken=PASTE_YOUR_DASH0_TOKEN_HERE
 
 # With your actual token:
-dash0.authToken=auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+dash0.authToken=YOUR_AUTH_TOKEN_HERE
 ```
 
 **Your current configuration:**
@@ -73,7 +73,7 @@ cat src/release/assets/otel-config.json | grep "ingress.dash0.com"
 ### Token format is wrong
 ```bash
 # Valid token format:
-auth_fI0GuunaYYbw8u0n0iyFAC4Wt2FMf0jh
+YOUR_AUTH_TOKEN_HERE
 
 # Invalid formats:
 Bearer auth_...  ❌ (remove "Bearer")
