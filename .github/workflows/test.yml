@@ -145,6 +145,14 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :otel-android-mobile:lint
 
+      - name: Run ktlint
+        working-directory: examples/demo-app
+        run: ./gradlew ktlintCheck
+
+      - name: Run ktlint (demo-app-starter)
+        working-directory: examples/demo-app-starter
+        run: ./gradlew ktlintCheck
+
       - name: Upload lint results
         if: always()
         uses: actions/upload-artifact@v4
