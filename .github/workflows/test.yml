@@ -68,7 +68,7 @@ jobs:
 
   android-integration-tests:
     name: Android Integration Tests (API ${{ matrix.api-level }}, ${{ matrix.target }})
-    runs-on: macos-latest
+    runs-on: macos-13  # Intel runner - x86_64 emulators work reliably here
     # Only run on pushes to main to keep PR feedback fast
     if: github.ref == 'refs/heads/main'
     strategy:
