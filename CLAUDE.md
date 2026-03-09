@@ -193,7 +193,6 @@ cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
 
 ## Known Issues & Gotchas
 
-- **`DiskLogBuffer.toLogRecordData()` is a stub** — Throws `NotImplementedError`. Disk events cannot be deserialized for export yet. This means `flushWindow()` only returns RAM-buffered events.
 - **Kotlin `/*` in strings/comments** — The Kotlin compiler misparses `/*` inside string literals in doc comments as a block-comment start. In `PolicyEvaluator.kt`, timezone wildcards like `"America/*"` must be written as `"America/wildcard"` or similar. Symptom: `Unclosed comment` error at end of file.
 - **`factory_test.go` missing** — The collector processor has no factory tests yet (P0 backlog item).
 - **`go.sum` untracked** — `collector-processor/mobilepolicyprocessor/go.sum` is not committed. Run `go mod tidy` before building the processor for the first time.
