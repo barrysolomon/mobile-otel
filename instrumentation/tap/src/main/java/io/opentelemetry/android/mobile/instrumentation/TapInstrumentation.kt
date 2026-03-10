@@ -63,8 +63,7 @@ class TapInstrumentation(
 
     private fun handleActionUp(event: MotionEvent) {
         val context = ctx
-        val log = logger
-        if (context == null || log == null) {
+        if (context == null) {
             // Uninstalled between ACTION_DOWN and ACTION_UP; reset stale coords.
             downX = 0f
             downY = 0f
@@ -89,13 +88,7 @@ class TapInstrumentation(
                     sessionProvider.getCurrentScreenName()?.let { put(MobileSemconv.SCREEN_NAME, it) }
                 }
                 .build()
-            log.logRecordBuilder()
-                .setBody(MobileSemconv.UI_SWIPE)
-                .setSeverity(Severity.INFO)
-                .setAllAttributes(attrs)
-                .emit()
-            if (config.addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_SWIPE)
-                ?.startSpan()?.apply { setAllAttributes(attrs); end() }
+            emitUiTelemetry(MobileSemconv.UI_SWIPE, attrs, context)
             downX = 0f
             downY = 0f
             return
@@ -116,12 +109,26 @@ class TapInstrumentation(
             }
             .build()
 
-        log.logRecordBuilder()
-            .setBody(eventName)
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(attrs)
-            .emit()
-        if (config.addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(eventName)
-            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
+        emitUiTelemetry(eventName, attrs, context)
+    }
+
+    private fun emitUiTelemetry(
+        name: String,
+        attrs: io.opentelemetry.api.common.Attributes,
+        context: InstrumentationContext
+    ) {
+        val log = logger ?: return
+        when (context.uiTelemetryMode) {
+            UiTelemetryMode.EVENTS -> log.logRecordBuilder()
+                .setBody(name).setSeverity(Severity.INFO).setAllAttributes(attrs).emit()
+            UiTelemetryMode.SPANS  -> context.tracer(instrumentationName)
+                .spanBuilder(name).startSpan().apply { setAllAttributes(attrs); end() }
+            UiTelemetryMode.BOTH   -> {
+                log.logRecordBuilder()
+                    .setBody(name).setSeverity(Severity.INFO).setAllAttributes(attrs).emit()
+                context.tracer(instrumentationName)
+                    .spanBuilder(name).startSpan().apply { setAllAttributes(attrs); end() }
+            }
+        }
     }
 }

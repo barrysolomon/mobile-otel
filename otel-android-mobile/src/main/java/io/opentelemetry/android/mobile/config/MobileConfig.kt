@@ -14,6 +14,35 @@ import io.opentelemetry.android.mobile.network.NetworkConfig
 import io.opentelemetry.android.mobile.errors.ErrorConfig
 
 /**
+ * Controls whether UI interactions (taps, scrolls, back presses, screen views, text input)
+ * are emitted as OTel log events, as nested child spans under the current page span, or both.
+ *
+ * - [EVENTS] — OTel log records only. Each interaction appears in the Logs section of your
+ *   backend. This is the default and matches the classic mobile event model.
+ * - [SPANS] — Zero-duration child spans only. Each interaction is nested under the active
+ *   `page.<ScreenName>` span, making the full user journey visible in the Traces section.
+ * - [BOTH] — Emit both a log record and a child span for every interaction.
+ *
+ * Usage:
+ * ```kotlin
+ * val config = MobileConfig(
+ *     serviceName = "my-app",
+ *     serviceVersion = "1.0.0",
+ *     collectorEndpoint = "https://collector.example.com:4317",
+ *     uiTelemetryMode = UiTelemetryMode.SPANS
+ * )
+ * ```
+ */
+enum class UiTelemetryMode {
+    /** Emit UI interactions as OTel log records (default). */
+    EVENTS,
+    /** Emit UI interactions as zero-duration child spans nested under the page span. */
+    SPANS,
+    /** Emit UI interactions as both log records and child spans. */
+    BOTH
+}
+
+/**
  * Export mode for telemetry data.
  */
 enum class ExportMode {
@@ -80,12 +109,14 @@ enum class ExportMode {
  * @property vitalsConfig Configuration for mobile vitals monitoring (default: all vitals enabled with standard thresholds)
  * @property networkConfig Configuration for network instrumentation (default: privacy-first with trace propagation)
  * @property errorConfig Configuration for error instrumentation (default: all error handlers with deduplication)
+ * @property uiTelemetryMode Controls whether UI interactions emit log events, child spans, or both (default: EVENTS)
  */
 data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,
     val collectorEndpoint: String,
     val exportMode: ExportMode = ExportMode.CONDITIONAL,
+    val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
     val traceExportIntervalSeconds: Long = 30,
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
@@ -139,6 +170,7 @@ data class MobileConfig(
         private var serviceVersion: String? = null
         private var collectorEndpoint: String? = null
         private var exportMode: ExportMode = ExportMode.CONDITIONAL
+        private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
         private var traceExportIntervalSeconds: Long = 30
         private var metricExportIntervalSeconds: Long = 60
         private var predictionIntervalSeconds: Long = 30
@@ -163,6 +195,7 @@ data class MobileConfig(
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
         fun setCollectorEndpoint(collectorEndpoint: String) = apply { this.collectorEndpoint = collectorEndpoint }
         fun setExportMode(exportMode: ExportMode) = apply { this.exportMode = exportMode }
+        fun setUiTelemetryMode(mode: UiTelemetryMode) = apply { this.uiTelemetryMode = mode }
         fun setTraceExportIntervalSeconds(interval: Long) = apply { this.traceExportIntervalSeconds = interval }
         fun setMetricExportIntervalSeconds(interval: Long) = apply { this.metricExportIntervalSeconds = interval }
         fun setPredictionIntervalSeconds(seconds: Long) = apply { this.predictionIntervalSeconds = seconds }
@@ -189,6 +222,7 @@ data class MobileConfig(
                 serviceVersion = requireNotNull(serviceVersion) { "serviceVersion is required" },
                 collectorEndpoint = requireNotNull(collectorEndpoint) { "collectorEndpoint is required" },
                 exportMode = exportMode,
+                uiTelemetryMode = uiTelemetryMode,
                 traceExportIntervalSeconds = traceExportIntervalSeconds,
                 metricExportIntervalSeconds = metricExportIntervalSeconds,
                 predictionIntervalSeconds = predictionIntervalSeconds,

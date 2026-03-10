@@ -15,10 +15,7 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import java.util.WeakHashMap
 
-class TextInputInstrumentation(
-    /** Also attach text-input events as span events on [Span.current()]. Default true. */
-    private val addSpanEvents: Boolean = true
-) : MobileInstrumentation, WindowEventListener {
+class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.text_input"
 
@@ -70,7 +67,7 @@ class TextInputInstrumentation(
         attached[observer] = listener
     }
 
-    /** Visible for testing — emit a text-input log record for the given field. */
+    /** Visible for testing — emit a text-input telemetry record for the given field. */
     internal fun emitTextInput(resourceId: String?, enabled: Boolean) {
         val log = logger ?: return
         val context = ctx ?: return
@@ -84,13 +81,22 @@ class TextInputInstrumentation(
                 put(io.opentelemetry.api.common.AttributeKey.booleanKey("ui.element.enabled"), enabled)
             }
             .build()
-        log.logRecordBuilder()
-            .setBody(MobileSemconv.UI_TEXT_INPUT)
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(attrs)
-            .emit()
-        if (addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_TEXT_INPUT)
-            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
+        when (context.uiTelemetryMode) {
+            UiTelemetryMode.EVENTS -> log.logRecordBuilder()
+                .setBody(MobileSemconv.UI_TEXT_INPUT).setSeverity(Severity.INFO)
+                .setAllAttributes(attrs).emit()
+            UiTelemetryMode.SPANS  -> context.tracer(instrumentationName)
+                .spanBuilder(MobileSemconv.UI_TEXT_INPUT).startSpan()
+                .apply { setAllAttributes(attrs); end() }
+            UiTelemetryMode.BOTH   -> {
+                log.logRecordBuilder()
+                    .setBody(MobileSemconv.UI_TEXT_INPUT).setSeverity(Severity.INFO)
+                    .setAllAttributes(attrs).emit()
+                context.tracer(instrumentationName)
+                    .spanBuilder(MobileSemconv.UI_TEXT_INPUT).startSpan()
+                    .apply { setAllAttributes(attrs); end() }
+            }
+        }
     }
 
     private fun onFieldLeft(field: EditText) {

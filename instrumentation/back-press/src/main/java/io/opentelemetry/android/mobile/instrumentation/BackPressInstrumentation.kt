@@ -10,10 +10,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 
-class BackPressInstrumentation(
-    /** Also attach back-press events as span events on [Span.current()]. Default true. */
-    private val addSpanEvents: Boolean = true
-) : MobileInstrumentation, WindowEventListener {
+class BackPressInstrumentation : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.back_press"
 
@@ -49,12 +46,21 @@ class BackPressInstrumentation(
             }
             .build()
 
-        log.logRecordBuilder()
-            .setBody(MobileSemconv.UI_BACK_PRESS)
-            .setSeverity(Severity.INFO)
-            .setAllAttributes(attrs)
-            .emit()
-        if (addSpanEvents) ctx?.tracer(instrumentationName)?.spanBuilder(MobileSemconv.UI_BACK_PRESS)
-            ?.startSpan()?.apply { setAllAttributes(attrs); end() }
+        when (context.uiTelemetryMode) {
+            UiTelemetryMode.EVENTS -> log.logRecordBuilder()
+                .setBody(MobileSemconv.UI_BACK_PRESS).setSeverity(Severity.INFO)
+                .setAllAttributes(attrs).emit()
+            UiTelemetryMode.SPANS  -> context.tracer(instrumentationName)
+                .spanBuilder(MobileSemconv.UI_BACK_PRESS).startSpan()
+                .apply { setAllAttributes(attrs); end() }
+            UiTelemetryMode.BOTH   -> {
+                log.logRecordBuilder()
+                    .setBody(MobileSemconv.UI_BACK_PRESS).setSeverity(Severity.INFO)
+                    .setAllAttributes(attrs).emit()
+                context.tracer(instrumentationName)
+                    .spanBuilder(MobileSemconv.UI_BACK_PRESS).startSpan()
+                    .apply { setAllAttributes(attrs); end() }
+            }
+        }
     }
 }

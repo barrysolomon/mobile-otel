@@ -7,6 +7,8 @@ package io.opentelemetry.android.mobile
 
 import android.app.Application
 import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
+import io.opentelemetry.android.mobile.config.UiTelemetryMode as ConfigUiTelemetryMode
+import io.opentelemetry.android.mobile.instrumentation.UiTelemetryMode as CoreUiTelemetryMode
 import io.opentelemetry.android.mobile.autocapture.RecoveryTracker
 import io.opentelemetry.android.mobile.autocapture.SessionTracker
 import io.opentelemetry.android.mobile.config.MobileConfig
@@ -53,6 +55,12 @@ import io.opentelemetry.api.trace.Tracer
  * }
  * ```
  */
+private fun ConfigUiTelemetryMode.toCore(): CoreUiTelemetryMode = when (this) {
+    ConfigUiTelemetryMode.EVENTS -> CoreUiTelemetryMode.EVENTS
+    ConfigUiTelemetryMode.SPANS  -> CoreUiTelemetryMode.SPANS
+    ConfigUiTelemetryMode.BOTH   -> CoreUiTelemetryMode.BOTH
+}
+
 object OTelMobile {
     @Volatile
     private var provider: MobileLoggerProvider? = null
@@ -83,6 +91,7 @@ object OTelMobile {
                 rt.start()
 
                 handle = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
+                    .setUiTelemetryMode(config.uiTelemetryMode.toCore())
                     .addInstrumentation(LifecycleInstrumentation())
                     .addInstrumentation(ScreenViewInstrumentation())
                     .addInstrumentation(TapInstrumentation())

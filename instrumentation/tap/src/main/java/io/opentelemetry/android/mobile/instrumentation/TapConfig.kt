@@ -7,8 +7,10 @@ package io.opentelemetry.android.mobile.instrumentation
 /**
  * Configuration for [TapInstrumentation].
  *
- * **Currently active fields:** [captureTaps], [captureLongPress], [captureSwipe],
- * [swipeMinDistancePx].
+ * **Currently active fields:** [captureTaps], [captureLongPress], [captureSwipe], [swipeMinDistancePx].
+ *
+ * The output mode (log events vs. nested spans) is controlled globally via
+ * [io.opentelemetry.android.mobile.config.UiTelemetryMode] in [io.opentelemetry.android.mobile.config.MobileConfig].
  *
  * **Reserved for future implementation:** [coalesceWindowMs], [bucketGridSize],
  * [maxHitTestDepth], [privacyMode], [hashSalt], [allowlistedResourceIds],
@@ -19,9 +21,6 @@ data class TapConfig(
     val captureTaps: Boolean = true,
     val captureLongPress: Boolean = true,
     val captureSwipe: Boolean = true,
-    /** Also attach tap/swipe/long-press as span events on [Span.current()], making them
-     *  visible in the trace waterfall alongside the page span. Default true. */
-    val addSpanEvents: Boolean = true,
     val swipeMinDistancePx: Float = 50f,
     val coalesceWindowMs: Long = 800,
     val bucketGridSize: Int = 3,

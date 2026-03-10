@@ -38,10 +38,16 @@ class OTelMobileBuilder(
 ) {
     private val instrumentations = mutableListOf<MobileInstrumentation>()
     private var sessionProvider: MobileSessionProvider = DefaultMobileSessionProvider()
+    private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
 
     /** Replaces the default [DefaultMobileSessionProvider] with a custom implementation. */
     fun setSessionProvider(provider: MobileSessionProvider): OTelMobileBuilder = apply {
         sessionProvider = provider
+    }
+
+    /** Sets the UI telemetry mode — controls whether interactions emit log events, spans, or both. */
+    fun setUiTelemetryMode(mode: UiTelemetryMode): OTelMobileBuilder = apply {
+        uiTelemetryMode = mode
     }
 
     /** Registers [instrumentation] to be installed when [build] is called. */
@@ -68,7 +74,7 @@ class OTelMobileBuilder(
         val hub = WindowEventHub()
         val hubInstaller = WindowEventHubInstaller(application, hub)
         hubInstaller.install()
-        val context = InstrumentationContext(openTelemetry, sessionProvider, hub, application)
+        val context = InstrumentationContext(openTelemetry, sessionProvider, hub, application, uiTelemetryMode)
         val registry = InstrumentationRegistry(instrumentations.toList())
         registry.install(application, context)
         return OTelMobileHandle(openTelemetry, registry, hubInstaller)

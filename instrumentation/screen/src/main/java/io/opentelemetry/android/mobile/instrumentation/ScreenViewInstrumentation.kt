@@ -37,6 +37,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
     private var sessionProvider: MobileSessionProvider? = null
     private var application: Application? = null
     private var callbacks: Application.ActivityLifecycleCallbacks? = null
+    private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
 
     // Page span — started on fragment/activity resume, ended on pause
     private var pageSpan: Span? = null
@@ -48,6 +49,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         this.logger = context.logger(instrumentationName)
         this.tracer = context.tracer(instrumentationName)
         this.sessionProvider = context.sessionProvider
+        this.uiTelemetryMode = context.uiTelemetryMode
 
         val cb = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
@@ -78,6 +80,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         logger = null
         tracer = null
         sessionProvider = null
+        uiTelemetryMode = UiTelemetryMode.EVENTS
         fragmentManagers.clear()
     }
 
@@ -101,17 +104,19 @@ class ScreenViewInstrumentation : MobileInstrumentation {
 
     private fun logScreenView(screenName: String) {
         val sp = sessionProvider ?: return
-        logger?.logRecordBuilder()
-            ?.setBody(MobileSemconv.UI_SCREEN_VIEW)
-            ?.setSeverity(Severity.INFO)
-            ?.setAllAttributes(
-                Attributes.builder()
-                    .put(MobileSemconv.SESSION_ID, sp.getSessionId())
-                    .put(MobileSemconv.VIEW_ID, sp.getViewId())
-                    .put(MobileSemconv.SCREEN_NAME, screenName)
-                    .build()
-            )
-            ?.emit()
+        val attrs = Attributes.builder()
+            .put(MobileSemconv.SESSION_ID, sp.getSessionId())
+            .put(MobileSemconv.VIEW_ID, sp.getViewId())
+            .put(MobileSemconv.SCREEN_NAME, screenName)
+            .build()
+        // In SPANS mode the page span itself is the screen-view signal; skip the log.
+        if (uiTelemetryMode != UiTelemetryMode.SPANS) {
+            logger?.logRecordBuilder()
+                ?.setBody(MobileSemconv.UI_SCREEN_VIEW)
+                ?.setSeverity(Severity.INFO)
+                ?.setAllAttributes(attrs)
+                ?.emit()
+        }
     }
 
     private fun startScreenRenderSpan(activity: Activity, screenName: String) {

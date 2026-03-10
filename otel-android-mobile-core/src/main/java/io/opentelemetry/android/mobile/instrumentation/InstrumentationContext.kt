@@ -10,6 +10,19 @@ import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.Tracer
 
 /**
+ * Controls how UI interactions are emitted. Duplicated here from [MobileConfig] so the
+ * core module stays independent of the top-level config module.
+ */
+enum class UiTelemetryMode {
+    /** Emit UI interactions as OTel log records (default). */
+    EVENTS,
+    /** Emit UI interactions as zero-duration child spans nested under the page span. */
+    SPANS,
+    /** Emit UI interactions as both log records and child spans. */
+    BOTH
+}
+
+/**
  * Shared context passed to every [MobileInstrumentation] at install time.
  *
  * Carries all shared state required by instrumentation modules:
@@ -25,7 +38,8 @@ class InstrumentationContext(
     val openTelemetry: OpenTelemetry,
     val sessionProvider: MobileSessionProvider,
     val windowEventHub: WindowEventHub,
-    val application: Application
+    val application: Application,
+    val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
 ) {
     /** Convenience accessor — returns a [Tracer] scoped to [scope]. */
     fun tracer(scope: String): Tracer = openTelemetry.getTracer(scope)
