@@ -38,6 +38,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlin {
@@ -122,11 +123,15 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
 
+    // Core library desugaring required by io.opentelemetry.android:instrumentation
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     // Testing - Android Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
