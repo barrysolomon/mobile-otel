@@ -1,5 +1,52 @@
+// Copyright 2025 The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 plugins {
     id("com.android.application")
+}
+
+fun loadEnv(): Map<String, String> {
+    val envFile = File(projectDir.parent, ".env")
+    if (!envFile.exists()) return emptyMap()
+    return envFile.readLines()
+        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .mapNotNull { line ->
+            val idx = line.indexOf('=')
+            if (idx < 0) null else line.substring(0, idx).trim() to line.substring(idx + 1).trim()
+        }
+        .toMap()
+}
+
+tasks.register("generateOtelConfig") {
+    val templateFile = file("src/debug/assets/otel-config.json.template")
+    val outputFile = file("src/debug/assets/otel-config.json")
+    val envFile = File(projectDir.parent, ".env")
+
+    inputs.file(templateFile).optional()
+    inputs.file(envFile).optional()
+    outputs.file(outputFile)
+
+    doLast {
+        if (!templateFile.exists()) {
+            logger.warn("otel-config.json.template not found — skipping generation")
+            return@doLast
+        }
+        val env = loadEnv()
+        var content = templateFile.readText()
+        env["DASH0_ENDPOINT"]?.let { content = content.replace("https://YOUR_COLLECTOR_ENDPOINT:4317", it) }
+        env["DASH0_AUTH_TOKEN"]?.let { content = content.replace("YOUR_AUTH_TOKEN", it) }
+        env["DASH0_DATASET"]?.let { content = content.replace("YOUR_DATASET_NAME", it) }
+        outputFile.writeText(content)
+        if (env.isEmpty()) {
+            logger.warn("No .env file found — copy .env.template to .env and fill in your values.")
+        } else {
+            logger.lifecycle("Generated otel-config.json from .env (endpoint: ${env["DASH0_ENDPOINT"] ?: "not set"})")
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.named("mergeDebugAssets") { dependsOn("generateOtelConfig") }
 }
 
 android {
