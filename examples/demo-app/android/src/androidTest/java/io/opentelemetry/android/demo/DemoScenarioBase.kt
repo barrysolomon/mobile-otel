@@ -30,8 +30,11 @@ abstract class DemoScenarioBase {
     @Before
     fun setUp() {
         pace = DemoScenarioPace()
-        // Pre-grant location permissions to avoid system permission dialog in getDirections
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        // Dismiss any stray system dialogs (ANR, crash, permission) left by previous tests
+        uiAutomation.executeShellCommand("am force-stop io.opentelemetry.android.demo").close()
+        Thread.sleep(500)
+        // Pre-grant location permissions to avoid system permission dialog in getDirections
         uiAutomation.executeShellCommand(
             "pm grant io.opentelemetry.android.demo android.permission.ACCESS_COARSE_LOCATION"
         ).close()
@@ -40,7 +43,7 @@ abstract class DemoScenarioBase {
         ).close()
         scenario = ActivityScenario.launch(SchedulingActivity::class.java)
         // Allow activity to fully render before tests begin
-        Thread.sleep(1000)
+        Thread.sleep(1500)
     }
 
     @After
@@ -50,7 +53,20 @@ abstract class DemoScenarioBase {
 
     /** Tap a bottom nav item. navId is e.g. R.id.nav_appointments */
     protected fun navigateTo(navId: Int) {
-        onView(withId(navId)).perform(click())
+        try {
+            onView(withId(navId)).perform(click())
+        } catch (e: RuntimeException) {
+            if ("RootViewWithoutFocusException" in (e.javaClass.name + e.message.orEmpty())) {
+                // A system overlay (ANR, notification, permission dialog) stole focus.
+                // Dismiss it with Back and retry once.
+                val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                uiAutomation.executeShellCommand("input keyevent 4").close() // KEYCODE_BACK
+                Thread.sleep(500)
+                onView(withId(navId)).perform(click())
+            } else {
+                throw e
+            }
+        }
         Thread.sleep(500) // allow fragment to load
     }
 
