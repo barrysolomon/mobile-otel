@@ -16,10 +16,6 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
-    testOptions {
-        targetSdk = 36
-    }
-
     lint {
         targetSdk = 36
         baseline = file("lint-baseline.xml")
@@ -48,6 +44,7 @@ android {
     }
 
     testOptions {
+        targetSdk = 36
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true

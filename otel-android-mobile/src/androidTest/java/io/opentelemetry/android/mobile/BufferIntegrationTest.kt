@@ -31,7 +31,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.Collections
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Instrumented integration test for the full buffer flow.
@@ -97,11 +98,11 @@ class BufferIntegrationTest {
 
         emit(createLog(body, attrs))
 
+        captureExporter.resetLatch(1)
         val result = processor.flushWindow(1)
         assertTrue("flushWindow should succeed", result.isSuccess)
 
-        // Allow the async whenComplete callback to run
-        Thread.sleep(300)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         assertEquals("Exactly one record should be exported", 1, captureExporter.count())
         val exported = captureExporter.all().first()
@@ -120,8 +121,9 @@ class BufferIntegrationTest {
             emit(createLog("event.$i", mapOf("idx" to i)))
         }
 
+        captureExporter.resetLatch(1)
         processor.flushWindow(1)
-        Thread.sleep(300)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         assertEquals("All $count emitted records must be exported", count, captureExporter.count())
     }
@@ -140,8 +142,9 @@ class BufferIntegrationTest {
         // Recent record: 30 seconds ago — inside a 2-minute window
         emit(createLogAt("recent.event", now - 30_000L))
 
+        captureExporter.resetLatch(1)
         processor.flushWindow(2)
-        Thread.sleep(300)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         assertEquals("Only the recent record should be exported", 1, captureExporter.count())
         assertEquals("recent.event", captureExporter.all().first().body.asString())
@@ -154,8 +157,11 @@ class BufferIntegrationTest {
     @Test
     fun successfulFlushClearsRamBuffer() {
         emit(createLog("cleared.after.flush"))
+
+        // First flush — expect exactly 1 export call
+        captureExporter.resetLatch(1)
         processor.flushWindow(1)
-        Thread.sleep(300)
+        assertTrue("First export callback must fire within 5s", captureExporter.awaitExport())
 
         val countAfterFirstFlush = captureExporter.count()
         assertEquals("First flush should export 1 record", 1, countAfterFirstFlush)
@@ -163,6 +169,20 @@ class BufferIntegrationTest {
         // Verify RAM buffer is empty via buffer stats
         val stats = processor.getBufferStats()
         assertEquals("RAM buffer should be empty after flush", 0, stats.ramBufferSize)
+
+        // Second flush on an empty buffer — exporter.export() should NOT be called again.
+        // Use a CountDownLatch(0) so awaitExport() returns immediately (already satisfied),
+        // then assert the count hasn't changed.
+        captureExporter.resetLatch(0)
+        processor.flushWindow(1)
+        // Give any spurious async work a short window to complete
+        Thread.sleep(100)
+
+        assertEquals(
+            "Second flush on empty buffer must export no additional records",
+            countAfterFirstFlush,
+            captureExporter.count()
+        )
     }
 
     // ── Disk overflow → flushWindow ──────────────────────────────────────────
@@ -194,8 +214,9 @@ class BufferIntegrationTest {
         )
 
         // flushWindow should collect RAM + disk events
+        captureExporter.resetLatch(1)
         processor.flushWindow(5)
-        Thread.sleep(500)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         assertTrue(
             "Export should include disk events; got ${captureExporter.count()}, emitted $total",
@@ -225,8 +246,9 @@ class BufferIntegrationTest {
 
         Thread.sleep(1500)   // wait for background overflow
 
+        captureExporter.resetLatch(1)
         processor.flushWindow(5)
-        Thread.sleep(500)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         val markerRecord = captureExporter.all()
             .find { it.body.asString() == "marker.event" }
@@ -251,6 +273,7 @@ class BufferIntegrationTest {
     fun flushWindowZeroIsNoOp() {
         emit(createLog("should.not.export"))
         val result = processor.flushWindow(0)
+        // No export is expected; short sleep is acceptable for the no-op case
         Thread.sleep(100)
 
         assertTrue("flushWindow(0) must return success", result.isSuccess)
@@ -263,6 +286,7 @@ class BufferIntegrationTest {
     @Test
     fun flushWindowOnEmptyBufferSucceeds() {
         val result = processor.flushWindow(1)
+        // No export is expected; short sleep is acceptable for the no-op case
         Thread.sleep(100)
 
         assertTrue("Empty-buffer flush must succeed", result.isSuccess)
@@ -278,8 +302,10 @@ class BufferIntegrationTest {
     @Test
     fun severityIsPreservedThroughBuffer() {
         emit(createLog("warn.event", severity = Severity.WARN))
+
+        captureExporter.resetLatch(1)
         processor.flushWindow(1)
-        Thread.sleep(300)
+        assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         assertEquals(1, captureExporter.count())
         assertEquals(Severity.WARN, captureExporter.all().first().severity)
@@ -344,22 +370,31 @@ class BufferIntegrationTest {
      * Thread-safe in-memory exporter used instead of InMemoryLogRecordExporter
      * (which is not on the androidTestImplementation classpath) or MockLogRecordExporter
      * (which lives in the testImplementation source set and uses Mockk).
+     *
+     * Uses a [CountDownLatch] so tests can block until at least one export call completes
+     * rather than relying on arbitrary Thread.sleep() delays.
      */
-    private class CaptureExporter : LogRecordExporter {
-        private val records: MutableList<LogRecordData> =
-            Collections.synchronizedList(mutableListOf())
-        private val calls = AtomicInteger(0)
+    private inner class CaptureExporter : LogRecordExporter {
+        private val records = Collections.synchronizedList(mutableListOf<LogRecordData>())
+        private var latch = CountDownLatch(1)
+
+        fun count(): Int = records.size
+        fun all(): List<LogRecordData> = records.toList()
+
+        /** Reset the latch before each flushWindow() call that expects an export callback. */
+        fun resetLatch(count: Int = 1) { latch = CountDownLatch(count) }
+
+        /** Block until at least one export call completes, with a 5-second timeout. */
+        fun awaitExport(timeoutSeconds: Long = 5): Boolean =
+            latch.await(timeoutSeconds, TimeUnit.SECONDS)
 
         override fun export(logs: Collection<LogRecordData>): CompletableResultCode {
-            calls.incrementAndGet()
             records.addAll(logs)
+            latch.countDown()
             return CompletableResultCode.ofSuccess()
         }
 
         override fun flush(): CompletableResultCode = CompletableResultCode.ofSuccess()
         override fun shutdown(): CompletableResultCode = CompletableResultCode.ofSuccess()
-
-        fun count(): Int = records.size
-        fun all(): List<LogRecordData> = records.toList()
     }
 }
