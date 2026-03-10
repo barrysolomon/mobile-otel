@@ -1,0 +1,511 @@
+{
+  "apiVersion": "perses.dev/v1alpha1",
+  "kind": "PersesDashboard",
+  "metadata": {
+    "name": "mobile-performance-alerts",
+    "labels": {
+      "dash0.com/id": "8c7f7a26-79d5-4ca0-8cc7-862bd19ab106",
+      "dash0.com/dataset": "otel-mobile"
+    },
+    "annotations": {
+      "dash0.com/folder-path": "/mobile-monitoring"
+    }
+  },
+  "spec": {
+    "duration": "30m",
+    "display": {
+      "description": "App performance metrics, UI jank, errors, and predictive risk indicators",
+      "name": "Mobile Performance & Alerts"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "UI Performance"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/uiJankCount"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/severeJankCount"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/avgJankRate"
+              },
+              "height": 4,
+              "width": 6,
+              "x": 0,
+              "y": 8
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Response Time & Errors"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/responseTime"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/errorCount"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Predictive Risk Indicators"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/crashRisk"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/batteryDrainRisk"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/performanceDegradationRisk"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 8
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/networkLossRisk"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 8
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/predictionConfidence"
+              },
+              "height": 8,
+              "width": 24,
+              "x": 0,
+              "y": 16
+            }
+          ]
+        }
+      }
+    ],
+    "panels": {
+      "avgJankRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Fleet-wide average jank count",
+            "name": "Average Jank Rate"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 2,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "#4caf50",
+                    "value": 0
+                  },
+                  {
+                    "color": "#ff9800",
+                    "value": 5
+                  },
+                  {
+                    "color": "#d32f2f",
+                    "value": 10
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"mobile.ui.jank.count\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "batteryDrainRisk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Predicted battery drain risk by device",
+            "name": "Battery Drain Risk"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"prediction.battery_drain.risk\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "crashRisk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Predicted crash risk by device",
+            "name": "Crash Risk Prediction"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"prediction.crash.risk\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "errorCount": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Total errors over time",
+            "name": "Error Count"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({otel_metric_name=\"dash0.spans\", otel_metric_type=\"sum\", otel_span_status_code=\"ERROR\"}[$__interval]))",
+                    "seriesNameFormat": "Errors/sec"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "networkLossRisk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Predicted network loss risk",
+            "name": "Network Loss Risk"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"prediction.network_loss.risk\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "performanceDegradationRisk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Predicted performance degradation risk",
+            "name": "Performance Degradation Risk"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"prediction.performance_degradation.risk\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "predictionConfidence": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Confidence level of predictions",
+            "name": "Prediction Confidence"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"prediction.confidence\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "responseTime": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "95th percentile response time",
+            "name": "Response Time (P95)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum(rate({otel_metric_name=\"dash0.spans.duration\", otel_metric_type=\"histogram\"}[$__interval])) by (le))",
+                    "seriesNameFormat": "P95 Response Time"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "severeJankCount": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Severe UI jank events by device",
+            "name": "Severe UI Jank Count"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"mobile.ui.jank.severe.count\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "uiJankCount": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Total UI jank events by device",
+            "name": "UI Jank Count"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"mobile.ui.jank.count\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

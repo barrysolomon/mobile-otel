@@ -143,9 +143,9 @@ class FreezeDetector(
             onAnrRecovered?.invoke()
         }
 
-        scheduler.execute {
-            provider.forceFlush()
-        }
+        // Policy evaluation (triggered by the ui.freeze / app.anr log records above) handles
+        // the conditional flush in CONDITIONAL and HYBRID modes.  Calling forceFlush() here
+        // would dump the entire buffer a second time and produce duplicate exports.
     }
 
     private data class PendingFreeze(

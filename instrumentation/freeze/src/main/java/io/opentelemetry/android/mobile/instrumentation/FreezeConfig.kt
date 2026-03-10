@@ -5,7 +5,6 @@ package io.opentelemetry.android.mobile.instrumentation
 
 data class FreezeConfig(
     val freezeThresholdMs: Long = 2_000,
-    val cooldownMs: Long = 30_000,
     val anrThresholdMs: Long = 5_000,
     val enabled: Boolean = true
 ) {

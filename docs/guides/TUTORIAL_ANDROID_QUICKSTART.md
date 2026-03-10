@@ -7,12 +7,83 @@ This tutorial walks you through adding OpenTelemetry auto-instrumentation to an 
 
 ---
 
+## Setting Up an Emulator
+
+Skip this section if you already have a running emulator (`adb devices` shows a device with status `device`).
+
+### Android Studio AVD Manager (recommended for first-timers)
+
+1. Open **Tools → Device Manager**
+2. Click **+** → **Create Virtual Device**
+3. Choose **Pixel 7** → **API 36 (Google APIs)**
+4. Click **Finish**, then press the **▶ Play** button
+5. Wait for the home screen to appear before proceeding
+
+### Command line (headless / CI)
+
+```bash
+# See available AVDs
+emulator -list-avds
+# Typical output for this project:
+#   Medium_Phone_API_36.1
+#   Pixel_3a
+#   Pixel_7
+```
+
+**With a visible window (normal development):**
+
+```bash
+emulator -avd Pixel_7 &
+```
+
+The emulator window opens. Wait for the Android home screen.
+
+**Headless (CI or low-RAM machines):**
+
+```bash
+nohup emulator -avd Pixel_3a -no-window -no-audio -no-snapshot-save \
+    > /tmp/emulator.log 2>&1 &
+```
+
+Either way, poll until fully booted before installing:
+
+```bash
+until adb shell "getprop dev.bootcomplete" 2>/dev/null | grep -q 1; do sleep 5; done
+until adb shell "getprop sys.boot_completed" 2>/dev/null | grep -q 1; do sleep 5; done
+echo "Emulator ready"
+```
+
+> **Pixel_7 (API 36) note:** Takes ~4 minutes to fully boot after `adb` first connects. The two-prop poll above handles this. Don't install APKs until both return `1`.
+
+### Create a new AVD from scratch
+
+```bash
+# Install a system image
+sdkmanager "system-images;android-36;google_apis;x86_64"
+
+# Create the AVD
+avdmanager create avd \
+    --name Pixel_7 \
+    --package "system-images;android-36;google_apis;x86_64" \
+    --device "pixel_7"
+```
+
+### Verify readiness
+
+```bash
+adb devices
+# "device" = ready to use; "offline" = still booting
+#   emulator-5554   device
+```
+
+---
+
 ## What You'll Get (Before Writing a Single Line of Manual Tracing)
 
 By the end of Step 3, Dash0 will automatically receive:
 
 | Signal | What you'll see |
-|--------|----------------|
+| ------ | --------------- |
 | **Page spans** | Every screen the user visits, with duration |
 | **UI interactions** | Every tap, scroll, swipe — as child spans of the page span |
 | **App lifecycle** | App start time (cold/warm), foreground/background |
@@ -146,7 +217,7 @@ Open Dash0 and go to Traces. Filter by `service.name = "schedulr-android"`.
 
 Click into any trace. You'll see a waterfall like:
 
-```
+```text
 page.BookFragment                     [400ms]
 ├── ui.tap                            [0ms]  ← "Next appointment" button
 ├── ui.tap                            [0ms]  ← date picker
@@ -168,6 +239,7 @@ Navigate to the booking screen and submit a booking that fails (the demo API ret
 A new trace will appear tagged with `http.error`, and it will include the **last 5 minutes** of user activity before the error — all the taps, navigations, and network calls that led up to the failure. This is tail sampling in action: the ring buffer held everything, and the `http-error-detector` policy exported the relevant window when the error arrived.
 
 You can also force a crash to see `crash-recovery` in action:
+
 1. In Android Studio, use the debug toolbar in the app (swipe right from the left edge on the scheduling screen) and tap "Crash"
 2. The app will crash and restart
 3. On restart, Dash0 will receive the last 5 minutes of activity before the crash
@@ -199,13 +271,14 @@ val client = OkHttpClient.Builder()
 ```
 
 `NetworkConfig.production()` applies safe defaults:
+
 - URL query parameters stripped
 - `Authorization` and `Cookie` headers scrubbed
 - Request/response bodies not captured
 
 Now HTTP calls appear as child spans inside the page span waterfall:
 
-```
+```text
 page.BookFragment                     [1200ms]
 ├── ui.tap                            [0ms]
 └── ui.tap                            [0ms]  ← "Book" button
@@ -253,7 +326,7 @@ private fun submitBooking(date: String, notes: String) {
 
 This span becomes a child of the active `page.BookFragment` span (because `makeCurrent()` installs it into the OTel context). Any OkHttp call made inside the try block will also become a child of `booking.submit`, giving you a three-level waterfall:
 
-```
+```text
 page.BookFragment
 └── booking.submit           ← your manual span
     └── POST /api/appointments  ← OkHttp auto-span
@@ -267,7 +340,7 @@ page.BookFragment
 
 Every event is written to an in-memory `ConcurrentLinkedQueue` (5,000 events, RAM tier). When the RAM tier fills, the oldest events overflow to a SQLite database (50 MB, 24h TTL, disk tier). The disk tier survives crashes and process kills.
 
-```
+```text
 Event → RAM buffer (5000 events) → overflow → Disk buffer (50MB SQLite)
                                                      ↕
                                             survives crashes
@@ -278,7 +351,7 @@ Event → RAM buffer (5000 events) → overflow → Disk buffer (50MB SQLite)
 Events are not exported in real time. Instead, three built-in policies watch the event stream:
 
 | Policy | Trigger | Exports |
-|--------|---------|---------|
+| ------ | ------- | ------- |
 | `crash-recovery` | `app.crash` event | Last 5 minutes |
 | `http-error-detector` | `http.error` event | Last 5 minutes |
 | `ui-freeze-detector` | `ui.freeze` event | Last 2 minutes |
@@ -290,6 +363,7 @@ This is why you see full context around errors in Dash0, not just the error itse
 ### Head Sampling for Spans
 
 `DynamicSampler` makes sampling decisions for traces (spans):
+
 - `page.*` spans: always sampled (100%)
 - `app.startup`: always sampled (100%)
 - Everything else: 10% baseline (configurable)
@@ -301,19 +375,23 @@ The 100% force-sample on `page.*` ensures the trace waterfall is always intact.
 ## Troubleshooting
 
 **No data in Dash0 after 60 seconds:**
+
 - Verify your auth token is correct (Settings → Auth Tokens in Dash0)
 - Check the endpoint URL: `https://your-collector-endpoint:4317` (adjust region if needed)
 - Check logcat for `MobileLogRecordProcessor` or `RetryableExporter` errors
 
 **Data appears but traces are flat (no waterfall):**
+
 - Make sure you're calling `OTelMobile.start()` in `Application.onCreate()`, not in an Activity
 - The `page.*` spans require the SDK to be initialized before any Fragment resumes
 
 **Missing HTTP spans:**
+
 - `OTelNetworkInterceptor` must be added to every `OkHttpClient` instance in your app
 - The interceptor must be added with `addInterceptor()`, not `addNetworkInterceptor()`
 
 **App crashes on startup:**
+
 - Verify `isCoreLibraryDesugaringEnabled = true` is set in `compileOptions`
 - Verify `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")` is in `dependencies`
 

@@ -76,8 +76,12 @@ class PredictiveExportPolicy private constructor(
 
     /**
      * Runs a prediction cycle and takes appropriate actions.
+     *
+     * Exposed as `internal` so [MobileLogRecordProcessor] can invoke it from
+     * the HYBRID heartbeat tick, co-locating the prediction cycle with the
+     * device.heartbeat log emission on a single shared timer.
      */
-    private fun runPredictionCycle() {
+    internal fun runPredictionCycle() {
         try {
             // Update health snapshot
             healthMonitor.updateSnapshot()

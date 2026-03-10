@@ -1,0 +1,634 @@
+{
+  "apiVersion": "perses.dev/v1alpha1",
+  "kind": "PersesDashboard",
+  "metadata": {
+    "name": "device-thermal-monitoring",
+    "labels": {
+      "dash0.com/id": "822e1c8c-ffc3-4250-9dbd-c5c68e5f4cd0",
+      "dash0.com/dataset": "otel-mobile"
+    },
+    "annotations": {
+      "dash0.com/folder-path": "/mobile-monitoring"
+    }
+  },
+  "spec": {
+    "duration": "30m",
+    "display": {
+      "description": "Monitor thermal states of mobile devices (0=NORMAL, 1=LIGHT, 2=MODERATE, 3=SEVERE, 4=CRITICAL)",
+      "name": "Device Thermal State Monitoring"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Overview"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/totalDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/avgThermalState"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 4,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/maxThermalState"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 8,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/elevatedDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/thermalStateGauge"
+              },
+              "height": 6,
+              "width": 8,
+              "x": 16,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Devices by Thermal State"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/normalDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/lightDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 4,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/moderateDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 8,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/severeDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/criticalDevices"
+              },
+              "height": 4,
+              "width": 4,
+              "x": 16,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Time Series"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/thermalStateTimeSeries"
+              },
+              "height": 8,
+              "width": 24,
+              "x": 0,
+              "y": 0
+            }
+          ]
+        }
+      }
+    ],
+    "panels": {
+      "avgThermalState": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Average thermal state across all devices",
+            "name": "Average Thermal State"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 2,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#299c46",
+                "steps": [
+                  {
+                    "color": "#299c46",
+                    "value": 0
+                  },
+                  {
+                    "color": "#e0b400",
+                    "value": 1
+                  },
+                  {
+                    "color": "#ff7f00",
+                    "value": 2
+                  },
+                  {
+                    "color": "#d44a3a",
+                    "value": 3
+                  },
+                  {
+                    "color": "#8b0000",
+                    "value": 4
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "criticalDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in CRITICAL thermal state",
+            "name": "Critical State (4)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#8b0000"
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} == 4) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "elevatedDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in any elevated thermal state (LIGHT or higher)",
+            "name": "Elevated States (≥1)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#299c46",
+                "steps": [
+                  {
+                    "color": "#299c46",
+                    "value": 0
+                  },
+                  {
+                    "color": "#e0b400",
+                    "value": 1
+                  }
+                ]
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} >= 1) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "lightDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in LIGHT thermal state",
+            "name": "Light State (1)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#e0b400"
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} == 1) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "maxThermalState": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Highest thermal state among all devices",
+            "name": "Max Thermal State"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#299c46",
+                "steps": [
+                  {
+                    "color": "#299c46",
+                    "name": "NORMAL",
+                    "value": 0
+                  },
+                  {
+                    "color": "#e0b400",
+                    "name": "LIGHT",
+                    "value": 1
+                  },
+                  {
+                    "color": "#ff7f00",
+                    "name": "MODERATE",
+                    "value": 2
+                  },
+                  {
+                    "color": "#d44a3a",
+                    "name": "SEVERE",
+                    "value": 3
+                  },
+                  {
+                    "color": "#8b0000",
+                    "name": "CRITICAL",
+                    "value": 4
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "moderateDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in MODERATE thermal state",
+            "name": "Moderate State (2)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#ff7f00"
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} == 2) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "normalDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in NORMAL thermal state",
+            "name": "Normal State (0)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} == 0) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "severeDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in SEVERE thermal state",
+            "name": "Severe State (3)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "defaultColor": "#d44a3a"
+              },
+              "valueFontSize": 30
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} == 3) or vector(0)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "thermalStateGauge": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Visual gauge of average thermal state",
+            "name": "Average Thermal State Gauge"
+          },
+          "plugin": {
+            "kind": "GaugeChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 2,
+                "unit": "decimal"
+              },
+              "max": 4,
+              "thresholds": {
+                "defaultColor": "#299c46",
+                "steps": [
+                  {
+                    "color": "#299c46",
+                    "value": 0
+                  },
+                  {
+                    "color": "#e0b400",
+                    "value": 1
+                  },
+                  {
+                    "color": "#ff7f00",
+                    "value": 2
+                  },
+                  {
+                    "color": "#d44a3a",
+                    "value": 3
+                  },
+                  {
+                    "color": "#8b0000",
+                    "value": 4
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "thermalStateTimeSeries": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Thermal state history for each device",
+            "name": "Thermal State Over Time by Device"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "right",
+                "size": "small"
+              },
+              "yAxis": {
+                "label": "Thermal State",
+                "max": 4,
+                "min": 0,
+                "show": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (device_id) ({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"})",
+                    "seriesNameFormat": "Device: {{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "totalDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Total number of devices reporting thermal state",
+            "name": "Total Devices"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

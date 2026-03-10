@@ -47,6 +47,8 @@ class Dash0ConfigActivity : AppCompatActivity() {
             .setOnClickListener { saveConfiguration() }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDash0Reset)
             .setOnClickListener { resetToDefaults() }
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDash0Cancel)
+            .setOnClickListener { finish() }
     }
 
     private fun loadConfiguration() {

@@ -237,6 +237,7 @@ class MobileLogRecordProcessorTest {
         }
 
         processor.forceFlush()
+        Thread.sleep(200) // Wait for async post-export cleanup on executor
 
         val stats = processor.getBufferStats()
         assertEquals(0, stats.ramBufferSize)
@@ -437,6 +438,7 @@ class MobileLogRecordProcessorTest {
         assertEquals(10, beforeFlush.ramBufferSize)
 
         processor.forceFlush()
+        Thread.sleep(200) // Wait for async post-export cleanup on executor
 
         val afterFlush = processor.getBufferStats()
         assertEquals(0, afterFlush.ramBufferSize)

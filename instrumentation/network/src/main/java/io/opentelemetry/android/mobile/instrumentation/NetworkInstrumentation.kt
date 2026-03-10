@@ -40,7 +40,8 @@ class NetworkInstrumentation : MobileInstrumentation {
                 context = application.applicationContext,
                 config = NetworkConfig.default(),
                 tracer = context.tracer(instrumentationName),
-                propagator = context.openTelemetry.propagators.textMapPropagator
+                propagator = context.openTelemetry.propagators.textMapPropagator,
+                logger = context.logger(instrumentationName)
             )
         } catch (e: Exception) {
             Log.w("NetworkInstrumentation", "Failed to create OTelNetworkInterceptor: ${e.message}")

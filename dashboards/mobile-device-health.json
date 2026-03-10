@@ -1,0 +1,413 @@
+{
+  "apiVersion": "perses.dev/v1alpha1",
+  "kind": "PersesDashboard",
+  "metadata": {
+    "name": "mobile-device-health",
+    "labels": {
+      "dash0.com/id": "228f0508-48c8-460f-a1a7-2334b9b21227",
+      "dash0.com/dataset": "otel-mobile"
+    },
+    "annotations": {
+      "dash0.com/folder-path": "/mobile-monitoring"
+    }
+  },
+  "spec": {
+    "duration": "30m",
+    "display": {
+      "description": "Detailed device health metrics including battery, memory, thermal, and storage",
+      "name": "Mobile Device Health"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Battery Health"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/batteryByDevice"
+              },
+              "height": 8,
+              "width": 18,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/batteryCharging"
+              },
+              "height": 8,
+              "width": 6,
+              "x": 18,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/batteryDrainRate"
+              },
+              "height": 8,
+              "width": 24,
+              "x": 0,
+              "y": 8
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Memory Health"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/memoryByDevice"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/memoryAvailable"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/memoryPressure"
+              },
+              "height": 8,
+              "width": 24,
+              "x": 0,
+              "y": 8
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Storage"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/storageUsed"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/storageAvailable"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            }
+          ]
+        }
+      }
+    ],
+    "panels": {
+      "batteryByDevice": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Current battery percentage for each device",
+            "name": "Battery Level by Device"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.battery.level\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}} - {{device_model}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "batteryCharging": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Number of devices currently charging",
+            "name": "Devices Charging"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.battery.charging\", otel_metric_type=\"gauge\"} == 1)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "batteryDrainRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Battery drain rate by device",
+            "name": "Battery Drain Rate"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.battery.drain_rate\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "memoryAvailable": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Available memory in MB per device",
+            "name": "Available Memory by Device"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.memory.available\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "memoryByDevice": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Memory used in MB per device",
+            "name": "Memory Usage by Device"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.memory.used\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}} - {{device_model}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "memoryPressure": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Memory pressure indicator by device",
+            "name": "Memory Pressure"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.memory.pressure\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storageAvailable": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Available storage in MB by device",
+            "name": "Storage Available"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.storage.available\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storageUsed": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Storage used in MB by device",
+            "name": "Storage Used"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "table",
+                "position": "right",
+                "values": [
+                  "last"
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "{otel_metric_name=\"device.storage.used_mb\", otel_metric_type=\"gauge\"}",
+                    "seriesNameFormat": "{{device_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+    }
+  }
+}

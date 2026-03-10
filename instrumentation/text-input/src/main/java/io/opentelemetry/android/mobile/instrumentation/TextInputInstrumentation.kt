@@ -15,7 +15,9 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import java.util.WeakHashMap
 
-class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
+class TextInputInstrumentation(
+    private val config: TextInputConfig = TextInputConfig()
+) : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.text_input"
 
@@ -68,7 +70,12 @@ class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
     }
 
     /** Visible for testing — emit a text-input telemetry record for the given field. */
-    internal fun emitTextInput(resourceId: String?, enabled: Boolean) {
+    internal fun emitTextInput(
+        resourceId: String?,
+        enabled: Boolean,
+        charCount: Int? = null,
+        text: String? = null
+    ) {
         val log = logger ?: return
         val context = ctx ?: return
         val sessionProvider = context.sessionProvider
@@ -79,6 +86,16 @@ class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
                 resourceId?.let { put(MobileSemconv.UI_ELEMENT_ID, it) }
                 sessionProvider.getCurrentScreenName()?.let { put(MobileSemconv.SCREEN_NAME, it) }
                 put(io.opentelemetry.api.common.AttributeKey.booleanKey("ui.element.enabled"), enabled)
+                if (config.captureCharCount && charCount != null) {
+                    put(MobileSemconv.TEXT_CHAR_COUNT, charCount.toLong())
+                }
+                if (config.captureIsSet && charCount != null) {
+                    put(MobileSemconv.TEXT_IS_SET, charCount > 0)
+                }
+                if (config.captureTextContent && text != null &&
+                    resourceId != null && resourceId in config.textContentAllowlist) {
+                    put(MobileSemconv.TEXT_CONTENT, text)
+                }
             }
             .build()
         when (context.uiTelemetryMode) {
@@ -103,6 +120,12 @@ class TextInputInstrumentation : MobileInstrumentation, WindowEventListener {
         val resourceId: String? = if (field.id != View.NO_ID) {
             try { field.resources.getResourceEntryName(field.id) } catch (_: Exception) { null }
         } else null
-        emitTextInput(resourceId, field.isEnabled)
+        val text = field.text?.toString() ?: ""
+        emitTextInput(
+            resourceId = resourceId,
+            enabled = field.isEnabled,
+            charCount = text.length,
+            text = text
+        )
     }
 }

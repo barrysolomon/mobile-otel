@@ -16,11 +16,6 @@ class DemoApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Force CONTINUOUS mode so exports happen on schedule without a policy gateway.
-        // Overwrites any cached CONDITIONAL value from SharedPreferences.
-        getSharedPreferences("otel_config", android.content.Context.MODE_PRIVATE)
-            .edit().putString("export_mode", "CONTINUOUS").apply()
-
         val config = ConfigManager.loadConfig(this)
 
         /*

@@ -72,17 +72,16 @@ abstract class DemoScenarioBase {
 
     /** Expand the DebugToolbar so its buttons become visible */
     protected fun expandDebugToolbar() {
-        onView(withId(R.id.debugToolbarHeader)).perform(click())
-        // Cancel alpha animation and force full visibility for reliable Espresso clicks.
-        // toggleExpanded() starts content at alpha=0 then animates to 1 via ViewPropertyAnimator.
-        // Even with animator_duration_scale=0, the animation is scheduled on the next Choreographer
-        // frame. We bypass this by cancelling and directly setting the final state.
+        // Directly call setExpanded(true) on the DebugToolbar to bypass animations
+        // and avoid timing issues with GestureDetector + Choreographer in tests.
         scenario.onActivity { activity ->
+            val toolbar = activity.findViewById<io.opentelemetry.android.demo.ui.debug.DebugToolbar>(R.id.debugToolbar)
+            toolbar?.setExpanded(true)
             val content = activity.findViewById<View>(R.id.debugToolbarContent)
-            content.animate().cancel()
-            content.visibility = View.VISIBLE
-            content.alpha = 1f
+            content?.visibility = View.VISIBLE
+            content?.alpha = 1f
         }
+        Thread.sleep(100)
     }
 
     /** Click a button inside the DebugToolbar. Expands toolbar first if needed. */

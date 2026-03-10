@@ -24,6 +24,12 @@ interface MobileSessionProvider {
     /** Returns the name of the most recently viewed screen, or null if none yet. */
     fun getCurrentScreenName(): String?
 
+    /** Returns the name of the screen viewed before the current one, or null if on first screen. */
+    fun getPreviousScreenName(): String? = null
+
+    /** Returns how long the current screen has been visible in milliseconds. */
+    fun getTimeOnScreenMs(): Long = 0L
+
     /** Called when a new screen is viewed. Implementations should update viewId. */
     fun onScreenView(screenName: String)
 

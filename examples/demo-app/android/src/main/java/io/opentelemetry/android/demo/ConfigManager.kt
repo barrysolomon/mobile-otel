@@ -8,6 +8,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.ExportMode
+import io.opentelemetry.android.mobile.config.UiTelemetryMode
+import io.opentelemetry.android.mobile.instrumentation.TextInputConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
 import io.opentelemetry.android.mobile.vitals.VitalsConfig
 import io.opentelemetry.android.mobile.network.NetworkConfig
@@ -130,6 +132,15 @@ object ConfigManager {
     private const val DEFAULT_ERROR_RATE_LIMIT = 10
     private const val DEFAULT_ERROR_DEDUPE_WINDOW_MINUTES = 5
 
+    // UI telemetry mode
+    private const val KEY_UI_TELEMETRY_MODE = "ui_telemetry_mode"
+    private const val DEFAULT_UI_TELEMETRY_MODE = "EVENTS"
+
+    // Text input config
+    private const val KEY_TEXT_CAPTURE_CHAR_COUNT = "text_capture_char_count"
+    private const val KEY_TEXT_CAPTURE_IS_SET = "text_capture_is_set"
+    private const val KEY_TEXT_CAPTURE_CONTENT = "text_capture_content"
+
     // Capture options keys
     private const val KEY_CAPTURE_LIFECYCLE = "capture_lifecycle"
     private const val KEY_CAPTURE_SCREENS = "capture_screens"
@@ -213,11 +224,26 @@ object ConfigManager {
 
         val samplingRate = prefs.getFloat(KEY_SAMPLING_RATE, DEFAULT_SAMPLING_RATE).toDouble()
 
+        val uiTelemetryModeStr = prefs.getString(KEY_UI_TELEMETRY_MODE, DEFAULT_UI_TELEMETRY_MODE) ?: DEFAULT_UI_TELEMETRY_MODE
+        val uiTelemetryMode = try {
+            UiTelemetryMode.valueOf(uiTelemetryModeStr)
+        } catch (e: IllegalArgumentException) {
+            UiTelemetryMode.EVENTS
+        }
+
+        val textInputConfig = TextInputConfig(
+            captureCharCount = prefs.getBoolean(KEY_TEXT_CAPTURE_CHAR_COUNT, true),
+            captureIsSet = prefs.getBoolean(KEY_TEXT_CAPTURE_IS_SET, true),
+            captureTextContent = prefs.getBoolean(KEY_TEXT_CAPTURE_CONTENT, false)
+        )
+
         return MobileConfig(
             serviceName = prefs.getString(KEY_SERVICE_NAME, DEFAULT_SERVICE_NAME)!!,
             serviceVersion = prefs.getString(KEY_SERVICE_VERSION, DEFAULT_SERVICE_VERSION)!!,
             collectorEndpoint = prefs.getString(KEY_COLLECTOR_ENDPOINT, DEFAULT_COLLECTOR_ENDPOINT)!!,
             exportMode = exportMode,
+            uiTelemetryMode = uiTelemetryMode,
+            textInputConfig = textInputConfig,
             samplingConfig = io.opentelemetry.android.mobile.sampling.SamplingConfig.dynamic(
                 normalRate = samplingRate,
                 highPriorityRate = 1.0
@@ -302,6 +328,30 @@ object ConfigManager {
         getPrefs(context).edit().putFloat(KEY_SAMPLING_RATE, rate).apply()
     }
 
+    fun getUiTelemetryMode(context: Context): String =
+        getPrefs(context).getString(KEY_UI_TELEMETRY_MODE, DEFAULT_UI_TELEMETRY_MODE) ?: DEFAULT_UI_TELEMETRY_MODE
+
+    fun saveUiTelemetryMode(context: Context, mode: String) {
+        getPrefs(context).edit().putString(KEY_UI_TELEMETRY_MODE, mode).apply()
+    }
+
+    fun getTextCaptureCharCount(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_TEXT_CAPTURE_CHAR_COUNT, true)
+
+    fun getTextCaptureIsSet(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_TEXT_CAPTURE_IS_SET, true)
+
+    fun getTextCaptureContent(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_TEXT_CAPTURE_CONTENT, false)
+
+    fun saveTextInputOptions(context: Context, charCount: Boolean, isSet: Boolean, content: Boolean) {
+        getPrefs(context).edit()
+            .putBoolean(KEY_TEXT_CAPTURE_CHAR_COUNT, charCount)
+            .putBoolean(KEY_TEXT_CAPTURE_IS_SET, isSet)
+            .putBoolean(KEY_TEXT_CAPTURE_CONTENT, content)
+            .apply()
+    }
+
     fun saveProtocol(context: Context, protocol: String) {
         getPrefs(context).edit().putString(KEY_PROTOCOL, protocol).apply()
     }
@@ -363,6 +413,10 @@ object ConfigManager {
             putString(KEY_SERVICE_VERSION, config.serviceVersion)
             putString(KEY_COLLECTOR_ENDPOINT, config.collectorEndpoint)
             putString(KEY_EXPORT_MODE, config.exportMode.name)
+            putString(KEY_UI_TELEMETRY_MODE, config.uiTelemetryMode.name)
+            putBoolean(KEY_TEXT_CAPTURE_CHAR_COUNT, config.textInputConfig.captureCharCount)
+            putBoolean(KEY_TEXT_CAPTURE_IS_SET, config.textInputConfig.captureIsSet)
+            putBoolean(KEY_TEXT_CAPTURE_CONTENT, config.textInputConfig.captureTextContent)
             putFloat(KEY_SAMPLING_RATE, config.samplingConfig.samplingRate.toFloat())
             putLong(KEY_TRACE_EXPORT_INTERVAL_SECONDS, config.traceExportIntervalSeconds)
             putLong(KEY_METRIC_EXPORT_INTERVAL_SECONDS, config.metricExportIntervalSeconds)

@@ -517,6 +517,43 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ─── UI TELEMETRY ──────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="UI TELEMETRY" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Emit UI interactions as:" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        <RadioGroup
+                            android:id="@+id/radioGroupUiTelemetryMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginBottom="16dp">
+                            <RadioButton android:id="@+id/radioUiEvents" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Events" android:textSize="13sp" />
+                            <RadioButton android:id="@+id/radioUiSpans" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Spans" android:textSize="13sp" />
+                            <RadioButton android:id="@+id/radioUiBoth" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Both" android:textSize="13sp" />
+                        </RadioGroup>
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Text field capture:" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTextCharCount" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Char count" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTextIsSet" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Is set" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        </LinearLayout>
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchTextContent"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Raw text (opt-in)" android:textSize="13sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ─── ACTIONS ───────────────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -524,13 +561,21 @@
                 android:orientation="horizontal"
                 android:layout_marginBottom="8dp">
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCancel"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cancel"
+                    android:layout_marginEnd="4dp" />
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnResetDefaults"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Reset"
-                    android:layout_marginEnd="8dp" />
+                    android:layout_marginEnd="4dp" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSave"
                     android:layout_width="0dp"

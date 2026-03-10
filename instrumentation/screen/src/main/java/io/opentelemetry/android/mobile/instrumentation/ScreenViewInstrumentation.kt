@@ -108,6 +108,11 @@ class ScreenViewInstrumentation : MobileInstrumentation {
             .put(MobileSemconv.SESSION_ID, sp.getSessionId())
             .put(MobileSemconv.VIEW_ID, sp.getViewId())
             .put(MobileSemconv.SCREEN_NAME, screenName)
+            .apply {
+                sp.getPreviousScreenName()?.let { put(MobileSemconv.PREVIOUS_SCREEN, it) }
+                val timeOnScreen = sp.getTimeOnScreenMs()
+                if (timeOnScreen > 0) put(MobileSemconv.TIME_ON_SCREEN_MS, timeOnScreen)
+            }
             .build()
         // In SPANS mode the page span itself is the screen-view signal; skip the log.
         if (uiTelemetryMode != UiTelemetryMode.SPANS) {

@@ -19,8 +19,12 @@ import java.util.concurrent.TimeUnit
  * Detects main-thread freeze (jank / ANR) events.
  *
  * Uses a background watchdog that posts a tick to the main thread every 250ms.
- * If the tick is delayed by more than [FreezeConfig.freezeThresholdMs], a freeze event
- * is emitted. If the delay exceeds [FreezeConfig.anrThresholdMs], an ANR event is also emitted.
+ * If the tick is delayed by more than [FreezeConfig.freezeThresholdMs], a freeze is detected.
+ *
+ * **One event per freeze incident:** once a freeze is detected, [freezeInProgress] is set and
+ * no further events are emitted until the main thread recovers (runs the pending tick). The event
+ * is emitted *after* recovery, reporting the total freeze duration. This prevents the "freeze cycle"
+ * where a blocked main thread causes repeated events with ever-growing duration_ms.
  */
 class FreezeInstrumentation(
     private val config: FreezeConfig = FreezeConfig()
@@ -37,12 +41,24 @@ class FreezeInstrumentation(
     }
 
     @Volatile private var lastTickAtMs: Long = 0
-    @Volatile private var lastFreezeAtMs: Long = 0
     @Volatile private var running: Boolean = false
+    // True while the main thread is known to be frozen — suppresses repeat events.
+    @Volatile private var freezeInProgress: Boolean = false
+    // Wall-clock time when the freeze started (last successful tick time).
+    @Volatile private var freezeStartMs: Long = 0
 
     @Volatile private var watchdogFuture: ScheduledFuture<*>? = null
 
-    private val tickRunnable = Runnable { lastTickAtMs = SystemClock.uptimeMillis() }
+    private val tickRunnable = Runnable {
+        val now = SystemClock.uptimeMillis()
+        if (freezeInProgress) {
+            // Main thread just recovered — compute actual duration and emit exactly one event.
+            val duration = now - freezeStartMs
+            freezeInProgress = false
+            emitFreeze(duration, duration >= config.anrThresholdMs, ctx?.sessionProvider?.getCurrentScreenName())
+        }
+        lastTickAtMs = now
+    }
 
     override fun install(application: Application, context: InstrumentationContext) {
         if (!config.enabled) return
@@ -80,18 +96,22 @@ class FreezeInstrumentation(
         if (!running) return
         val now = SystemClock.uptimeMillis()
         val delay = now - lastTickAtMs
+
         if (delay < config.freezeThresholdMs) {
+            // Main thread is healthy — keep the heartbeat alive.
+            freezeInProgress = false
             mainHandler.post(tickRunnable)
             return
         }
-        if (now - lastFreezeAtMs < config.cooldownMs) return
-        lastFreezeAtMs = now
 
-        val isAnr = delay >= config.anrThresholdMs
-        val screenName = ctx?.sessionProvider?.getCurrentScreenName()
-
-        // Emit after main thread recovers (so we know it's unblocked)
-        mainHandler.post { emitFreeze(delay, isAnr, screenName) }
+        if (!freezeInProgress) {
+            // First detection of this freeze incident — record start and queue recovery callback.
+            freezeInProgress = true
+            freezeStartMs = lastTickAtMs
+            // Post the tick to main thread; it will run when the freeze ends and emit the event.
+            mainHandler.post(tickRunnable)
+        }
+        // freezeInProgress == true: main thread still blocked, do nothing more.
     }
 
     private fun emitFreeze(delayMs: Long, isAnr: Boolean, screenName: String?) {

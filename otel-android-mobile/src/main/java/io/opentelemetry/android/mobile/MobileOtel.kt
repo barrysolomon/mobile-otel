@@ -133,6 +133,13 @@ object MobileOtel {
             .setPredictionIntervalSeconds(config.predictionIntervalSeconds)
             .build()
 
+        // HYBRID: co-locate prediction.cycle with device.heartbeat on a single shared timer.
+        // The processor's heartbeat tick calls runPredictionCycle() so both logs are
+        // emitted together, giving the PolicyEvaluator a richer event to match against.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+            processor.predictionCycleHook = { predictivePolicy?.runPredictionCycle() }
+        }
+
         // Wire HealthMetricsCollector — exposes device health & predictions as OTel metrics
         healthMetricsCollector = HealthMetricsCollector.builder(appContext)
             .setOpenTelemetry(otelSdk)

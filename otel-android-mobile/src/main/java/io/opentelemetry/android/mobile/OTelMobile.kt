@@ -96,7 +96,7 @@ object OTelMobile {
                     .addInstrumentation(ScreenViewInstrumentation())
                     .addInstrumentation(TapInstrumentation())
                     .addInstrumentation(ScrollInstrumentation())
-                    .addInstrumentation(TextInputInstrumentation())
+                    .addInstrumentation(TextInputInstrumentation(config.textInputConfig))
                     .addInstrumentation(BackPressInstrumentation())
                     .addInstrumentation(FreezeInstrumentation())
                     .addInstrumentation(ErrorsInstrumentation())

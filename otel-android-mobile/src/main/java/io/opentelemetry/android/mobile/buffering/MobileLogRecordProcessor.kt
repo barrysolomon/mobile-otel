@@ -78,7 +78,13 @@ class MobileLogRecordProcessor private constructor(
     private val meter: io.opentelemetry.api.metrics.Meter,
     private val ramBufferSize: Int,
     private val diskBufferMb: Int,
-    private val diskBufferTtlHours: Int
+    private val diskBufferTtlHours: Int,
+    // Used only in HYBRID mode to emit device.heartbeat log records.
+    // Set after SDK init to avoid a circular dependency at construction time.
+    @Volatile var heartbeatLogger: io.opentelemetry.api.logs.Logger? = null,
+    // Optional hook invoked on each HYBRID heartbeat tick to run the prediction cycle
+    // alongside the heartbeat.  Wired by MobileOtel after PredictiveExportPolicy is built.
+    @Volatile var predictionCycleHook: (() -> Unit)? = null
 ) : LogRecordProcessor {
 
     private val TAG = "MobileLogRecordProcessor"
@@ -116,6 +122,10 @@ class MobileLogRecordProcessor private constructor(
     private val lastFlushStartMs = AtomicLong(0L)
     private val flushCooldownMs = 10_000L  // 10 seconds
 
+    // Guards against concurrent flushWindow() calls (e.g. ui.freeze + app.anr emitted ms apart).
+    // CAS from false→true to start a flush; reset to false when the export completes/fails.
+    private val flushInProgress = AtomicBoolean(false)
+
     // Ring buffer OTel gauges — held to prevent GC of async callbacks
     private val ramEventsGauge = meter.gaugeBuilder("buffer.ram.events")
         .setDescription("Current number of events in the RAM ring buffer")
@@ -146,8 +156,8 @@ class MobileLogRecordProcessor private constructor(
             1, 1, TimeUnit.HOURS
         )
 
-        // Schedule periodic device metrics capture and log flush in CONTINUOUS and HYBRID modes.
-        // HYBRID adds the same periodic export as CONTINUOUS, plus policy-triggered flush windows.
+        // CONTINUOUS + HYBRID: periodic device metrics capture + full log flush on schedule.
+        // HYBRID also adds policy-triggered selective flushes on top of this.
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS ||
             config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
             val captureIntervalSeconds = config.metricExportIntervalSeconds
@@ -164,7 +174,6 @@ class MobileLogRecordProcessor private constructor(
                 captureIntervalSeconds,
                 TimeUnit.SECONDS
             )
-            // Flush all buffered log records on the same schedule as traces
             val flushIntervalSeconds = config.traceExportIntervalSeconds
             executor.scheduleAtFixedRate(
                 {
@@ -184,7 +193,31 @@ class MobileLogRecordProcessor private constructor(
                 flushIntervalSeconds,
                 TimeUnit.SECONDS
             )
-            Log.i(TAG, "Periodic export enabled: metrics every ${captureIntervalSeconds}s, logs every ${flushIntervalSeconds}s")
+            Log.i(TAG, "Periodic export: metrics every ${captureIntervalSeconds}s, logs every ${flushIntervalSeconds}s (mode=${config.exportMode})")
+        }
+
+        // HYBRID: conditional export (policy-triggered) + periodic device heartbeat log.
+        // The heartbeat is a lightweight device.heartbeat log record emitted on the
+        // predictionIntervalSeconds schedule. It flows through onEmit() → policy evaluation,
+        // so it can also trigger a flush if a policy matches (e.g., low battery policy).
+        // No periodic forceFlush — bulk data only exports when a policy fires.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+            val heartbeatIntervalSeconds = config.predictionIntervalSeconds
+            executor.scheduleAtFixedRate(
+                {
+                    if (!isShutdown.get()) {
+                        try {
+                            emitHeartbeat()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error emitting heartbeat", e)
+                        }
+                    }
+                },
+                heartbeatIntervalSeconds,
+                heartbeatIntervalSeconds,
+                TimeUnit.SECONDS
+            )
+            Log.i(TAG, "HYBRID: conditional export + heartbeat every ${heartbeatIntervalSeconds}s")
         }
 
         Log.i(TAG, "Initialized: RAM buffer size=$ramBufferSize, Disk buffer=${diskBufferMb}MB, TTL=${diskBufferTtlHours}h, Export mode=${config.exportMode}")
@@ -208,12 +241,31 @@ class MobileLogRecordProcessor private constructor(
         // Convert to LogRecordData for processing
         val logRecordData = logRecord.toLogRecordData()
 
+        val body = logRecordData.body.asString()
+
+        // HYBRID selective immediate export: heartbeat and prediction logs are the
+        // lightweight periodic signal — export them directly without buffering so the
+        // backend always receives a live device-health stream.  They are NOT added to
+        // the ring buffer (no queue entry to remove later).
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID &&
+            (body == "device.heartbeat" || body == "prediction.cycle" || body == "prediction.high_risk_alert")) {
+            executor.submit {
+                try {
+                    exporter.export(listOf(logRecordData))
+                    Log.d(TAG, "HYBRID: immediately exported $body")
+                } catch (e: Exception) {
+                    Log.e(TAG, "HYBRID: failed to export $body", e)
+                }
+            }
+            return
+        }
+
         // Add to RAM buffer
         ramBuffer.offer(logRecordData)
         val count = ramBufferCount.incrementAndGet()
 
         // Track screen start for window extension
-        if (logRecordData.body.asString() == "screen.view") {
+        if (body == "screen.view") {
             currentScreenStartMs.set(logRecordData.timestampEpochNanos / 1_000_000)
         }
 
@@ -231,6 +283,69 @@ class MobileLogRecordProcessor private constructor(
             config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
             executor.submit { evaluatePolicies(logRecordData) }
         }
+    }
+
+    /**
+     * Emits a lightweight device.heartbeat log record for HYBRID mode.
+     *
+     * The heartbeat carries a snapshot of current device health (battery, memory, network,
+     * buffer occupancy) as log attributes. It is injected directly into the SDK logger and
+     * **immediately exported** by [onEmit] without entering the ring buffer — it is the
+     * lightweight continuous signal in HYBRID mode.  The `prediction.cycle` log emitted by
+     * [predictionCycleHook] on the same tick is also immediately exported.
+     * Bulk event buffer data is only flushed when a policy trigger fires.
+     *
+     * Heartbeat attributes:
+     * - `device.battery_percent`  — 0-100, or -1 when unavailable
+     * - `device.memory_available_mb` — free RAM in MB
+     * - `buffer.ram_events`       — current RAM buffer occupancy
+     * - `buffer.disk_events`      — current disk buffer occupancy
+     * - `network.type`            — wifi / cellular / none / unknown
+     */
+    private fun emitHeartbeat() {
+        val logger = heartbeatLogger ?: run {
+            Log.w(TAG, "HYBRID heartbeat skipped: heartbeatLogger not yet set")
+            return
+        }
+
+        val battery  = deviceMetricsCollector.getBatteryLevel()
+        val memoryMb = deviceMetricsCollector.getAvailableMemoryMb()
+        val ram      = ramBufferCount.get()
+        val disk     = diskBuffer.getEventCount()
+
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager
+        val networkType = if (cm != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val net  = cm.activeNetwork
+            val caps = net?.let { cm.getNetworkCapabilities(it) }
+            when {
+                caps == null -> "none"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)     -> "wifi"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                else -> "other"
+            }
+        } else "unknown"
+
+        logger.logRecordBuilder()
+            .setBody("device.heartbeat")
+            .setSeverity(io.opentelemetry.api.logs.Severity.INFO)
+            .setAllAttributes(
+                io.opentelemetry.api.common.Attributes.builder()
+                    .put(io.opentelemetry.api.common.AttributeKey.longKey("device.battery_percent"),    battery.toLong())
+                    .put(io.opentelemetry.api.common.AttributeKey.longKey("device.memory_available_mb"), memoryMb)
+                    .put(io.opentelemetry.api.common.AttributeKey.longKey("buffer.ram_events"),         ram.toLong())
+                    .put(io.opentelemetry.api.common.AttributeKey.longKey("buffer.disk_events"),        disk.toLong())
+                    .put(io.opentelemetry.api.common.AttributeKey.stringKey("network.type"),            networkType)
+                    .build()
+            )
+            .emit()
+
+        Log.d(TAG, "HYBRID heartbeat: battery=${battery}%, mem=${memoryMb}MB, buf=$ram+$disk, net=$networkType")
+
+        // Run prediction cycle on the same tick so prediction.cycle and device.heartbeat
+        // are co-emitted, sharing a single periodic timer in HYBRID mode.
+        predictionCycleHook?.invoke()
     }
 
     /**
@@ -285,6 +400,13 @@ class MobileLogRecordProcessor private constructor(
             return CompletableResultCode.ofSuccess()
         }
 
+        // Reject concurrent flush attempts — e.g. ui.freeze and app.anr emitted ms apart both
+        // trigger evaluatePolicies() and would otherwise export the same events twice.
+        if (!flushInProgress.compareAndSet(false, true)) {
+            Log.d(TAG, "flushWindow: skipped — flush already in progress")
+            return CompletableResultCode.ofSuccess()
+        }
+
         try {
             val now = System.currentTimeMillis()
             val lastEnd = lastFlushEndMs.get()
@@ -296,6 +418,7 @@ class MobileLogRecordProcessor private constructor(
                 val proposedStart = now - (windowMinutes * 60 * 1000L)
                 if (proposedStart < lastEnd && now > lastStart) {
                     Log.d(TAG, "flushWindow: suppressed duplicate flush — last flush ended ${now - lastEnd}ms ago and window overlaps")
+                    flushInProgress.set(false)
                     return CompletableResultCode.ofSuccess()
                 }
             }
@@ -327,7 +450,10 @@ class MobileLogRecordProcessor private constructor(
             val diskEventsToFlush = runBlocking { diskBuffer.getEventsInWindow(windowStartMs) }
             val allEventsToFlush = ramEventsToFlush + diskEventsToFlush
 
-            if (allEventsToFlush.isEmpty()) return CompletableResultCode.ofSuccess()
+            if (allEventsToFlush.isEmpty()) {
+                flushInProgress.set(false)
+                return CompletableResultCode.ofSuccess()
+            }
 
             Log.i(TAG, "Flushing ${allEventsToFlush.size} events " +
                 "(${ramEventsToFlush.size} RAM + ${diskEventsToFlush.size} disk) " +
@@ -337,37 +463,45 @@ class MobileLogRecordProcessor private constructor(
             val result = CompletableResultCode.ofAll(results)
 
             result.whenComplete {
-                if (result.isSuccess) {
-                    try {
-                        lastFlushStartMs.set(windowStartMs)
-                        lastFlushEndMs.set(System.currentTimeMillis())
+                // whenComplete may fire on the exporter's completion thread (potentially the
+                // main thread for synchronous exporters). Submit all I/O back to the executor
+                // so we never block whichever thread delivers this callback.
+                executor.submit {
+                    if (result.isSuccess) {
+                        try {
+                            lastFlushStartMs.set(windowStartMs)
+                            lastFlushEndMs.set(System.currentTimeMillis())
 
-                        // Remove ONLY the exact exported objects from the RAM buffer.
-                        // Using an identity set avoids the clear()+addAll() race condition
-                        // that would silently drop events written during the export window.
-                        val exportedIds = Collections.newSetFromMap(
-                            IdentityHashMap<LogRecordData, Boolean>()
-                        )
-                        exportedIds.addAll(ramEventsToFlush)
+                            // Remove ONLY the exact exported objects from the RAM buffer.
+                            // Using an identity set avoids the clear()+addAll() race condition
+                            // that would silently drop events written during the export window.
+                            val exportedIds = Collections.newSetFromMap(
+                                IdentityHashMap<LogRecordData, Boolean>()
+                            )
+                            exportedIds.addAll(ramEventsToFlush)
 
-                        var removed = 0
-                        ramBuffer.removeIf { event ->
-                            exportedIds.contains(event).also { matched ->
-                                if (matched) removed++
+                            var removed = 0
+                            ramBuffer.removeIf { event ->
+                                exportedIds.contains(event).also { matched ->
+                                    if (matched) removed++
+                                }
                             }
+                            ramBufferCount.addAndGet(-removed)
+
+                            // Remove the disk window — disk events don't have the same race risk
+                            // because DiskLogBuffer uses Room transactions for atomicity.
+                            runBlocking { diskBuffer.deleteEventsInWindow(windowStartMs) }
+
+                            Log.i(TAG, "Cleared $removed RAM + ${diskEventsToFlush.size} disk events after successful flush")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error clearing events after successful flush", e)
+                        } finally {
+                            flushInProgress.set(false)
                         }
-                        ramBufferCount.addAndGet(-removed)
-
-                        // Remove the disk window — disk events don't have the same race risk
-                        // because DiskLogBuffer uses Room transactions for atomicity.
-                        runBlocking { diskBuffer.deleteEventsInWindow(windowStartMs) }
-
-                        Log.i(TAG, "Cleared $removed RAM + ${diskEventsToFlush.size} disk events after successful flush")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error clearing events after successful flush", e)
+                    } else {
+                        Log.w(TAG, "Window flush failed, keeping events in buffer for retry")
+                        flushInProgress.set(false)
                     }
-                } else {
-                    Log.w(TAG, "Window flush failed, keeping events in buffer for retry")
                 }
             }
 
@@ -375,6 +509,7 @@ class MobileLogRecordProcessor private constructor(
 
         } catch (e: Exception) {
             Log.e(TAG, "Error flushing window", e)
+            flushInProgress.set(false)
             return CompletableResultCode.ofFailure()
         }
     }
@@ -421,18 +556,20 @@ class MobileLogRecordProcessor private constructor(
             val result = CompletableResultCode.ofAll(results)
 
             result.whenComplete {
-                if (result.isSuccess) {
-                    val exportedIds = Collections.newSetFromMap(IdentityHashMap<LogRecordData, Boolean>())
-                    exportedIds.addAll(ramEventsToFlush)
-                    var removed = 0
-                    ramBuffer.removeIf { event ->
-                        exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                executor.submit {
+                    if (result.isSuccess) {
+                        val exportedIds = Collections.newSetFromMap(IdentityHashMap<LogRecordData, Boolean>())
+                        exportedIds.addAll(ramEventsToFlush)
+                        var removed = 0
+                        ramBuffer.removeIf { event ->
+                            exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                        }
+                        ramBufferCount.addAndGet(-removed)
+                        runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
+                        Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
+                    } else {
+                        Log.w(TAG, "flushByTraceId failed, keeping events in buffer for retry")
                     }
-                    ramBufferCount.addAndGet(-removed)
-                    runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
-                    Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
-                } else {
-                    Log.w(TAG, "flushByTraceId failed, keeping events in buffer for retry")
                 }
             }
 
@@ -506,22 +643,24 @@ class MobileLogRecordProcessor private constructor(
             val result = CompletableResultCode.ofAll(results)
 
             result.whenComplete {
-                if (result.isSuccess) {
-                    // Remove exactly the snapshotted RAM events by object identity.
-                    // Events that arrived after the snapshot was taken are preserved.
-                    val exportedIds = Collections.newSetFromMap(
-                        IdentityHashMap<LogRecordData, Boolean>()
-                    )
-                    exportedIds.addAll(ramSnapshot)
-                    var removed = 0
-                    ramBuffer.removeIf { event ->
-                        exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                executor.submit {
+                    if (result.isSuccess) {
+                        // Remove exactly the snapshotted RAM events by object identity.
+                        // Events that arrived after the snapshot was taken are preserved.
+                        val exportedIds = Collections.newSetFromMap(
+                            IdentityHashMap<LogRecordData, Boolean>()
+                        )
+                        exportedIds.addAll(ramSnapshot)
+                        var removed = 0
+                        ramBuffer.removeIf { event ->
+                            exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                        }
+                        ramBufferCount.addAndGet(-removed)
+                        runBlocking { diskBuffer.clearAll() }
+                        Log.i(TAG, "Force flush completed: removed $removed RAM + ${diskEvents.size} disk events")
+                    } else {
+                        Log.w(TAG, "Force flush failed, keeping events in buffer")
                     }
-                    ramBufferCount.addAndGet(-removed)
-                    runBlocking { diskBuffer.clearAll() }
-                    Log.i(TAG, "Force flush completed: removed $removed RAM + ${diskEvents.size} disk events")
-                } else {
-                    Log.w(TAG, "Force flush failed, keeping events in buffer")
                 }
             }
 

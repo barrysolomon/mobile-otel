@@ -110,6 +110,7 @@ enum class ExportMode {
  * @property networkConfig Configuration for network instrumentation (default: privacy-first with trace propagation)
  * @property errorConfig Configuration for error instrumentation (default: all error handlers with deduplication)
  * @property uiTelemetryMode Controls whether UI interactions emit log events, child spans, or both (default: EVENTS)
+ * @property textInputConfig Configuration for text-field instrumentation (default: char count + is-set, no raw text)
  */
 data class MobileConfig(
     val serviceName: String,
@@ -117,6 +118,7 @@ data class MobileConfig(
     val collectorEndpoint: String,
     val exportMode: ExportMode = ExportMode.CONDITIONAL,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
+    val textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig(),
     val traceExportIntervalSeconds: Long = 30,
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
@@ -171,6 +173,7 @@ data class MobileConfig(
         private var collectorEndpoint: String? = null
         private var exportMode: ExportMode = ExportMode.CONDITIONAL
         private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
+        private var textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig()
         private var traceExportIntervalSeconds: Long = 30
         private var metricExportIntervalSeconds: Long = 60
         private var predictionIntervalSeconds: Long = 30
@@ -196,6 +199,7 @@ data class MobileConfig(
         fun setCollectorEndpoint(collectorEndpoint: String) = apply { this.collectorEndpoint = collectorEndpoint }
         fun setExportMode(exportMode: ExportMode) = apply { this.exportMode = exportMode }
         fun setUiTelemetryMode(mode: UiTelemetryMode) = apply { this.uiTelemetryMode = mode }
+        fun setTextInputConfig(config: io.opentelemetry.android.mobile.instrumentation.TextInputConfig) = apply { this.textInputConfig = config }
         fun setTraceExportIntervalSeconds(interval: Long) = apply { this.traceExportIntervalSeconds = interval }
         fun setMetricExportIntervalSeconds(interval: Long) = apply { this.metricExportIntervalSeconds = interval }
         fun setPredictionIntervalSeconds(seconds: Long) = apply { this.predictionIntervalSeconds = seconds }
@@ -223,6 +227,7 @@ data class MobileConfig(
                 collectorEndpoint = requireNotNull(collectorEndpoint) { "collectorEndpoint is required" },
                 exportMode = exportMode,
                 uiTelemetryMode = uiTelemetryMode,
+                textInputConfig = textInputConfig,
                 traceExportIntervalSeconds = traceExportIntervalSeconds,
                 metricExportIntervalSeconds = metricExportIntervalSeconds,
                 predictionIntervalSeconds = predictionIntervalSeconds,

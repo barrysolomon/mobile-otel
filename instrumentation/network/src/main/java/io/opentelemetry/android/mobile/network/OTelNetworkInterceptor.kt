@@ -10,6 +10,9 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.logs.Logger
+import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
@@ -49,7 +52,8 @@ class OTelNetworkInterceptor private constructor(
     private val context: Context,
     private val config: NetworkConfig,
     private val tracer: Tracer,
-    private val propagator: TextMapPropagator
+    private val propagator: TextMapPropagator,
+    private val logger: Logger? = null
 ) : Interceptor {
 
     private val connectivityManager: ConnectivityManager? =
@@ -133,6 +137,19 @@ class OTelNetworkInterceptor private constructor(
         // Determine status
         if (response.code >= config.errorStatusThreshold) {
             span.setStatus(StatusCode.ERROR, "HTTP ${response.code}")
+            // Emit a log record so the http-error-detector policy can trigger a conditional flush.
+            logger?.logRecordBuilder()
+                ?.setBody("http.error")
+                ?.setSeverity(Severity.ERROR)
+                ?.setAllAttributes(
+                    Attributes.builder()
+                        .put(AttributeKey.stringKey("http.url"), scrubUrl(request.url.toString()))
+                        .put(AttributeKey.longKey("http.status_code"), response.code.toLong())
+                        .put(AttributeKey.stringKey("http.method"), request.method)
+                        .put(AttributeKey.longKey("http.duration_ms"), duration)
+                        .build()
+                )
+                ?.emit()
         } else {
             span.setStatus(StatusCode.OK)
         }
@@ -290,9 +307,10 @@ class OTelNetworkInterceptor private constructor(
             context: Context,
             config: NetworkConfig,
             tracer: Tracer,
-            propagator: TextMapPropagator
+            propagator: TextMapPropagator,
+            logger: Logger? = null
         ): OTelNetworkInterceptor {
-            return OTelNetworkInterceptor(context.applicationContext, config, tracer, propagator)
+            return OTelNetworkInterceptor(context.applicationContext, config, tracer, propagator, logger)
         }
     }
 }

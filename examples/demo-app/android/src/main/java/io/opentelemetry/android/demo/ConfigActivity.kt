@@ -17,6 +17,8 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import io.opentelemetry.android.mobile.MobileOtel
 import io.opentelemetry.android.mobile.config.ExportMode
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.config.UiTelemetryMode
+import io.opentelemetry.android.mobile.instrumentation.TextInputConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
 import io.opentelemetry.android.mobile.errors.ErrorConfig
 import io.opentelemetry.android.mobile.network.NetworkConfig
@@ -91,6 +93,15 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var editErrorRateLimit: EditText
     private lateinit var editErrorDedupeWindowMinutes: EditText
 
+    // UI Telemetry
+    private lateinit var radioGroupUiTelemetryMode: RadioGroup
+    private lateinit var radioUiEvents: RadioButton
+    private lateinit var radioUiSpans: RadioButton
+    private lateinit var radioUiBoth: RadioButton
+    private lateinit var switchTextCharCount: SwitchMaterial
+    private lateinit var switchTextIsSet: SwitchMaterial
+    private lateinit var switchTextContent: SwitchMaterial
+
     // What to Capture
     private lateinit var checkboxCaptureLifecycle: SwitchMaterial
     private lateinit var checkboxCaptureScreens: SwitchMaterial
@@ -105,6 +116,7 @@ class ConfigActivity : AppCompatActivity() {
     // Buttons
     private lateinit var btnSave: Button
     private lateinit var btnResetDefaults: Button
+    private lateinit var btnCancel: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -169,6 +181,15 @@ class ConfigActivity : AppCompatActivity() {
         editErrorRateLimit                 = findViewById(R.id.editErrorRateLimit)
         editErrorDedupeWindowMinutes       = findViewById(R.id.editErrorDedupeWindowMinutes)
 
+        // UI Telemetry
+        radioGroupUiTelemetryMode = findViewById(R.id.radioGroupUiTelemetryMode)
+        radioUiEvents             = findViewById(R.id.radioUiEvents)
+        radioUiSpans              = findViewById(R.id.radioUiSpans)
+        radioUiBoth               = findViewById(R.id.radioUiBoth)
+        switchTextCharCount       = findViewById(R.id.switchTextCharCount)
+        switchTextIsSet           = findViewById(R.id.switchTextIsSet)
+        switchTextContent         = findViewById(R.id.switchTextContent)
+
         // Capture
         checkboxCaptureLifecycle  = findViewById(R.id.checkboxCaptureLifecycle)
         checkboxCaptureScreens    = findViewById(R.id.checkboxCaptureScreens)
@@ -183,11 +204,13 @@ class ConfigActivity : AppCompatActivity() {
         // Buttons
         btnSave         = findViewById(R.id.btnSave)
         btnResetDefaults= findViewById(R.id.btnResetDefaults)
+        btnCancel       = findViewById(R.id.btnCancel)
 
         loadConfiguration()
 
         btnSave.setOnClickListener { saveConfiguration() }
         btnResetDefaults.setOnClickListener { resetToDefaults() }
+        btnCancel.setOnClickListener { finish() }
 
         // Live sampling rate
         sliderSamplingRate.addOnChangeListener { _, value, fromUser ->
@@ -258,6 +281,15 @@ class ConfigActivity : AppCompatActivity() {
         editErrorRateLimit.setText(error.rateLimit.toString())
         editErrorDedupeWindowMinutes.setText((error.deduplicateWindowMs / 60_000L).toString())
 
+        when (ConfigManager.getUiTelemetryMode(this)) {
+            "SPANS" -> radioUiSpans.isChecked = true
+            "BOTH"  -> radioUiBoth.isChecked  = true
+            else    -> radioUiEvents.isChecked = true
+        }
+        switchTextCharCount.isChecked = ConfigManager.getTextCaptureCharCount(this)
+        switchTextIsSet.isChecked     = ConfigManager.getTextCaptureIsSet(this)
+        switchTextContent.isChecked   = ConfigManager.getTextCaptureContent(this)
+
         val capture = ConfigManager.loadCaptureOptions(this)
         checkboxCaptureLifecycle.isChecked  = capture[ConfigManager.captureKey("lifecycle")]  ?: true
         checkboxCaptureScreens.isChecked    = capture[ConfigManager.captureKey("screens")]    ?: true
@@ -285,10 +317,23 @@ class ConfigActivity : AppCompatActivity() {
             // Load existing Dash0 connection config (preserved — not overwritten here)
             val existing = ConfigManager.loadConfig(this)
 
+            val uiTelemetryMode = when (radioGroupUiTelemetryMode.checkedRadioButtonId) {
+                R.id.radioUiSpans -> UiTelemetryMode.SPANS
+                R.id.radioUiBoth  -> UiTelemetryMode.BOTH
+                else              -> UiTelemetryMode.EVENTS
+            }
+            val textInputConfig = TextInputConfig(
+                captureCharCount    = switchTextCharCount.isChecked,
+                captureIsSet        = switchTextIsSet.isChecked,
+                captureTextContent  = switchTextContent.isChecked
+            )
+
             val config = MobileConfig(
                 serviceName              = editServiceName.text.toString().trim(),
                 serviceVersion           = editServiceVersion.text.toString().trim(),
                 collectorEndpoint        = existing.collectorEndpoint,
+                uiTelemetryMode          = uiTelemetryMode,
+                textInputConfig          = textInputConfig,
                 ramBufferSize            = editRamBufferSize.text.toString().toInt(),
                 diskBufferMb             = editDiskBufferMb.text.toString().toInt(),
                 diskBufferTtlHours       = editDiskBufferTtl.text.toString().toInt(),

@@ -207,9 +207,11 @@ class ErrorInstrumentation private constructor(
             }
         }
 
-        // Log the error
+        // Body is "app.crash" so the default crash-recovery policy matches.
+        // Exception details are in attributes (error.type, error.message, error.stack_trace).
+        attributesBuilder.put(AttributeKey.stringKey("error.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
         logger.logRecordBuilder()
-            .setBody("Exception captured: ${throwable.javaClass.simpleName}")
+            .setBody("app.crash")
             .setSeverity(Severity.ERROR)
             .setAllAttributes(attributesBuilder.build())
             .emit()

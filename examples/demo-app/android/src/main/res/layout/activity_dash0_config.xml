@@ -179,13 +179,21 @@
                 android:orientation="horizontal"
                 android:layout_marginBottom="8dp">
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDash0Cancel"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cancel"
+                    android:layout_marginEnd="4dp" />
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnDash0Reset"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Reset"
-                    android:layout_marginEnd="8dp" />
+                    android:layout_marginEnd="4dp" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnDash0Save"
                     android:layout_width="0dp"

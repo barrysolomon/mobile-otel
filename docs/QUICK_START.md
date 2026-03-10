@@ -142,30 +142,82 @@ cd control-plane-ui && npm install && npm run dev
 # Open http://localhost:3000
 ```
 
-### Step 3: Build, Install, and Launch the Demo App
+### Step 3: Start an Emulator
+
+#### Already have AVDs installed? Start one now
+
+```bash
+# See what you have
+emulator -list-avds
+# This project's standard AVDs:
+#   Medium_Phone_API_36.1
+#   Pixel_3a
+#   Pixel_7
+```
+
+**With a visible window (normal development):**
+
+```bash
+emulator -avd Pixel_7 &
+```
+
+The emulator window opens. Wait for the Android home screen before proceeding.
+
+**Headless (CI or low-RAM machines):**
+
+```bash
+nohup emulator -avd Pixel_3a -no-window -no-audio -no-snapshot-save \
+    > /tmp/emulator.log 2>&1 &
+```
+
+Either way, poll until fully booted before installing:
+
+```bash
+until adb shell "getprop dev.bootcomplete" 2>/dev/null | grep -q 1; do sleep 5; done
+until adb shell "getprop sys.boot_completed" 2>/dev/null | grep -q 1; do sleep 5; done
+echo "Ready — proceed to Step 4"
+```
+
+> **Pixel_7 (API 36) note:** Takes ~4 minutes to fully boot after `adb` connects. Do **not** install the APK until both props return `1`.
+
+Check it's ready:
+
+```bash
+adb devices
+#   emulator-5554   device    ← "device" = ready; "offline" = still booting
+```
+
+#### Don't have AVDs installed yet? Use Android Studio AVD Manager
+
+Open **Tools → Device Manager**, click **+** → **Create Virtual Device**, choose **Pixel 7 / API 36**, click Finish and press the play button.
+
+Or from the command line:
+
+```bash
+sdkmanager "system-images;android-36;google_apis;x86_64"
+avdmanager create avd \
+    --name Pixel_7 \
+    --package "system-images;android-36;google_apis;x86_64" \
+    --device "pixel_7"
+```
+
+Then start it with the headless command above.
+
+### Step 4: Build, Install, and Launch the Demo App
 
 ```bash
 cd examples/demo-app
 ./gradlew installDebug && adb shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
 ```
 
-> **No connected devices?** `installDebug` requires a running emulator or connected physical device.
->
-> ```bash
-> # List available AVDs and start one (Pixel 3a uses less RAM than Pixel 7)
-> emulator -list-avds
-> emulator -avd Pixel_3a -memory 2048 &
-> adb wait-for-device shell getprop sys.boot_completed  # wait for "1"
-> # Then re-run the install command above
-> ```
->
-> For a physical device: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices`.
->
-> To build the APK without installing:
-> ```bash
-> ./gradlew assembleDebug
-> # Output: android/build/outputs/apk/debug/android-debug.apk
-> ```
+To build the APK without installing (useful for CI or sending to a colleague):
+
+```bash
+./gradlew assembleDebug
+# Output: android/build/outputs/apk/debug/android-debug.apk
+```
+
+For a **physical device**: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices` before running `installDebug`.
 
 Point the app at the OTEL Collector (direct) or the gateway (if deployed). Open **Profile → Dash0 Connection** in the running app to update the endpoint at runtime:
 

@@ -36,7 +36,8 @@ class SchedulingApiClient private constructor(context: Context) {
                     context    = appContext,
                     config     = NetworkConfig.production(),
                     tracer     = OTelMobile.getTracer("schedulr.network"),
-                    propagator = sdk.propagators.textMapPropagator
+                    propagator = sdk.propagators.textMapPropagator,
+                    logger     = OTelMobile.getLogger("schedulr.network")
                 )
             )
             .addInterceptor(HttpLoggingInterceptor().apply {

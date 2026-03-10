@@ -23,7 +23,10 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
-            android:paddingHorizontal="8dp">
+            android:paddingHorizontal="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:minHeight="48dp">
 
             <ImageView
                 android:id="@+id/debugExpandIcon"

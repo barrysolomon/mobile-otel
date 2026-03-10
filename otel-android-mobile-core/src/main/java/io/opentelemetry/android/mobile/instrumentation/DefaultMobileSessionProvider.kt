@@ -23,6 +23,8 @@ class DefaultMobileSessionProvider(
     private val viewCounter = AtomicLong(0)
     private val currentViewId = AtomicReference("view-0")
     private val currentScreen = AtomicReference<String?>(null)
+    private val previousScreen = AtomicReference<String?>(null)
+    private val screenEnteredAtMs = AtomicLong(System.currentTimeMillis())
 
     private val lastBackgroundAtMs = AtomicLong(0L)
 
@@ -32,8 +34,14 @@ class DefaultMobileSessionProvider(
 
     override fun getCurrentScreenName(): String? = currentScreen.get()
 
+    override fun getPreviousScreenName(): String? = previousScreen.get()
+
+    override fun getTimeOnScreenMs(): Long = System.currentTimeMillis() - screenEnteredAtMs.get()
+
     override fun onScreenView(screenName: String) {
+        previousScreen.set(currentScreen.get())
         currentScreen.set(screenName)
+        screenEnteredAtMs.set(System.currentTimeMillis())
         val count = viewCounter.incrementAndGet()
         currentViewId.set("view-$count")
     }

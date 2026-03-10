@@ -1,0 +1,458 @@
+{
+  "apiVersion": "perses.dev/v1alpha1",
+  "kind": "PersesDashboard",
+  "metadata": {
+    "name": "mobile-fleet-overview",
+    "labels": {
+      "dash0.com/id": "53189756-fc33-4394-88b3-0085612cf5d5",
+      "dash0.com/dataset": "otel-mobile"
+    },
+    "annotations": {
+      "dash0.com/folder-path": "/mobile-monitoring"
+    }
+  },
+  "spec": {
+    "duration": "30m",
+    "display": {
+      "description": "High-level health metrics for the entire mobile fleet",
+      "name": "Mobile Fleet Overview"
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Fleet Health Summary"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/activeDevices"
+              },
+              "height": 4,
+              "width": 6,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/avgBatteryLevel"
+              },
+              "height": 4,
+              "width": 6,
+              "x": 6,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/lowBatteryDevices"
+              },
+              "height": 4,
+              "width": 6,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/errorRate"
+              },
+              "height": 4,
+              "width": 6,
+              "x": 18,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "collapse": {
+              "open": true
+            },
+            "title": "Trends"
+          },
+          "items": [
+            {
+              "content": {
+                "$ref": "#/spec/panels/batteryTrend"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/memoryUsageTrend"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 0
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/thermalIssues"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 0,
+              "y": 8
+            },
+            {
+              "content": {
+                "$ref": "#/spec/panels/requestRate"
+              },
+              "height": 8,
+              "width": 12,
+              "x": 12,
+              "y": 8
+            }
+          ]
+        }
+      }
+    ],
+    "panels": {
+      "activeDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Total number of unique devices reporting",
+            "name": "Active Devices"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count(count by (device_id) ({otel_metric_name=\"device.battery.level\", otel_metric_type=\"gauge\"}))"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "avgBatteryLevel": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Fleet-wide average battery percentage",
+            "name": "Average Battery Level"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 1,
+                "unit": "percent"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "#d32f2f",
+                    "value": 0
+                  },
+                  {
+                    "color": "#ff9800",
+                    "value": 20
+                  },
+                  {
+                    "color": "#4caf50",
+                    "value": 50
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"device.battery.level\", otel_metric_type=\"gauge\"})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "batteryTrend": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Average battery level over time",
+            "name": "Battery Level Trend"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"device.battery.level\", otel_metric_type=\"gauge\"})",
+                    "seriesNameFormat": "Average Battery %"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "errorRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Application error rate across fleet",
+            "name": "Error Rate"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 2,
+                "unit": "percent"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "#4caf50",
+                    "value": 0
+                  },
+                  {
+                    "color": "#ff9800",
+                    "value": 5
+                  },
+                  {
+                    "color": "#d32f2f",
+                    "value": 10
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({otel_metric_name=\"dash0.spans\", otel_metric_type=\"sum\", otel_span_status_code=\"ERROR\"}[$__interval])) / sum(rate({otel_metric_name=\"dash0.spans\", otel_metric_type=\"sum\"}[$__interval])) * 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "lowBatteryDevices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices with battery below 20%",
+            "name": "Low Battery Devices"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "decimalPlaces": 0,
+                "unit": "decimal"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "#4caf50",
+                    "value": 0
+                  },
+                  {
+                    "color": "#ff9800",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d32f2f",
+                    "value": 5
+                  }
+                ]
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.battery.level\", otel_metric_type=\"gauge\"} < 20)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "memoryUsageTrend": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Average memory usage across fleet",
+            "name": "Memory Usage Trend"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name=\"device.memory.used\", otel_metric_type=\"gauge\"})",
+                    "seriesNameFormat": "Avg Memory Used (MB)"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "requestRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Requests per second across fleet",
+            "name": "Request Rate"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({otel_metric_name=\"dash0.spans\", otel_metric_type=\"sum\"}[$__interval]))",
+                    "seriesNameFormat": "Requests/sec"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "thermalIssues": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "description": "Devices in elevated thermal states (>= MODERATE)",
+            "name": "Devices with Thermal Issues"
+          },
+          "links": [],
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "dash0Extensions": {
+                "yAxis": {
+                  "scale": "linear"
+                }
+              },
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true,
+                "sort": {}
+              },
+              "querySettings": [],
+              "thresholds": {},
+              "visual": {
+                "areaOpacity": 0,
+                "connectNulls": false,
+                "display": "line",
+                "lineWidth": 1,
+                "palette": {
+                  "mode": "auto"
+                },
+                "pointRadius": 2.5,
+                "stack": "none"
+              },
+              "yAxis": {
+                "format": {
+                  "enforceMinimumFractionDigits": false,
+                  "shortValues": true,
+                  "signDisplay": "auto",
+                  "unit": "decimal"
+                },
+                "show": true,
+                "showOnlyMaxScale": false
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name=\"device.thermal.state\", otel_metric_type=\"gauge\"} >= 2) or vector(0)",
+                    "seriesNameFormat": "Devices Overheating"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

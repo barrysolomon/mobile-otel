@@ -139,9 +139,10 @@ class MobileLoggerProvider private constructor(
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // Moderate export frequency (2x the configured interval)
+                        // HYBRID: OTel SDK metrics export on the configured schedule (not disabled,
+                        // not 2x — SDK-level metrics like buffer gauges should update regularly).
                         PeriodicMetricReader.builder(metricExporter)
-                            .setInterval(config.metricExportIntervalSeconds * 2, TimeUnit.SECONDS)
+                            .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                 }
@@ -179,9 +180,12 @@ class MobileLoggerProvider private constructor(
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // Moderate export frequency
+                        // HYBRID: spans export on the configured schedule (not disabled, not 2x).
+                        // Traces from policy-triggered activity windows are exported via the log
+                        // processor; the BatchSpanProcessor handles any spans that are started
+                        // before a policy triggers or that don't belong to a flushed window.
                         BatchSpanProcessor.builder(traceExporter)
-                            .setScheduleDelay(config.traceExportIntervalSeconds * 2, TimeUnit.SECONDS)
+                            .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                 }
@@ -207,6 +211,14 @@ class MobileLoggerProvider private constructor(
             .setTracerProvider(tracerProvider)
             .setMeterProvider(meterProvider)
             .build()
+
+        // Wire the heartbeat logger for HYBRID mode now that the SDK is fully initialised.
+        // Done here (not in MobileLogRecordProcessor.init) to avoid a circular dependency:
+        // the processor can't hold a Logger at construction time because the SdkLoggerProvider
+        // that backs it hasn't been built yet.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+            mobileProcessor.heartbeatLogger = sdkLoggerProvider.get("mobile.heartbeat")
+        }
     }
 
     /**

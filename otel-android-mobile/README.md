@@ -223,15 +223,34 @@ Memory usage:
 ## Testing
 
 ```bash
-# Run unit tests
-./gradlew test
+# Run unit tests (no device needed)
+cd examples/demo-app
+./gradlew :otel-android-mobile:test
 
-# Run instrumentation tests
-./gradlew connectedAndroidTest
+# Run instrumentation tests (requires a running emulator or device)
+./gradlew :otel-android-mobile:connectedDebugAndroidTest
 
 # Run with coverage
-./gradlew jacocoTestReport
+./gradlew :otel-android-mobile:testDebugUnitTestCoverage
 ```
+
+**No emulator running?** Start one before running instrumented tests:
+
+```bash
+# List available AVDs
+emulator -list-avds
+
+# Start headless (Pixel_3a is lightest on RAM)
+nohup emulator -avd Pixel_3a -no-window -no-audio -no-snapshot-save \
+    > /tmp/emulator.log 2>&1 &
+
+# Wait for full boot before installing/testing
+until adb shell "getprop dev.bootcomplete" 2>/dev/null | grep -q 1; do sleep 5; done
+until adb shell "getprop sys.boot_completed" 2>/dev/null | grep -q 1; do sleep 5; done
+echo "Ready"
+```
+
+See [Quick Start — Setting Up an Emulator](../docs/QUICK_START.md#step-3-start-an-emulator) for full instructions including creating new AVDs.
 
 ## Documentation
 
