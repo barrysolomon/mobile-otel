@@ -49,7 +49,10 @@ class PredictiveExportPolicy private constructor(
     private val predictor: OnDevicePredictor,
     private val healthMonitor: DeviceHealthMonitor,
     private val predictionIntervalSeconds: Long,
-    private val highRiskThreshold: Double
+    private val highRiskThreshold: Double,
+    // When false, the caller drives runPredictionCycle() externally (e.g. via HYBRID heartbeat).
+    // Setting this true AND wiring predictionCycleHook would run prediction twice per tick.
+    private val startOwnScheduler: Boolean
 ) {
     private val TAG = "PredictiveExportPolicy"
 
@@ -63,15 +66,21 @@ class PredictiveExportPolicy private constructor(
     private var predictionListener: PredictionListener? = null
 
     init {
-        // Schedule periodic predictions
-        executor.scheduleAtFixedRate(
-            { runPredictionCycle() },
-            0,  // Initial delay
-            predictionIntervalSeconds,
-            TimeUnit.SECONDS
-        )
-
-        Log.i(TAG, "Initialized: prediction interval=${predictionIntervalSeconds}s, threshold=$highRiskThreshold")
+        if (startOwnScheduler) {
+            // Only start a self-owned scheduler when the caller is NOT driving prediction cycles
+            // externally. In HYBRID mode MobileLogRecordProcessor.emitHeartbeat() calls
+            // runPredictionCycle() via predictionCycleHook — starting a second scheduler here
+            // would fire flushWindow() twice per tick, re-exporting already-exported events.
+            executor.scheduleAtFixedRate(
+                { runPredictionCycle() },
+                0,
+                predictionIntervalSeconds,
+                TimeUnit.SECONDS
+            )
+            Log.i(TAG, "Initialized with own scheduler: interval=${predictionIntervalSeconds}s, threshold=$highRiskThreshold")
+        } else {
+            Log.i(TAG, "Initialized without own scheduler (driven externally): threshold=$highRiskThreshold")
+        }
     }
 
     /**
@@ -115,16 +124,18 @@ class PredictiveExportPolicy private constructor(
                 "perfDegradation=${prediction.performanceDegradationRisk}, " +
                 "batteryDrain=${prediction.batteryDrainRisk}")
 
-        // Action 1: Pre-emptive flush if network loss imminent
+        // Action 1: Pre-emptive flush if network loss imminent — export last 2 min before
+        // connectivity drops. forceFlush() would dump the entire buffer unnecessarily.
         if (prediction.networkLossRisk >= highRiskThreshold) {
-            Log.i(TAG, "Network loss predicted (${prediction.networkLossRisk}), triggering pre-emptive flush")
-            processor?.forceFlush()
+            Log.i(TAG, "Network loss predicted (${prediction.networkLossRisk}), flushing last 2 min")
+            processor?.flushWindow(2)
         }
 
-        // Action 2: If crash risk high, ensure critical data is flushed
+        // Action 2: If crash risk high, flush the last 5 min so pre-crash context is captured.
+        // forceFlush() would dump the entire buffer; a selective window is sufficient and cheaper.
         if (prediction.crashRisk >= highRiskThreshold) {
-            Log.i(TAG, "Crash risk high (${prediction.crashRisk}), flushing critical events")
-            processor?.forceFlush()
+            Log.i(TAG, "Crash risk high (${prediction.crashRisk}), flushing last 5 min")
+            processor?.flushWindow(5)
         }
 
         // Action 3: Emit high-risk alert event
@@ -226,8 +237,9 @@ class PredictiveExportPolicy private constructor(
         private var logger: Logger? = null
         private var predictor: OnDevicePredictor? = null
         private var healthMonitor: DeviceHealthMonitor? = null
-        private var predictionIntervalSeconds: Long = 30  // Every 30 seconds
+        private var predictionIntervalSeconds: Long = 30
         private var highRiskThreshold: Double = 0.7
+        private var startOwnScheduler: Boolean = true
 
         fun setProcessor(processor: MobileLogRecordProcessor) = apply {
             this.processor = processor
@@ -253,6 +265,16 @@ class PredictiveExportPolicy private constructor(
             this.highRiskThreshold = threshold
         }
 
+        /**
+         * Set to false when the caller will drive [runPredictionCycle] externally
+         * (e.g. via [MobileLogRecordProcessor.predictionCycleHook] in HYBRID mode).
+         * Leaving this true while also wiring predictionCycleHook will fire prediction
+         * twice per heartbeat tick and cause duplicate exports.
+         */
+        fun setStartOwnScheduler(start: Boolean) = apply {
+            this.startOwnScheduler = start
+        }
+
         fun build(): PredictiveExportPolicy {
             return PredictiveExportPolicy(
                 context = context,
@@ -261,7 +283,8 @@ class PredictiveExportPolicy private constructor(
                 predictor = predictor ?: OnDevicePredictor.getInstance(context),
                 healthMonitor = healthMonitor ?: DeviceHealthMonitor.getInstance(context),
                 predictionIntervalSeconds = predictionIntervalSeconds,
-                highRiskThreshold = highRiskThreshold
+                highRiskThreshold = highRiskThreshold,
+                startOwnScheduler = startOwnScheduler
             )
         }
     }

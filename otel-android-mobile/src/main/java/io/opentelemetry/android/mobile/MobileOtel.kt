@@ -126,17 +126,20 @@ object MobileOtel {
         }
 
         // Wire PredictiveExportPolicy — monitors device health, flushes pre-emptively
-        // when crash risk or network loss risk exceeds threshold
+        // when crash risk or network loss risk exceeds threshold.
+        // In HYBRID mode the processor's heartbeat tick drives runPredictionCycle() via
+        // predictionCycleHook — so we must NOT start a second self-owned scheduler here,
+        // otherwise prediction fires twice per tick and re-exports already-cleared events.
+        val isHybrid = config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID
         predictivePolicy = PredictiveExportPolicy.builder(appContext)
             .setProcessor(processor)
             .setLogger(loggerProvider.get("predictive-export"))
             .setPredictionIntervalSeconds(config.predictionIntervalSeconds)
+            .setStartOwnScheduler(!isHybrid)  // HYBRID: driven by heartbeat; others: self-scheduled
             .build()
 
         // HYBRID: co-locate prediction.cycle with device.heartbeat on a single shared timer.
-        // The processor's heartbeat tick calls runPredictionCycle() so both logs are
-        // emitted together, giving the PolicyEvaluator a richer event to match against.
-        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+        if (isHybrid) {
             processor.predictionCycleHook = { predictivePolicy?.runPredictionCycle() }
         }
 

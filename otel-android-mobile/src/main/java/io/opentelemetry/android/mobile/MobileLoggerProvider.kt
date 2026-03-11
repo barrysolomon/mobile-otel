@@ -180,12 +180,12 @@ class MobileLoggerProvider private constructor(
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // HYBRID: spans export on the configured schedule (not disabled, not 2x).
-                        // Traces from policy-triggered activity windows are exported via the log
-                        // processor; the BatchSpanProcessor handles any spans that are started
-                        // before a policy triggers or that don't belong to a flushed window.
+                        // HYBRID: spans buffer like CONDITIONAL — only export when a policy fires.
+                        // evaluatePolicies() calls sdkTracerProvider.forceFlush() alongside
+                        // flushWindow() so spans and logs are always co-exported on a trigger.
                         BatchSpanProcessor.builder(traceExporter)
-                            .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
+                            .setScheduleDelay(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .setMaxQueueSize(10000)
                             .build()
                     }
                 }
@@ -218,6 +218,11 @@ class MobileLoggerProvider private constructor(
         // that backs it hasn't been built yet.
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
             mobileProcessor.heartbeatLogger = sdkLoggerProvider.get("mobile.heartbeat")
+            // Wire span flush hook: on policy trigger, co-export buffered spans alongside logs.
+            // HYBRID uses a 1-hour BatchSpanProcessor delay so spans only export here.
+            mobileProcessor.spanFlushHook = {
+                openTelemetrySdk.sdkTracerProvider.forceFlush()
+            }
         }
     }
 

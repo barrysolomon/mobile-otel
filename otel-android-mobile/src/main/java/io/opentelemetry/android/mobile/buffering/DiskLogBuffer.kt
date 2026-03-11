@@ -403,8 +403,11 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
         }
     }.toString()
 
+    val tsNs = timestampEpochNanos
+    val effectiveTimestampMs = if (tsNs > 0) tsNs / 1_000_000 else observedTimestampEpochNanos / 1_000_000
+
     return LogRecordEntity(
-        timestampMs = timestampEpochNanos / 1_000_000,
+        timestampMs = effectiveTimestampMs,
         severityText = severity?.name,
         body = body.asString(),
         attributes = attributesJson.toString(),

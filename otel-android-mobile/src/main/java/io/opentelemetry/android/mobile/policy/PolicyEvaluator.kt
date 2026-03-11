@@ -178,7 +178,18 @@ class PolicyEvaluator(
         contextSnapshot: ContextSnapshot,
         policy: Policy
     ): Boolean {
-        // 1. Check attribute conditions
+        // 1. Check attribute conditions.
+        // A policy with NO attribute constraints AND no geo/device constraints would match every
+        // single log record and trigger a flush on each one.  Require at least one constraint
+        // dimension to be non-empty; otherwise treat the policy as inactive (no match).
+        val hasAnyConstraint = policy.match.attributes.isNotEmpty() ||
+            policy.match.geo != null ||
+            policy.match.device != null
+        if (!hasAnyConstraint) {
+            Log.w(TAG, "Policy '${policy.id}' has no match constraints — skipping to avoid matching every event")
+            return false
+        }
+
         val attributeMatch = if (policy.match.attributes.isNotEmpty()) {
             val conditions = policy.match.attributes.map { (attrKey, condition) ->
                 val attrValue = getAttributeValue(logRecord, attrKey)
@@ -186,7 +197,7 @@ class PolicyEvaluator(
             }
             conditions.all { it }  // Attributes always use AND logic internally
         } else {
-            true  // No attribute constraints = always match
+            true  // No attribute constraints but geo/device constraints exist — attribute side passes
         }
 
         // 2. Check geo conditions

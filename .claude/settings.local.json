@@ -203,7 +203,10 @@
       "Bash(grep -E \"\\\\.kt$\")",
       "Bash(grep -r \"Application\\\\|onCreate\" /Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/*.kt)",
       "Bash(xargs grep:*)",
-      "Bash(xargs -I{} echo \"{} files with failures\")"
+      "Bash(xargs -I{} echo \"{} files with failures\")",
+      "Bash(grep -l \"tvBack\\\\|fitsSystemWindows\" /Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/res/layout/*.xml)",
+      "Bash(grep -L \"fitsSystemWindows\" /Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/res/layout/activity_*.xml)",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

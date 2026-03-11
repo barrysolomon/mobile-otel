@@ -30,15 +30,17 @@ import org.robolectric.annotation.Config
  *
  * ## Mode summary
  *
- * | Mode        | Periodic flush | Policy-triggered flush |
- * |-------------|---------------|------------------------|
- * | CONDITIONAL | No            | Yes (flushWindow)       |
- * | CONTINUOUS  | Yes           | Yes (also fires)        |
- * | HYBRID      | Yes           | Yes (flushWindow)       |
+ * | Mode        | Periodic bulk flush | Policy-triggered flush | Periodic device metrics |
+ * |-------------|--------------------|-----------------------|------------------------|
+ * | CONDITIONAL | No                 | Yes (flushWindow)      | No                     |
+ * | CONTINUOUS  | Yes (forceFlush)   | Yes (also fires)       | Yes                    |
+ * | HYBRID      | No                 | Yes (flushWindow)      | Yes (2x interval)      |
  *
- * CONDITIONAL is the most battery-efficient mode: events sit in the buffer until
- * a matching export policy is triggered (e.g. UI freeze, crash). CONTINUOUS adds
- * a fixed-schedule periodic export so traces always flow. HYBRID combines both.
+ * CONDITIONAL is the most battery-efficient: events sit in the buffer until a policy triggers.
+ * CONTINUOUS does a periodic forceFlush so all traces flow on a timer.
+ * HYBRID exports device metrics on a schedule and heartbeat/prediction logs immediately,
+ * but bulk events (taps, screens, network) only export when a policy trigger fires — never
+ * on a periodic timer.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
@@ -371,17 +373,21 @@ class ExportModeTest {
     // ── HYBRID mode ───────────────────────────────────────────────────────────
 
     @Test
-    fun `HYBRID - periodic flush fires automatically`() {
+    fun `HYBRID - no periodic bulk flush without a policy trigger`() {
+        // HYBRID has NO periodic forceFlush. Bulk events sit in the buffer until a policy fires.
+        // This test verifies that plain (non-trigger) events are NOT exported on a timer.
         val processor = buildProcessor(ExportMode.HYBRID, traceExportIntervalSeconds = 1)
         try {
             repeat(5) { i ->
                 processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("hybrid.$i")))
             }
 
-            val exported = mockExporter.waitForLogs(5, timeoutMs = 4000)
-            assertTrue(
-                "HYBRID mode periodic flush must fire (exported ${mockExporter.exportedLogs.size})",
-                exported
+            // Wait longer than the old periodic interval — should NOT export
+            Thread.sleep(3000)
+            assertEquals(
+                "HYBRID mode must NOT do a periodic bulk flush without a policy trigger",
+                0,
+                mockExporter.exportedLogs.size
             )
         } finally {
             processor.shutdown()
@@ -430,28 +436,24 @@ class ExportModeTest {
     }
 
     @Test
-    fun `HYBRID - both periodic and policy paths contribute exports`() {
-        // Use a short periodic interval AND trigger a policy to verify both paths fire.
+    fun `HYBRID - only policy-triggered flush exports bulk events`() {
+        // HYBRID has no periodic bulk flush. Verify that buffered events only export when a policy fires.
         val processor = buildProcessor(ExportMode.HYBRID, traceExportIntervalSeconds = 1)
         try {
-            // First, let the periodic flush drain the buffer
+            // Buffer some plain events — these must NOT export on the periodic timer
             repeat(3) { i ->
-                processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("periodic.$i")))
+                processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("pre.$i")))
             }
-            mockExporter.waitForLogs(3, timeoutMs = 4000)
-            val afterPeriodicCount = mockExporter.exportedLogs.size
-            assertTrue("Periodic flush should have fired", afterPeriodicCount >= 3)
+            Thread.sleep(2500)  // longer than traceExportIntervalSeconds=1 — nothing should export
+            assertEquals("HYBRID: plain events must not export before a policy fires", 0, mockExporter.exportedLogs.size)
 
-            // Now add more events and trigger a policy
-            repeat(3) { i ->
-                processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("policy.$i")))
-            }
+            // Trigger a policy — all buffered events + the crash should now export
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createCrashLog()))
 
-            mockExporter.waitForLogs(afterPeriodicCount + 4, timeoutMs = 4000)
+            val exported = mockExporter.waitForLogs(4, timeoutMs = 3000)
             assertTrue(
-                "HYBRID mode: policy-triggered export must also fire (exported ${mockExporter.exportedLogs.size})",
-                mockExporter.exportedLogs.size >= afterPeriodicCount + 4
+                "HYBRID mode: policy-triggered export must flush buffered events (exported ${mockExporter.exportedLogs.size})",
+                exported
             )
         } finally {
             processor.shutdown()

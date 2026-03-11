@@ -139,17 +139,20 @@ class UserJourneyExportModeTest {
     }
 
     /**
-     * HYBRID: same as CONTINUOUS — navigation events exported on periodic schedule.
+     * HYBRID: navigation events buffer silently — no periodic forceFlush.
+     * Unlike CONTINUOUS, HYBRID only exports when a policy trigger fires (e.g. crash, http error).
      */
     @Test
-    fun `Scenario1 HYBRID - navigation events exported by periodic flush`() {
+    fun `Scenario1 HYBRID - navigation events buffer silently without policy trigger`() {
         val p = processor(ExportMode.HYBRID, traceIntervalSeconds = 1)
         try {
             emitHappyPathBookingEvents(p)
 
-            assertTrue(
-                "HYBRID: periodic flush must export 4 navigation events",
-                exporter.waitForLogs(4, timeoutMs = 4000)
+            // Wait long enough that a periodic flush *would* have fired in CONTINUOUS mode
+            Thread.sleep(2500)
+            assertEquals(
+                "HYBRID: navigation events must buffer silently without a policy trigger",
+                0, exporter.exportedLogs.size
             )
         } finally { p.shutdown() }
     }
@@ -376,27 +379,25 @@ class UserJourneyExportModeTest {
     }
 
     /**
-     * HYBRID: periodic flush drains the quiet transactions, AND the crash event triggers
-     * an additional immediate policy flush — demonstrating both paths.
+     * HYBRID: quiet transactions buffer silently; crash triggers immediate policy flush.
+     * No periodic forceFlush in HYBRID — only policy triggers export events.
      */
     @Test
-    fun `Scenario9 HYBRID - periodic exports transactions AND crash triggers extra immediate flush`() {
-        // Use a short periodic interval so both paths fire within the test window
+    fun `Scenario9 HYBRID - quiet transactions buffer silently then crash triggers immediate flush`() {
         val p = processor(ExportMode.HYBRID, traceIntervalSeconds = 1)
         try {
             emitQuietTransactionBatch(p, count = 10)
-            // Let periodic flush drain the batch
-            exporter.waitForLogs(10, timeoutMs = 4000)
-            val countAfterPeriodic = exporter.exportedLogs.size
-            assertTrue("Periodic flush must export 10 transactions", countAfterPeriodic >= 10)
 
-            // Emit more events then crash — crash triggers an immediate flush
-            emitQuietTransactionBatch(p, count = 5)
+            // Wait long enough for a periodic flush to have fired in CONTINUOUS — it must NOT fire in HYBRID
+            Thread.sleep(2500)
+            assertEquals("HYBRID: quiet transactions must buffer silently", 0, exporter.exportedLogs.size)
+
+            // Crash triggers crash-detector policy → immediate flushWindow
             TestUtils.emitAll(p, listOf(TestUtils.createCrashLog()))
 
             assertTrue(
-                "HYBRID: crash must trigger immediate policy flush of the second batch",
-                exporter.waitForLogs(countAfterPeriodic + 6, timeoutMs = 3000)
+                "HYBRID: crash must trigger immediate policy flush of buffered events",
+                exporter.waitForLogs(11, timeoutMs = 3000)
             )
         } finally { p.shutdown() }
     }
@@ -470,28 +471,26 @@ class UserJourneyExportModeTest {
     }
 
     /**
-     * HYBRID: api.request events exported periodically AND the http.error triggers an
-     * additional immediate flush window — both export paths contribute.
+     * HYBRID: api.request events buffer silently; http.error triggers immediate policy flush of all buffered events.
+     * No periodic forceFlush in HYBRID — the http-error-detector policy is the only export trigger.
      */
     @Test
-    fun `Scenario10 HYBRID - periodic and policy paths both export events`() {
+    fun `Scenario10 HYBRID - api requests buffer silently then http error triggers policy flush`() {
         val p = processor(ExportMode.HYBRID, traceIntervalSeconds = 1)
         try {
-            emitApiRequestBatch(p, count = 10)
-            // Let periodic flush fire
-            exporter.waitForLogs(10, timeoutMs = 4000)
-            val afterPeriodic = exporter.exportedLogs.size
-            assertTrue(afterPeriodic >= 10)
+            emitApiRequestBatch(p, count = 15)
 
-            // Add more requests then trigger http.error
-            emitApiRequestBatch(p, count = 5, startIndex = 11)
+            // Wait — events must remain buffered without a policy trigger
+            Thread.sleep(400)
+            assertEquals("HYBRID: api.request events must buffer silently", 0, exporter.exportedLogs.size)
+
+            // http.error triggers http-error-detector policy → flushWindow(5min) exports all 16 events
             TestUtils.emitAll(p, listOf(TestUtils.createHttpErrorLog(500, "/appointments")))
 
             assertTrue(
-                "HYBRID: http.error must flush the second batch immediately",
-                exporter.waitForLogs(afterPeriodic + 6, timeoutMs = 3000)
+                "HYBRID: http.error must flush all 16 events (15 requests + error)",
+                exporter.waitForLogs(16, timeoutMs = 3000)
             )
-            assertTrue(exporter.exportedLogs.size >= afterPeriodic + 6)
         } finally { p.shutdown() }
     }
 

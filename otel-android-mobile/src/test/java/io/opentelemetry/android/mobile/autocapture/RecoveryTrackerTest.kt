@@ -94,13 +94,15 @@ class RecoveryTrackerTest {
     // ========== Crash Recovery ==========
 
     @Test
-    fun `crash marker triggers app_crash event`() {
+    fun `crash marker does NOT emit app_crash from RecoveryTracker — ErrorInstrumentation owns that`() {
+        // app.crash is emitted by ErrorInstrumentation at crash time (uncaught exception handler).
+        // RecoveryTracker must NOT re-emit it on restart to avoid duplicates at a different timestamp.
         setPrefsBoolean(KEY_CRASH_MARKER, true)
 
         startTracker()
 
         val crashEvents = findByBody("app.crash")
-        assertEquals(1, crashEvents.size, "Expected exactly one app.crash event on crash recovery")
+        assertEquals(0, crashEvents.size, "RecoveryTracker must not re-emit app.crash on restart")
     }
 
     @Test

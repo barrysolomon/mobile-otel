@@ -114,20 +114,10 @@ class RecoveryTracker(
                     .emit()
             }
 
-            if (wasCrash) {
-                logger.logRecordBuilder()
-                    .setBody("app.crash")
-                    .setSeverity(Severity.ERROR)
-                    .setAllAttributes(
-                        Attributes.builder()
-                            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
-                            .put(AttributeKey.stringKey("recovery_type"), lastRecoveryType)
-                            .put(AttributeKey.stringKey("error.type"), "uncaught_exception")
-                            .build()
-                    )
-                    .emit()
-            }
+            // Do NOT re-emit app.crash here. ErrorInstrumentation already emitted it at crash time
+            // via the uncaught exception handler. Emitting it again on restart would create a
+            // duplicate at a different timestamp. app.recovery with recovery_type=crash below
+            // provides the on-restart signal.
 
             logger.logRecordBuilder()
                 .setBody("app.recovery")

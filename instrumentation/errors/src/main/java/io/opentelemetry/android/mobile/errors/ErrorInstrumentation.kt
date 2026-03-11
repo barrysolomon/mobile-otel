@@ -207,6 +207,11 @@ class ErrorInstrumentation private constructor(
             }
         }
 
+        // Stamp the fingerprint BEFORE emitting so concurrent handlers (e.g. multiple
+        // uncaught-exception callbacks firing ms apart for the same crash) all see it and
+        // skip — preventing duplicate app.crash events at the same timestamp.
+        errorFingerprints[fingerprint] = System.currentTimeMillis()
+
         // Body is "app.crash" so the default crash-recovery policy matches.
         // Exception details are in attributes (error.type, error.message, error.stack_trace).
         attributesBuilder.put(AttributeKey.stringKey("error.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
@@ -215,9 +220,6 @@ class ErrorInstrumentation private constructor(
             .setSeverity(Severity.ERROR)
             .setAllAttributes(attributesBuilder.build())
             .emit()
-
-        // Mark error as captured
-        errorFingerprints[fingerprint] = System.currentTimeMillis()
 
         // Record exception on current span if active
         val currentSpan = Span.current()

@@ -284,16 +284,16 @@ class PolicyEvaluatorTest {
     }
 
     @Test
-    fun `policy with no attribute constraints always matches (attribute side)`() {
+    fun `policy with no constraints at all does NOT match — prevents matching every event`() {
         val policy = buildPolicy(
             logicalOperator = "and",
             attributes = emptyMap()
         )
         val log = createLogRecord(eventName = "any.event")
 
-        // No attribute constraints = attribute side is true
-        // With no geo/device constraints either, should match
-        assertTrue(invokeMatchesPolicy(log, policy))
+        // A fully-unconstrained policy (no attributes, no geo, no device) would match every log
+        // record and trigger a flush on each one. The evaluator guards against this by returning false.
+        assertFalse(invokeMatchesPolicy(log, policy))
     }
 
     @Test

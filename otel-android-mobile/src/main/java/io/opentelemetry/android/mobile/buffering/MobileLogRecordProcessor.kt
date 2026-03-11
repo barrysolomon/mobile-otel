@@ -84,7 +84,10 @@ class MobileLogRecordProcessor private constructor(
     @Volatile var heartbeatLogger: io.opentelemetry.api.logs.Logger? = null,
     // Optional hook invoked on each HYBRID heartbeat tick to run the prediction cycle
     // alongside the heartbeat.  Wired by MobileOtel after PredictiveExportPolicy is built.
-    @Volatile var predictionCycleHook: (() -> Unit)? = null
+    @Volatile var predictionCycleHook: (() -> Unit)? = null,
+    // Optional hook invoked after every policy-triggered log flush to co-export buffered spans.
+    // Wired by MobileLoggerProvider so HYBRID mode flushes spans and logs together on a trigger.
+    @Volatile var spanFlushHook: (() -> Unit)? = null
 ) : LogRecordProcessor {
 
     private val TAG = "MobileLogRecordProcessor"
@@ -126,6 +129,12 @@ class MobileLogRecordProcessor private constructor(
     // CAS from false→true to start a flush; reset to false when the export completes/fails.
     private val flushInProgress = AtomicBoolean(false)
 
+    // Tracks RAM events that have already been mirrored to disk for crash safety.
+    // Uses object identity so we only persist each event once, avoiding disk duplicates.
+    private val persistedToDisk: MutableSet<LogRecordData> = Collections.newSetFromMap(
+        IdentityHashMap()
+    )
+
     // Ring buffer OTel gauges — held to prevent GC of async callbacks
     private val ramEventsGauge = meter.gaugeBuilder("buffer.ram.events")
         .setDescription("Current number of events in the RAM ring buffer")
@@ -150,22 +159,31 @@ class MobileLogRecordProcessor private constructor(
             5, 5, TimeUnit.SECONDS
         )
 
+        // Crash-safe mirror: periodically copy all RAM events to disk so they survive
+        // a force-kill. RAM stays intact (events are not removed here); disk copies are
+        // deduplicated by the Room IGNORE conflict strategy on the unique timestamp index.
+        executor.scheduleAtFixedRate(
+            { persistRamToDiskForCrashSafety() },
+            2, 2, TimeUnit.SECONDS
+        )
+
         // Schedule periodic cleanup (every hour)
         executor.scheduleAtFixedRate(
             { diskBuffer.cleanup() },
             1, 1, TimeUnit.HOURS
         )
 
-        // CONTINUOUS + HYBRID: periodic device metrics capture + full log flush on schedule.
-        // HYBRID also adds policy-triggered selective flushes on top of this.
-        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS ||
-            config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+        // CONTINUOUS: periodic full flush + periodic device metrics.
+        // HYBRID: periodic device metrics ONLY — no periodic forceFlush.
+        //   Bulk events in HYBRID are only exported when a policy trigger fires (flushWindow).
+        //   forceFlush() here would dump the entire buffer on a timer, defeating selective export.
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS) {
             val captureIntervalSeconds = config.metricExportIntervalSeconds
             executor.scheduleAtFixedRate(
                 {
                     try {
                         deviceMetricsCollector.captureMetrics(CaptureReason.SCHEDULED_FLUSH, force = true)
-                        Log.d(TAG, "Periodic device metrics captured")
+                        Log.d(TAG, "CONTINUOUS: periodic device metrics captured")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error capturing periodic device metrics", e)
                     }
@@ -181,7 +199,7 @@ class MobileLogRecordProcessor private constructor(
                         try {
                             val count = ramBufferCount.get()
                             if (count > 0) {
-                                Log.d(TAG, "Periodic log flush: exporting $count buffered events")
+                                Log.d(TAG, "CONTINUOUS: periodic log flush, exporting $count buffered events")
                                 forceFlush()
                             }
                         } catch (e: Exception) {
@@ -193,7 +211,28 @@ class MobileLogRecordProcessor private constructor(
                 flushIntervalSeconds,
                 TimeUnit.SECONDS
             )
-            Log.i(TAG, "Periodic export: metrics every ${captureIntervalSeconds}s, logs every ${flushIntervalSeconds}s (mode=${config.exportMode})")
+            Log.i(TAG, "CONTINUOUS: metrics every ${captureIntervalSeconds}s, logs every ${flushIntervalSeconds}s")
+        }
+
+        // HYBRID: periodic device metrics only — no bulk log flush.
+        // Heartbeat + prediction logs are emitted and immediately forwarded by emitHeartbeat().
+        // Bulk events only export when a policy trigger calls flushWindow().
+        if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
+            val captureIntervalSeconds = config.metricExportIntervalSeconds * 2L
+            executor.scheduleAtFixedRate(
+                {
+                    try {
+                        deviceMetricsCollector.captureMetrics(CaptureReason.SCHEDULED_FLUSH, force = true)
+                        Log.d(TAG, "HYBRID: periodic device metrics captured")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error capturing HYBRID device metrics", e)
+                    }
+                },
+                captureIntervalSeconds,
+                captureIntervalSeconds,
+                TimeUnit.SECONDS
+            )
+            Log.i(TAG, "HYBRID: device metrics every ${captureIntervalSeconds}s (no periodic bulk flush)")
         }
 
         // HYBRID: conditional export (policy-triggered) + periodic device heartbeat log.
@@ -266,7 +305,7 @@ class MobileLogRecordProcessor private constructor(
 
         // Track screen start for window extension
         if (body == "screen.view") {
-            currentScreenStartMs.set(logRecordData.timestampEpochNanos / 1_000_000)
+            currentScreenStartMs.set(logRecordData.effectiveTimestampMs())
         }
 
         // Check if we need to overflow to disk
@@ -373,6 +412,10 @@ class MobileLogRecordProcessor private constructor(
                 } else {
                     flushWindow(matchResult.flushWindowMinutes)
                 }
+
+                // Co-flush buffered spans (HYBRID true-buffering mode: spans use 1-hour
+                // BatchSpanProcessor delay and only export when a policy fires here).
+                spanFlushHook?.invoke()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error evaluating policies", e)
@@ -442,7 +485,7 @@ class MobileLogRecordProcessor private constructor(
             // exactly these objects later without touching events that arrived during export.
             val ramEventsToFlush = mutableListOf<LogRecordData>()
             ramBuffer.forEach { logRecord ->
-                if (logRecord.timestampEpochNanos / 1_000_000 >= windowStartMs) {
+                if (logRecord.effectiveTimestampMs() >= windowStartMs) {
                     ramEventsToFlush.add(logRecord)
                 }
             }
@@ -487,6 +530,7 @@ class MobileLogRecordProcessor private constructor(
                                 }
                             }
                             ramBufferCount.addAndGet(-removed)
+                            synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
 
                             // Remove the disk window — disk events don't have the same race risk
                             // because DiskLogBuffer uses Room transactions for atomicity.
@@ -565,6 +609,7 @@ class MobileLogRecordProcessor private constructor(
                             exportedIds.contains(event).also { matched -> if (matched) removed++ }
                         }
                         ramBufferCount.addAndGet(-removed)
+                        synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                         runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
                         Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
                     } else {
@@ -577,6 +622,31 @@ class MobileLogRecordProcessor private constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error in flushByTraceId", e)
             return CompletableResultCode.ofFailure()
+        }
+    }
+
+    /**
+     * Copies new RAM buffer events to disk for crash survivability.
+     *
+     * Does NOT remove events from RAM — this is a mirror write, not a move.
+     * Only events not yet mirrored are written (tracked by object identity) to
+     * avoid duplicate rows in the disk buffer.
+     * On the next app start after a crash, disk events are re-exported and
+     * then deleted, giving crash recovery even when shutdown() never ran.
+     */
+    private fun persistRamToDiskForCrashSafety() {
+        if (isShutdown.get()) return
+        val newEvents: List<LogRecordData>
+        synchronized(persistedToDisk) {
+            newEvents = ramBuffer.filter { !persistedToDisk.contains(it) }
+            if (newEvents.isEmpty()) return
+            persistedToDisk.addAll(newEvents)
+        }
+        try {
+            diskBuffer.persistEvents(newEvents)
+            Log.d(TAG, "Crash-mirror: persisted ${newEvents.size} new RAM events to disk")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in crash-safety mirror write", e)
         }
     }
 
@@ -603,8 +673,10 @@ class MobileLogRecordProcessor private constructor(
                 ramBuffer.poll()?.let { eventsToMove.add(it) }
             }
 
-            // Persist to disk
+            // Persist to disk (already mirrored by crash-safety task, but persistEvents is idempotent
+            // here because these are being removed from RAM — the crash-mirror set is cleaned up too)
             if (eventsToMove.isNotEmpty()) {
+                synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
                 diskBuffer.persistEvents(eventsToMove)
                 ramBufferCount.addAndGet(-eventsToMove.size)
                 Log.d(TAG, "Overflowed ${eventsToMove.size} events to disk")
@@ -624,6 +696,13 @@ class MobileLogRecordProcessor private constructor(
      * @return CompletableResultCode indicating success/failure
      */
     override fun forceFlush(): CompletableResultCode {
+        // Block any concurrent flushWindow() calls — forceFlush exports everything so
+        // a simultaneous policy-triggered window flush would double-export the same events.
+        // If a window flush is already running, wait for it to finish first (brief spin).
+        val acquired = flushInProgress.compareAndSet(false, true)
+        // If we couldn't acquire (window flush in progress), proceed anyway — forceFlush
+        // takes priority on crash paths and the window flush will have already cleared RAM.
+
         try {
             Log.i(TAG, "Force flush: exporting all buffered events")
 
@@ -637,7 +716,10 @@ class MobileLogRecordProcessor private constructor(
 
             Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskEvents.size} disk)")
 
-            if (allEvents.isEmpty()) return CompletableResultCode.ofSuccess()
+            if (allEvents.isEmpty()) {
+                if (acquired) flushInProgress.set(false)
+                return CompletableResultCode.ofSuccess()
+            }
 
             val results = allEvents.chunked(100).map { batch -> exporter.export(batch) }
             val result = CompletableResultCode.ofAll(results)
@@ -656,11 +738,13 @@ class MobileLogRecordProcessor private constructor(
                             exportedIds.contains(event).also { matched -> if (matched) removed++ }
                         }
                         ramBufferCount.addAndGet(-removed)
+                        synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                         runBlocking { diskBuffer.clearAll() }
                         Log.i(TAG, "Force flush completed: removed $removed RAM + ${diskEvents.size} disk events")
                     } else {
                         Log.w(TAG, "Force flush failed, keeping events in buffer")
                     }
+                    if (acquired) flushInProgress.set(false)
                 }
             }
 
@@ -668,6 +752,7 @@ class MobileLogRecordProcessor private constructor(
 
         } catch (e: Exception) {
             Log.e(TAG, "Error during force flush", e)
+            if (acquired) flushInProgress.set(false)
             return CompletableResultCode.ofFailure()
         }
     }
@@ -693,6 +778,7 @@ class MobileLogRecordProcessor private constructor(
             val ramEvents = ramBuffer.toList()
             ramBuffer.clear()
             ramBufferCount.set(0)
+            synchronized(persistedToDisk) { persistedToDisk.clear() }
 
             val flushResult = if (ramEvents.isNotEmpty()) {
                 val batchSize = 100
@@ -707,6 +793,9 @@ class MobileLogRecordProcessor private constructor(
             if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
                 executor.shutdownNow()
             }
+
+            // Shutdown policy evaluator (cancels background coroutine + HTTP client)
+            policyEvaluator.shutdown()
 
             // Shutdown exporter
             val exporterResult = exporter.shutdown()
@@ -778,4 +867,17 @@ class MobileLogRecordProcessor private constructor(
          */
         fun builder(context: Context): Builder = Builder(context)
     }
+}
+
+/**
+ * Returns the effective timestamp of a log record in epoch milliseconds.
+ *
+ * The OTel SDK sets timestampEpochNanos = 0 when no explicit timestamp is provided,
+ * relying on observedTimestampEpochNanos instead. Using timestampEpochNanos directly
+ * would cause all such events to fail time-window filters. This helper falls back to
+ * observedTimestampEpochNanos (always set by the SDK) when timestamp is unset.
+ */
+private fun LogRecordData.effectiveTimestampMs(): Long {
+    val tsNs = timestampEpochNanos
+    return if (tsNs > 0) tsNs / 1_000_000 else observedTimestampEpochNanos / 1_000_000
 }

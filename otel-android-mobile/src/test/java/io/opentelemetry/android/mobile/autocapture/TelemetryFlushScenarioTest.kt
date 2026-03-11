@@ -91,12 +91,14 @@ class TelemetryFlushScenarioTest {
     // ── Crash recovery → telemetry flush ──────────────────────────────────
 
     @Test
-    fun `crash recovery emits app_crash followed by app_recovery`() {
+    fun `crash recovery emits app_recovery (app_crash is owned by ErrorInstrumentation at crash time)`() {
+        // RecoveryTracker no longer re-emits app.crash on restart to avoid duplicate events.
+        // ErrorInstrumentation emits app.crash synchronously in the uncaught-exception handler.
         setPrefs(KEY_CRASH, true)
         startTracker()
 
         val bodies = mockExporter.exportedLogs.map { it.body.asString() }
-        assertTrue("app.crash expected", "app.crash" in bodies)
+        assertFalse("app.crash must NOT be re-emitted by RecoveryTracker", "app.crash" in bodies)
         assertTrue("app.recovery expected", "app.recovery" in bodies)
     }
 
@@ -105,8 +107,8 @@ class TelemetryFlushScenarioTest {
         setPrefs(KEY_CRASH, true)
         startTracker()
 
-        val crash = mockExporter.exportedLogs.first { it.body.asString() == "app.crash" }
-        assertEquals(Severity.ERROR, crash.severity)
+        val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
+        assertEquals(Severity.ERROR, recovery.severity)
     }
 
     @Test
@@ -237,7 +239,8 @@ class TelemetryFlushScenarioTest {
 
         val tracker = startTracker()
         assertEquals("crash", tracker.getLastRecoveryType())
-        assertTrue("app.crash expected", mockExporter.findLogsByBody("app.crash").isNotEmpty())
+        // app.crash is owned by ErrorInstrumentation; RecoveryTracker emits app.recovery with recovery_type=crash
+        assertTrue("app.recovery with recovery_type=crash expected", mockExporter.findLogsByBody("app.recovery").isNotEmpty())
     }
 
     @Test
@@ -271,7 +274,7 @@ class TelemetryFlushScenarioTest {
         mockExporter.clear()
 
         startTracker()
-        assertTrue("app.crash should be emitted", mockExporter.findLogsByBody("app.crash").isNotEmpty())
+        assertTrue("app.recovery with recovery_type=crash should be emitted", mockExporter.findLogsByBody("app.recovery").isNotEmpty())
     }
 
     @Test

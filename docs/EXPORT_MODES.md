@@ -79,16 +79,19 @@ val config = MobileConfig(
 
 **Best for: Production apps with higher observability needs**
 
-Combines both approaches:
-- ✅ Regular lightweight exports (2x the configured intervals)
-- ✅ Conditional full dumps when issues occur
-- ✅ Best of both worlds
+HYBRID is **not** a continuous stream. Bulk event data stays in the ring buffer and only exports when a policy trigger fires. What distinguishes it from CONDITIONAL is:
+
+- ✅ **Periodic device metrics** — device health gauges (battery, memory, network) exported on a schedule
+- ✅ **Periodic prediction cycles** — predictive risk assessments run on a schedule and emit `device.heartbeat` / `prediction.cycle` logs that are immediately forwarded (not buffered)
+- ✅ **Policy-triggered selective flush** — same as CONDITIONAL; a matching event (error, freeze, crash) exports the relevant time window from the buffer
+- ❌ **No continuous trace/log stream** — bulk events are never periodically dumped; they only export on a trigger
 
 **How it works:**
-- Traces: Exported every `traceExportIntervalSeconds * 2` (default: 60s)
-- Metrics: Exported every `metricExportIntervalSeconds * 2` (default: 120s)
-- Logs: Policy-based with more frequent background heartbeats
-- Full flush when trigger conditions are met
+
+- Bulk events (taps, screens, network calls): buffered, exported only on policy trigger
+- Device metrics: exported every `metricExportIntervalSeconds * 2` (default: 120s)
+- Heartbeat + prediction logs: emitted and immediately forwarded every `predictionIntervalSeconds` (default: 30s) — these are lightweight and not buffered
+- Full buffer flush on trigger (crash, freeze, HTTP error, etc.)
 
 **Configuration:**
 ```kotlin
@@ -97,27 +100,28 @@ val config = MobileConfig(
     serviceVersion = "1.0.0",
     collectorEndpoint = "https://collector.example.com:4317",
     exportMode = ExportMode.HYBRID,
-    traceExportIntervalSeconds = 30,  // Will export every 60s
-    metricExportIntervalSeconds = 60  // Will export every 120s
+    metricExportIntervalSeconds = 60,   // Device metrics exported every 120s
+    predictionIntervalSeconds = 30      // Heartbeat/prediction every 30s
 )
 ```
 
-**Battery Impact:** ⚡⚡ Moderate - Less frequent regular uploads + conditional
-**Bandwidth Usage:** 📡📡 Moderate - Scheduled + triggered uploads
-**Observability:** 🔍🔍 Good - Regular baseline + complete problem data
+**Battery Impact:** ⚡⚡ Moderate — periodic metrics + predictions, no continuous bulk stream
+**Bandwidth Usage:** 📡📡 Low-moderate — heartbeats are tiny; bulk data only on triggers
+**Observability:** 🔍🔍 Good — live device health signal + full context on problems
 
 ---
 
 ## Comparison Table
 
 | Feature | CONDITIONAL | CONTINUOUS | HYBRID |
-|---------|-------------|------------|--------|
-| **Trace Export** | On trigger only | Every 30s (default) | Every 60s (default) |
-| **Metric Export** | On trigger only | Every 60s (default) | Every 120s (default) |
-| **Log Export** | On trigger only | On trigger only | On trigger only |
-| **Battery Impact** | ⚡ Minimal | ⚡⚡⚡ High | ⚡⚡ Moderate |
-| **Bandwidth** | 📡 Minimal | 📡📡📡 High | 📡📡 Moderate |
-| **Best For** | Production | Debug/Dev | Production w/ high obs needs |
+| ------- | ----------- | ---------- | ------ |
+| **Bulk event export** | On trigger only | Every 30s (default) | On trigger only |
+| **Device metric export** | On trigger only | Every 60s (default) | Every 120s (default) |
+| **Heartbeat / prediction** | None | None | Every 30s (lightweight, not buffered) |
+| **Log export** | On trigger only | On trigger only | On trigger only |
+| **Battery Impact** | ⚡ Minimal | ⚡⚡⚡ High | ⚡⚡ Low-moderate |
+| **Bandwidth** | 📡 Minimal | 📡📡📡 High | 📡📡 Low-moderate |
+| **Best For** | Production | Debug/Dev | Production w/ live device health |
 
 ---
 
