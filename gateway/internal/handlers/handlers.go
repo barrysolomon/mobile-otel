@@ -17,16 +17,19 @@ import (
 	"github.com/mobile-observability/gateway/internal/otel"
 )
 
+// Handler holds the shared dependencies for all HTTP route handlers.
 type Handler struct {
 	db        *db.Database
 	exporter  *otel.LogExporter
 	configMgr *config.Manager
 }
 
+// IngestRequest is the JSON body accepted by the POST /ingest endpoint.
 type IngestRequest struct {
 	Events []otel.MobileEvent `json:"events"`
 }
 
+// StatusRequest is the JSON body accepted by the POST /status heartbeat endpoint.
 type StatusRequest struct {
 	DeviceID      string   `json:"device_id"`
 	AppID         string   `json:"app_id"`
@@ -36,16 +39,19 @@ type StatusRequest struct {
 	ConfigVersion int      `json:"config_version"`
 }
 
+// PublishRequest is the JSON body accepted by the POST /admin/publish endpoint.
 type PublishRequest struct {
 	GraphJSON   string `json:"graph_json"`
 	DSLJSON     string `json:"dsl_json"`
 	PublishedBy string `json:"published_by"`
 }
 
+// RollbackRequest is the JSON body accepted by the POST /admin/rollback endpoint.
 type RollbackRequest struct {
 	Version int `json:"version"`
 }
 
+// RegisterDeviceRequest is the JSON body accepted by the POST /api/v1/devices/register endpoint.
 type RegisterDeviceRequest struct {
 	DeviceID    string `json:"device_id"`
 	OSVersion   string `json:"os_version"`
@@ -53,10 +59,12 @@ type RegisterDeviceRequest struct {
 	DeviceGroup string `json:"device_group"`
 }
 
+// UpdateDeviceGroupRequest is the JSON body accepted by the PATCH /api/v1/devices/group endpoint.
 type UpdateDeviceGroupRequest struct {
 	DeviceGroup string `json:"device_group"`
 }
 
+// CreateOTELConfigRequest is the JSON body accepted by the POST /api/v1/otel-configs endpoint.
 type CreateOTELConfigRequest struct {
 	DeviceGroup          string            `json:"device_group"`
 	Protocol             string            `json:"protocol"`
@@ -72,6 +80,7 @@ type CreateOTELConfigRequest struct {
 	FeatureFlags         map[string]bool   `json:"feature_flags"`
 }
 
+// NewHandler creates a Handler wiring the database, OTEL exporter, and config manager.
 func NewHandler(database *db.Database, exporter *otel.LogExporter, configMgr *config.Manager) *Handler {
 	return &Handler{
 		db:        database,
@@ -113,7 +122,7 @@ func (h *Handler) HandleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":         "ok",
 		"events_ingested": len(req.Events),
 	})
@@ -279,7 +288,7 @@ func (h *Handler) HandlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":  "ok",
 		"version": cv.Version,
 	})
@@ -318,7 +327,7 @@ func (h *Handler) HandleRollback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status":  "ok",
 		"version": req.Version,
 	})
@@ -347,7 +356,7 @@ func (h *Handler) HandleVersions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"versions": versions,
 	})
 }
@@ -411,7 +420,7 @@ func (h *Handler) HandleRegisterDevice(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"device_token":    deviceToken,
 		"config_url":      fmt.Sprintf("/config?app_id=%s&device_id=%s", req.AppVersion, req.DeviceID),
 		"polling_interval": 300,
@@ -452,7 +461,7 @@ func (h *Handler) HandleListDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"devices": devices,
 		"total":   total,
 		"limit":   limit,
@@ -489,7 +498,7 @@ func (h *Handler) HandleGetDevice(w http.ResponseWriter, r *http.Request) {
 	heartbeats, _ := h.db.GetDeviceHeartbeats(deviceID, 10)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"device":     device,
 		"heartbeats": heartbeats,
 	})
@@ -553,7 +562,7 @@ func (h *Handler) HandleListDeviceGroups(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"groups": groups,
 	})
 }
@@ -581,7 +590,7 @@ func (h *Handler) HandleListHeartbeats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"devices": heartbeats,
 		"count":   len(heartbeats),
 	})
@@ -685,7 +694,7 @@ func (h *Handler) HandleCreateOTELConfig(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"id":               config.ID,
 		"version":          config.Version,
 		"device_group":     config.DeviceGroup,
@@ -718,7 +727,7 @@ func (h *Handler) HandleListOTELConfigs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"configurations": configs,
 		"count":          len(configs),
 	})
@@ -779,7 +788,7 @@ func (h *Handler) HandleActivateOTELConfig(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status": "ok",
 		"id":     id,
 	})
@@ -851,7 +860,7 @@ func (h *Handler) HandleGetConfigRolloutStatus(w http.ResponseWriter, r *http.Re
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"rollout_statuses": statuses,
 	})
 }
