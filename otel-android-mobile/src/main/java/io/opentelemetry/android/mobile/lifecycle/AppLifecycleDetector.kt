@@ -319,9 +319,9 @@ class AppLifecycleDetector private constructor(
             .setSeverity(Severity.INFO)
             .setAllAttributes(
                 Attributes.of(
-                    AttributeKey.longKey("background_duration_ms"), backgroundDuration,
-                    AttributeKey.longKey("session.resume_timestamp"), System.currentTimeMillis(),
-                    AttributeKey.stringKey("lifecycle.event"), "app_foreground"
+                    AttributeKey.longKey("mobile.background_duration_ms"), backgroundDuration,
+                    AttributeKey.longKey("mobile.session.resume_timestamp"), System.currentTimeMillis(),
+                    AttributeKey.stringKey("mobile.lifecycle.event"), "app_foreground"
                 )
             )
             .emit()

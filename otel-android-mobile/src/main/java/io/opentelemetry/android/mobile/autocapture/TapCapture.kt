@@ -155,8 +155,8 @@ class TapCapture(
         val attributes = Attributes.builder()
             .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
             .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
-            .put(AttributeKey.stringKey("interaction.source"), "auto.window")
-            .put(AttributeKey.stringKey("element.confidence"), confidence)
+            .put(AttributeKey.stringKey("mobile.interaction.source"), "auto.window")
+            .put(AttributeKey.stringKey("mobile.element.confidence"), confidence)
 
         if (screenName != null) {
             attributes.put(AttributeKey.stringKey("mobile.screen.name"), screenName)

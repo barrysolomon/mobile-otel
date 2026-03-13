@@ -41,9 +41,9 @@ object MobileSemconv {
     @JvmField val TEXT_CONTENT           = AttributeKey.stringKey("ui.element.text")
     @JvmField val PREVIOUS_SCREEN        = AttributeKey.stringKey("ui.previous_screen")
     @JvmField val TIME_ON_SCREEN_MS      = AttributeKey.longKey("ui.time_on_screen_ms")
-    @JvmField val RECOVERY_TYPE          = AttributeKey.stringKey("recovery_type")
-    @JvmField val SESSION_RENEWED        = AttributeKey.booleanKey("session.renewed")
-    @JvmField val BACKGROUND_DURATION_MS = AttributeKey.longKey("background_duration_ms")
+    @JvmField val RECOVERY_TYPE          = AttributeKey.stringKey("mobile.recovery_type")
+    @JvmField val SESSION_RENEWED        = AttributeKey.booleanKey("mobile.session.renewed")
+    @JvmField val BACKGROUND_DURATION_MS = AttributeKey.longKey("mobile.background_duration_ms")
 
     // ── Standard semconv keys (OTel spec 1.x) ────────────────────────────────
     @JvmField val EXCEPTION_TYPE         = AttributeKey.stringKey("exception.type")

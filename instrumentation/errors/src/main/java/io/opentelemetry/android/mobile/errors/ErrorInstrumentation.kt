@@ -147,7 +147,7 @@ class ErrorInstrumentation private constructor(
 
         // Build attributes using OTel semantic conventions for exceptions
         val attributesBuilder = Attributes.builder()
-            .put(AttributeKey.stringKey("exception.origin"), source) // custom: OTel semconv has no standard for exception origin category
+            .put(AttributeKey.stringKey("mobile.exception.origin"), source) // custom: OTel semconv has no standard for exception origin category
             .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
             .put(AttributeKey.stringKey("mobile.error.fingerprint"), fingerprint)
 
@@ -197,7 +197,7 @@ class ErrorInstrumentation private constructor(
         // Attach breadcrumbs
         if (config.attachBreadcrumbs && BreadcrumbManager.isInitialized()) {
             val breadcrumbsJson = BreadcrumbManager.toJson()
-            attributesBuilder.put(AttributeKey.stringKey("user.journey"), breadcrumbsJson)
+            attributesBuilder.put(AttributeKey.stringKey("mobile.user.journey"), breadcrumbsJson)
         }
 
         // Attach vitals
@@ -215,8 +215,8 @@ class ErrorInstrumentation private constructor(
         errorFingerprints[fingerprint] = System.currentTimeMillis()
 
         // Body is "app.crash" so the default crash-recovery policy matches.
-        // Exception details are in attributes (error.type, error.message, error.stack_trace).
-        attributesBuilder.put(AttributeKey.stringKey("exception.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
+        // Exception details are in attributes (exception.type, exception.message, exception.stacktrace).
+        attributesBuilder.put(AttributeKey.stringKey("mobile.exception.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
         logger.logRecordBuilder()
             .setBody("app.crash")
             .setSeverity(Severity.ERROR)

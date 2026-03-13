@@ -93,20 +93,20 @@ object AttributeEnricher {
      */
     private fun addContextAttributes(builder: AttributesBuilder, context: ContextSnapshot) {
         // Geo attributes (coarse, privacy-safe)
-        builder.put("geo.country", context.country)
+        builder.put("mobile.geo.country", context.country)
         if (context.region != null) {
-            builder.put("geo.region", context.region)
+            builder.put("mobile.geo.region", context.region)
         }
-        builder.put("geo.timezone", context.timezone)
-        builder.put("device.locale", context.locale)
+        builder.put("mobile.geo.timezone", context.timezone)
+        builder.put("mobile.device.locale", context.locale)
 
         // Device attributes (non-PII)
-        builder.put("app.version", context.appVersion)
+        builder.put("mobile.app.version", context.appVersion)
         builder.put("os.version", context.osVersion.toLong())
-        builder.put("device.class", context.deviceClass)
-        builder.put("device.network", context.networkType)
-        builder.put("device.battery", context.batteryState)
-        builder.put("app.build_channel", context.buildChannel)
+        builder.put("mobile.device.class", context.deviceClass)
+        builder.put("mobile.device.network", context.networkType)
+        builder.put("mobile.device.battery", context.batteryState)
+        builder.put("mobile.app.build_channel", context.buildChannel)
 
         // User demographics (if available)
         if (context.deviceType != null) {

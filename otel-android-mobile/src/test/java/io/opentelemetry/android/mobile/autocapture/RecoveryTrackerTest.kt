@@ -115,7 +115,7 @@ class RecoveryTrackerTest {
         assertEquals(1, recoveryEvents.size, "Expected exactly one app.recovery event")
 
         val recoveryType = recoveryEvents[0].attributes
-            .get(io.opentelemetry.api.common.AttributeKey.stringKey("recovery_type"))
+            .get(io.opentelemetry.api.common.AttributeKey.stringKey("mobile.recovery_type"))
         assertEquals("crash", recoveryType)
     }
 
@@ -160,7 +160,7 @@ class RecoveryTrackerTest {
         assertEquals(1, recoveryEvents.size)
 
         val recoveryType = recoveryEvents[0].attributes
-            .get(io.opentelemetry.api.common.AttributeKey.stringKey("recovery_type"))
+            .get(io.opentelemetry.api.common.AttributeKey.stringKey("mobile.recovery_type"))
         assertEquals("anr_force_kill", recoveryType)
     }
 
@@ -195,7 +195,7 @@ class RecoveryTrackerTest {
         assertEquals(1, recoveryEvents.size)
 
         val recoveryType = recoveryEvents[0].attributes
-            .get(io.opentelemetry.api.common.AttributeKey.stringKey("recovery_type"))
+            .get(io.opentelemetry.api.common.AttributeKey.stringKey("mobile.recovery_type"))
         assertEquals("low_memory_kill", recoveryType)
     }
 

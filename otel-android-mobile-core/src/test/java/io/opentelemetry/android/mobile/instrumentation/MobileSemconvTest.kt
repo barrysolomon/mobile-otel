@@ -29,8 +29,8 @@ class MobileSemconvTest {
         assertEquals("mobile.screen.name",      MobileSemconv.SCREEN_NAME.key)
         assertEquals("ui.element.resource_id",  MobileSemconv.UI_ELEMENT_ID.key)
         assertEquals("ui.swipe.direction",      MobileSemconv.SWIPE_DIRECTION.key)
-        assertEquals("recovery_type",           MobileSemconv.RECOVERY_TYPE.key)
-        assertEquals("session.renewed",         MobileSemconv.SESSION_RENEWED.key)
-        assertEquals("background_duration_ms",  MobileSemconv.BACKGROUND_DURATION_MS.key)
+        assertEquals("mobile.recovery_type",           MobileSemconv.RECOVERY_TYPE.key)
+        assertEquals("mobile.session.renewed",         MobileSemconv.SESSION_RENEWED.key)
+        assertEquals("mobile.background_duration_ms",  MobileSemconv.BACKGROUND_DURATION_MS.key)
     }
 }

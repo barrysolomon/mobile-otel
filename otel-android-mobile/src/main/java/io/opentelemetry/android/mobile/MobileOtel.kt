@@ -304,7 +304,7 @@ object MobileOtel {
                     Attributes.builder()
                         .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
                         .put(AttributeKey.stringKey("exception.message"), throwable.message ?: "")
-                        .put(AttributeKey.stringKey("exception.origin"), "manual")
+                        .put(AttributeKey.stringKey("mobile.exception.origin"), "manual")
                         .build()
                 )
                 .emit()

@@ -150,8 +150,8 @@ class DeviceMetricsCollector(
             // Record battery metrics as counters (snapshot metrics)
             val batteryAttributes = Attributes.builder()
                 .putAll(attributes)
-                .put(AttributeKey.booleanKey("battery.charging"), isCharging)
-                .put(AttributeKey.stringKey("battery.health"), getBatteryHealthString(health))
+                .put(AttributeKey.booleanKey("mobile.battery.charging"), isCharging)
+                .put(AttributeKey.stringKey("mobile.battery.health"), getBatteryHealthString(health))
                 .build()
 
             if (batteryPercent >= 0) {
@@ -216,7 +216,7 @@ class DeviceMetricsCollector(
         val networkAttributes = Attributes.builder()
             .putAll(attributes)
             .put(AttributeKey.stringKey("network.connection.type"), networkType)
-            .put(AttributeKey.booleanKey("network.connected"), isConnected)
+            .put(AttributeKey.booleanKey("mobile.network.connected"), isConnected)
             .build()
 
         meter.upDownCounterBuilder("system.network.connections")
@@ -297,9 +297,9 @@ class DeviceMetricsCollector(
 
         val displayAttributes = Attributes.builder()
             .putAll(attributes)
-            .put(AttributeKey.longKey("display.width_px"), displayMetrics.widthPixels.toLong())
-            .put(AttributeKey.longKey("display.height_px"), displayMetrics.heightPixels.toLong())
-            .put(AttributeKey.doubleKey("display.density"), displayMetrics.density.toDouble())
+            .put(AttributeKey.longKey("mobile.display.width_px"), displayMetrics.widthPixels.toLong())
+            .put(AttributeKey.longKey("mobile.display.height_px"), displayMetrics.heightPixels.toLong())
+            .put(AttributeKey.doubleKey("mobile.display.density"), displayMetrics.density.toDouble())
             .build()
 
         meter.upDownCounterBuilder("device.display.info")
@@ -315,10 +315,10 @@ class DeviceMetricsCollector(
         val systemAttributes = Attributes.builder()
             .putAll(attributes)
             .put(AttributeKey.stringKey("os.version"), Build.VERSION.RELEASE)
-            .put(AttributeKey.longKey("os.api_level"), Build.VERSION.SDK_INT.toLong())
+            .put(AttributeKey.longKey("mobile.os.api_level"), Build.VERSION.SDK_INT.toLong())
             .put(AttributeKey.stringKey("device.model.name"), Build.MODEL)
             .put(AttributeKey.stringKey("device.manufacturer"), Build.MANUFACTURER)
-            .put(AttributeKey.longKey("system.uptime_ms"), android.os.SystemClock.elapsedRealtime())
+            .put(AttributeKey.longKey("mobile.system.uptime_ms"), android.os.SystemClock.elapsedRealtime())
             .build()
 
         meter.upDownCounterBuilder("device.system.info")
@@ -342,10 +342,10 @@ class DeviceMetricsCollector(
 
         val appAttributes = Attributes.builder()
             .putAll(attributes)
-            .put(AttributeKey.stringKey("app.version"), versionName)
-            .put(AttributeKey.longKey("app.version_code"), versionCode)
-            .put(AttributeKey.longKey("app.install_time_ms"), packageInfo.firstInstallTime)
-            .put(AttributeKey.longKey("app.update_time_ms"), packageInfo.lastUpdateTime)
+            .put(AttributeKey.stringKey("mobile.app.version"), versionName)
+            .put(AttributeKey.longKey("mobile.app.version_code"), versionCode)
+            .put(AttributeKey.longKey("mobile.app.install_time_ms"), packageInfo.firstInstallTime)
+            .put(AttributeKey.longKey("mobile.app.update_time_ms"), packageInfo.lastUpdateTime)
             .build()
 
         meter.upDownCounterBuilder("device.app.info")
@@ -364,8 +364,8 @@ class DeviceMetricsCollector(
 
         val locationAttributes = Attributes.builder()
             .putAll(attributes)
-            .put(AttributeKey.stringKey("geo.timezone"), timezone)
-            .put(AttributeKey.stringKey("geo.country"), country)
+            .put(AttributeKey.stringKey("mobile.geo.timezone"), timezone)
+            .put(AttributeKey.stringKey("mobile.geo.country"), country)
             .build()
 
         meter.upDownCounterBuilder("device.location.info")

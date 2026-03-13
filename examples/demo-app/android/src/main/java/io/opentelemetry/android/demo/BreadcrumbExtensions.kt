@@ -60,9 +60,9 @@ fun getBreadcrumbAttributes(): Map<String, String> {
     return if (BreadcrumbManager.isInitialized()) {
         val buffer = BreadcrumbManager.getBuffer()
         mapOf(
-            "user.journey" to buffer.toJson(),
-            "user.journey.length" to buffer.size().toString(),
-            "user.journey.duration_sec" to (buffer.duration() / 1000).toString()
+            "mobile.user.journey" to buffer.toJson(),
+            "mobile.user.journey.length" to buffer.size().toString(),
+            "mobile.user.journey.duration_sec" to (buffer.duration() / 1000).toString()
         )
     } else {
         emptyMap()

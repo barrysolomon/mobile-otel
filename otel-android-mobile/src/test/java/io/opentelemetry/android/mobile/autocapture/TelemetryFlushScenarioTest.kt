@@ -117,7 +117,7 @@ class TelemetryFlushScenarioTest {
         startTracker()
 
         val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
-        assertEquals("crash", recovery.attributes.get(AttributeKey.stringKey("recovery_type")))
+        assertEquals("crash", recovery.attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
     @Test
@@ -158,7 +158,7 @@ class TelemetryFlushScenarioTest {
         startTracker()
 
         val recovery = mockExporter.findLogsByBody("app.recovery").first()
-        assertEquals("anr_force_kill", recovery.attributes.get(AttributeKey.stringKey("recovery_type")))
+        assertEquals("anr_force_kill", recovery.attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
     @Test
@@ -188,7 +188,7 @@ class TelemetryFlushScenarioTest {
         startTracker()
 
         val recovery = mockExporter.findLogsByBody("app.recovery").first()
-        assertEquals("low_memory_kill", recovery.attributes.get(AttributeKey.stringKey("recovery_type")))
+        assertEquals("low_memory_kill", recovery.attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
     @Test
@@ -221,7 +221,7 @@ class TelemetryFlushScenarioTest {
 
         val recovery = mockExporter.findLogsByBody("app.recovery")
         assertEquals(1, recovery.size)
-        assertEquals("system_force_kill", recovery[0].attributes.get(AttributeKey.stringKey("recovery_type")))
+        assertEquals("system_force_kill", recovery[0].attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
     @Test
@@ -297,7 +297,7 @@ class TelemetryFlushScenarioTest {
         startTracker()
         val recovery = mockExporter.findLogsByBody("app.recovery")
         assertEquals(1, recovery.size)
-        assertEquals("low_memory_kill", recovery[0].attributes.get(AttributeKey.stringKey("recovery_type")))
+        assertEquals("low_memory_kill", recovery[0].attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
     @Test

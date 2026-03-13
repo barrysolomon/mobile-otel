@@ -124,7 +124,7 @@ class FreezeInstrumentation(
         val attrs = Attributes.builder()
             .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
             .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
-            .put(AttributeKey.longKey("freeze.duration_ms"), delayMs)
+            .put(AttributeKey.longKey("mobile.freeze.duration_ms"), delayMs)
             .apply {
                 screenName?.let { put(MobileSemconv.SCREEN_NAME, it) }
             }

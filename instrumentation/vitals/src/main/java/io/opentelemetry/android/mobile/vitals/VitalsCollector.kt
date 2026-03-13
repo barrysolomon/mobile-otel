@@ -86,8 +86,8 @@ class VitalsCollector private constructor(
                         measurement.record(
                             value / 1000.0,
                             Attributes.of(
-                                AttributeKey.stringKey("start.type"), "cold",
-                                AttributeKey.booleanKey("start.slow"), value > config.coldStartThresholdMs
+                                AttributeKey.stringKey("mobile.start.type"), "cold",
+                                AttributeKey.booleanKey("mobile.start.slow"), value > config.coldStartThresholdMs
                             )
                         )
                     }
@@ -103,8 +103,8 @@ class VitalsCollector private constructor(
                         measurement.record(
                             value / 1000.0,
                             Attributes.of(
-                                AttributeKey.stringKey("start.type"), "warm",
-                                AttributeKey.booleanKey("start.slow"), value > config.warmStartThresholdMs
+                                AttributeKey.stringKey("mobile.start.type"), "warm",
+                                AttributeKey.booleanKey("mobile.start.slow"), value > config.warmStartThresholdMs
                             )
                         )
                     }
@@ -123,7 +123,7 @@ class VitalsCollector private constructor(
                         measurement.record(
                             value / 1000.0,
                             Attributes.of(
-                                AttributeKey.booleanKey("ttid.slow"), value > config.ttidThresholdMs
+                                AttributeKey.booleanKey("mobile.ttid.slow"), value > config.ttidThresholdMs
                             )
                         )
                     }
@@ -176,7 +176,7 @@ class VitalsCollector private constructor(
                             measurement.record(
                                 avgMs / 1000.0,
                                 Attributes.of(
-                                    AttributeKey.booleanKey("latency.high"), avgMs > config.inputLatencyThresholdMs
+                                    AttributeKey.booleanKey("mobile.latency.high"), avgMs > config.inputLatencyThresholdMs
                                 )
                             )
                             inputLatencies.clear()
@@ -197,7 +197,7 @@ class VitalsCollector private constructor(
                         measurement.record(
                             blockTime / 1000.0,
                             Attributes.of(
-                                AttributeKey.booleanKey("anr.risk.high"), blockTime > config.anrRiskThresholdMs
+                                AttributeKey.booleanKey("mobile.anr.risk.high"), blockTime > config.anrRiskThresholdMs
                             )
                         )
                     }
@@ -219,8 +219,8 @@ class VitalsCollector private constructor(
                     measurement.record(
                         availableBytes,
                         Attributes.of(
-                            AttributeKey.booleanKey("memory.low"), memInfo.lowMemory,
-                            AttributeKey.booleanKey("memory.critical"), availableMb < config.memoryPressureCriticalMb
+                            AttributeKey.booleanKey("mobile.memory.low"), memInfo.lowMemory,
+                            AttributeKey.booleanKey("mobile.memory.critical"), availableMb < config.memoryPressureCriticalMb
                         )
                     )
                 }
@@ -250,7 +250,7 @@ class VitalsCollector private constructor(
                         measurement.record(
                             state.toLong(),
                             Attributes.of(
-                                AttributeKey.stringKey("thermal.state"), getThermalStateName(state)
+                                AttributeKey.stringKey("mobile.thermal.state"), getThermalStateName(state)
                             )
                         )
                         thermalState.set(getThermalStateName(state))
