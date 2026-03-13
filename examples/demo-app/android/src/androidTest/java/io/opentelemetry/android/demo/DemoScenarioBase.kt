@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.opentelemetry.android.mobile.MobileOtel
 import io.opentelemetry.api.logs.Severity
 import org.junit.After
+import org.junit.Assume
 import org.junit.Before
 
 /**
@@ -30,6 +31,11 @@ abstract class DemoScenarioBase {
     @Before
     fun setUp() {
         pace = DemoScenarioPace()
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        Assume.assumeTrue(
+            "Skipping: Dash0 credentials not configured (set real values in otel-config.json)",
+            ConfigManager.isDash0Configured(ctx)
+        )
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
         // Dismiss any stray system dialogs (ANR, crash, permission) left by previous tests.
         // Use 'am kill' instead of 'force-stop': kill only terminates cached background processes,

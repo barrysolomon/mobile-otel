@@ -319,6 +319,20 @@ object ConfigManager {
     }
 
     /**
+     * Returns true if real Dash0 credentials are present (i.e. not the template placeholders
+     * and not empty). Use this to skip tests or export attempts when credentials are unset.
+     */
+    fun isDash0Configured(context: Context): Boolean {
+        val token = getAuthToken(context)
+        val endpoint = getPrefs(context).getString(KEY_COLLECTOR_ENDPOINT, DEFAULT_COLLECTOR_ENDPOINT) ?: ""
+        return token.isNotBlank() &&
+            !token.contains("YOUR_AUTH_TOKEN") &&
+            endpoint.isNotBlank() &&
+            !endpoint.contains("YOUR_COLLECTOR_ENDPOINT") &&
+            endpoint != DEFAULT_COLLECTOR_ENDPOINT
+    }
+
+    /**
      * Saves protocol preference (grpc or http).
      */
     fun getSamplingRate(context: Context): Float =
