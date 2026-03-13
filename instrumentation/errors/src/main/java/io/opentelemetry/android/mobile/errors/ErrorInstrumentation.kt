@@ -147,10 +147,10 @@ class ErrorInstrumentation private constructor(
         val attributesBuilder = Attributes.builder()
             .put(AttributeKey.stringKey("exception.origin"), source) // custom: OTel semconv has no standard for exception origin category
             .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
-            .put(AttributeKey.stringKey("error.fingerprint"), fingerprint)
+            .put(AttributeKey.stringKey("mobile.error.fingerprint"), fingerprint)
 
         context?.let {
-            attributesBuilder.put(AttributeKey.stringKey("error.context"), it)
+            attributesBuilder.put(AttributeKey.stringKey("mobile.error.context"), it)
         }
 
         // Add exception message (semconv: exception.message)

@@ -14,6 +14,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Scope
@@ -89,6 +90,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         val sp = sessionProvider ?: return
         // Span name follows mobile convention: "page.<ScreenName>" — custom mobile semconv (not yet standardized)
         pageSpan = tracer?.spanBuilder("page.$screenName")
+            ?.setSpanKind(SpanKind.INTERNAL)
             ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
             ?.setAttribute(MobileSemconv.VIEW_ID.key, sp.getViewId())
             ?.setAttribute(MobileSemconv.SCREEN_NAME.key, screenName)
@@ -129,6 +131,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         val root = activity.window?.decorView ?: return
         val sp = sessionProvider ?: return
         val span = tracer?.spanBuilder(MobileSemconv.SCREEN_RENDER)
+            ?.setSpanKind(SpanKind.INTERNAL)
             ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
             ?.setAttribute(MobileSemconv.SCREEN_NAME.key, screenName)
             ?.startSpan() ?: return

@@ -72,8 +72,8 @@ class DeviceMetricsCollector(
         lastCaptureTime.set(now)
 
         val baseAttributes = Attributes.builder()
-            .put(AttributeKey.stringKey("capture.reason"), reason.name.lowercase())
-            .put(AttributeKey.longKey("capture.timestamp_ms"), now)
+            .put(AttributeKey.stringKey("mobile.capture.reason"), reason.name.lowercase())
+            .put(AttributeKey.longKey("mobile.capture.timestamp_ms"), now)
             .build()
 
         // Capture configured metrics
@@ -99,22 +99,23 @@ class DeviceMetricsCollector(
         val memInfo = ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(memInfo)
 
-        val availableMb = memInfo.availMem / (1024 * 1024)
-        val totalMb = memInfo.totalMem / (1024 * 1024)
-        val usedMb = totalMb - availableMb
+        val availableBytes = memInfo.availMem
+        val totalBytes = memInfo.totalMem
+        val usedBytes = totalBytes - availableBytes
 
         // Record memory metrics as upDownCounters (snapshot metrics — values fluctuate)
+        // Unit: "By" per OTel semconv (UCUM bytes)
         meter.upDownCounterBuilder("system.memory.usage")
-            .setDescription("Memory currently used by app (MB)")
-            .setUnit("MB")
+            .setDescription("Memory currently used by app")
+            .setUnit("By")
             .build()
-            .add(usedMb, attributes)
+            .add(usedBytes, attributes)
 
         meter.upDownCounterBuilder("system.memory.available")
-            .setDescription("Memory available to app (MB)")
-            .setUnit("MB")
+            .setDescription("Memory available to app")
+            .setUnit("By")
             .build()
-            .add(availableMb, attributes)
+            .add(availableBytes, attributes)
 
         // Low memory flag
         meter.upDownCounterBuilder("device.memory.low_memory")
@@ -214,7 +215,7 @@ class DeviceMetricsCollector(
 
         val networkAttributes = Attributes.builder()
             .putAll(attributes)
-            .put(AttributeKey.stringKey("network.type"), networkType)
+            .put(AttributeKey.stringKey("network.connection.type"), networkType)
             .put(AttributeKey.booleanKey("network.connected"), isConnected)
             .build()
 
@@ -233,32 +234,29 @@ class DeviceMetricsCollector(
         val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
         val usedBytes = totalBytes - availableBytes
 
-        val usedMb = usedBytes / (1024 * 1024)
-        val availableMb = availableBytes / (1024 * 1024)
-
-        // Record storage metrics as upDownCounters (snapshot metrics — values fluctuate)
+        // Record storage metrics as upDownCounters (snapshot — values fluctuate)
+        // Unit: "By" per OTel semconv (UCUM bytes)
         meter.upDownCounterBuilder("system.filesystem.usage")
-            .setDescription("Internal storage used (MB)")
-            .setUnit("MB")
+            .setDescription("Internal storage used")
+            .setUnit("By")
             .build()
-            .add(usedMb, attributes)
+            .add(usedBytes, attributes)
 
         meter.upDownCounterBuilder("system.filesystem.available")
-            .setDescription("Internal storage available (MB)")
-            .setUnit("MB")
+            .setDescription("Internal storage available")
+            .setUnit("By")
             .build()
-            .add(availableMb, attributes)
+            .add(availableBytes, attributes)
 
         // Cache size
         val cacheDir = context.cacheDir
         val cacheSize = getFolderSize(cacheDir)
-        val cacheMb = cacheSize / (1024 * 1024)
 
         meter.upDownCounterBuilder("device.storage.cache")
-            .setDescription("App cache directory size (MB)")
-            .setUnit("MB")
+            .setDescription("App cache directory size")
+            .setUnit("By")
             .build()
-            .add(cacheMb, attributes)
+            .add(cacheSize, attributes)
     }
 
     /**
@@ -318,7 +316,7 @@ class DeviceMetricsCollector(
             .putAll(attributes)
             .put(AttributeKey.stringKey("os.version"), Build.VERSION.RELEASE)
             .put(AttributeKey.longKey("os.api_level"), Build.VERSION.SDK_INT.toLong())
-            .put(AttributeKey.stringKey("device.model"), Build.MODEL)
+            .put(AttributeKey.stringKey("device.model.name"), Build.MODEL)
             .put(AttributeKey.stringKey("device.manufacturer"), Build.MANUFACTURER)
             .put(AttributeKey.longKey("system.uptime_ms"), android.os.SystemClock.elapsedRealtime())
             .build()
