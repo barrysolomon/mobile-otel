@@ -117,8 +117,8 @@ data class JourneyBreadcrumb(
             attributes: Map<String, String> = emptyMap()
         ): JourneyBreadcrumb {
             val attrs = mutableMapOf<String, String>()
-            attrs["error.type"] = errorType
-            message?.let { attrs["error.message"] = it }
+            attrs["exception.type"] = errorType
+            message?.let { attrs["exception.message"] = it }
             attrs.putAll(attributes)
 
             return JourneyBreadcrumb(

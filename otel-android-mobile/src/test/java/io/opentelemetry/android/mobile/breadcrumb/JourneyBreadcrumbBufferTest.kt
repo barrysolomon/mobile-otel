@@ -394,8 +394,8 @@ class JourneyBreadcrumbBufferTest {
     fun `error breadcrumb includes error attributes`() {
         val crumb = JourneyBreadcrumb.error("CrashScreen", "NullPointerException", "msg")
         assertEquals(BreadcrumbType.ERROR, crumb.type)
-        assertEquals("NullPointerException", crumb.attributes["error.type"])
-        assertEquals("msg", crumb.attributes["error.message"])
+        assertEquals("NullPointerException", crumb.attributes["exception.type"])
+        assertEquals("msg", crumb.attributes["exception.message"])
     }
 
     @Test

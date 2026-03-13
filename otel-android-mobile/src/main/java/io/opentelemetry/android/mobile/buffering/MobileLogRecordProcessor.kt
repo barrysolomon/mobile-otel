@@ -375,7 +375,7 @@ class MobileLogRecordProcessor private constructor(
                     .put(io.opentelemetry.api.common.AttributeKey.longKey("device.memory_available_mb"), memoryMb)
                     .put(io.opentelemetry.api.common.AttributeKey.longKey("buffer.ram_events"),         ram.toLong())
                     .put(io.opentelemetry.api.common.AttributeKey.longKey("buffer.disk_events"),        disk.toLong())
-                    .put(io.opentelemetry.api.common.AttributeKey.stringKey("network.type"),            networkType)
+                    .put(io.opentelemetry.api.common.AttributeKey.stringKey("network.connection.type"), networkType)
                     .build()
             )
             .emit()

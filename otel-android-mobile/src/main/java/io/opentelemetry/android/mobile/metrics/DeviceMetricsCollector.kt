@@ -184,8 +184,8 @@ class DeviceMetricsCollector(
         // For now, just report core count and architecture
         val cpuAttributes = Attributes.builder()
             .putAll(attributes)
-            .put(AttributeKey.longKey("cpu.core_count"), coreCount.toLong())
-            .put(AttributeKey.stringKey("cpu.architecture"), Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
+            .put(AttributeKey.longKey("mobile.cpu.core_count"), coreCount.toLong())
+            .put(AttributeKey.stringKey("mobile.cpu.architecture"), Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
             .build()
 
         meter.upDownCounterBuilder("system.cpu.info")

@@ -300,9 +300,9 @@ object MobileOtel {
                 .setSeverity(Severity.ERROR)
                 .setAllAttributes(
                     Attributes.builder()
-                        .put(AttributeKey.stringKey("error.type"), throwable.javaClass.name)
-                        .put(AttributeKey.stringKey("error.message"), throwable.message ?: "")
-                        .put(AttributeKey.stringKey("error.source"), "manual")
+                        .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
+                        .put(AttributeKey.stringKey("exception.message"), throwable.message ?: "")
+                        .put(AttributeKey.stringKey("exception.origin"), "manual")
                         .build()
                 )
                 .emit()

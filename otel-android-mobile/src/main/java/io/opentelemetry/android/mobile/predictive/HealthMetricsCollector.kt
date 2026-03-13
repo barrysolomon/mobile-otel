@@ -71,19 +71,19 @@ class HealthMetricsCollector private constructor(
     private fun registerMetrics() {
         // Memory metrics
         meter?.gaugeBuilder("device.memory.available")
-            ?.setDescription("Available memory in megabytes")
-            ?.setUnit("MB")
+            ?.setDescription("Available memory in bytes")
+            ?.setUnit("By")
             ?.buildWithCallback { measurement: ObservableDoubleMeasurement ->
                 val snapshot = healthMonitor.getCurrentSnapshot()
-                measurement.record(snapshot.availableMemoryMb.toDouble())
+                measurement.record(snapshot.availableMemoryMb.toDouble() * 1024 * 1024)
             }
 
         meter?.gaugeBuilder("device.memory.used")
-            ?.setDescription("Used memory in megabytes")
-            ?.setUnit("MB")
+            ?.setDescription("Used memory in bytes")
+            ?.setUnit("By")
             ?.buildWithCallback { measurement: ObservableDoubleMeasurement ->
                 val snapshot = healthMonitor.getCurrentSnapshot()
-                measurement.record(snapshot.usedMemoryMb.toDouble())
+                measurement.record(snapshot.usedMemoryMb.toDouble() * 1024 * 1024)
             }
 
         meter?.gaugeBuilder("device.memory.pressure")
@@ -125,11 +125,11 @@ class HealthMetricsCollector private constructor(
 
         // Storage metrics
         meter?.gaugeBuilder("device.storage.available")
-            ?.setDescription("Available storage in megabytes")
-            ?.setUnit("MB")
+            ?.setDescription("Available storage in bytes")
+            ?.setUnit("By")
             ?.buildWithCallback { measurement: ObservableDoubleMeasurement ->
                 val snapshot = healthMonitor.getCurrentSnapshot()
-                measurement.record(snapshot.availableStorageMb.toDouble())
+                measurement.record(snapshot.availableStorageMb.toDouble() * 1024 * 1024)
             }
 
         // Thermal metrics

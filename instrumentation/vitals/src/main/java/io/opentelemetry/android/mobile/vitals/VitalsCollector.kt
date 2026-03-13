@@ -74,15 +74,15 @@ class VitalsCollector private constructor(
         // App start metrics
         if (config.measureAppStart) {
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
+            // Unit: "s" per UCUM (OTel semconv); values converted from ms
             meter.gaugeBuilder("mobile.app.start.cold")
-                .setDescription("Cold start time in milliseconds")
-                .setUnit("ms")
-                .ofLongs()
-                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                .setDescription("Cold start time in seconds")
+                .setUnit("s")
+                .buildWithCallback { measurement: ObservableDoubleMeasurement ->
                     val value = coldStartTime.get()
                     if (value > 0) {
                         measurement.record(
-                            value,
+                            value / 1000.0,
                             Attributes.of(
                                 AttributeKey.stringKey("start.type"), "cold",
                                 AttributeKey.booleanKey("start.slow"), value > config.coldStartThresholdMs
@@ -93,14 +93,13 @@ class VitalsCollector private constructor(
 
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.app.start.warm")
-                .setDescription("Warm start time in milliseconds")
-                .setUnit("ms")
-                .ofLongs()
-                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                .setDescription("Warm start time in seconds")
+                .setUnit("s")
+                .buildWithCallback { measurement: ObservableDoubleMeasurement ->
                     val value = warmStartTime.get()
                     if (value > 0) {
                         measurement.record(
-                            value,
+                            value / 1000.0,
                             Attributes.of(
                                 AttributeKey.stringKey("start.type"), "warm",
                                 AttributeKey.booleanKey("start.slow"), value > config.warmStartThresholdMs
@@ -114,14 +113,13 @@ class VitalsCollector private constructor(
         if (config.measureTtid) {
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.app.ttid")
-                .setDescription("Time to initial display in milliseconds")
-                .setUnit("ms")
-                .ofLongs()
-                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                .setDescription("Time to initial display in seconds")
+                .setUnit("s")
+                .buildWithCallback { measurement: ObservableDoubleMeasurement ->
                     val value = ttidTime.get()
                     if (value > 0) {
                         measurement.record(
-                            value,
+                            value / 1000.0,
                             Attributes.of(
                                 AttributeKey.booleanKey("ttid.slow"), value > config.ttidThresholdMs
                             )
@@ -167,16 +165,16 @@ class VitalsCollector private constructor(
         if (config.trackInputLatency) {
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.input.latency.avg")
-                .setDescription("Average input latency in milliseconds")
-                .setUnit("ms")
+                .setDescription("Average input latency in seconds")
+                .setUnit("s")
                 .buildWithCallback { measurement: ObservableDoubleMeasurement ->
                     synchronized(inputLatencies) {
                         if (inputLatencies.isNotEmpty()) {
-                            val avg = inputLatencies.average()
+                            val avgMs = inputLatencies.average()
                             measurement.record(
-                                avg,
+                                avgMs / 1000.0,
                                 Attributes.of(
-                                    AttributeKey.booleanKey("latency.high"), avg > config.inputLatencyThresholdMs
+                                    AttributeKey.booleanKey("latency.high"), avgMs > config.inputLatencyThresholdMs
                                 )
                             )
                             inputLatencies.clear()
@@ -189,14 +187,13 @@ class VitalsCollector private constructor(
         if (config.monitorAnrRisk) {
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.anr.risk")
-                .setDescription("Main thread block time indicating ANR risk in milliseconds")
-                .setUnit("ms")
-                .ofLongs()
-                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                .setDescription("Main thread block time indicating ANR risk in seconds")
+                .setUnit("s")
+                .buildWithCallback { measurement: ObservableDoubleMeasurement ->
                     val blockTime = mainThreadBlockTime.get()
                     if (blockTime > 0) {
                         measurement.record(
-                            blockTime,
+                            blockTime / 1000.0,
                             Attributes.of(
                                 AttributeKey.booleanKey("anr.risk.high"), blockTime > config.anrRiskThresholdMs
                             )
@@ -209,15 +206,16 @@ class VitalsCollector private constructor(
         if (config.monitorMemoryPressure) {
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.memory.available")
-                .setDescription("Available memory in megabytes")
-                .setUnit("MB")
+                .setDescription("Available memory in bytes")
+                .setUnit("By")
                 .ofLongs()
                 .buildWithCallback { measurement: ObservableLongMeasurement ->
                     val memInfo = ActivityManager.MemoryInfo()
                     activityManager.getMemoryInfo(memInfo)
-                    val availableMb = memInfo.availMem / (1024 * 1024)
+                    val availableBytes = memInfo.availMem
+                    val availableMb = availableBytes / (1024 * 1024)
                     measurement.record(
-                        availableMb,
+                        availableBytes,
                         Attributes.of(
                             AttributeKey.booleanKey("memory.low"), memInfo.lowMemory,
                             AttributeKey.booleanKey("memory.critical"), availableMb < config.memoryPressureCriticalMb
@@ -227,14 +225,13 @@ class VitalsCollector private constructor(
 
             // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.memory.threshold")
-                .setDescription("Low memory threshold in megabytes")
-                .setUnit("MB")
+                .setDescription("Low memory threshold in bytes")
+                .setUnit("By")
                 .ofLongs()
                 .buildWithCallback { measurement: ObservableLongMeasurement ->
                     val memInfo = ActivityManager.MemoryInfo()
                     activityManager.getMemoryInfo(memInfo)
-                    val thresholdMb = memInfo.threshold / (1024 * 1024)
-                    measurement.record(thresholdMb)
+                    measurement.record(memInfo.threshold)
                 }
         }
 
