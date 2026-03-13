@@ -14,6 +14,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import java.util.WeakHashMap
@@ -79,13 +80,13 @@ class ScrollCapture(
 
             val screenName = sessionTracker.getCurrentScreenName()
             val attributes = Attributes.builder()
-                .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+                .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
                 .put(AttributeKey.stringKey("ui.scroll.direction"), direction)
                 .put(AttributeKey.stringKey("ui.scroll.distance_bucket"), bucket)
                 .apply {
                     if (screenName != null) {
-                        put(AttributeKey.stringKey("screen.name"), screenName)
+                        put(AttributeKey.stringKey("mobile.screen.name"), screenName)
                     }
                 }
                 .build()
@@ -95,6 +96,7 @@ class ScrollCapture(
                 // Active parent — emit as child span
                 val childSpan = tracer.spanBuilder("ui.scroll")
                     .setParent(capturedContext)
+                    .setSpanKind(SpanKind.INTERNAL)
                     .setAllAttributes(attributes)
                     .startSpan()
                 childSpan.end()

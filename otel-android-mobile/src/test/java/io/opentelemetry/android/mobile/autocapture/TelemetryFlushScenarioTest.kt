@@ -126,8 +126,8 @@ class TelemetryFlushScenarioTest {
         startTracker()
 
         val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
-        assertFalse("session.id should be present and non-empty",
-            recovery.attributes.get(AttributeKey.stringKey("session.id")).isNullOrBlank())
+        assertFalse("mobile.session.id should be present and non-empty",
+            recovery.attributes.get(AttributeKey.stringKey("mobile.session.id")).isNullOrBlank())
     }
 
     @Test

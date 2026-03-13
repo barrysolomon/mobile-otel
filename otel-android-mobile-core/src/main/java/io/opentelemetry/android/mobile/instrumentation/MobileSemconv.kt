@@ -29,9 +29,9 @@ object MobileSemconv {
     const val APP_STARTUP    = "app.startup"
 
     // ── Attribute keys ───────────────────────────────────────────────────────
-    @JvmField val SESSION_ID             = AttributeKey.stringKey("session.id")
-    @JvmField val VIEW_ID                = AttributeKey.stringKey("view.id")
-    @JvmField val SCREEN_NAME            = AttributeKey.stringKey("screen.name")
+    @JvmField val SESSION_ID             = AttributeKey.stringKey("mobile.session.id")
+    @JvmField val VIEW_ID                = AttributeKey.stringKey("mobile.view.id")
+    @JvmField val SCREEN_NAME            = AttributeKey.stringKey("mobile.screen.name")
     @JvmField val UI_ELEMENT_ID          = AttributeKey.stringKey("ui.element.resource_id")
     @JvmField val UI_ELEMENT_CLASS       = AttributeKey.stringKey("ui.element.class")
     @JvmField val UI_ELEMENT_LABEL       = AttributeKey.stringKey("ui.element.label")

@@ -17,11 +17,11 @@ class BackPressCapture(
     fun onBackPressed() {
         val screenName = sessionTracker.getCurrentScreenName()
         val attributes = Attributes.builder()
-            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+            .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+            .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
             .apply {
                 if (screenName != null) {
-                    put(AttributeKey.stringKey("screen.name"), screenName)
+                    put(AttributeKey.stringKey("mobile.screen.name"), screenName)
                 }
             }
             .build()

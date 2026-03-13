@@ -119,11 +119,11 @@ class JankDetector private constructor(
                 ?.setAllAttributes(
                     Attributes.of(
                         AttributeKey.stringKey("event.name"), "mobile.ui.jank",
-                        AttributeKey.doubleKey("jank.frame_time_ms"), frameTimeMs,
-                        AttributeKey.longKey("jank.dropped_frames"), droppedFrames.toLong(),
-                        AttributeKey.stringKey("jank.severity"), severity,
-                        AttributeKey.longKey("jank.consecutive_count"), janks,
-                        AttributeKey.booleanKey("jank.severe"), isSevere
+                        AttributeKey.doubleKey("mobile.ui.jank.frame_time_ms"), frameTimeMs,
+                        AttributeKey.longKey("mobile.ui.jank.dropped_frames"), droppedFrames.toLong(),
+                        AttributeKey.stringKey("mobile.ui.jank.severity"), severity,
+                        AttributeKey.longKey("mobile.ui.jank.consecutive_count"), janks,
+                        AttributeKey.booleanKey("mobile.ui.jank.severe"), isSevere
                     )
                 )
                 ?.emit()

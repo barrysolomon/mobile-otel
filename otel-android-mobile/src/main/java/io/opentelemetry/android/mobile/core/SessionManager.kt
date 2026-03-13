@@ -162,7 +162,7 @@ class SessionManager private constructor(
                 ?.setBody("mobile.session.started")
                 ?.setAllAttributes(
                     Attributes.builder()
-                        .put("session.id", currentSessionId)
+                        .put("mobile.session.id", currentSessionId)
                         .put("session.start_reason", "inactivity_timeout")
                         .build()
                 )
@@ -211,7 +211,7 @@ class SessionManager private constructor(
             ?.setBody("mobile.session.terminated")
             ?.setAllAttributes(
                 Attributes.builder()
-                    .put("session.id", currentSessionId)
+                    .put("mobile.session.id", currentSessionId)
                     .put("session.duration_ms", duration)
                     .put("session.termination_reason", reason)
                     .build()
@@ -226,7 +226,7 @@ class SessionManager private constructor(
                 ?.setBody("mobile.session.flush_requested")
                 ?.setAllAttributes(
                     Attributes.builder()
-                        .put("session.id", currentSessionId)
+                        .put("mobile.session.id", currentSessionId)
                         .put("reason", "session_termination")
                         .build()
                 )
@@ -296,7 +296,7 @@ class SessionManager private constructor(
             ?.setAllAttributes(
                 Attributes.builder()
                     .put("user.id", user.userId)
-                    .put("session.id", currentSessionId)
+                    .put("mobile.session.id", currentSessionId)
                     .build()
             )
             ?.emit()
@@ -313,7 +313,7 @@ class SessionManager private constructor(
             ?.setBody("mobile.user.cleared")
             ?.setAllAttributes(
                 Attributes.builder()
-                    .put("session.id", currentSessionId)
+                    .put("mobile.session.id", currentSessionId)
                     .build()
             )
             ?.emit()
@@ -376,7 +376,7 @@ class SessionManager private constructor(
         val builder = Attributes.builder()
 
         // Session attributes
-        builder.put("session.id", currentSessionId)
+        builder.put("mobile.session.id", currentSessionId)
         builder.put("session.start_time", sessionStartTime)
         builder.put("session.duration_ms", System.currentTimeMillis() - sessionStartTime)
         builder.put("session.state", if (isInForeground) "active" else "background")

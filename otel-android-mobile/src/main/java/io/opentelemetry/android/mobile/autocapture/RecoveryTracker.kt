@@ -106,8 +106,8 @@ class RecoveryTracker(
                     .setSeverity(Severity.ERROR)
                     .setAllAttributes(
                         Attributes.builder()
-                            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                            .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+                            .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
                             .put(AttributeKey.stringKey("anr.user_action"), "force_close")
                             .build()
                     )
@@ -124,8 +124,8 @@ class RecoveryTracker(
                 .setSeverity(Severity.ERROR)
                 .setAllAttributes(
                     Attributes.builder()
-                        .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                        .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                        .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+                        .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
                         .put(AttributeKey.stringKey("recovery_type"), lastRecoveryType)
                         .put(AttributeKey.longKey("downtime_ms"), downtimeMs)
                         .build()

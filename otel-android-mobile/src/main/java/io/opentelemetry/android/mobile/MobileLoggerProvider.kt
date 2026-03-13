@@ -81,8 +81,10 @@ class MobileLoggerProvider private constructor(
             .put("service.version", config.serviceVersion)
             .put("device.id", deviceId)
             .put("device.platform", "android")
-            .put("device.os.version", android.os.Build.VERSION.RELEASE)
-            .put("device.model", android.os.Build.MODEL)
+            .put("os.name", "android")
+            .put("os.version", android.os.Build.VERSION.RELEASE)
+            .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+            .put("device.model.name", android.os.Build.MODEL)
             .put("device.manufacturer", android.os.Build.MANUFACTURER)
             .build()
 

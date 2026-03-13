@@ -143,29 +143,29 @@ class ErrorInstrumentation private constructor(
             return
         }
 
-        // Build attributes
+        // Build attributes using OTel semantic conventions for exceptions
         val attributesBuilder = Attributes.builder()
             .put(AttributeKey.stringKey("error.source"), source)
-            .put(AttributeKey.stringKey("error.type"), throwable.javaClass.name)
+            .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
             .put(AttributeKey.stringKey("error.fingerprint"), fingerprint)
 
         context?.let {
             attributesBuilder.put(AttributeKey.stringKey("error.context"), it)
         }
 
-        // Add exception message
+        // Add exception message (semconv: exception.message)
         if (config.captureExceptionMessages) {
             val message = if (config.scrubStackTraces) {
                 PiiScrubber.scrubExceptionMessage(throwable.message ?: "")
             } else {
                 throwable.message ?: ""
             }
-            attributesBuilder.put(AttributeKey.stringKey("error.message"), message)
+            attributesBuilder.put(AttributeKey.stringKey("exception.message"), message)
         }
 
-        // Add stack trace
+        // Add stack trace (semconv: exception.stacktrace)
         val stackTrace = buildStackTrace(throwable)
-        attributesBuilder.put(AttributeKey.stringKey("error.stack_trace"), stackTrace)
+        attributesBuilder.put(AttributeKey.stringKey("exception.stacktrace"), stackTrace)
 
         // Add causes if enabled
         if (config.captureCauses) {
@@ -173,7 +173,7 @@ class ErrorInstrumentation private constructor(
             var causeDepth = 0
             while (cause != null && causeDepth < 5) {
                 attributesBuilder.put(
-                    AttributeKey.stringKey("error.cause.$causeDepth.type"),
+                    AttributeKey.stringKey("exception.cause.$causeDepth.type"),
                     cause.javaClass.name
                 )
                 cause.message?.let { msg ->
@@ -183,7 +183,7 @@ class ErrorInstrumentation private constructor(
                         msg
                     }
                     attributesBuilder.put(
-                        AttributeKey.stringKey("error.cause.$causeDepth.message"),
+                        AttributeKey.stringKey("exception.cause.$causeDepth.message"),
                         scrubbedMsg
                     )
                 }
@@ -214,7 +214,7 @@ class ErrorInstrumentation private constructor(
 
         // Body is "app.crash" so the default crash-recovery policy matches.
         // Exception details are in attributes (error.type, error.message, error.stack_trace).
-        attributesBuilder.put(AttributeKey.stringKey("error.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
+        attributesBuilder.put(AttributeKey.stringKey("exception.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
         logger.logRecordBuilder()
             .setBody("app.crash")
             .setSeverity(Severity.ERROR)

@@ -103,13 +103,13 @@ class FreezeDetector(
         } ?: return
 
         val attributes = Attributes.builder()
-            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+            .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+            .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
             .put(AttributeKey.longKey("freeze.duration_ms"), pending.delayMs)
             .put(AttributeKey.longKey("ui.freeze.delay_ms"), pending.delayMs)  // legacy alias
             .apply {
                 if (pending.screenName != null) {
-                    put(AttributeKey.stringKey("screen.name"), pending.screenName)
+                    put(AttributeKey.stringKey("mobile.screen.name"), pending.screenName)
                 }
             }
             .build()
@@ -122,14 +122,14 @@ class FreezeDetector(
 
         if (pending.isAnr) {
             val anrAttributes = Attributes.builder()
-                .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+                .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
                 .put(AttributeKey.longKey("freeze.duration_ms"), pending.delayMs)
                 .put(AttributeKey.longKey("anr.delay_ms"), pending.delayMs)  // legacy alias
                 .put(AttributeKey.stringKey("anr.user_action"), "user_waited")
                 .apply {
                     if (pending.screenName != null) {
-                        put(AttributeKey.stringKey("screen.name"), pending.screenName)
+                        put(AttributeKey.stringKey("mobile.screen.name"), pending.screenName)
                     }
                 }
                 .build()

@@ -206,7 +206,12 @@
       "Bash(xargs -I{} echo \"{} files with failures\")",
       "Bash(grep -l \"tvBack\\\\|fitsSystemWindows\" /Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/res/layout/*.xml)",
       "Bash(grep -L \"fitsSystemWindows\" /Users/barrysolomon/Projects/Dash0/mobile-otel/examples/demo-app/android/src/main/res/layout/activity_*.xml)",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(git stash:*)",
+      "Bash(adb -s emulator-5554 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity)",
+      "Bash(adb -s emulator-5556 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity)",
+      "Bash(adb -s emulator-5554 shell logcat -d -t 50 -s OTelMobile:V OTelExporter:V OTLP:V)",
+      "Bash(adb -s emulator-5554 shell logcat -d -t 100)"
     ]
   }
 }

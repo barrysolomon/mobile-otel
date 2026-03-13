@@ -13,6 +13,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import java.util.WeakHashMap
@@ -61,11 +62,11 @@ class TextInputCapture(
         } else null
 
         val attrs = Attributes.builder()
-            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+            .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+            .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
             .apply {
                 if (resourceId != null) put(AttributeKey.stringKey("ui.element.resource_id"), resourceId)
-                if (screenName != null) put(AttributeKey.stringKey("screen.name"), screenName)
+                if (screenName != null) put(AttributeKey.stringKey("mobile.screen.name"), screenName)
                 put(AttributeKey.booleanKey("ui.element.enabled"), field.isEnabled)
             }
             .build()
@@ -74,6 +75,7 @@ class TextInputCapture(
         if (parentSpan.spanContext.isValid && parentSpan.spanContext.isSampled) {
             val child = tracer.spanBuilder("ui.text_input")
                 .setParent(capturedContext)
+                .setSpanKind(SpanKind.INTERNAL)
                 .setAllAttributes(attrs)
                 .startSpan()
             child.end()

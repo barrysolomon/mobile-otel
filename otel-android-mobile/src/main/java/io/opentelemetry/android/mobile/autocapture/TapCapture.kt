@@ -16,6 +16,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import java.util.concurrent.Executors
@@ -109,10 +110,10 @@ class TapCapture(
             }
             val screenName = sessionTracker.getCurrentScreenName()
             val attrs = Attributes.builder()
-                .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-                .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+                .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+                .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
                 .put(AttributeKey.stringKey("ui.swipe.direction"), direction)
-                .apply { if (screenName != null) put(AttributeKey.stringKey("screen.name"), screenName) }
+                .apply { if (screenName != null) put(AttributeKey.stringKey("mobile.screen.name"), screenName) }
                 .build()
             emit("ui.swipe", attrs, 1, capturedContext)
             downX = 0f
@@ -152,13 +153,13 @@ class TapCapture(
         screenName: String?
     ): Attributes {
         val attributes = Attributes.builder()
-            .put(AttributeKey.stringKey("session.id"), sessionTracker.getSessionId())
-            .put(AttributeKey.stringKey("view.id"), sessionTracker.getViewId())
+            .put(AttributeKey.stringKey("mobile.session.id"), sessionTracker.getSessionId())
+            .put(AttributeKey.stringKey("mobile.view.id"), sessionTracker.getViewId())
             .put(AttributeKey.stringKey("interaction.source"), "auto.window")
             .put(AttributeKey.stringKey("element.confidence"), confidence)
 
         if (screenName != null) {
-            attributes.put(AttributeKey.stringKey("screen.name"), screenName)
+            attributes.put(AttributeKey.stringKey("mobile.screen.name"), screenName)
         }
 
         val bucket = CoordinateBucketer.bucket(
@@ -293,6 +294,7 @@ class TapCapture(
             // Active parent span — emit as child span for trace waterfall visibility
             val childSpan = tracer.spanBuilder(eventName)
                 .setParent(capturedContext)
+                .setSpanKind(SpanKind.INTERNAL)
                 .setAllAttributes(allAttrs)
                 .startSpan()
             childSpan.end()

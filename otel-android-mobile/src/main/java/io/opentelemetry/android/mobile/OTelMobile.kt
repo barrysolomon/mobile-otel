@@ -152,7 +152,9 @@ object OTelMobile {
     }
 
     fun startJourney(name: String): Span {
-        return getTracer("journey").spanBuilder(name).startSpan()
+        return getTracer("io.opentelemetry.android.mobile.journey").spanBuilder(name)
+            .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+            .startSpan()
     }
 
     /**

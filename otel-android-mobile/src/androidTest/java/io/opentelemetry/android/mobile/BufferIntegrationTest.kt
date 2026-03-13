@@ -166,8 +166,14 @@ class BufferIntegrationTest {
         val countAfterFirstFlush = captureExporter.count()
         assertEquals("First flush should export 1 record", 1, countAfterFirstFlush)
 
-        // Verify RAM buffer is empty via buffer stats
-        val stats = processor.getBufferStats()
+        // The RAM clear happens in a whenComplete→executor.submit callback, which may fire
+        // slightly after the exporter returns. Poll briefly rather than asserting immediately.
+        val deadline = System.currentTimeMillis() + 2000
+        var stats = processor.getBufferStats()
+        while (stats.ramBufferSize > 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50)
+            stats = processor.getBufferStats()
+        }
         assertEquals("RAM buffer should be empty after flush", 0, stats.ramBufferSize)
 
         // Second flush on an empty buffer — exporter.export() should NOT be called again.

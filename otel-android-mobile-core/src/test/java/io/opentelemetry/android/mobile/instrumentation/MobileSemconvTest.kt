@@ -24,9 +24,9 @@ class MobileSemconvTest {
     }
 
     @Test fun `attribute key names are correct`() {
-        assertEquals("session.id",              MobileSemconv.SESSION_ID.key)
-        assertEquals("view.id",                 MobileSemconv.VIEW_ID.key)
-        assertEquals("screen.name",             MobileSemconv.SCREEN_NAME.key)
+        assertEquals("mobile.session.id",        MobileSemconv.SESSION_ID.key)
+        assertEquals("mobile.view.id",          MobileSemconv.VIEW_ID.key)
+        assertEquals("mobile.screen.name",      MobileSemconv.SCREEN_NAME.key)
         assertEquals("ui.element.resource_id",  MobileSemconv.UI_ELEMENT_ID.key)
         assertEquals("ui.swipe.direction",      MobileSemconv.SWIPE_DIRECTION.key)
         assertEquals("recovery_type",           MobileSemconv.RECOVERY_TYPE.key)

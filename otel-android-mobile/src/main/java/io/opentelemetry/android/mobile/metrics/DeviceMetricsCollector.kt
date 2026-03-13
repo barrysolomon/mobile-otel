@@ -103,20 +103,22 @@ class DeviceMetricsCollector(
         val totalMb = memInfo.totalMem / (1024 * 1024)
         val usedMb = totalMb - availableMb
 
-        // Record memory metrics as counters (snapshot metrics)
-        meter.counterBuilder("device.memory.used_mb")
+        // Record memory metrics as upDownCounters (snapshot metrics — values fluctuate)
+        meter.upDownCounterBuilder("system.memory.usage")
             .setDescription("Memory currently used by app (MB)")
+            .setUnit("MB")
             .build()
             .add(usedMb, attributes)
 
-        meter.counterBuilder("device.memory.available_mb")
+        meter.upDownCounterBuilder("system.memory.available")
             .setDescription("Memory available to app (MB)")
+            .setUnit("MB")
             .build()
             .add(availableMb, attributes)
 
         // Low memory flag
-        meter.counterBuilder("device.memory.low_memory")
-            .setDescription("Low memory state detected")
+        meter.upDownCounterBuilder("device.memory.low_memory")
+            .setDescription("Low memory state detected (1=low, 0=normal)")
             .build()
             .add(if (memInfo.lowMemory) 1 else 0, attributes)
     }
@@ -152,15 +154,17 @@ class DeviceMetricsCollector(
                 .build()
 
             if (batteryPercent >= 0) {
-                meter.counterBuilder("device.battery.level_percent")
-                    .setDescription("Battery level percentage (0-100)")
+                meter.upDownCounterBuilder("system.battery.charge")
+                    .setDescription("Battery charge level percentage (0-100)")
+                    .setUnit("%")
                     .build()
                     .add(batteryPercent.toLong(), batteryAttributes)
             }
 
             if (tempCelsius > 0) {
-                meter.counterBuilder("device.battery.temperature_celsius")
+                meter.upDownCounterBuilder("system.battery.temperature")
                     .setDescription("Battery temperature in Celsius")
+                    .setUnit("Cel")
                     .ofDoubles()
                     .build()
                     .add(tempCelsius, batteryAttributes)
@@ -183,7 +187,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.stringKey("cpu.architecture"), Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
             .build()
 
-        meter.counterBuilder("device.cpu.info")
+        meter.upDownCounterBuilder("system.cpu.info")
+            .setDescription("CPU info snapshot (1 = present, attributes carry detail)")
             .build()
             .add(1, cpuAttributes)
     }
@@ -213,7 +218,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.booleanKey("network.connected"), isConnected)
             .build()
 
-        meter.counterBuilder("device.network.snapshot")
+        meter.upDownCounterBuilder("system.network.connections")
+            .setDescription("Network connection state snapshot (1=connected, 0=disconnected)")
             .build()
             .add(if (isConnected) 1 else 0, networkAttributes)
     }
@@ -230,13 +236,16 @@ class DeviceMetricsCollector(
         val usedMb = usedBytes / (1024 * 1024)
         val availableMb = availableBytes / (1024 * 1024)
 
-        // Record storage metrics as counters (snapshot metrics)
-        meter.counterBuilder("device.storage.used_mb")
+        // Record storage metrics as upDownCounters (snapshot metrics — values fluctuate)
+        meter.upDownCounterBuilder("system.filesystem.usage")
             .setDescription("Internal storage used (MB)")
+            .setUnit("MB")
             .build()
             .add(usedMb, attributes)
 
-        meter.counterBuilder("device.storage.available_mb")
+        meter.upDownCounterBuilder("system.filesystem.available")
+            .setDescription("Internal storage available (MB)")
+            .setUnit("MB")
             .build()
             .add(availableMb, attributes)
 
@@ -245,7 +254,9 @@ class DeviceMetricsCollector(
         val cacheSize = getFolderSize(cacheDir)
         val cacheMb = cacheSize / (1024 * 1024)
 
-        meter.counterBuilder("device.storage.cache_mb")
+        meter.upDownCounterBuilder("device.storage.cache")
+            .setDescription("App cache directory size (MB)")
+            .setUnit("MB")
             .build()
             .add(cacheMb, attributes)
     }
@@ -270,8 +281,8 @@ class DeviceMetricsCollector(
                 else -> 0L
             }
 
-            // Record thermal state as counter (snapshot metric)
-            meter.counterBuilder("device.thermal.state")
+            // Record thermal state as upDownCounter (snapshot metric — fluctuates)
+            meter.upDownCounterBuilder("device.thermal.state")
                 .setDescription("Thermal throttling state (0=none, 1=light, 2=moderate, 3=severe, 4=critical)")
                 .build()
                 .add(thermalLevel, attributes)
@@ -293,7 +304,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.doubleKey("display.density"), displayMetrics.density.toDouble())
             .build()
 
-        meter.counterBuilder("device.display.info")
+        meter.upDownCounterBuilder("device.display.info")
+            .setDescription("Display info snapshot (1 = present, attributes carry detail)")
             .build()
             .add(1, displayAttributes)
     }
@@ -311,7 +323,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.longKey("system.uptime_ms"), android.os.SystemClock.elapsedRealtime())
             .build()
 
-        meter.counterBuilder("device.system.info")
+        meter.upDownCounterBuilder("device.system.info")
+            .setDescription("System info snapshot (1 = present, attributes carry detail)")
             .build()
             .add(1, systemAttributes)
     }
@@ -337,7 +350,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.longKey("app.update_time_ms"), packageInfo.lastUpdateTime)
             .build()
 
-        meter.counterBuilder("device.app.info")
+        meter.upDownCounterBuilder("device.app.info")
+            .setDescription("App info snapshot (1 = present, attributes carry detail)")
             .build()
             .add(1, appAttributes)
     }
@@ -356,7 +370,8 @@ class DeviceMetricsCollector(
             .put(AttributeKey.stringKey("geo.country"), country)
             .build()
 
-        meter.counterBuilder("device.location.info")
+        meter.upDownCounterBuilder("device.location.info")
+            .setDescription("Location info snapshot (1 = present, attributes carry detail)")
             .build()
             .add(1, locationAttributes)
     }
