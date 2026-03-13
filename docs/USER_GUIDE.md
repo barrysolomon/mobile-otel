@@ -1,6 +1,8 @@
 # User Guide
 
-Complete guide to using the Mobile Observability Control Plane UI.
+> **Note:** The Control Plane UI has been moved to the [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository. This document is retained as a reference for the export policy concepts used by the SDK. For setup and usage of the visual policy builder, see the sister repo.
+
+Complete guide to export policy concepts in the Mobile Observability system.
 
 ## Table of Contents
 
@@ -32,20 +34,9 @@ The Control Plane UI lets you visually author and manage **export policies** tha
 
 ### Accessing the UI
 
-1. Ensure the gateway is running:
-
-   ```bash
-   kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080
-   ```
-
-2. Start the UI:
-
-   ```bash
-   cd control-plane-ui
-   npm run dev
-   ```
-
-3. Open <http://localhost:3000>
+> The Control Plane UI and gateway are in the
+> [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository.
+> See that repo for setup instructions.
 
 ### UI Layout
 

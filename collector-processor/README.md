@@ -131,14 +131,8 @@ service:
 
 ## Running with docker-compose
 
-The project's `k8s/docker-compose.yml` includes an `otelcol-mobile` service:
-
-```bash
-cd k8s/
-docker-compose up -d otelcol-mobile
-```
-
-This starts the custom collector on the standard ports alongside Jaeger for local trace viewing.
+See the [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository
+for docker-compose and Kubernetes deployment manifests.
 
 ---
 

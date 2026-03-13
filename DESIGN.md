@@ -9,7 +9,7 @@ Build an **OpenTelemetry-native Android observability SDK** that captures events
 - CONDITIONAL export mode: zero bandwidth when nothing goes wrong
 - On-device policy engine: selective flush based on DSL-defined triggers
 - Predictive telemetry: pre-emptive flush before crashes/network loss
-- Visual control plane: non-technical users author export policies
+- Visual control plane: non-technical users author export policies (see [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane))
 
 ## System Architecture
 
@@ -49,21 +49,21 @@ Build an **OpenTelemetry-native Android observability SDK** that captures events
 │                                                                   │
 │  Export: RetryableExporter → OTLP/gRPC :4317                    │
 └──────────────────────────────────────────────────────────────────┘
-         │ OTLP/gRPC                    GET /config (60s poll)
-         ▼                                   │
-┌──────────────────┐                ┌────────┴─────────┐
-│ OTEL Collector    │                │ Gateway (Go)     │
-│ + mobilepolicy    │◄───────────────│ :8080            │
-│   processor       │  OTLP/gRPC    │ /ingest, /config │
-│ :4317, :4318      │                │ /admin/*         │
-└────────┬─────────┘                └────────┬─────────┘
-         │                                   ▲
-         ▼                                   │ /api proxy
-    Backends                         ┌───────┴─────────┐
-    (Loki, Dash0, etc.)              │ Control Plane UI │
-                                     │ React + Vite     │
-                                     │ :3000            │
-                                     └─────────────────┘
+         │ OTLP/gRPC
+         ▼
+┌──────────────────┐
+│ OTEL Collector    │
+│ + mobilepolicy    │
+│   processor       │
+│ :4317, :4318      │
+└────────┬─────────┘
+         │
+         ▼
+    Backends
+    (Loki, Dash0, etc.)
+
+Note: The Go Gateway and Control Plane UI (visual policy builder) are in
+the sister repo: https://github.com/barrysolomon/mobile-otel-control-plane
 ```
 
 ## Core Concepts
@@ -79,7 +79,7 @@ Events flow: **RAM buffer** (ConcurrentLinkedQueue, 5000 events, lock-free) → 
 | **HYBRID** | Periodic + trigger-based | 1-2% |
 
 ### Export Policy DSL
-Policies are authored visually in the Control Plane UI (React Flow, 8 node types), compiled to JSON DSL, published to gateway, polled by devices every 60s. Android evaluates the compiled DSL deterministically.
+Policies can be authored visually in the Control Plane UI (see [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane)), compiled to JSON DSL, and bundled with the app or polled from a remote endpoint. Android evaluates the compiled DSL deterministically.
 
 ```json
 {
@@ -156,7 +156,8 @@ These require manual integration because they depend on user's specific HTTP cli
 ## Repository Split Plan
 1. **`otel-android-mobile/`** — Publishable Android library (upstream target: `opentelemetry-android`)
 2. **`collector-processor/`** — OTEL Collector processor (upstream target: `opentelemetry-collector-contrib`)
-3. **Everything else** (gateway, control-plane-ui, examples, k8s) — Demo/reference implementation, stays external
+3. **Gateway, Control Plane UI, k8s manifests** — Extracted to [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane)
+4. **Examples** (demo-app, demo-app-starter) — Demo/reference implementation, stays in this repo
 
 ## Demo Scenarios
 These three scenarios must always work end-to-end:

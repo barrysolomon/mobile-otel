@@ -100,49 +100,23 @@ The demo app is **Schedulr**, a medical appointment scheduling app. Fault scenar
 
 ### Prerequisites
 
-- Docker / Kubernetes (k3s works fine)
-- kubectl
-- Node.js 18+
 - Android emulator or physical device (API 26+)
+- An OTEL Collector endpoint (local or cloud, e.g. Dash0)
 
-### Step 1: Deploy OTEL Collector
+### Step 1: Set Up a Collector Endpoint
 
-```bash
-kubectl apply -f k8s/otel-collector.yaml
-kubectl wait --for=condition=ready pod -l app=otel-collector -n mobile-observability --timeout=120s
-kubectl get pods -n mobile-observability
-```
+You need an OTLP-compatible collector. Options:
 
-Expected:
-```
-NAME                              READY   STATUS
-otel-collector-xxxxxxxxxx-xxxxx   1/1     Running
-```
+- **Dash0 cloud:** Use `https://ingress.<region>.aws.dash0.com:4317` with your auth token
+- **Local collector:** Deploy an OTEL Collector (see [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane) for k8s manifests)
+- **Docker:** `docker run -p 4317:4317 -p 4318:4318 otel/opentelemetry-collector-contrib:latest`
 
-> **Do you need the gateway?** For evaluating telemetry collection, the collector alone
-> is sufficient. The SDK uses built-in default export policies (ui.freeze → 2-min flush,
-> app.crash → 5-min flush) when no remote config is available. Add the gateway only if
-> you need dynamic policy management via the Control Plane UI. See the
-> [Deployment Guide](guides/DEPLOYMENT_GUIDE.md#gateway-vs-collector-only-which-do-you-need)
-> for details.
+The SDK uses built-in default export policies (ui.freeze -> 2-min flush,
+app.crash -> 5-min flush) when no remote config is available. For dynamic
+policy management via the visual policy builder, see the
+[sister repo](https://github.com/barrysolomon/mobile-otel-control-plane).
 
-### Step 2: (Optional) Deploy Gateway and Control Plane UI
-
-Only needed for dynamic policy management:
-
-```bash
-# The gateway image must be built first — see the Deployment Guide
-kubectl apply -f k8s/otel-gateway.yaml
-kubectl wait --for=condition=ready pod -l app=otel-gateway -n mobile-observability --timeout=60s
-
-kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080 &
-curl http://localhost:8080/health  # {"status":"healthy"}
-
-cd control-plane-ui && npm install && npm run dev
-# Open http://localhost:3000
-```
-
-### Step 3: Start an Emulator
+### Step 2: Start an Emulator
 
 #### Already have AVDs installed? Start one now
 
@@ -203,7 +177,7 @@ avdmanager create avd \
 
 Then start it with the headless command above.
 
-### Step 4: Build, Install, and Launch the Demo App
+### Step 3: Build, Install, and Launch the Demo App
 
 ```bash
 cd examples/demo-app
@@ -219,11 +193,10 @@ To build the APK without installing (useful for CI or sending to a colleague):
 
 For a **physical device**: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices` before running `installDebug`.
 
-Point the app at the OTEL Collector (direct) or the gateway (if deployed). Open **Profile → Dash0 Connection** in the running app to update the endpoint at runtime:
+Point the app at the OTEL Collector. Open **Profile -> Dash0 Connection** in the running app to update the endpoint at runtime:
 
 ```text
-Collector-only (emulator):  http://10.0.2.2:4317
-With gateway (emulator):    http://10.0.2.2:8080
+Local collector (emulator):  http://10.0.2.2:4317
 Dash0 cloud (direct):       https://ingress.<region>.aws.dash0.com:4317
 ```
 
@@ -237,7 +210,7 @@ Or set it at build time in `assets/otel-config.json`:
 }
 ```
 
-### Step 4: Explore the App and Generate Telemetry
+### Step 5: Explore the App and Generate Telemetry
 
 Schedulr has five tabs. Fault scenarios emerge from normal app usage:
 
@@ -268,9 +241,6 @@ All error-class events (`ui.freeze`, `app.crash`, `app.anr`, `app.recovery`, HTT
 ```bash
 # Collector logs (look for your events)
 kubectl logs -n mobile-observability -l app=otel-collector -f
-
-# Gateway received events
-kubectl logs -n mobile-observability -l app=otel-gateway --tail=50
 ```
 
 Expected in collector output (UI freeze from ANR trigger):
@@ -303,5 +273,5 @@ adb logcat | grep -E "OTel|appointment|ui\.freeze|app\.(crash|anr|recovery)"
 - **[Export Modes](EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID explained
 - **[Geo/Device Policy Extension](GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-aware export policies
 - **[Device Metrics](DEVICE_METRICS.md)** — Health metrics exposed as OTel gauges
-- **[User Guide](USER_GUIDE.md)** — Using the Control Plane UI to author export policies
-- **[Operations Guide](OPERATIONS_GUIDE.md)** — Production deployment
+- **[Bundled Config](BUNDLED_CONFIG.md)** — Ship apps with pre-configured export policies
+- **[Control Plane](https://github.com/barrysolomon/mobile-otel-control-plane)** — Visual policy builder, gateway, and k8s deployment

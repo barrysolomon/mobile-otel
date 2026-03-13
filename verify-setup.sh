@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Mobile Observability Demo - Setup Verification Script
-# Verifies all components are properly configured and ready to deploy
+# Mobile OTel SDK - Setup Verification Script
+# Verifies Android SDK and collector processor are properly configured
 
 set -e
 
@@ -60,7 +60,7 @@ dir_exists() {
     [ -d "$1" ]
 }
 
-print_header "Mobile Observability Demo - Setup Verification"
+print_header "Mobile OTel SDK - Setup Verification"
 echo ""
 
 # ============================================================================
@@ -68,14 +68,6 @@ echo ""
 # ============================================================================
 
 print_header "1. Prerequisites"
-
-# kubectl
-if command_exists kubectl; then
-    KUBECTL_VERSION=$(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion":"[^"]*"' | head -1 | cut -d'"' -f4)
-    print_success "kubectl installed: $KUBECTL_VERSION"
-else
-    print_error "kubectl not found - required for Kubernetes deployment"
-fi
 
 # Go
 if command_exists go; then
@@ -88,41 +80,25 @@ if command_exists go; then
     if [ "$GO_MAJOR" -ge 1 ] && [ "$GO_MINOR" -ge 21 ]; then
         print_success "Go version >= 1.21 ✓"
     else
-        print_warning "Go version < 1.21 - gateway requires Go 1.21+"
+        print_warning "Go version < 1.21 - collector processor requires Go 1.21+"
     fi
 else
-    print_warning "Go not found - required to build gateway (optional if using Docker)"
+    print_warning "Go not found - required to build collector processor"
 fi
 
-# Node.js
-if command_exists node; then
-    NODE_VERSION=$(node --version)
-    print_success "Node.js installed: $NODE_VERSION"
-
-    # Check Node version >= 18
-    NODE_MAJOR=$(node --version | sed 's/v\([0-9]*\).*/\1/')
-    if [ "$NODE_MAJOR" -ge 18 ]; then
-        print_success "Node.js version >= 18 ✓"
-    else
-        print_warning "Node.js version < 18 - Control Plane UI requires Node 18+"
-    fi
-else
-    print_warning "Node.js not found - required for Control Plane UI"
-fi
-
-# npm
-if command_exists npm; then
-    NPM_VERSION=$(npm --version)
-    print_success "npm installed: $NPM_VERSION"
-else
-    print_warning "npm not found - required for Control Plane UI"
-fi
-
-# Android Studio / SDK (optional)
+# Android Studio / SDK
 if command_exists adb; then
     print_success "adb found - Android SDK installed"
 else
     print_warning "adb not found - Android SDK required to build and deploy app"
+fi
+
+# JDK
+if command_exists java; then
+    JAVA_VERSION=$(java -version 2>&1 | head -1)
+    print_success "Java installed: $JAVA_VERSION"
+else
+    print_warning "Java not found - JDK 17 required for Android SDK library"
 fi
 
 echo ""
@@ -133,200 +109,90 @@ echo ""
 
 print_header "2. Project Structure"
 
-# k8s directory
-if dir_exists "k8s"; then
-    print_success "k8s/ directory exists"
-
-    if file_exists "k8s/otel-collector.yaml"; then
-        print_success "k8s/otel-collector.yaml found"
-    else
-        print_error "k8s/otel-collector.yaml missing"
-    fi
-
-    if file_exists "k8s/otel-gateway.yaml"; then
-        print_success "k8s/otel-gateway.yaml found"
-    else
-        print_error "k8s/otel-gateway.yaml missing"
-    fi
+# otel-android-mobile directory
+if dir_exists "otel-android-mobile"; then
+    print_success "otel-android-mobile/ directory exists"
 else
-    print_error "k8s/ directory missing"
+    print_error "otel-android-mobile/ directory missing"
 fi
 
-# gateway directory
-if dir_exists "gateway"; then
-    print_success "gateway/ directory exists"
+# collector-processor directory
+if dir_exists "collector-processor"; then
+    print_success "collector-processor/ directory exists"
 
-    if file_exists "gateway/go.mod"; then
-        print_success "gateway/go.mod found"
+    if file_exists "collector-processor/mobilepolicyprocessor/go.mod"; then
+        print_success "collector-processor/mobilepolicyprocessor/go.mod found"
     else
-        print_error "gateway/go.mod missing"
-    fi
-
-    if file_exists "gateway/main.go"; then
-        print_success "gateway/main.go found"
-    else
-        print_error "gateway/main.go missing"
+        print_error "collector-processor/mobilepolicyprocessor/go.mod missing"
     fi
 else
-    print_error "gateway/ directory missing"
+    print_error "collector-processor/ directory missing"
 fi
 
-# android-app directory
-if dir_exists "android-app"; then
-    print_success "android-app/ directory exists"
+# examples/demo-app directory
+if dir_exists "examples/demo-app"; then
+    print_success "examples/demo-app/ directory exists"
 
-    if file_exists "android-app/build.gradle.kts"; then
-        print_success "android-app/build.gradle.kts found"
+    if file_exists "examples/demo-app/gradlew"; then
+        print_success "examples/demo-app/gradlew found"
     else
-        print_error "android-app/build.gradle.kts missing"
+        print_error "examples/demo-app/gradlew missing"
     fi
 else
-    print_error "android-app/ directory missing"
-fi
-
-# control-plane-ui directory
-if dir_exists "control-plane-ui"; then
-    print_success "control-plane-ui/ directory exists"
-
-    if file_exists "control-plane-ui/package.json"; then
-        print_success "control-plane-ui/package.json found"
-    else
-        print_error "control-plane-ui/package.json missing"
-    fi
-
-    if file_exists "control-plane-ui/vite.config.ts"; then
-        print_success "control-plane-ui/vite.config.ts found"
-    else
-        print_error "control-plane-ui/vite.config.ts missing"
-    fi
-else
-    print_error "control-plane-ui/ directory missing"
+    print_error "examples/demo-app/ directory missing"
 fi
 
 echo ""
 
 # ============================================================================
-# Documentation Check
+# Android SDK Build Check
 # ============================================================================
 
-print_header "3. Documentation"
+print_header "3. Android SDK Build Verification"
 
-DOCS=(
-    "README.md"
-    "DEPLOYMENT_GUIDE.md"
-    "QUICK_REFERENCE.md"
-    "ARCHITECTURE.md"
-    "E2E_VERIFICATION_CHECKLIST.md"
-    "VERIFICATION_PACK.md"
-    "FINAL_STATUS.md"
-)
+if dir_exists "examples/demo-app" && file_exists "examples/demo-app/gradlew"; then
+    cd examples/demo-app
 
-for doc in "${DOCS[@]}"; do
-    if file_exists "$doc"; then
-        print_success "$doc exists"
+    print_info "Running: ./gradlew :otel-android-mobile:build (dry run check)"
+    if ./gradlew :otel-android-mobile:tasks >/dev/null 2>&1; then
+        print_success "Android SDK Gradle project is valid"
     else
-        print_warning "$doc missing (not critical)"
+        print_warning "Android SDK Gradle project check failed (may need Android SDK configured)"
     fi
-done
+
+    cd "$SCRIPT_DIR"
+else
+    print_warning "Skipping Android SDK build verification (demo-app missing)"
+fi
 
 echo ""
 
 # ============================================================================
-# Gateway Build Check
+# Collector Processor Build Check
 # ============================================================================
 
-print_header "4. Gateway Build Verification"
+print_header "4. Collector Processor Build Verification"
 
-if command_exists go && dir_exists "gateway"; then
-    cd gateway
+if command_exists go && dir_exists "collector-processor/mobilepolicyprocessor"; then
+    cd collector-processor/mobilepolicyprocessor
 
     print_info "Running: go mod verify"
     if go mod verify >/dev/null 2>&1; then
         print_success "go.mod verification passed"
     else
-        print_error "go.mod verification failed"
+        print_warning "go.mod verification failed (run 'go mod tidy' first)"
     fi
 
     print_info "Running: go build ./..."
     if go build ./... >/dev/null 2>&1; then
-        print_success "Gateway builds successfully"
-
-        # Clean up build artifacts
-        rm -f gateway
+        print_success "Collector processor builds successfully"
     else
-        print_error "Gateway build failed"
+        print_error "Collector processor build failed"
     fi
 
     cd "$SCRIPT_DIR"
 else
-    print_warning "Skipping gateway build verification (Go not installed or gateway/ missing)"
-fi
-
-echo ""
-
-# ============================================================================
-# Control Plane UI Check
-# ============================================================================
-
-print_header "5. Control Plane UI Dependencies"
-
-if command_exists npm && dir_exists "control-plane-ui"; then
-    cd control-plane-ui
-
-    if file_exists "package-lock.json"; then
-        print_info "package-lock.json exists"
-    else
-        print_info "package-lock.json not found (will be created on npm install)"
-    fi
-
-    if dir_exists "node_modules"; then
-        print_success "node_modules/ exists (dependencies already installed)"
-    else
-        print_info "node_modules/ not found - run 'npm install' to install dependencies"
-    fi
-
-    cd "$SCRIPT_DIR"
-else
-    print_warning "Skipping UI verification (npm not installed or control-plane-ui/ missing)"
-fi
-
-echo ""
-
-# ============================================================================
-# Kubernetes Cluster Check
-# ============================================================================
-
-print_header "6. Kubernetes Cluster Connectivity"
-
-if command_exists kubectl; then
-    print_info "Testing kubectl connectivity..."
-
-    if kubectl cluster-info >/dev/null 2>&1; then
-        print_success "kubectl can connect to cluster"
-
-        # Check if mobile-observability namespace exists
-        if kubectl get namespace mobile-observability >/dev/null 2>&1; then
-            print_info "mobile-observability namespace already exists"
-
-            # Check if pods are running
-            COLLECTOR_PODS=$(kubectl get pods -n mobile-observability -l app=otel-collector --no-headers 2>/dev/null | wc -l)
-            GATEWAY_PODS=$(kubectl get pods -n mobile-observability -l app=otel-gateway --no-headers 2>/dev/null | wc -l)
-
-            if [ "$COLLECTOR_PODS" -gt 0 ]; then
-                print_info "OTEL Collector pod(s) found: $COLLECTOR_PODS"
-            fi
-
-            if [ "$GATEWAY_PODS" -gt 0 ]; then
-                print_info "Gateway pod(s) found: $GATEWAY_PODS"
-            fi
-        else
-            print_info "mobile-observability namespace not found (will be created on deployment)"
-        fi
-    else
-        print_error "kubectl cannot connect to cluster - verify cluster is running"
-    fi
-else
-    print_warning "kubectl not found - skipping cluster connectivity check"
+    print_warning "Skipping collector processor build verification (Go not installed or directory missing)"
 fi
 
 echo ""
@@ -344,20 +210,19 @@ echo -e "${RED}Checks Failed:${NC} $CHECKS_FAILED"
 echo ""
 
 if [ $CHECKS_FAILED -eq 0 ]; then
-    echo -e "${GREEN}✓ System ready for deployment!${NC}"
+    echo -e "${GREEN}✓ Setup looks good!${NC}"
     echo ""
     echo "Next steps:"
-    echo "  1. Deploy to Kubernetes: kubectl apply -f k8s/"
-    echo "  2. Port forward gateway: kubectl port-forward -n mobile-observability svc/otel-gateway 8080:8080"
-    echo "  3. Start UI: cd control-plane-ui && npm install && npm run dev"
-    echo "  4. Build Android app: cd android-app && ./gradlew installDebug"
+    echo "  1. Build Android SDK: cd examples/demo-app && ./gradlew :otel-android-mobile:build"
+    echo "  2. Run tests: ./run-tests.sh"
+    echo "  3. Build demo app: cd examples/demo-app && ./gradlew installDebug"
     echo ""
-    echo "For detailed instructions, see: DEPLOYMENT_GUIDE.md"
+    echo "Gateway, Control Plane UI, and k8s manifests are in the sister repo:"
+    echo "  https://github.com/barrysolomon/mobile-otel-control-plane"
     exit 0
 else
     echo -e "${RED}✗ Some critical checks failed${NC}"
     echo ""
-    echo "Please fix the errors above before deploying."
-    echo "Refer to DEPLOYMENT_GUIDE.md for detailed setup instructions."
+    echo "Please fix the errors above."
     exit 1
 fi

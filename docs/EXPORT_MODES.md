@@ -301,6 +301,6 @@ See [BUNDLED_CONFIG.md](./BUNDLED_CONFIG.md) for complete guide.
 
 - [Workflow System](./WORKFLOW_SYSTEM.md) - Complete workflow architecture
 - [Bundled Configuration](./BUNDLED_CONFIG.md) - Pre-configured settings shipped with app
-- [Workflow Builder UI](../control-plane-ui/README_WORKFLOWS.md) - Visual workflow editor
-- [Collector Configuration](../control-plane-ui/README_COLLECTOR.md) - Endpoint management UI
+- [Visual Policy Builder](https://github.com/barrysolomon/mobile-otel-control-plane) - Visual workflow editor (sister repo)
+- [Collector Configuration](https://github.com/barrysolomon/mobile-otel-control-plane) - Endpoint management UI (sister repo)
 - [MobileConfig](../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/config/MobileConfig.kt) - Configuration options

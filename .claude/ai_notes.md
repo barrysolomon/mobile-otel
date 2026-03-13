@@ -477,15 +477,8 @@ mobile-app/
 │       │   └── assets/
 │       │       └── otel-config.json # ⭐ NEW: Bundled configuration shipped with app
 │
-├── control-plane-ui/               🎛️ Policy management UI (React + TypeScript)
-│   ├── src/components/
-│   │   ├── WorkflowBuilder.tsx     # Visual workflow editor (25 node types)
-│   │   ├── CollectorConfig.tsx     # OTEL collector endpoint manager
-│   │   ├── DeviceFleet.tsx         # Fleet management
-│   │   └── DeviceMonitor.tsx       # Live device monitoring
-│   ├── src/types/workflow.ts       # TypeScript type definitions
-│   ├── README_WORKFLOWS.md         # Workflow builder UI guide
-│   └── README_COLLECTOR.md         # Collector endpoint management guide
+│   # Note: control-plane-ui/ and gateway/ moved to sister repo:
+│   # https://github.com/barrysolomon/mobile-otel-control-plane
 │
 └── docs/
     ├── WORKFLOW_SYSTEM.md          # Complete workflow architecture
@@ -831,7 +824,7 @@ UI Freeze (duration > 2000ms) → Flush Window (last 2 minutes) → Send Alert (
 
 **Documentation**:
 - [docs/WORKFLOW_SYSTEM.md](../docs/WORKFLOW_SYSTEM.md) - Complete architecture
-- [control-plane-ui/README_WORKFLOWS.md](../control-plane-ui/README_WORKFLOWS.md) - UI guide
+- [Visual Policy Builder](https://github.com/barrysolomon/mobile-otel-control-plane) - UI guide (sister repo)
 - [docs/BUNDLED_CONFIG.md](../docs/BUNDLED_CONFIG.md) - Bundled configuration system
 
 ---

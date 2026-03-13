@@ -10,7 +10,7 @@ Prioritized remaining work. Items are grouped by track, ordered by priority with
 
 ### P0 — Bugs / Blockers
 
-- [x] **Fix processor.go import** — `pdata.Value` → `pcommon.Value` (done)
+- [x] **Fix processor.go import** — `pdata.Value` -> `pcommon.Value` (done)
 - [x] **Implement DiskLogBuffer deserialization** — `toLogRecordData()` fully implemented with JSON round-trip (attributes, resource attrs, severity, scope, body)
 
 ### P1 — Auto-Capture Enhancements
@@ -53,12 +53,12 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 ### P1 — Integration Tests
 
-- [ ] **Android integration** — End-to-end buffer flow (RAM → Disk → Export), real Room database, crash recovery, concurrent capture (~20 tests). Requires emulator.
+- [ ] **Android integration** — End-to-end buffer flow (RAM -> Disk -> Export), real Room database, crash recovery, concurrent capture (~20 tests). Requires emulator.
 - [ ] **Collector integration** — Processor in real collector, full OTLP pipeline, policy matching, annotation propagation (~20 tests). Requires custom collector via ocb.
 
 ### P2 — E2E & Performance
 
-- [ ] **E2E test scripts** — Android → Collector → Backend for all 3 demo scenarios, `demo_run_id` correlation
+- [ ] **E2E test scripts** — Android -> Collector -> Backend for all 3 demo scenarios, `demo_run_id` correlation
 - [ ] **Performance benchmarks** — Event capture latency, policy evaluation time, export throughput, memory profiling
 - [ ] **Load tests** — 10K events/sec, RAM overflow under load, disk buffer under load
 
@@ -75,8 +75,8 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 ### P1 — Demo App Enhancements
 
-- [ ] **Scenario E: Vitals Spike** — Intentional frame drops → vitals metrics → policy-triggered flush
-- [ ] **Scenario F: Journey Reconstruction** — Multi-screen flow → error at end → full journey in crash recovery
+- [ ] **Scenario E: Vitals Spike** — Intentional frame drops -> vitals metrics -> policy-triggered flush
+- [ ] **Scenario F: Journey Reconstruction** — Multi-screen flow -> error at end -> full journey in crash recovery
 - [ ] Add settings UI for enabling/disabling individual modules
 - [ ] Environment-specific configs (dev, staging, prod)
 
@@ -98,14 +98,14 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 ### P2 — Tutorials
 
-- [ ] Tutorial: Integrating the Android library (Gradle setup → first events)
+- [ ] Tutorial: Integrating the Android library (Gradle setup -> first events)
 - [ ] Tutorial: Configuring the collector processor (policies, testing)
 - [ ] Tutorial: Creating custom export policies (DSL syntax, operators, best practices)
 
 ### P2 — Architecture Diagrams
 
-- [ ] Sequence diagram: Event capture → buffer → export
-- [ ] Sequence diagram: Policy evaluation → flush
+- [ ] Sequence diagram: Event capture -> buffer -> export
+- [ ] Sequence diagram: Policy evaluation -> flush
 - [ ] Component diagram: Android library internal structure
 
 ---
@@ -125,8 +125,8 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 - [ ] Submit OTEP PRs to `opentelemetry-specification` repo
 - [ ] Present at OpenTelemetry SIG meetings (Android SIG, Collector SIG)
-- [ ] Create PR for Android library → `opentelemetry-android` or `-contrib`
-- [ ] Create PR for collector processor → `opentelemetry-collector-contrib`
+- [ ] Create PR for Android library -> `opentelemetry-android` or `-contrib`
+- [ ] Create PR for collector processor -> `opentelemetry-collector-contrib`
 - [ ] Respond to community review feedback, iterate
 
 ---
@@ -137,8 +137,8 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [x] Dash0 Web SDK integration (Phases 1-5): Session management, breadcrumbs, vitals, network instrumentation, error instrumentation
 - [x] Auto-capture: tap, scroll, back-press, freeze/ANR detection, lifecycle, recovery
 - [x] CI/CD: GitHub Actions (unit tests, lint, build verification)
-- [x] Control Plane UI: React Flow workflow builder, graph-to-DSL compiler
-- [x] Gateway: Go HTTP server with OTEL export
+- [x] Control Plane UI: React Flow workflow builder, graph-to-DSL compiler (moved to [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane))
+- [x] Gateway: Go HTTP server with OTEL export (moved to [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane))
 - [x] Demo app: Scenarios A/B/C, configuration UI
 - [x] Predictive telemetry module (DeviceHealthMonitor, OnDevicePredictor)
 - [x] Sampling system (dynamic, factory, config)

@@ -112,7 +112,7 @@ spans to appear as flat unparented logs instead of a trace waterfall.
 
 **Policy evaluation (`policy/`):**
 
-`PolicyEvaluator` fetches a JSON DSL from the collector/gateway, evaluates each incoming
+`PolicyEvaluator` loads a JSON DSL from bundled config or a remote endpoint, evaluates each incoming
 log record in real time, and triggers `flushWindow()` when a policy matches.
 
 Policy DSL supports:
@@ -208,23 +208,7 @@ Each module is a standalone Gradle library with its own tests. Users include onl
 
 ---
 
-### 3. Go Gateway — `gateway/`
-
-Lightweight HTTP server (no collector required). Routes:
-
-| Route | Purpose |
-|-------|---------|
-| `POST /ingest` | Receives OTLP/JSON from Android SDK |
-| `GET /config` | Returns active export policies to SDK |
-| `GET /health` | Liveness probe |
-| `GET/POST /admin/*` | Policy management API |
-
-Gateway re-exports telemetry to an OTEL Collector via OTLP/gRPC. Persists policies in SQLite.
-Architecture is **gateway-optional** — the Android SDK can export directly to any OTLP endpoint.
-
----
-
-### 4. Custom OTEL Collector Processor — `collector-processor/mobilepolicyprocessor/`
+### 3. Custom OTEL Collector Processor — `collector-processor/mobilepolicyprocessor/`
 
 A standard OTEL Collector processor plugin (Go) for server-side policy annotation.
 
@@ -256,18 +240,12 @@ Supports operators: `equals`, `contains`, `gt`, `lt`, `gte`, `lte`, `regex`.
 
 ---
 
-### 5. Control Plane UI — `control-plane-ui/`
-
-React 18 + TypeScript + Vite visual policy builder.
-
-- **WorkflowBuilder.tsx** — React Flow canvas. 8 node types: triggers, conditions, logic gates, actions.
-- **graphToDSL.ts** — Compiles the visual graph to the JSON DSL, with cycle detection and type validation.
-- **gateway.ts** — API client talking to the Go gateway.
-- **ConfigManager.tsx / CollectorConfig.tsx** — Dash0 backend connection configuration.
+> **Note:** The Go Gateway (`gateway/`) and Control Plane UI (`control-plane-ui/`) have moved to the
+> [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository.
 
 ---
 
-### 6. Demo App — `examples/demo-app/`
+### 4. Demo App — `examples/demo-app/`
 
 A full-featured "Schedulr" appointment scheduling app that exercises every SDK capability:
 

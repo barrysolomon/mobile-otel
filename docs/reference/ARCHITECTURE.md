@@ -9,28 +9,14 @@ Visual architecture and data flow for the mobile observability demo system.
 │                        MOBILE OBSERVABILITY DEMO                     │
 └─────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│                  │         │                  │         │                  │
-│  Control Plane   │◄────────┤   Go Gateway     │◄────────┤  Android App     │
-│  UI (React)      │  HTTP   │   (REST API)     │  HTTP   │  (Kotlin)        │
-│                  │         │                  │         │                  │
-│  localhost:3000  │         │  ClusterIP:8080  │         │  Mobile Device   │
-│                  │         │                  │         │                  │
-└────────┬─────────┘         └────────┬─────────┘         └────────┬─────────┘
-         │                            │                            │
-         │ Workflow                   │ OTLP/gRPC                 │ Capture
-         │ Management                 │ (Export Logs)              │ Events
-         │                            │                            │
-         │                   ┌────────▼─────────┐                 │
-         │                   │                  │                 │
-         └──────────────────►│  OTEL Collector  │◄────────────────┘
-                  Poll        │   (Observability │   Workflow DSL
-                  Config      │    Pipeline)     │   Evaluation
-                             │                  │
-                             │  ClusterIP:4317  │
-                             │  ClusterIP:4318  │
-                             │                  │
-                             └────────┬─────────┘
+┌──────────────────┐                              ┌──────────────────┐
+│                  │                              │                  │
+│  Android App     │                              │  OTEL Collector  │
+│  (Kotlin)        │         OTLP/gRPC            │  (Observability  │
+│                  │─────────────────────────────►│   Pipeline)      │
+│  Mobile Device   │                              │                  │
+│                  │                              │  :4317, :4318    │
+└──────────────────┘                              └────────┬─────────┘
                                       │
                                       │ Export to
                                       │ Backends
@@ -209,73 +195,8 @@ Android App             Gateway              Database
 - **Config Polling**: Auto-update workflows every 60s
 - **Correlation Tracking**: Auto-inject demo_run_id
 
-### Gateway Components
-
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                          Go Gateway                               │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────────────┐         ┌──────────────────────┐      │
-│  │   HTTP Server        │────────►│   OTEL Exporter      │      │
-│  │   (net/http)         │         │   (otlploggrpc)      │      │
-│  └──────────┬───────────┘         └──────────────────────┘      │
-│             │                                                     │
-│             │                                                     │
-│  ┌──────────▼───────────┐         ┌──────────────────────┐      │
-│  │   Config Manager     │────────►│   Database Layer     │      │
-│  │   (Versioning)       │         │   (SQLite)           │      │
-│  └──────────────────────┘         └──────────────────────┘      │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────┐      │
-│  │                 Persistent Volume (PVC)               │      │
-│  │                 /data/gateway.db                      │      │
-│  └───────────────────────────────────────────────────────┘      │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-**Key Features:**
-- **REST API**: /ingest, /config, /admin/* endpoints
-- **Version Management**: Atomic config activation, rollback
-- **OTEL Export**: Real-time conversion to OTEL Logs
-- **Persistent Storage**: SQLite with PVC for versions
-- **Connection Pooling**: gRPC connection reuse
-
-### Control Plane UI Components
-
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                    Control Plane UI (React)                       │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────────────┐         ┌──────────────────────┐      │
-│  │   WorkflowBuilder    │────────►│   Graph Compiler     │      │
-│  │   (React Flow)       │         │   (graphToDSL)       │      │
-│  └──────────────────────┘         └──────────────────────┘      │
-│                                                                   │
-│  ┌──────────────────────┐         ┌──────────────────────┐      │
-│  │   Node Components    │         │   Gateway API        │      │
-│  │   (EventMatch,       │         │   (axios)            │      │
-│  │    FlushWindow,      │         │                      │      │
-│  │    Logic)            │         │                      │      │
-│  └──────────────────────┘         └──────────────────────┘      │
-│                                                                   │
-│  ┌──────────────────────┐         ┌──────────────────────┐      │
-│  │   DeviceMonitor      │         │   Version Manager    │      │
-│  │   (Dashboard)        │         │   (Publish/Rollback) │      │
-│  └──────────────────────┘         └──────────────────────┘      │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-**Key Features:**
-- **Visual Editor**: Drag-and-drop workflow builder
-- **8 Node Types**: Triggers, logic, actions
-- **Graph Validation**: Cycle detection, edge validation
-- **Real-time Compilation**: Graph → DSL conversion
-- **Version Control**: Publish, rollback, history
-- **Device Monitoring**: Real-time device status (planned)
+> **Note:** The Go Gateway and Control Plane UI components have been moved to the
+> [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository.
 
 ### OTEL Collector Pipeline
 
@@ -407,38 +328,9 @@ Android App             Gateway              Database
 
 ## Network Topology
 
-### Kubernetes Cluster
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Namespace: mobile-observability                     │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────────────┐   ┌─────────────────────────┐ │
-│  │  Service:               │   │  Service:               │ │
-│  │  otel-collector         │   │  otel-gateway           │ │
-│  │  ClusterIP              │   │  ClusterIP              │ │
-│  │  - 4317/gRPC            │   │  - 8080/HTTP            │ │
-│  │  - 4318/HTTP            │   │                         │ │
-│  │  - 8888/metrics         │   │                         │ │
-│  └──────────┬──────────────┘   └──────────┬──────────────┘ │
-│             │                              │                │
-│  ┌──────────▼──────────────┐   ┌──────────▼──────────────┐ │
-│  │  Deployment:            │   │  Deployment:            │ │
-│  │  otel-collector         │   │  otel-gateway           │ │
-│  │  - 1 replica            │   │  - 1 replica            │ │
-│  │  - ConfigMap mount      │   │  - PVC mount            │ │
-│  └─────────────────────────┘   └──────────┬──────────────┘ │
-│                                            │                │
-│                                 ┌──────────▼──────────────┐ │
-│                                 │  PVC:                   │ │
-│                                 │  gateway-data           │ │
-│                                 │  1Gi RWO                │ │
-│                                 │  (SQLite DB)            │ │
-│                                 └─────────────────────────┘ │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+> **Note:** Kubernetes manifests and the Go Gateway have been moved to the
+> [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane) repository.
+> The Android SDK sends OTLP directly to any collector endpoint.
 
 ### Local Development
 
@@ -447,17 +339,7 @@ Android App             Gateway              Database
 │                      Developer Machine                         │
 ├────────────────────────────────────────────────────────────────┤
 │                                                                │
-│  localhost:3000 ──► Control Plane UI (npm run dev)            │
-│       │                                                        │
-│       └──► Proxy /api/* to localhost:8080                     │
-│                                                                │
-│  localhost:8080 ──► kubectl port-forward                      │
-│       │              (Gateway in k8s)                          │
-│       │                                                        │
-│       └──► POST /ingest, GET /config, POST /admin/*           │
-│                                                                │
-│  localhost:4317 ──► kubectl port-forward                      │
-│                      (Collector in k8s, optional)             │
+│  localhost:4317 ──► OTEL Collector (local or port-forwarded)  │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 
@@ -465,104 +347,40 @@ Android App             Gateway              Database
 │                      Android Device/Emulator                   │
 ├────────────────────────────────────────────────────────────────┤
 │                                                                │
-│  http://10.0.2.2:8080 ──► Emulator → Host machine             │
-│  http://<local-ip>:8080 ──► Physical device → Dev machine     │
+│  http://10.0.2.2:4317 ──► Emulator → Host machine             │
+│  http://<local-ip>:4317 ──► Physical device → Dev machine     │
 │                                                                │
 │       │                                                        │
-│       └──► POST /ingest, GET /config                          │
+│       └──► OTLP/gRPC telemetry export                         │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 ## Security Considerations
 
-### Current Demo Implementation
-- No authentication on gateway endpoints
-- Open OTEL Collector receivers
-- SQLite for simplicity (single writer)
-- Port-forward for local access
+> **Note:** Gateway authentication and k8s deployment security are covered in the
+> [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane).
 
-### Production Recommendations
+### SDK-Side Security
+- PII scrubbing enabled by default (emails, phone numbers, credit cards)
+- URL query parameter scrubbing
+- Stack trace path sanitization
+- Session data stored in EncryptedSharedPreferences
 
-1. **Gateway Authentication**
-   ```
-   - API key per app_id
-   - JWT tokens for admin endpoints
-   - Rate limiting per device_id
-   ```
+### OTEL Collector
+- Open receivers (configure authentication as needed)
+- Network policies recommended for production
 
-2. **Network Policies**
-   ```
-   - Restrict collector ingress to gateway only
-   - Restrict gateway admin endpoints to control plane only
-   - Add NetworkPolicy resources
-   ```
-
-3. **Storage**
-   ```
-   - Migrate from SQLite to PostgreSQL
-   - Enable encryption at rest
-   - Regular backups
-   ```
-
-4. **Secrets Management**
-   ```
-   - Use Kubernetes Secrets for credentials
-   - Rotate API keys periodically
-   - Audit admin actions
-   ```
-
-## Scalability
-
-### Horizontal Scaling
-
-**Gateway:**
-```yaml
-spec:
-  replicas: 3
-```
-- Requires shared database (PostgreSQL)
-- Load balancer for traffic distribution
-
-**OTEL Collector:**
-```yaml
-spec:
-  replicas: 2
-```
-- Stateless, can scale freely
-- Consider collector per workload type
-
-### Vertical Scaling
-
-**Increase resources for high volume:**
-```yaml
-resources:
-  requests:
-    memory: "1Gi"
-    cpu: "500m"
-  limits:
-    memory: "2Gi"
-    cpu: "1000m"
-```
-
-### Performance Characteristics
+## Performance Characteristics
 
 | Component | Events/sec | Latency (p95) | Memory |
 |-----------|------------|---------------|--------|
-| Gateway   | 10,000     | 50ms          | 256MB  |
 | Collector | 50,000     | 10ms          | 512MB  |
 | Android   | Local      | <1ms (buffer) | 100MB  |
 
 ## Monitoring
 
 ### Key Metrics to Track
-
-**Gateway:**
-- `/ingest` request rate and latency
-- `/config` request rate
-- Events per second exported to collector
-- OTLP gRPC connection health
-- Database query latency
 
 **OTEL Collector:**
 - Receiver metrics (accepted/refused spans)
@@ -574,7 +392,6 @@ resources:
 - RAM buffer usage (current/max)
 - Disk buffer size (MB)
 - Flush frequency
-- Config poll success rate
 - Network errors
 
 ### Observability Stack Integration
@@ -602,57 +419,20 @@ resources:
 
 ## Disaster Recovery
 
-### Backup Strategy
+> **Note:** Gateway and Control Plane backup/recovery procedures are in the
+> [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane).
 
-1. **Gateway Database** (SQLite/PostgreSQL):
-   - Daily snapshots of PVC
-   - Backup active config version
-   - Retain 30 days
+### SDK-Side Recovery
 
-2. **Control Plane Workflows**:
-   - Version control (Git) for graph_json
-   - Export workflows as JSON files
-   - Store in S3/GCS
-
-3. **Recovery Process**:
-   ```bash
-   # Restore gateway database
-   kubectl cp backup.db <gateway-pod>:/data/gateway.db
-
-   # Republish workflows from backup
-   curl -X POST http://localhost:8080/admin/publish \
-     -d @workflow-backup.json
-   ```
+The Android SDK handles recovery automatically:
+- **Crash markers** written to SharedPreferences before process death
+- **ANR markers** written when main thread blocked > 5s
+- **Low-memory markers** written on ComponentCallbacks2 signal
+- On next launch, `RecoveryTracker` detects markers and triggers flush of pre-crash buffer
 
 ## Development Roadmap
 
-### Phase 1: MVP (Current)
-- ✅ Visual workflow builder
-- ✅ Basic node types (8 total)
-- ✅ Graph validation and compilation
-- ✅ Publish/rollback functionality
-- ✅ Device monitoring (mock)
-- ✅ End-to-end event flow
+See [BACKLOG.md](../../BACKLOG.md) for the full prioritized backlog.
 
-### Phase 2: Enhanced UX
-- [ ] Drag-and-drop node palette
-- [ ] Real-time device heartbeat polling
-- [ ] Workflow simulation/testing
-- [ ] Multi-user authentication
-- [ ] Workflow templates library
-
-### Phase 3: Production Ready
-- [ ] PostgreSQL for gateway storage
-- [ ] Kubernetes NetworkPolicies
-- [ ] API authentication (JWT)
-- [ ] Rate limiting
-- [ ] Comprehensive monitoring dashboards
-- [ ] Automated testing suite
-
-### Phase 4: Advanced Features
-- [ ] Real-time collaboration (multi-user editing)
-- [ ] A/B testing workflows
-- [ ] Advanced analytics (event frequency, trigger patterns)
-- [ ] Custom node types (plugins)
-- [ ] Workflow versioning/diffing UI
-- [ ] Performance profiling tools
+For Control Plane UI and Gateway roadmap, see the
+[sister repo](https://github.com/barrysolomon/mobile-otel-control-plane).

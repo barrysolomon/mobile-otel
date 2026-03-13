@@ -102,10 +102,7 @@ cat android/local.properties | grep dash0
 
 ### "Connection refused"
 
-- **Debug build**: Start local collector first:
-  ```bash
-  docker-compose -f k8s/docker-compose.yml up -d
-  ```
+- **Debug build**: Start a local collector first (see [collector-processor README](../../collector-processor/README.md))
 - **Release build**: Check internet connection and firewall
 
 ---

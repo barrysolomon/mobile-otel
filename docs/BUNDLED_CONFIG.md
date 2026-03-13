@@ -106,18 +106,7 @@ Create `android/src/main/assets/otel-config.json`:
 }
 ```
 
-### 2. Generate from Control Plane UI
-
-The easiest way to create bundled config is to export from the Control Plane UI:
-
-1. Open Control Plane UI
-2. Go to **Configuration** → **📡 Collector Endpoints**
-3. Configure your endpoint (Dash0 or custom)
-4. Add workflows in **Workflow Builder** tab
-5. Click **📥 Export for Mobile App**
-6. Save as `otel-config.json` in `android/src/main/assets/`
-
-### 3. Environment-Specific Configs
+### 2. Environment-Specific Configs
 
 Use Android build variants to ship different configs:
 
@@ -482,5 +471,6 @@ ConfigManager.loadFromJson(context, json)
 
 - [Export Modes](./EXPORT_MODES.md) - CONDITIONAL vs CONTINUOUS vs HYBRID
 - [Workflow System](./WORKFLOW_SYSTEM.md) - Workflow triggers and actions
+- [Visual Policy Builder](https://github.com/barrysolomon/mobile-otel-control-plane) - Visual workflow editor (sister repo)
 - [MobileConfig](../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/config/MobileConfig.kt) - Configuration class
 - [ConfigManager](../examples/demo-app/android/src/main/java/io/opentelemetry/android/demo/ConfigManager.kt) - Implementation
