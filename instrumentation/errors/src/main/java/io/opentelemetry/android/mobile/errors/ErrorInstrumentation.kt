@@ -145,7 +145,7 @@ class ErrorInstrumentation private constructor(
 
         // Build attributes using OTel semantic conventions for exceptions
         val attributesBuilder = Attributes.builder()
-            .put(AttributeKey.stringKey("error.source"), source)
+            .put(AttributeKey.stringKey("exception.origin"), source) // custom: OTel semconv has no standard for exception origin category
             .put(AttributeKey.stringKey("exception.type"), throwable.javaClass.name)
             .put(AttributeKey.stringKey("error.fingerprint"), fingerprint)
 

@@ -83,7 +83,7 @@ object OTelMobile {
                 // RecoveryTracker still needs SessionTracker (legacy); will be cleaned up in Task 7
                 val rt = RecoveryTracker(
                     application,
-                    instance.get("recovery"),
+                    instance.get("io.opentelemetry.android.mobile.recovery"),
                     instance,
                     SessionTracker(AutoCaptureOptions())
                 )

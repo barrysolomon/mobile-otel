@@ -80,7 +80,7 @@ class OTelNetworkInterceptor private constructor(
         // Add network type if enabled
         if (config.detectNetworkType) {
             getNetworkType()?.let { networkType ->
-                spanBuilder.setAttribute(AttributeKey.stringKey("network.type"), networkType)
+                spanBuilder.setAttribute(AttributeKey.stringKey("network.connection.type"), networkType)
             }
         }
 

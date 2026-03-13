@@ -15,6 +15,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.api.trace.SpanKind
 
 /**
  * Captures tap, long-press, and swipe events from [WindowEventHub].
@@ -200,12 +201,12 @@ class TapInstrumentation(
             UiTelemetryMode.EVENTS -> log.logRecordBuilder()
                 .setBody(name).setSeverity(Severity.INFO).setAllAttributes(attrs).emit()
             UiTelemetryMode.SPANS  -> context.tracer(instrumentationName)
-                .spanBuilder(name).startSpan().apply { setAllAttributes(attrs); end() }
+                .spanBuilder(name).setSpanKind(SpanKind.INTERNAL).startSpan().apply { setAllAttributes(attrs); end() }
             UiTelemetryMode.BOTH   -> {
                 log.logRecordBuilder()
                     .setBody(name).setSeverity(Severity.INFO).setAllAttributes(attrs).emit()
                 context.tracer(instrumentationName)
-                    .spanBuilder(name).startSpan().apply { setAllAttributes(attrs); end() }
+                    .spanBuilder(name).setSpanKind(SpanKind.INTERNAL).startSpan().apply { setAllAttributes(attrs); end() }
             }
         }
     }

@@ -73,6 +73,7 @@ class VitalsCollector private constructor(
     private fun registerMetrics() {
         // App start metrics
         if (config.measureAppStart) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.app.start.cold")
                 .setDescription("Cold start time in milliseconds")
                 .setUnit("ms")
@@ -90,6 +91,7 @@ class VitalsCollector private constructor(
                     }
                 }
 
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.app.start.warm")
                 .setDescription("Warm start time in milliseconds")
                 .setUnit("ms")
@@ -110,6 +112,7 @@ class VitalsCollector private constructor(
 
         // TTID metric
         if (config.measureTtid) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.app.ttid")
                 .setDescription("Time to initial display in milliseconds")
                 .setUnit("ms")
@@ -129,22 +132,25 @@ class VitalsCollector private constructor(
 
         // Jank metrics
         if (config.detectJank) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.ui.jank.count")
                 .setDescription("Total number of jank events detected")
-                .setUnit("{janks}")
+                .setUnit("{events}")
                 .ofLongs()
                 .buildWithCallback { measurement: ObservableLongMeasurement ->
                     measurement.record(jankCount.get())
                 }
 
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.ui.jank.severe.count")
                 .setDescription("Total number of severe jank events detected")
-                .setUnit("{janks}")
+                .setUnit("{events}")
                 .ofLongs()
                 .buildWithCallback { measurement: ObservableLongMeasurement ->
                     measurement.record(severeJankCount.get())
                 }
 
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.ui.jank.rate")
                 .setDescription("Percentage of frames that experienced jank")
                 .setUnit("%")
@@ -159,6 +165,7 @@ class VitalsCollector private constructor(
 
         // Input latency
         if (config.trackInputLatency) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.input.latency.avg")
                 .setDescription("Average input latency in milliseconds")
                 .setUnit("ms")
@@ -180,6 +187,7 @@ class VitalsCollector private constructor(
 
         // ANR risk
         if (config.monitorAnrRisk) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.anr.risk")
                 .setDescription("Main thread block time indicating ANR risk in milliseconds")
                 .setUnit("ms")
@@ -199,6 +207,7 @@ class VitalsCollector private constructor(
 
         // Memory pressure
         if (config.monitorMemoryPressure) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.memory.available")
                 .setDescription("Available memory in megabytes")
                 .setUnit("MB")
@@ -216,6 +225,7 @@ class VitalsCollector private constructor(
                     )
                 }
 
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.memory.threshold")
                 .setDescription("Low memory threshold in megabytes")
                 .setUnit("MB")
@@ -230,6 +240,7 @@ class VitalsCollector private constructor(
 
         // Thermal state
         if (config.monitorThermalState && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
             meter.gaugeBuilder("mobile.thermal.state")
                 .setDescription("Device thermal state (0=none, 1=light, 2=moderate, 3=severe, 4=critical)")
                 .setUnit("{state}")
@@ -387,25 +398,25 @@ class VitalsCollector private constructor(
         val builder = Attributes.builder()
 
         if (config.detectJank) {
-            builder.put("mobile.jank.count", jankCount.get())
-            builder.put("mobile.jank.severe.count", severeJankCount.get())
+            builder.put(AttributeKey.longKey("mobile.jank.count"), jankCount.get())
+            builder.put(AttributeKey.longKey("mobile.jank.severe.count"), severeJankCount.get())
         }
 
         if (config.monitorAnrRisk) {
             val blockTime = mainThreadBlockTime.get()
             if (blockTime > 0) {
-                builder.put("mobile.anr.risk.ms", blockTime)
+                builder.put(AttributeKey.longKey("mobile.anr.risk.ms"), blockTime)
             }
         }
 
         if (config.monitorMemoryPressure) {
             val memInfo = ActivityManager.MemoryInfo()
             activityManager.getMemoryInfo(memInfo)
-            builder.put("mobile.memory.low", memInfo.lowMemory)
+            builder.put(AttributeKey.booleanKey("mobile.memory.low"), memInfo.lowMemory)
         }
 
         if (config.monitorThermalState) {
-            builder.put("mobile.thermal.state", thermalState.get())
+            builder.put(AttributeKey.stringKey("mobile.thermal.state"), thermalState.get())
         }
 
         return builder.build()

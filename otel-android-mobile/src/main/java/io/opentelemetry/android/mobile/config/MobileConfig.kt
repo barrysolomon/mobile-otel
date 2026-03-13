@@ -128,9 +128,12 @@ data class MobileConfig(
     val exportTimeoutSeconds: Long = 30,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
+    // OTLP header names must be lowercase alphanumeric + hyphens per gRPC metadata spec.
+    // Values are passed as-is to the gRPC/HTTP exporter — include auth tokens here.
     val headers: Map<String, String>? = null,
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
+    // OTel-compliant sampling: 1.0 = 100% sampled, 0.0 = 0% sampled, applied via TraceIdRatioBased sampler
     val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),
     val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default(),
     val sessionConfig: SessionConfig = SessionConfig(),
@@ -183,6 +186,8 @@ data class MobileConfig(
         private var exportTimeoutSeconds: Long = 30
         private var configPollIntervalSeconds: Long = 300
         private var maxExportRetries: Int = 3
+        // OTLP header names must be lowercase alphanumeric + hyphens per gRPC metadata spec.
+        // Values are passed as-is to the gRPC/HTTP exporter — include auth tokens here.
         private var headers: Map<String, String>? = null
         private var attachContextAttributes: Boolean = false
         private var buildChannel: String? = null

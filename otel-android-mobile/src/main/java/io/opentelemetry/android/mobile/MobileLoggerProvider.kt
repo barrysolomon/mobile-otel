@@ -75,18 +75,30 @@ class MobileLoggerProvider private constructor(
         // Create sampler based on configuration
         sampler = SamplerFactory.createSampler(config.samplingConfig)
 
-        // Build resource with mobile-specific attributes
-        val resource = Resource.builder()
-            .put("service.name", config.serviceName)
-            .put("service.version", config.serviceVersion)
-            .put("device.id", deviceId)
-            .put("device.platform", "android")
-            .put("os.name", "android")
-            .put("os.version", android.os.Build.VERSION.RELEASE)
-            .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
-            .put("device.model.name", android.os.Build.MODEL)
-            .put("device.manufacturer", android.os.Build.MANUFACTURER)
-            .build()
+        // Build resource with mobile-specific attributes.
+        // Resource.getDefault() is merged first so that telemetry.sdk.name, telemetry.sdk.language,
+        // and telemetry.sdk.version are automatically provided by the OTel Java SDK defaults.
+        // Any attributes set in the inner builder will override the defaults.
+        //
+        // NOTE: device.id here is a per-app-install UUID persisted in SharedPreferences. It is
+        // not a hardware identifier and does not require special consent under most privacy
+        // frameworks. If your app's privacy policy prohibits any persistent identifiers, remove
+        // device.id and replace with a per-session ID.
+        // TODO: If a true hardware device ID (ANDROID_ID, IMEI, etc.) is ever needed, ensure
+        // explicit user consent is obtained before collecting it per GDPR/CCPA requirements.
+        val resource = Resource.getDefault().merge(
+            Resource.builder()
+                .put("service.name", config.serviceName)
+                .put("service.version", config.serviceVersion)
+                .put("device.id", deviceId)
+                .put("device.platform", "android")
+                .put("os.name", "android")
+                .put("os.version", android.os.Build.VERSION.RELEASE)
+                .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+                .put("device.model.name", android.os.Build.MODEL)
+                .put("device.manufacturer", android.os.Build.MANUFACTURER)
+                .build()
+        )
 
         // Create OTLP gRPC exporter with headers
         val otlpExporter = OtlpGrpcLogRecordExporter.builder()
@@ -198,7 +210,7 @@ class MobileLoggerProvider private constructor(
         mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
             .setConfig(config)
-            .setMeter(meterProvider.get("device-metrics"))
+            .setMeter(meterProvider.get("io.opentelemetry.android.mobile.device-metrics"))
             .build()
 
         // Build SDK Logger Provider
@@ -219,7 +231,7 @@ class MobileLoggerProvider private constructor(
         // the processor can't hold a Logger at construction time because the SdkLoggerProvider
         // that backs it hasn't been built yet.
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
-            mobileProcessor.heartbeatLogger = sdkLoggerProvider.get("mobile.heartbeat")
+            mobileProcessor.heartbeatLogger = sdkLoggerProvider.get("io.opentelemetry.android.mobile.heartbeat")
             // Wire span flush hook: on policy trigger, co-export buffered spans alongside logs.
             // HYBRID uses a 1-hour BatchSpanProcessor delay so spans only export here.
             mobileProcessor.spanFlushHook = {

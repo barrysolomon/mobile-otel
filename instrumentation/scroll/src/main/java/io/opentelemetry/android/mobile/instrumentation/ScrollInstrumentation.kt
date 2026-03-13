@@ -112,7 +112,9 @@ class ScrollInstrumentation(
         val attrs = Attributes.builder()
             .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
             .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
+            // @Incubating: custom mobile scroll semconv, not yet in OTel spec
             .put(io.opentelemetry.api.common.AttributeKey.stringKey("ui.scroll.direction"), direction)
+            // @Incubating: custom mobile scroll semconv, not yet in OTel spec
             .put(io.opentelemetry.api.common.AttributeKey.stringKey("ui.scroll.distance_bucket"), bucket)
             .apply {
                 sessionProvider.getCurrentScreenName()?.let { put(MobileSemconv.SCREEN_NAME, it) }

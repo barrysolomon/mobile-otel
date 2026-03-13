@@ -6,11 +6,9 @@ package io.opentelemetry.android.mobile.instrumentation
 import io.opentelemetry.api.common.AttributeKey
 
 /**
- * Centralized semantic convention constants for mobile instrumentation.
- *
- * All event names and attribute keys used across instrumentation modules
- * are defined here to prevent magic strings and ensure consistency.
- * Aligns with the OTel Mobile Semconv SIG working group output.
+ * Centralized OTel attribute key constants for mobile instrumentation.
+ * Keys prefixed "mobile.*" are custom incubating attributes aligned with the OTel Mobile SIG.
+ * Standard semconv keys (exception.*, http.*, network.*) follow OTel spec 1.x.
  */
 object MobileSemconv {
 
@@ -46,4 +44,10 @@ object MobileSemconv {
     @JvmField val RECOVERY_TYPE          = AttributeKey.stringKey("recovery_type")
     @JvmField val SESSION_RENEWED        = AttributeKey.booleanKey("session.renewed")
     @JvmField val BACKGROUND_DURATION_MS = AttributeKey.longKey("background_duration_ms")
+
+    // ── Standard semconv keys (OTel spec 1.x) ────────────────────────────────
+    @JvmField val EXCEPTION_TYPE         = AttributeKey.stringKey("exception.type")
+    @JvmField val EXCEPTION_MESSAGE      = AttributeKey.stringKey("exception.message")
+    @JvmField val EXCEPTION_STACKTRACE   = AttributeKey.stringKey("exception.stacktrace")
+    @JvmField val NETWORK_CONNECTION_TYPE = AttributeKey.stringKey("network.connection.type")
 }

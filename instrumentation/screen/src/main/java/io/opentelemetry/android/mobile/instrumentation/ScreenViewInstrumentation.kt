@@ -87,6 +87,7 @@ class ScreenViewInstrumentation : MobileInstrumentation {
     fun startPageSpan(screenName: String) {
         endPageSpan()
         val sp = sessionProvider ?: return
+        // Span name follows mobile convention: "page.<ScreenName>" — custom mobile semconv (not yet standardized)
         pageSpan = tracer?.spanBuilder("page.$screenName")
             ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
             ?.setAttribute(MobileSemconv.VIEW_ID.key, sp.getViewId())

@@ -53,11 +53,12 @@ class AppStartInstrumentation private constructor(
         if (!coldStartMeasured.get()) {
             val coldStartDuration = System.currentTimeMillis() - processStartTime
 
+            // @Incubating: mobile app start semconv not yet standardized
             coldStartSpan = tracer.spanBuilder("app.start.cold")
-                .setAttribute("start.type", "cold")
-                .setAttribute("duration_ms", coldStartDuration)
-                .setAttribute("process.start_time", processStartTime)
-                .setStartTimestamp(processStartTime * 1_000_000, java.util.concurrent.TimeUnit.NANOSECONDS)
+                .setAttribute("mobile.app.start.type", "cold")
+                .setAttribute("mobile.app.start.duration_ms", coldStartDuration)
+                .setAttribute("mobile.app.start.process_start_time", processStartTime)
+                .setStartTimestamp(java.time.Instant.ofEpochMilli(processStartTime))
                 .startSpan()
 
             coldStartMeasured.set(true)
@@ -76,10 +77,11 @@ class AppStartInstrumentation private constructor(
             if (warmStart > 0) {
                 val warmStartDuration = System.currentTimeMillis() - warmStart
 
+                // @Incubating: mobile app start semconv not yet standardized
                 warmStartSpan = tracer.spanBuilder("app.start.warm")
-                    .setAttribute("start.type", "warm")
-                    .setAttribute("duration_ms", warmStartDuration)
-                    .setStartTimestamp(warmStart * 1_000_000, java.util.concurrent.TimeUnit.NANOSECONDS)
+                    .setAttribute("mobile.app.start.type", "warm")
+                    .setAttribute("mobile.app.start.duration_ms", warmStartDuration)
+                    .setStartTimestamp(java.time.Instant.ofEpochMilli(warmStart))
                     .startSpan()
 
                 vitalsCollector?.recordWarmStart(warmStartDuration)
@@ -140,9 +142,10 @@ class AppStartInstrumentation private constructor(
                     val ttidDuration = System.currentTimeMillis() - startTime
 
                     // Create TTID span
+                    // @Incubating: mobile app start semconv not yet standardized
                     val ttidSpan = tracer.spanBuilder("app.ttid")
-                        .setAttribute("duration_ms", ttidDuration)
-                        .setStartTimestamp(startTime * 1_000_000, java.util.concurrent.TimeUnit.NANOSECONDS)
+                        .setAttribute("mobile.app.start.duration_ms", ttidDuration)
+                        .setStartTimestamp(java.time.Instant.ofEpochMilli(startTime))
                         .startSpan()
 
                     vitalsCollector?.recordTtid(ttidDuration)
@@ -150,7 +153,7 @@ class AppStartInstrumentation private constructor(
                     // End cold start span now that content is displayed
                     coldStartSpan?.let { span ->
                         val coldStartDuration = System.currentTimeMillis() - processStartTime
-                        span.setAttribute("cold.start.duration_ms", coldStartDuration)
+                        span.setAttribute("mobile.app.start.duration_ms", coldStartDuration)
                         vitalsCollector?.recordColdStart(coldStartDuration)
                         span.end()
                         coldStartSpan = null
