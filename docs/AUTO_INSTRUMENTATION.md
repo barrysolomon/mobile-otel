@@ -65,9 +65,9 @@ page.BookFragment             ← root, always sampled (DynamicSampler)
 
 | Attribute | Value |
 |---|---|
-| `session.id` | Current session UUID |
-| `view.id` | Current view UUID |
-| `screen.name` | Fragment simple class name |
+| `mobile.session.id` | Current session UUID |
+| `mobile.view.id` | Current view UUID |
+| `mobile.screen.name` | Fragment simple class name |
 
 ---
 
@@ -83,9 +83,9 @@ page.BookFragment             ← root, always sampled (DynamicSampler)
 
 | Attribute | Description |
 |---|---|
-| `session.id` | Session UUID |
-| `view.id` | View UUID |
-| `screen.name` | Current screen |
+| `mobile.session.id` | Session UUID |
+| `mobile.view.id` | View UUID |
+| `mobile.screen.name` | Current screen |
 | `interaction.source` | `"auto.window"` |
 | `element.confidence` | `"exact"` / `"parent"` / `"none"` |
 | `ui.element.class` | View class name |
@@ -136,7 +136,7 @@ Detected when the distance between `ACTION_DOWN` and `ACTION_UP` exceeds `swipeM
 
 **OTel signal:** Log (`ui.back_press`)
 
-`BackPressCapture` wraps the `Window.Callback.onBackPressed()` hook. Emits one event per back-press with `screen.name`. Enabled via `captureBackPress = true`.
+`BackPressCapture` wraps the `Window.Callback.onBackPressed()` hook. Emits one event per back-press with `mobile.screen.name`. Enabled via `captureBackPress = true`.
 
 ---
 
@@ -148,9 +148,9 @@ Detected when the distance between `ACTION_DOWN` and `ACTION_UP` exceeds `swipeM
 
 | Attribute | Value |
 |---|---|
-| `screen.name` | Fragment simple class name |
+| `mobile.screen.name` | Fragment simple class name |
 | `screen.class` | Fully-qualified class name |
-| `session.id` | Session UUID |
+| `mobile.session.id` | Session UUID |
 
 `NavigationInstrumentation` additionally tracks Activity launches, deep links, and screen-to-screen transitions. Navigation events are stored as **breadcrumbs** in `BreadcrumbManager` and attached to the next error report.
 
@@ -186,7 +186,7 @@ A `ui.freeze` event triggers the **default `ui-freeze-detector` export policy**,
 |---|---|
 | `freeze.duration_ms` | How long the main thread was blocked |
 | `freeze.threshold_ms` | Configured threshold |
-| `screen.name` | Current screen |
+| `mobile.screen.name` | Current screen |
 
 ---
 
@@ -210,8 +210,8 @@ An `app.crash` event triggers the **default `crash-recovery` export policy**, fl
 | `exception.type` | Exception class name |
 | `exception.message` | Exception message (scrubbed) |
 | `exception.stacktrace` | Trimmed stack trace |
-| `error.source` | `"uncaught"` / `"coroutine"` / `"rxjava"` |
-| `session.id` | Session UUID |
+| `exception.origin` | `"uncaught"` / `"coroutine"` / `"rxjava"` |
+| `mobile.session.id` | Session UUID |
 
 ---
 
@@ -238,7 +238,7 @@ Each request becomes a `CLIENT` span named `"METHOD /path"` using OTel semantic 
 | `server.address` | Hostname |
 | `server.port` | Port |
 | `http.response.status_code` | HTTP status code |
-| `network.type` | `"wifi"` / `"cellular"` / `"ethernet"` |
+| `network.connection.type` | `"wifi"` / `"cellular"` / `"ethernet"` |
 | `http.request.body.size` | Bucketed request body size |
 | `http.response.body.size` | Bucketed response body size |
 

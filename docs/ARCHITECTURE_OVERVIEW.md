@@ -168,7 +168,7 @@ attribute to force-sample. `SamplerFactory` builds the sampler from `SamplingCon
 **Export (`export/`):**
 
 `EnrichingLogRecordExporter` adds device/session/app attributes to every log record before export.
-`AttributeEnricher` supplies: `device.id`, `device.model`, `os.version`, `session.id`, `app.version`, `service.name`.
+`AttributeEnricher` supplies: `device.id`, `device.model.name`, `os.version`, `mobile.session.id`, `app.version`, `service.name`.
 
 ---
 

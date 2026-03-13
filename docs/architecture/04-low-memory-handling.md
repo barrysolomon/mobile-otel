@@ -142,8 +142,8 @@ graph TB
     subgraph "Memory Metrics Collection"
         A[ActivityManager.MemoryInfo] --> B[Get Memory Stats]
 
-        B --> C[device.memory.used_mb]
-        B --> D[device.memory.available_mb]
+        B --> C[system.memory.usage]
+        B --> D[system.memory.available]
         B --> E[device.memory.total_mb]
         B --> F[device.memory.threshold_mb]
         B --> G[device.memory.low_memory]
@@ -171,8 +171,8 @@ graph TB
 
 | Metric Name | Type | Description | Unit |
 |------------|------|-------------|------|
-| `device.memory.used_mb` | Counter | Memory currently used by system | MB |
-| `device.memory.available_mb` | Counter | Memory available to app | MB |
+| `system.memory.usage` | Counter | Memory currently used by system | By |
+| `system.memory.available` | Counter | Memory available to app | By |
 | `device.memory.total_mb` | Counter | Total system RAM | MB |
 | `device.memory.threshold_mb` | Counter | Low memory warning threshold | MB |
 | `device.memory.low_memory` | Counter | Low memory state detected (0/1) | boolean |
@@ -188,8 +188,8 @@ graph LR
     B --> E[Attributes]
 
     E --> F[recovery_type:<br/>low_memory_kill]
-    E --> G[device.memory.used_mb]
-    E --> H[device.memory.available_mb]
+    E --> G[system.memory.usage]
+    E --> H[system.memory.available]
     E --> I[device.memory.low_memory: 1]
     E --> J[thread.name: main]
     E --> K[code.namespace]
@@ -218,8 +218,8 @@ graph LR
   "body": "app.recovery",
   "attributes": {
     "recovery_type": "low_memory_kill",
-    "device.memory.used_mb": 3456,
-    "device.memory.available_mb": 234,
+    "system.memory.usage": 3623878656,
+    "system.memory.available": 245366784,
     "device.memory.low_memory": 1,
     "device.memory.threshold_mb": 512,
     "thread.name": "main",
@@ -230,7 +230,7 @@ graph LR
     "service.name": "my-app",
     "service.version": "1.0.0",
     "device.manufacturer": "Samsung",
-    "device.model": "SM-G998B"
+    "device.model.name": "SM-G998B"
   }
 }
 ```
@@ -359,7 +359,7 @@ fun triggerLowMemory() {
 
     // Log pre-kill event
     logger.logEvent("app.low_memory", mapOf(
-        "error.type" to "memory.exhaustion",
+        "exception.type" to "memory.exhaustion",
         "trigger" to "manual_test"
     ))
 

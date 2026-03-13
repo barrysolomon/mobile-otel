@@ -167,8 +167,8 @@ LogRecordEntity {
     timestampMs:               Long    ← timestampEpochNanos / 1_000_000 (indexed)
     severityText:              String? ← "ERROR", "INFO", null
     body:                      String  ← logRecord.body.asString()
-    attributes:                String  ← JSON: {"event.name":"ui.tap","view.id":"btn_book"}
-    resource:                  String  ← JSON: {"service.name":"schedulr","session.id":"xyz"}
+    attributes:                String  ← JSON: {"event.name":"ui.tap","mobile.view.id":"btn_book"}
+    resource:                  String  ← JSON: {"service.name":"schedulr","mobile.session.id":"xyz"}
     instrumentationScopeName:  String?
     instrumentationScopeVersion: String?
 }
@@ -351,7 +351,7 @@ Policies are defined in JSON and loaded from the gateway's `/config` endpoint (p
       "http.status_code": { "gte": 500 }
     },
     "device": {
-      "network": ["cellular"]
+      "network.connection.type": ["cellular"]
     }
   },
   "actions": {
@@ -360,7 +360,7 @@ Policies are defined in JSON and loaded from the gateway's `/config` endpoint (p
 }
 ```
 
-This policy fires when an HTTP 5xx error is emitted on a cellular connection, and exports the preceding 5 minutes of events. On Wi-Fi the policy is silent — cellular users get better incident coverage because they're more likely to be in a constrained environment.
+This policy fires when an HTTP 5xx error is emitted on a cellular connection, and exports the preceding 5 minutes of events. On Wi-Fi the policy is silent — cellular users get better incident coverage because they're more likely to be in a constrained environment. (The `network.connection.type` field maps to the device context snapshot's network type.)
 
 ### Built-In Default Policies
 

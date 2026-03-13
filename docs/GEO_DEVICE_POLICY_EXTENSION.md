@@ -106,7 +106,7 @@ This extension follows OpenTelemetry's privacy-by-default principles:
 - `app.version` - From `BuildConfig.VERSION_NAME`
 - `os.version` - Android SDK_INT (e.g., 33 = Android 13)
 - `device.class` - Heuristic: phone/tablet/unknown (via screen size)
-- `network.type` - wifi/cellular/offline/unknown (via `ConnectivityManager`)
+- `network.connection.type` - wifi/cellular/offline/unknown (via `ConnectivityManager`)
 - `battery.state` - charging/low/normal/unknown (via `BatteryManager`)
 - `build.channel` - Developer-provided: prod/beta/internal/unknown
 
@@ -139,7 +139,7 @@ Since OpenTelemetry does not (yet) define semantic conventions for mobile device
 | `geo.region` | string | "CA" | State/province (best-effort) |
 | `geo.timezone` | string | "America/Los_Angeles" | IANA timezone |
 | `device.locale` | string | "en-US" | BCP-47 language tag |
-| `device.network` | string | "wifi" | wifi \| cellular \| offline \| unknown |
+| `network.connection.type` | string | "wifi" | wifi \| cellular \| offline \| unknown |
 | `device.battery` | string | "charging" | charging \| low \| normal \| unknown |
 | `device.class` | string | "phone" | phone \| tablet \| unknown |
 | `app.version` | string | "1.2.3" | Application version |

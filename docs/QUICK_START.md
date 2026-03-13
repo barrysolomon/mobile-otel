@@ -278,15 +278,15 @@ Expected in collector output (UI freeze from ANR trigger):
 SeverityText: ERROR
 Body: Str(ui.freeze)
 Attributes:
-  -> session_id: Str(...)
+  -> mobile.session.id: Str(...)
   -> freeze.duration_ms: Int(6230)
-  -> screen.name: Str(SchedulingActivity)
+  -> mobile.screen.name: Str(SchedulingActivity)
 
 SeverityText: ERROR
 Body: Str(appointment.fetch_failed)
 Attributes:
   -> http.status_code: Int(503)
-  -> error.message: Str(Service Unavailable — scheduling API is down)
+  -> exception.message: Str(Service Unavailable — scheduling API is down)
 ```
 
 To watch events in real-time on the device:

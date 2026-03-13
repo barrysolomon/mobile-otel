@@ -132,7 +132,7 @@ Catches and exports:
 - Kotlin coroutine exceptions via `CoroutineExceptionHandler`
 - RxJava errors via `RxJavaPlugins.setErrorHandler`
 
-Each error emits an OTel log with body `app.error`, deduplication within a 5-minute window, and rate limiting at 10 errors/minute. Errors also trigger an immediate buffer flush.
+Each error emits an OTel log with body `app.error` and attributes `exception.type`, `exception.message`, `exception.stacktrace`, and `exception.origin`, with deduplication within a 5-minute window and rate limiting at 10 errors/minute. Errors also trigger an immediate buffer flush.
 
 ### Vitals
 

@@ -177,9 +177,9 @@ Emit prediction events as OTEL logs:
     "prediction.performance_degradation_risk": 0.15,
     "prediction.battery_drain_risk": 0.40,
     "prediction.confidence": 0.92,
-    "device.memory.available_mb": 42,
-    "device.battery.level": 8,
-    "prediction.action_taken": "flush_buffer"
+    "system.memory.available": 44040192,
+    "system.battery.charge": 8,
+    "mobile.capture.reason": "flush_buffer"
   }
 }
 ```
@@ -194,8 +194,8 @@ This creates a feedback loop:
 Exports device health as OTEL metrics:
 
 **Metric Examples:**
-- `device.memory.available{unit=MB}` - Gauge
-- `device.battery.level{unit=%}` - Gauge
+- `system.memory.available{unit=By}` - Gauge
+- `system.battery.charge{unit=%}` - Gauge
 - `device.memory.pressure{level=high|critical}` - Enum gauge
 - `prediction.crash.risk` - Gauge (0.0-1.0)
 
@@ -418,20 +418,20 @@ These metrics complement logs/traces and enable:
 
 **Optional Attributes**:
 - `prediction.action_taken` (string: "flush" | "increase_sampling" | "reduce_sampling" | "none")
-- `device.memory.available_mb` (long)
-- `device.battery.level` (int)
-- `device.network.type` (string: "wifi" | "cellular" | "offline")
+- `system.memory.available` (long, bytes)
+- `system.battery.charge` (int)
+- `network.connection.type` (string: "wifi" | "cellular" | "offline")
 
 ### Health Metrics
 
 **Namespace**: `device.*`
 
 **Memory**:
-- `device.memory.available{unit=MB}` (gauge)
+- `system.memory.available{unit=By}` (gauge)
 - `device.memory.pressure{level}` (gauge, 0-3)
 
 **Battery**:
-- `device.battery.level{unit=%}` (gauge)
+- `system.battery.charge{unit=%}` (gauge)
 - `device.battery.drain_rate{unit=%/min}` (gauge)
 
 **Predictions**:

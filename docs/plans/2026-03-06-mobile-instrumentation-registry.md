@@ -115,8 +115,8 @@ class MobileSemconvTest {
     }
 
     @Test fun `attribute key names are correct`() {
-        assertEquals("session.id",            MobileSemconv.SESSION_ID.key)
-        assertEquals("screen.name",           MobileSemconv.SCREEN_NAME.key)
+        assertEquals("mobile.session.id",      MobileSemconv.SESSION_ID.key)
+        assertEquals("mobile.screen.name",    MobileSemconv.SCREEN_NAME.key)
         assertEquals("ui.element.resource_id", MobileSemconv.UI_ELEMENT_ID.key)
         assertEquals("ui.swipe.direction",    MobileSemconv.SWIPE_DIRECTION.key)
     }
@@ -153,9 +153,9 @@ object MobileSemconv {
     const val APP_STARTUP    = "app.startup"
 
     // Attribute keys
-    val SESSION_ID     = AttributeKey.stringKey("session.id")
-    val VIEW_ID        = AttributeKey.stringKey("view.id")
-    val SCREEN_NAME    = AttributeKey.stringKey("screen.name")
+    val SESSION_ID     = AttributeKey.stringKey("mobile.session.id")
+    val VIEW_ID        = AttributeKey.stringKey("mobile.view.id")
+    val SCREEN_NAME    = AttributeKey.stringKey("mobile.screen.name")
     val UI_ELEMENT_ID  = AttributeKey.stringKey("ui.element.resource_id")
     val SWIPE_DIRECTION = AttributeKey.stringKey("ui.swipe.direction")
     val RECOVERY_TYPE  = AttributeKey.stringKey("recovery_type")

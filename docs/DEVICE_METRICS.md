@@ -86,16 +86,16 @@ val networkConfig = MobileConfig(
 **When useful**: Crashes, OOM errors, app kills
 
 ```
-device.memory.used_mb             // MB of memory used by app
-device.memory.available_mb        // MB of memory available
+system.memory.usage               // bytes of memory used by app
+system.memory.available           // bytes of memory available
 device.memory.total_mb            // Total device memory
 device.memory.low_memory          // Boolean: low memory state
 ```
 
 **Example**:
 ```
-device.memory.used_mb = 450
-device.memory.available_mb = 150
+system.memory.usage = 471859200
+system.memory.available = 157286400
 device.memory.low_memory = true  // ⚠️ Device under memory pressure!
 ```
 
@@ -104,16 +104,16 @@ device.memory.low_memory = true  // ⚠️ Device under memory pressure!
 **When useful**: Battery drain issues, thermal problems, unexpected shutdowns
 
 ```
-device.battery.level_percent      // 0-100
-device.battery.temperature_celsius // Battery temp
+system.battery.charge             // 0-100
+system.battery.temperature        // Battery temp
 device.battery.charging           // Boolean
 device.battery.health             // good/overheat/dead/etc
 ```
 
 **Example**:
 ```
-device.battery.level_percent = 8  // ⚠️ Low battery!
-device.battery.temperature_celsius = 42  // ⚠️ Hot!
+system.battery.charge = 8  // ⚠️ Low battery!
+system.battery.temperature = 42  // ⚠️ Hot!
 device.battery.health = "overheat"
 ```
 
@@ -122,8 +122,8 @@ device.battery.health = "overheat"
 **When useful**: Performance issues, UI freezes
 
 ```
-cpu.core_count                    // Number of CPU cores
-cpu.architecture                  // arm64-v8a, armeabi-v7a, etc.
+mobile.cpu.core_count             // Number of CPU cores
+mobile.cpu.architecture           // arm64-v8a, armeabi-v7a, etc.
 cpu.usage_percent                 // Current CPU usage
 ```
 
@@ -132,14 +132,14 @@ cpu.usage_percent                 // Current CPU usage
 **When useful**: HTTP errors, connectivity issues, slow requests
 
 ```
-network.type                      // wifi/cellular/ethernet/none
+network.connection.type           // wifi/cellular/ethernet/none
 network.connected                 // Boolean
 network.signal_strength          // Signal quality
 ```
 
 **Example**:
 ```
-network.type = "cellular"
+network.connection.type = "cellular"
 network.connected = true
 network.signal_strength = "poor"  // ⚠️ Weak signal!
 ```
@@ -149,9 +149,9 @@ network.signal_strength = "poor"  // ⚠️ Weak signal!
 **When useful**: Crashes, data corruption, cache issues
 
 ```
-device.storage.used_mb            // Internal storage used
-device.storage.available_mb       // Storage available
-device.storage.cache_mb           // Cache size
+system.filesystem.usage           // Internal storage used (bytes)
+system.filesystem.available       // Storage available (bytes)
+device.storage.cache              // Cache size (bytes)
 ```
 
 ### 6. Thermal Metrics (Android 9+)
@@ -192,7 +192,7 @@ display.orientation               // portrait/landscape
 ```
 os.version                        // "14", "13", etc.
 os.api_level                      // 34, 33, etc.
-device.model                      // "Pixel 7", "Galaxy S23", etc.
+device.model.name                 // "Pixel 7", "Galaxy S23", etc.
 device.manufacturer               // "Google", "Samsung", etc.
 system.uptime_ms                  // Device uptime
 ```
@@ -248,9 +248,9 @@ class MyApp : Application() {
 
 **Captured metrics**:
 ```
-device.memory.available_mb = 450
-device.battery.level_percent = 75
-network.type = "wifi"
+system.memory.available = 471859200
+system.battery.charge = 75
+network.connection.type = "wifi"
 session.start_timestamp = 1705948200000
 app.first_launch = false
 ```
@@ -273,8 +273,8 @@ app.first_launch = false
 ```
 Force close detected!
 time_since_force_close_ms = 3600000  // 1 hour ago
-device.memory.available_mb = 25      // ⚠️ Low memory at time of force close
-device.battery.level_percent = 3     // ⚠️ Low battery
+system.memory.available = 26214400   // ⚠️ Low memory at time of force close
+system.battery.charge = 3            // ⚠️ Low battery
 device.thermal.state = 3             // ⚠️ Thermal throttling
 
 Insight: User force closed due to resource pressure
@@ -332,7 +332,7 @@ loggerProvider.forceFlush()
 val collector = DeviceMetricsCollector(context, meter, config)
 
 // Capture metrics manually
-collector.captureMetrics(CaptureReason.MANUAL_CAPTURE, force = true)
+collector.captureMetrics(CaptureReason.MANUAL_CAPTURE, force = true)  // emits mobile.capture.reason attribute
 ```
 
 ## Lifecycle Integration
@@ -399,9 +399,9 @@ class MyApp : Application() {
 
 **Metrics Captured**:
 ```
-device.memory.available_mb = 45  // ⚠️ Low memory
-device.thermal.state = 3         // ⚠️ Thermal throttling
-device.battery.level_percent = 5 // ⚠️ Low battery
+system.memory.available = 47185920  // ⚠️ Low memory
+device.thermal.state = 3            // ⚠️ Thermal throttling
+system.battery.charge = 5           // ⚠️ Low battery
 ```
 
 **Insight**: Crashes occur when device is under resource pressure (low memory + thermal throttling + low battery)
@@ -414,10 +414,10 @@ device.battery.level_percent = 5 // ⚠️ Low battery
 
 **Metrics Captured**:
 ```
-network.type = "cellular"
+network.connection.type = "cellular"
 network.signal_strength = "poor"
 network.connected = true
-device.battery.level_percent = 15
+system.battery.charge = 15
 ```
 
 **Insight**: Errors occur on poor cellular connections
@@ -432,7 +432,7 @@ device.battery.level_percent = 15
 ```
 device.thermal.state = 4         // ⚠️ Critical thermal state
 cpu.usage_percent = 95
-device.battery.temperature_celsius = 45
+system.battery.temperature = 45
 ```
 
 **Insight**: Device is thermally throttled, CPU maxed out
@@ -445,8 +445,8 @@ device.battery.temperature_celsius = 45
 
 **Metrics Captured**:
 ```
-device.storage.available_mb = 12  // ⚠️ Low storage
-device.storage.cache_mb = 450     // ⚠️ Large cache
+system.filesystem.available = 12582912  // ⚠️ Low storage
+device.storage.cache = 471859200        // ⚠️ Large cache
 ```
 
 **Insight**: Device is out of storage, cache is large
@@ -460,10 +460,10 @@ device.storage.cache_mb = 450     // ⚠️ Large cache
 **Metrics Captured on App Start**:
 ```
 app.start event
-device.memory.available_mb = 200
-device.cpu.core_count = 4
+system.memory.available = 209715200
+mobile.cpu.core_count = 4
 device.thermal.state = 0  // Normal
-network.type = "wifi"
+network.connection.type = "wifi"
 network.connected = true
 app.first_launch = false
 session.start_timestamp = 1705948200000
@@ -483,10 +483,10 @@ Force close detected (on next app start)
 time_since_force_close_ms = 1800000  // 30 minutes ago
 
 Metrics at time of force close:
-device.memory.available_mb = 30      // ⚠️ Low memory
-device.battery.level_percent = 8     // ⚠️ Low battery
+system.memory.available = 31457280   // ⚠️ Low memory
+system.battery.charge = 8            // ⚠️ Low battery
 device.thermal.state = 3             // ⚠️ Severe throttling
-network.type = "cellular"
+network.connection.type = "cellular"
 network.signal_strength = "poor"
 
 Log tail shows:

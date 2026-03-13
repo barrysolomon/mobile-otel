@@ -260,9 +260,9 @@ object MobileSemconv {
     val APP_FOREGROUND   = "app.foreground"
     val APP_BACKGROUND   = "app.background"
 
-    val SCREEN_NAME      = AttributeKey.stringKey("screen.name")
-    val SESSION_ID       = AttributeKey.stringKey("session.id")
-    val VIEW_ID          = AttributeKey.stringKey("view.id")
+    val SCREEN_NAME      = AttributeKey.stringKey("mobile.screen.name")
+    val SESSION_ID       = AttributeKey.stringKey("mobile.session.id")
+    val VIEW_ID          = AttributeKey.stringKey("mobile.view.id")
     val UI_ELEMENT_ID    = AttributeKey.stringKey("ui.element.resource_id")
     val SWIPE_DIRECTION  = AttributeKey.stringKey("ui.swipe.direction")
 }
