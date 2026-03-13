@@ -31,9 +31,11 @@ abstract class DemoScenarioBase {
     fun setUp() {
         pace = DemoScenarioPace()
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        // Dismiss any stray system dialogs (ANR, crash, permission) left by previous tests
-        uiAutomation.executeShellCommand("am force-stop io.opentelemetry.android.demo").close()
-        Thread.sleep(500)
+        // Dismiss any stray system dialogs (ANR, crash, permission) left by previous tests.
+        // Use 'am kill' instead of 'force-stop': kill only terminates cached background processes,
+        // whereas force-stop can terminate the instrumentation runner process itself on API 33+.
+        uiAutomation.executeShellCommand("am kill io.opentelemetry.android.demo").close()
+        Thread.sleep(800)
         // Pre-grant location permissions to avoid system permission dialog in getDirections
         uiAutomation.executeShellCommand(
             "pm grant io.opentelemetry.android.demo android.permission.ACCESS_COARSE_LOCATION"

@@ -66,63 +66,6 @@ jobs:
           flags: go
           name: go-coverage
 
-  android-integration-tests:
-    name: Android Integration Tests (API ${{ matrix.api-level }}, ${{ matrix.target }})
-    runs-on: macos-13  # Intel runner - x86_64 emulators work reliably here
-    # Disabled: repo is private, macOS runners bill at 10x. Re-enable when public.
-    if: false
-    strategy:
-      fail-fast: false
-      matrix:
-        api-level: [30]
-        target: [default]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: gradle
-
-      - name: Inject Dash0 config
-        # Sets service.version to "api33-google_apis" etc. so each matrix leg
-        # appears as a distinct device profile in Dash0 traces.
-        env:
-          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
-        run: |
-          mkdir -p examples/demo-app/android/src/debug/assets
-          cat > examples/demo-app/android/src/debug/assets/otel-config.json <<EOF
-          {
-            "endpoint": "https://your-collector-endpoint:4317",
-            "auth_token": "${DASH0_AUTH_TOKEN}",
-            "dataset": "otel-mobile",
-            "service_name": "schedulr-android-ci",
-            "service_version": "api${{ matrix.api-level }}-${{ matrix.target }}"
-          }
-          EOF
-
-      - name: Run instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          target: ${{ matrix.target }}
-          arch: x86_64
-          profile: pixel_4
-          emulator-boot-timeout: 600
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: cd examples/demo-app && ./gradlew :android:connectedDebugAndroidTest
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-results-api${{ matrix.api-level }}-${{ matrix.target }}
-          path: examples/demo-app/android/build/reports/androidTests/
 
   lint:
     name: Code Quality
