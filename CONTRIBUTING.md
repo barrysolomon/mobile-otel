@@ -20,26 +20,27 @@ This project follows the [OpenTelemetry Code of Conduct](https://github.com/open
 #### Android Library
 
 ```bash
-# Clone repository
-git clone https://github.com/open-telemetry/opentelemetry-android-contrib
-cd opentelemetry-android-contrib/mobile
+# Clone repository (current location — will move to opentelemetry-android-contrib on upstream merge)
+git clone https://github.com/barrysolomon/mobile-otel
+cd mobile-otel
 
-# Build
-./gradlew build
+# Build the SDK (run from the demo-app wrapper which includes the SDK as a project dependency)
+cd examples/demo-app
+./gradlew :otel-android-mobile:build
 
 # Run tests
-./gradlew test
+./gradlew :otel-android-mobile:test
 
 # Run on device
-./gradlew connectedAndroidTest
+./gradlew :otel-android-mobile:connectedAndroidTest
 ```
 
 #### Collector Processor
 
 ```bash
-# Clone repository
-git clone https://github.com/open-telemetry/opentelemetry-collector-contrib
-cd opentelemetry-collector-contrib/processor/mobilepolicyprocessor
+# Clone repository (current location — will move to opentelemetry-collector-contrib on upstream merge)
+git clone https://github.com/barrysolomon/mobile-otel
+cd mobile-otel/collector-processor/mobilepolicyprocessor
 
 # Install dependencies
 go mod download
@@ -56,6 +57,7 @@ go test ./...
 1. **Fork the repository**
 
 2. **Create a feature branch**
+
    ```bash
    git checkout -b feature/my-feature
    ```
@@ -67,6 +69,7 @@ go test ./...
    - Update documentation
 
 4. **Test your changes**
+
    ```bash
    # Android
    ./gradlew test connectedAndroidTest
@@ -77,6 +80,7 @@ go test ./...
    ```
 
 5. **Commit with clear messages**
+
    ```bash
    git commit -m "feat: add new feature X"
    ```
@@ -90,6 +94,7 @@ go test ./...
    - `chore:` Maintenance tasks
 
 6. **Push and create Pull Request**
+
    ```bash
    git push origin feature/my-feature
    ```
@@ -271,6 +276,7 @@ func BenchmarkProcessLogs(b *testing.B) {
 ## Recognition
 
 Contributors are recognized in:
+
 - CHANGELOG.md
 - GitHub contributors page
 - Release notes

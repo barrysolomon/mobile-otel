@@ -1,0 +1,45 @@
+OpenTelemetry Android Mobile SDK
+Copyright The OpenTelemetry Authors
+
+This product includes software developed by The OpenTelemetry Authors
+(https://opentelemetry.io).
+
+---
+
+This software depends on the following third-party components, each with
+their respective licenses:
+
+OpenTelemetry Java SDK
+  Copyright The OpenTelemetry Authors
+  License: Apache 2.0
+  https://github.com/open-telemetry/opentelemetry-java
+
+OpenTelemetry Android
+  Copyright The OpenTelemetry Authors
+  License: Apache 2.0
+  https://github.com/open-telemetry/opentelemetry-android
+
+AndroidX Room (SQLite ORM)
+  Copyright 2018 The Android Open Source Project
+  License: Apache 2.0
+  https://developer.android.com/jetpack/androidx/releases/room
+
+OkHttp
+  Copyright 2019 Square, Inc.
+  License: Apache 2.0
+  https://github.com/square/okhttp
+
+Kotlin Coroutines
+  Copyright JetBrains s.r.o.
+  License: Apache 2.0
+  https://github.com/Kotlin/kotlinx.coroutines
+
+OpenTelemetry Collector
+  Copyright The OpenTelemetry Authors
+  License: Apache 2.0
+  https://github.com/open-telemetry/opentelemetry-collector
+
+gRPC-Go
+  Copyright 2014 gRPC authors
+  License: Apache 2.0
+  https://github.com/grpc/grpc-go
