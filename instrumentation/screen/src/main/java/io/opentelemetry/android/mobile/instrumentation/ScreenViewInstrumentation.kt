@@ -16,6 +16,7 @@ import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Scope
 import java.util.WeakHashMap
@@ -29,6 +30,7 @@ import java.util.WeakHashMap
  * active while the screen is visible — all taps and other interactions
  * on the same screen appear as children of this span.
  */
+@Incubating
 class ScreenViewInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.screen"
@@ -45,6 +47,13 @@ class ScreenViewInstrumentation : MobileInstrumentation {
     private var pageScope: Scope? = null
     private val fragmentManagers = WeakHashMap<FragmentManager, Boolean>()
 
+    /**
+     * Installs the screen view instrumentation by registering activity and fragment lifecycle
+     * callbacks that emit [MobileSemconv.UI_SCREEN_VIEW] log records and manage the page span.
+     *
+     * @param application The host application, used to register lifecycle callbacks.
+     * @param context Instrumentation context carrying the OTel logger, tracer, and session provider.
+     */
     override fun install(application: Application, context: InstrumentationContext) {
         this.application = application
         this.logger = context.logger(instrumentationName)
@@ -73,6 +82,10 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         application.registerActivityLifecycleCallbacks(cb)
     }
 
+    /**
+     * Uninstalls the screen view instrumentation, ending any active page span and releasing
+     * all held references.
+     */
     override fun uninstall() {
         endPageSpan()
         callbacks?.let { application?.unregisterActivityLifecycleCallbacks(it) }
@@ -85,6 +98,14 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         fragmentManagers.clear()
     }
 
+    /**
+     * Ends any active page span and starts a new one named "page.[screenName]".
+     *
+     * The span is made current on the calling thread so that all interaction spans
+     * created afterward are automatically nested under it.
+     *
+     * @param screenName Simple class name of the activity or fragment (e.g., "HomeFragment").
+     */
     fun startPageSpan(screenName: String) {
         endPageSpan()
         val sp = sessionProvider ?: return
@@ -98,6 +119,10 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         pageScope = pageSpan?.makeCurrent()
     }
 
+    /**
+     * Ends the currently active page span and closes its [io.opentelemetry.context.Scope].
+     * No-op if no page span is active.
+     */
     fun endPageSpan() {
         pageScope?.close()
         pageScope = null

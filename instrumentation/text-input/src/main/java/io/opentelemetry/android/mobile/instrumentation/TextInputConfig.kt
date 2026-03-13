@@ -3,6 +3,8 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
 /**
  * Configuration for [TextInputInstrumentation].
  *
@@ -20,6 +22,7 @@ package io.opentelemetry.android.mobile.instrumentation
  * @param textContentAllowlist Resource IDs of fields allowed to capture raw text.
  *   Ignored unless [captureTextContent] is true.
  */
+@Incubating
 data class TextInputConfig(
     val captureCharCount: Boolean = true,
     val captureIsSet: Boolean = true,

@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.errors
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import java.util.concurrent.TimeUnit
 
 /**
@@ -45,6 +46,7 @@ import java.util.concurrent.TimeUnit
  * @property captureCauses Capture exception causes/suppressed (default: true)
  * @property flushOnError Trigger flush when error occurs (default: true)
  */
+@Incubating
 data class ErrorConfig(
     val enabled: Boolean = true,
 

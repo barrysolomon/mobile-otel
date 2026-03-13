@@ -15,6 +15,7 @@ import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.instrumentation.BackPressInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.ErrorsInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.FreezeInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.instrumentation.LifecycleInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.OTelMobileBuilder
 import io.opentelemetry.android.mobile.instrumentation.OTelMobileHandle
@@ -61,6 +62,7 @@ private fun ConfigUiTelemetryMode.toCore(): CoreUiTelemetryMode = when (this) {
     ConfigUiTelemetryMode.BOTH   -> CoreUiTelemetryMode.BOTH
 }
 
+@Incubating
 object OTelMobile {
     @Volatile
     private var provider: MobileLoggerProvider? = null
@@ -71,16 +73,21 @@ object OTelMobile {
     @Volatile
     private var recoveryTracker: RecoveryTracker? = null
 
+    /**
+     * Initializes the SDK and starts all auto-instrumentation.
+     *
+     * Idempotent — subsequent calls are no-ops while the SDK is running.
+     * Typically called from [android.app.Application.onCreate].
+     *
+     * @param application The application instance used to register lifecycle callbacks.
+     * @param config SDK configuration including service name, collector endpoint, and feature flags.
+     */
     fun start(application: Application, config: MobileConfig) {
         synchronized(this) {
             if (provider == null) {
-                // Initialize all modules through MobileOtel facade
-                // This wires: SessionManager, BreadcrumbManager, ErrorInstrumentation,
-                // VitalsCollector, PredictiveExportPolicy, HealthMetricsCollector
                 val instance = MobileOtel.initialize(application, config)
                 provider = instance
 
-                // RecoveryTracker still needs SessionTracker (legacy); will be cleaned up in Task 7
                 val rt = RecoveryTracker(
                     application,
                     instance.get("io.opentelemetry.android.mobile.recovery"),
@@ -106,6 +113,11 @@ object OTelMobile {
         }
     }
 
+    /**
+     * Stops all instrumentation and performs a final flush.
+     *
+     * @param timeoutSeconds Maximum time in seconds to wait for in-flight exports to complete.
+     */
     fun stop(timeoutSeconds: Long = 30) {
         handle?.stop(timeoutSeconds)
         handle = null
@@ -115,29 +127,64 @@ object OTelMobile {
         provider = null
     }
 
+    /**
+     * Returns the initialized [MobileLoggerProvider].
+     *
+     * @throws IllegalStateException if [start] has not been called.
+     */
     fun getLoggerProvider(): MobileLoggerProvider {
         return provider ?: error("OTelMobile.start must be called before accessing the provider")
     }
 
+    /**
+     * Returns an OTel [Logger] for the given instrumentation scope.
+     *
+     * @param scope Instrumentation scope name, typically a reverse-DNS string.
+     */
     fun getLogger(scope: String): Logger = getLoggerProvider().get(scope)
 
+    /**
+     * Returns an OTel [Tracer] for the given instrumentation scope.
+     *
+     * @param scope Instrumentation scope name.
+     * @param version Optional scope version string.
+     */
     fun getTracer(scope: String, version: String? = null): Tracer {
         val sdk = getLoggerProvider().getOpenTelemetrySdk()
         return if (version == null) sdk.getTracer(scope) else sdk.getTracer(scope, version)
     }
 
+    /**
+     * Returns an OTel [Meter] for the given instrumentation scope.
+     *
+     * @param scope Instrumentation scope name.
+     */
     fun getMeter(scope: String): Meter = getLoggerProvider().getOpenTelemetrySdk().getMeter(scope)
 
+    /**
+     * Returns the recovery type detected at the previous app start (e.g., "crash", "anr", "low_memory"),
+     * or null if the app started normally.
+     */
     fun getLastRecoveryType(): String? = recoveryTracker?.getLastRecoveryType()
 
+    /**
+     * Persists a flag so the next app start knows the previous session ended in a crash.
+     * Used by the [RecoveryTracker] to emit a crash-recovery event on launch.
+     */
     fun markCrashForNextStart() {
         recoveryTracker?.markCrashForNextStart()
     }
 
+    /**
+     * Persists a flag so the next app start knows the previous session was terminated due to low memory.
+     */
     fun markLowMemoryForNextStart() {
         recoveryTracker?.markLowMemoryForNextStart()
     }
 
+    /**
+     * Persists a flag so the next app start knows the previous session ended with an ANR.
+     */
     fun markAnrForNextStart() {
         recoveryTracker?.markAnrForNextStart()
     }
@@ -151,6 +198,16 @@ object OTelMobile {
         // Page spans are managed by ScreenViewInstrumentation — no-op here
     }
 
+    /**
+     * Starts a journey span that becomes the parent for all subsequent page and interaction spans.
+     *
+     * Make the returned span current on the main thread with [Span.makeCurrent] so that
+     * [ScreenViewInstrumentation] can nest page spans under it automatically.
+     *
+     * @param name Journey name (e.g., "checkout", "onboarding").
+     * @return The started journey [Span]. Caller is responsible for calling [Span.end].
+     */
+    @Incubating
     fun startJourney(name: String): Span {
         return getTracer("io.opentelemetry.android.mobile.journey").spanBuilder(name)
             .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)

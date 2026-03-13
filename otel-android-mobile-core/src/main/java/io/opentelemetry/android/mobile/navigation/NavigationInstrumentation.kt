@@ -14,6 +14,7 @@ import android.os.Bundle
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbConfig
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumbBuffer
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.core.PiiScrubber
 
 /**
@@ -26,6 +27,7 @@ import io.opentelemetry.android.mobile.core.PiiScrubber
  *
  * All navigation events are added as breadcrumbs to the global buffer.
  */
+@Incubating
 class NavigationInstrumentation private constructor(
     private val context: Context,
     private val config: BreadcrumbConfig,

@@ -15,6 +15,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.trace.SpanKind
 
 /**
@@ -29,6 +30,7 @@ import io.opentelemetry.api.trace.SpanKind
  *
  * **Thread note:** [onTouchEvent] is always called on the Android main thread.
  */
+@Incubating
 class TapInstrumentation(
     private val config: TapConfig = TapConfig()
 ) : MobileInstrumentation, WindowEventListener {
@@ -48,6 +50,12 @@ class TapInstrumentation(
     // Window reference captured at ACTION_DOWN for hit-testing at ACTION_UP.
     private var currentWindow: Window? = null
 
+    /**
+     * Installs the tap instrumentation by registering this instance as a [WindowEventListener].
+     *
+     * @param application The host application, used as the [android.content.Context] for [GestureDetector].
+     * @param context Instrumentation context carrying the OTel logger, tracer, and session provider.
+     */
     override fun install(application: Application, context: InstrumentationContext) {
         ctx = context
         hub = context.windowEventHub
@@ -76,6 +84,9 @@ class TapInstrumentation(
         context.windowEventHub.addListener(this)
     }
 
+    /**
+     * Uninstalls the tap instrumentation and releases all held references.
+     */
     override fun uninstall() {
         hub?.removeListener(this)
         hub = null

@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.Window
 import androidx.recyclerview.widget.RecyclerView
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 
@@ -20,6 +21,7 @@ import io.opentelemetry.api.logs.Severity
  *
  * Thread note: onTouchEvent and RecyclerView scroll listeners fire on the main thread.
  */
+@Incubating
 class ScrollInstrumentation(
     private val throttleMs: Long = 500
 ) : MobileInstrumentation, WindowEventListener {
@@ -36,6 +38,13 @@ class ScrollInstrumentation(
     // Maps each RecyclerView to its registered listener so we can remove on uninstall.
     private val trackedListeners = mutableMapOf<RecyclerView, RecyclerView.OnScrollListener>()
 
+    /**
+     * Installs the scroll instrumentation by attaching [RecyclerView.OnScrollListener] instances
+     * to all RecyclerViews in each resumed activity's view hierarchy.
+     *
+     * @param application The host application, used to register activity lifecycle callbacks.
+     * @param context Instrumentation context carrying the OTel logger and session provider.
+     */
     override fun install(application: Application, context: InstrumentationContext) {
         ctx = context
         hub = context.windowEventHub
@@ -58,6 +67,10 @@ class ScrollInstrumentation(
         application.registerActivityLifecycleCallbacks(callbacks)
     }
 
+    /**
+     * Uninstalls the scroll instrumentation by removing all registered scroll listeners and
+     * releasing held references.
+     */
     override fun uninstall() {
         lifecycleCallbacks?.let { ctx?.application?.unregisterActivityLifecycleCallbacks(it) }
         hub?.removeListener(this)

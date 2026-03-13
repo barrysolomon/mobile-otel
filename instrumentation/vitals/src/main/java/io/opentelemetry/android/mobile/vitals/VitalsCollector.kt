@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.metrics.Meter
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Thread-safe singleton that integrates with OpenTelemetry metrics.
  */
+@Incubating
 class VitalsCollector private constructor(
     private val context: Context,
     private val config: VitalsConfig,

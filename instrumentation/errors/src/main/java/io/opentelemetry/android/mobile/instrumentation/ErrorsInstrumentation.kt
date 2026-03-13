@@ -3,6 +3,7 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.errors.ErrorConfig
@@ -17,6 +18,7 @@ import io.opentelemetry.android.mobile.errors.ErrorInstrumentation
  * runtime), the failure is logged as a warning and [install] / [uninstall]
  * complete silently so the host app does not crash.
  */
+@Incubating
 class ErrorsInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.errors"

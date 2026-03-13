@@ -22,6 +22,7 @@ import io.opentelemetry.context.propagation.TextMapPropagator
 import io.opentelemetry.semconv.HttpAttributes
 import io.opentelemetry.semconv.ServerAttributes
 import io.opentelemetry.semconv.UrlAttributes
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -48,6 +49,7 @@ import java.nio.charset.Charset
  *     .build()
  * ```
  */
+@Incubating
 class OTelNetworkInterceptor private constructor(
     private val context: Context,
     private val config: NetworkConfig,

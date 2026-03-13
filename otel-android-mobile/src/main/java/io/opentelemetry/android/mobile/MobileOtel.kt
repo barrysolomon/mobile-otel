@@ -11,6 +11,7 @@ import io.opentelemetry.android.mobile.core.SessionManager
 import io.opentelemetry.android.mobile.core.UserIdentity
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
 import io.opentelemetry.android.mobile.errors.ErrorInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
 import io.opentelemetry.android.mobile.predictive.DeviceHealthMonitor
 import io.opentelemetry.android.mobile.predictive.HealthMetricsCollector
@@ -34,7 +35,7 @@ import io.opentelemetry.sdk.common.CompletableResultCode
  * - Flush control
  *
  * All instrumentation modules are automatically initialized and wired together:
- * - **ErrorInstrumentation**: Uncaught exceptions, coroutine errors, RxJava errors → auto flush
+ * - **ErrorInstrumentation**: Uncaught exceptions, coroutines, RxJava errors → auto flush
  * - **VitalsCollector**: App start, jank, memory, thermal → OTel metrics
  * - **PredictiveExportPolicy**: Crash/network-loss risk → pre-emptive flush
  * - **HealthMetricsCollector**: Device health → OTel metrics
@@ -56,6 +57,7 @@ import io.opentelemetry.sdk.common.CompletableResultCode
  * MobileOtel.forceFlush()
  * ```
  */
+@Incubating
 object MobileOtel {
 
     private var provider: MobileLoggerProvider? = null

@@ -7,6 +7,7 @@ package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
 import android.util.Log
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.policy.PolicyEvaluator
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector
 import io.opentelemetry.android.mobile.metrics.CaptureReason
@@ -71,6 +72,7 @@ import kotlinx.coroutines.runBlocking
  * @see DiskLogBuffer for disk persistence implementation
  * @see PolicyEvaluator for conditional export logic
  */
+@Incubating
 class MobileLogRecordProcessor private constructor(
     private val context: Context,
     private val exporter: LogRecordExporter,
@@ -434,6 +436,7 @@ class MobileLogRecordProcessor private constructor(
      * @param windowMinutes Number of minutes to look back
      * @return CompletableResultCode indicating success/failure
      */
+    @Incubating
     fun flushWindow(windowMinutes: Int): CompletableResultCode {
         if (isShutdown.get()) {
             return CompletableResultCode.ofFailure()

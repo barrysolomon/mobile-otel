@@ -7,6 +7,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Window
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
 /**
  * Listener for window-level touch and key events.
  *
@@ -19,6 +21,7 @@ import android.view.Window
  * Both methods have empty default implementations — implement only what
  * your instrumentation needs.
  */
+@Incubating
 interface WindowEventListener {
     /** Called when a [MotionEvent] is dispatched through the window. */
     fun onTouchEvent(event: MotionEvent, window: Window) {}

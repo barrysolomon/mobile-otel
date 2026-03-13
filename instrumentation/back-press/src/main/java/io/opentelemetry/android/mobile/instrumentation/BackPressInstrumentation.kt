@@ -7,9 +7,11 @@ import android.app.Application
 import android.view.KeyEvent
 import android.view.Window
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 
+@Incubating
 class BackPressInstrumentation : MobileInstrumentation, WindowEventListener {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.back_press"

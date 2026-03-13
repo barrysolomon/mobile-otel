@@ -8,6 +8,7 @@ package io.opentelemetry.android.mobile.policy
 import android.content.Context
 import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.context.ContextSnapshot
 import io.opentelemetry.android.mobile.context.ContextSnapshotProvider
 import io.opentelemetry.sdk.logs.data.LogRecordData
@@ -69,6 +70,7 @@ import java.util.concurrent.atomic.AtomicReference
  * @property config Mobile configuration
  * @property collectorEndpoint Base URL for configuration endpoint
  */
+@Incubating
 class PolicyEvaluator(
     private val context: Context,
     private val config: MobileConfig,

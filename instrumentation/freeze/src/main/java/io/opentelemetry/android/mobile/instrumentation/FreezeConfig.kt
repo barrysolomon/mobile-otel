@@ -3,6 +3,9 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
+@Incubating
 data class FreezeConfig(
     val freezeThresholdMs: Long = 2_000,
     val anrThresholdMs: Long = 5_000,

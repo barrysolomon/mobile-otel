@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.errors
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
@@ -33,6 +34,7 @@ import kotlin.coroutines.CoroutineContext
  *
  * Thread-safe singleton that integrates with OpenTelemetry logging.
  */
+@Incubating
 class ErrorInstrumentation private constructor(
     private val config: ErrorConfig,
     private val logger: Logger,

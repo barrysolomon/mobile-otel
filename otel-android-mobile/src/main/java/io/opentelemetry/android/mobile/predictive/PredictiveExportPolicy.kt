@@ -8,6 +8,7 @@ package io.opentelemetry.android.mobile.predictive
 import android.content.Context
 import android.util.Log
 import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference
  *     .build()
  * ```
  */
+@Incubating
 class PredictiveExportPolicy private constructor(
     private val context: Context,
     private val processor: MobileLogRecordProcessor?,
@@ -297,6 +299,7 @@ class PredictiveExportPolicy private constructor(
 /**
  * Listener for prediction events.
  */
+@Incubating
 interface PredictionListener {
     /**
      * Called when a new prediction is generated.

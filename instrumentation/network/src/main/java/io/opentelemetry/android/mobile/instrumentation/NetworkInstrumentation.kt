@@ -3,6 +3,7 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.network.NetworkConfig
@@ -28,6 +29,7 @@ import okhttp3.Interceptor
  *     .build()
  * ```
  */
+@Incubating
 class NetworkInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.network"

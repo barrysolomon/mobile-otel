@@ -3,6 +3,7 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 
 /**
  * Configuration for [TapInstrumentation].
@@ -17,6 +18,7 @@ package io.opentelemetry.android.mobile.instrumentation
  * [denylistedResourceIds], [allowlistedViewClasses], [denylistedViewClasses].
  * Changing these fields currently has no effect.
  */
+@Incubating
 data class TapConfig(
     val captureTaps: Boolean = true,
     val captureLongPress: Boolean = true,

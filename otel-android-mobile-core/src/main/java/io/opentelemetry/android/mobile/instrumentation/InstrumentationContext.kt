@@ -13,6 +13,7 @@ import io.opentelemetry.api.trace.Tracer
  * Controls how UI interactions are emitted. Duplicated here from [MobileConfig] so the
  * core module stays independent of the top-level config module.
  */
+@Incubating
 enum class UiTelemetryMode {
     /** Emit UI interactions as OTel log records (default). */
     EVENTS,

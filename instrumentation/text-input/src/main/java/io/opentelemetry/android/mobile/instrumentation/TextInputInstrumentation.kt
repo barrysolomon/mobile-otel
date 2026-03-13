@@ -13,8 +13,10 @@ import android.widget.EditText
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import java.util.WeakHashMap
 
+@Incubating
 class TextInputInstrumentation(
     private val config: TextInputConfig = TextInputConfig()
 ) : MobileInstrumentation, WindowEventListener {

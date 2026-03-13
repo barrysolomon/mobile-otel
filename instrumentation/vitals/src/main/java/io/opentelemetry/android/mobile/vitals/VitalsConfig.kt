@@ -5,6 +5,8 @@
 
 package io.opentelemetry.android.mobile.vitals
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
 /**
  * Configuration for mobile vitals monitoring.
  *
@@ -46,6 +48,7 @@ package io.opentelemetry.android.mobile.vitals
  * @property samplingRate Sampling rate for vitals (0.0-1.0, default: 1.0 = 100%)
  * @property reportingIntervalMs Interval for reporting vitals metrics in ms (default: 60000 = 1 min)
  */
+@Incubating
 data class VitalsConfig(
     val enabled: Boolean = true,
 

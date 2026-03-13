@@ -6,6 +6,7 @@ package io.opentelemetry.android.mobile.instrumentation
 import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.vitals.VitalsConfig
 
 /**
@@ -17,6 +18,7 @@ import io.opentelemetry.android.mobile.vitals.VitalsConfig
  * runtime), the failure is logged as a warning and [install] / [uninstall]
  * complete silently so the host app does not crash.
  */
+@Incubating
 class VitalsInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.vitals"

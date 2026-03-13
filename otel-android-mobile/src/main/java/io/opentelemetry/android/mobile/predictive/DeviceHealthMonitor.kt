@@ -10,6 +10,7 @@ import android.content.Context
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Debug
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference
  * }
  * ```
  */
+@Incubating
 class DeviceHealthMonitor private constructor(
     private val context: Context
 ) {
@@ -199,6 +201,7 @@ class DeviceHealthMonitor private constructor(
 /**
  * Snapshot of device health at a point in time.
  */
+@Incubating
 data class DeviceHealthSnapshot(
     val timestampMs: Long,
 
@@ -223,6 +226,7 @@ data class DeviceHealthSnapshot(
     val gcInvocationCount: Long
 )
 
+@Incubating
 enum class MemoryPressure {
     NORMAL,     // >50% available
     MODERATE,   // 25-50% available
@@ -230,6 +234,7 @@ enum class MemoryPressure {
     CRITICAL    // <10% available
 }
 
+@Incubating
 enum class ThermalState {
     UNKNOWN,
     NORMAL,

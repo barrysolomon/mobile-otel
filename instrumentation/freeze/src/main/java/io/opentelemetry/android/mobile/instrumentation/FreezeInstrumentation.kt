@@ -12,6 +12,7 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import java.util.concurrent.Executors
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit
  * is emitted *after* recovery, reporting the total freeze duration. This prevents the "freeze cycle"
  * where a blocked main thread causes repeated events with ever-growing duration_ms.
  */
+@Incubating
 class FreezeInstrumentation(
     private val config: FreezeConfig = FreezeConfig()
 ) : MobileInstrumentation {

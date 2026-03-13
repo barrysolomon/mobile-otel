@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.sampling
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.context.Context
@@ -52,6 +53,7 @@ import kotlin.concurrent.write
  * sampler.setSamplingRate(1.0, durationMinutes = 10)
  * ```
  */
+@Incubating
 class DynamicSampler(
     private val baselineSamplingRate: Double = 0.1,
     private val highPrioritySamplingRate: Double = 1.0

@@ -8,6 +8,7 @@ import android.app.Application
 import android.os.Bundle
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Severity
 
 /**
@@ -21,6 +22,7 @@ import io.opentelemetry.api.logs.Severity
  * All events carry [MobileSemconv.SESSION_ID] and [MobileSemconv.VIEW_ID]
  * from the [MobileSessionProvider].
  */
+@Incubating
 class LifecycleInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.lifecycle"

@@ -8,6 +8,7 @@ package io.opentelemetry.android.mobile
 import android.content.Context
 import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.LoggerProvider
 import io.opentelemetry.sdk.OpenTelemetrySdk
@@ -60,6 +61,7 @@ import java.util.concurrent.TimeUnit
  * @see MobileConfig for configuration options
  * @see MobileLogRecordProcessor for buffering and export logic
  */
+@Incubating
 class MobileLoggerProvider private constructor(
     private val context: Context,
     private val config: MobileConfig
@@ -75,17 +77,6 @@ class MobileLoggerProvider private constructor(
         // Create sampler based on configuration
         sampler = SamplerFactory.createSampler(config.samplingConfig)
 
-        // Build resource with mobile-specific attributes.
-        // Resource.getDefault() is merged first so that telemetry.sdk.name, telemetry.sdk.language,
-        // and telemetry.sdk.version are automatically provided by the OTel Java SDK defaults.
-        // Any attributes set in the inner builder will override the defaults.
-        //
-        // NOTE: device.id here is a per-app-install UUID persisted in SharedPreferences. It is
-        // not a hardware identifier and does not require special consent under most privacy
-        // frameworks. If your app's privacy policy prohibits any persistent identifiers, remove
-        // device.id and replace with a per-session ID.
-        // TODO: If a true hardware device ID (ANDROID_ID, IMEI, etc.) is ever needed, ensure
-        // explicit user consent is obtained before collecting it per GDPR/CCPA requirements.
         val resource = Resource.getDefault().merge(
             Resource.builder()
                 .put("service.name", config.serviceName)
@@ -141,20 +132,16 @@ class MobileLoggerProvider private constructor(
             .registerMetricReader(
                 when (config.exportMode) {
                     io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        // Only export on forceFlush(), not on schedule
                         PeriodicMetricReader.builder(metricExporter)
-                            .setInterval(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .setInterval(3600, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        // Regular scheduled exports
                         PeriodicMetricReader.builder(metricExporter)
                             .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // HYBRID: OTel SDK metrics export on the configured schedule (not disabled,
-                        // not 2x — SDK-level metrics like buffer gauges should update regularly).
                         PeriodicMetricReader.builder(metricExporter)
                             .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
@@ -174,31 +161,25 @@ class MobileLoggerProvider private constructor(
             }
             .build()
 
-        // Build SDK Tracer Provider with mode-appropriate configuration and sampling
         val tracerProvider = SdkTracerProvider.builder()
             .setResource(resource)
             .setSampler(sampler)
             .addSpanProcessor(
                 when (config.exportMode) {
                     io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        // Only export on forceFlush(), not on schedule
                         BatchSpanProcessor.builder(traceExporter)
-                            .setScheduleDelay(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
-                            .setMaxQueueSize(10000)  // Large queue for buffering
+                            .setScheduleDelay(3600, TimeUnit.SECONDS)
+                            .setMaxQueueSize(10000)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        // Regular scheduled exports
                         BatchSpanProcessor.builder(traceExporter)
                             .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        // HYBRID: spans buffer like CONDITIONAL — only export when a policy fires.
-                        // evaluatePolicies() calls sdkTracerProvider.forceFlush() alongside
-                        // flushWindow() so spans and logs are always co-exported on a trigger.
                         BatchSpanProcessor.builder(traceExporter)
-                            .setScheduleDelay(3600, TimeUnit.SECONDS)  // 1 hour (effectively disabled)
+                            .setScheduleDelay(3600, TimeUnit.SECONDS)
                             .setMaxQueueSize(10000)
                             .build()
                     }
@@ -226,76 +207,28 @@ class MobileLoggerProvider private constructor(
             .setMeterProvider(meterProvider)
             .build()
 
-        // Wire the heartbeat logger for HYBRID mode now that the SDK is fully initialised.
-        // Done here (not in MobileLogRecordProcessor.init) to avoid a circular dependency:
-        // the processor can't hold a Logger at construction time because the SdkLoggerProvider
-        // that backs it hasn't been built yet.
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {
             mobileProcessor.heartbeatLogger = sdkLoggerProvider.get("io.opentelemetry.android.mobile.heartbeat")
-            // Wire span flush hook: on policy trigger, co-export buffered spans alongside logs.
-            // HYBRID uses a 1-hour BatchSpanProcessor delay so spans only export here.
             mobileProcessor.spanFlushHook = {
                 openTelemetrySdk.sdkTracerProvider.forceFlush()
             }
         }
     }
 
-    /**
-     * Gets a logger for the specified instrumentation scope.
-     *
-     * @param instrumentationScopeName Name of the instrumentation scope (e.g., component name)
-     * @return Logger instance
-     */
     override fun get(instrumentationScopeName: String): Logger {
         return sdkLoggerProvider.get(instrumentationScopeName)
     }
 
-    /**
-     * Gets a logger builder for advanced configuration.
-     *
-     * @param instrumentationScopeName Name of the instrumentation scope
-     * @return LoggerBuilder for additional configuration
-     */
     override fun loggerBuilder(instrumentationScopeName: String): io.opentelemetry.api.logs.LoggerBuilder {
         return sdkLoggerProvider.loggerBuilder(instrumentationScopeName)
     }
 
-    /**
-     * Gets the device ID for correlation across sessions.
-     *
-     * @return Stable device identifier
-     */
     fun getDeviceId(): String = deviceId
 
-    /**
-     * Gets the mobile log record processor for direct buffer/flush control.
-     *
-     * Used by instrumentation modules (ErrorInstrumentation, PredictiveExportPolicy)
-     * to trigger flush on critical events.
-     *
-     * @return The MobileLogRecordProcessor instance
-     */
     fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
 
-    /**
-     * Gets the OpenTelemetry SDK instance for advanced usage.
-     *
-     * @return OpenTelemetry SDK
-     */
     fun getOpenTelemetrySdk(): OpenTelemetrySdk = openTelemetrySdk
 
-    /**
-     * Sets the trace sampling rate at runtime (for dynamic sampler only).
-     *
-     * This is used by workflow actions to temporarily increase sampling after critical events.
-     * Only works if the configured sampler is a DynamicSampler.
-     *
-     * Example workflow action: "Set Sampling Rate to 100% for 10 minutes after HTTP 500 error"
-     *
-     * @param rate Sampling rate (0.0 to 1.0)
-     * @param durationMinutes Optional duration before reverting to baseline (null = permanent)
-     * @return true if sampling was adjusted, false if sampler is not dynamic
-     */
     fun setSamplingRate(rate: Double, durationMinutes: Int? = null): Boolean {
         return if (sampler is DynamicSampler) {
             sampler.setSamplingRate(rate, durationMinutes)
@@ -305,11 +238,6 @@ class MobileLoggerProvider private constructor(
         }
     }
 
-    /**
-     * Resets trace sampling to baseline rate (for dynamic sampler only).
-     *
-     * @return true if sampling was reset, false if sampler is not dynamic
-     */
     fun resetSamplingToBaseline(): Boolean {
         return if (sampler is DynamicSampler) {
             sampler.resetToBaseline()
@@ -319,11 +247,6 @@ class MobileLoggerProvider private constructor(
         }
     }
 
-    /**
-     * Gets the current trace sampling rate (for dynamic sampler only).
-     *
-     * @return Current sampling rate, or null if sampler is not dynamic
-     */
     fun getCurrentSamplingRate(): Double? {
         return if (sampler is DynamicSampler) {
             sampler.getCurrentSamplingRate()
@@ -332,41 +255,15 @@ class MobileLoggerProvider private constructor(
         }
     }
 
-    /**
-     * Triggers an immediate flush of buffered events across all signals (logs, traces, metrics).
-     *
-     * This forces all buffered data to be exported immediately, regardless of policies or schedules.
-     * Essential for:
-     * - Conditional export mode (where scheduled exports are disabled)
-     * - Critical events that must be captured
-     * - App shutdown
-     * - Workflow trigger actions
-     *
-     * @param timeoutSeconds Maximum time to wait for flush to complete
-     * @return CompletableResultCode indicating flush success/failure
-     */
     fun forceFlush(timeoutSeconds: Long = 30): CompletableResultCode {
         val logResult    = sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
         val traceResult  = openTelemetrySdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
         val metricResult = openTelemetrySdk.sdkMeterProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
-        // Join the combined result so callers always receive a completed (done) code.
-        // CompletableResultCode.ofAll() is async internally; without this join the returned
-        // code may not yet be marked done even though all inputs are already complete.
         return CompletableResultCode.ofAll(listOf(logResult, traceResult, metricResult))
             .join(timeoutSeconds, TimeUnit.SECONDS)
     }
 
-    /**
-     * Shuts down the provider and releases resources.
-     *
-     * This should be called when the provider is no longer needed (e.g., app shutdown).
-     * After shutdown, the provider cannot be used.
-     *
-     * @param timeoutSeconds Maximum time to wait for shutdown to complete
-     * @return CompletableResultCode indicating shutdown success/failure
-     */
     fun shutdown(timeoutSeconds: Long = 30): CompletableResultCode {
-        // Shutdown the entire OpenTelemetry SDK (includes logger, tracer, and meter providers)
         return openTelemetrySdk.sdkLoggerProvider.shutdown()
             .join(timeoutSeconds, TimeUnit.SECONDS)
             .also {
@@ -382,15 +279,6 @@ class MobileLoggerProvider private constructor(
         @Volatile
         private var instance: MobileLoggerProvider? = null
 
-        /**
-         * Gets or creates the singleton MobileLoggerProvider instance.
-         *
-         * This uses double-checked locking for thread-safe singleton initialization.
-         *
-         * @param context Application context
-         * @param config Mobile configuration
-         * @return Singleton MobileLoggerProvider instance
-         */
         fun getInstance(context: Context, config: MobileConfig): MobileLoggerProvider {
             return instance ?: synchronized(this) {
                 instance ?: MobileLoggerProvider(
@@ -400,22 +288,8 @@ class MobileLoggerProvider private constructor(
             }
         }
 
-        /**
-         * Gets the current instance if initialized, or null.
-         *
-         * @return Current MobileLoggerProvider instance or null
-         */
         fun getInstanceOrNull(): MobileLoggerProvider? = instance
 
-        /**
-         * Gets or creates a stable device ID for correlation.
-         *
-         * The device ID is persisted in SharedPreferences and remains stable across app restarts.
-         * This is used for correlating events across sessions and for demo_run_id generation.
-         *
-         * @param context Application context
-         * @return Stable UUID-based device identifier
-         */
         private fun getOrCreateDeviceId(context: Context): String {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             return prefs.getString(KEY_DEVICE_ID, null) ?: run {

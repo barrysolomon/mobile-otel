@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.config
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
@@ -33,6 +34,7 @@ import io.opentelemetry.android.mobile.errors.ErrorConfig
  * )
  * ```
  */
+@Incubating
 enum class UiTelemetryMode {
     /** Emit UI interactions as OTel log records (default). */
     EVENTS,
@@ -45,6 +47,7 @@ enum class UiTelemetryMode {
 /**
  * Export mode for telemetry data.
  */
+@Incubating
 enum class ExportMode {
     /**
      * Only export when triggered by conditions (errors, low memory, battery drain, etc.).
@@ -85,33 +88,8 @@ enum class ExportMode {
  *     diskBufferMb = 50
  * )
  * ```
- *
- * @property serviceName Logical name of the service (e.g., "my-mobile-app")
- * @property serviceVersion Version of the service (e.g., "1.0.0")
- * @property collectorEndpoint OTLP/gRPC endpoint for the collector (e.g., "https://host:4317")
- * @property exportMode Export behavior mode (default: CONDITIONAL for battery efficiency)
- * @property traceExportIntervalSeconds Export interval for traces in CONTINUOUS mode (default: 30)
- * @property metricExportIntervalSeconds Export interval for metrics in CONTINUOUS mode (default: 60)
- * @property predictionIntervalSeconds How often the predictive export policy runs its risk assessment cycle (default: 30)
- * @property ramBufferSize Maximum number of events to buffer in RAM (default: 5000)
- * @property diskBufferMb Maximum disk space for persisted events in MB (default: 50)
- * @property diskBufferTtlHours Time-to-live for disk-persisted events in hours (default: 24)
- * @property exportTimeoutSeconds Timeout for OTLP export operations in seconds (default: 30)
- * @property configPollIntervalSeconds Interval for polling configuration updates (default: 300)
- * @property maxExportRetries Maximum number of retry attempts when export fails (default: 3)
- * @property headers Optional headers to include in OTLP requests (e.g., authentication)
- * @property attachContextAttributes Whether to attach geo/device context attributes to exported logs (default: false)
- * @property buildChannel Build channel for the app: prod/beta/internal/unknown (default: "unknown")
- * @property samplingConfig Sampling configuration for traces (default: 10% dynamic sampling with 100% for high-priority)
- * @property deviceMetricsConfig Configuration for which device metrics to capture on triggers (default: all enabled except location)
- * @property sessionConfig Configuration for session management (default: enabled with 15min inactivity timeout)
- * @property breadcrumbConfig Configuration for journey breadcrumb collection (default: all breadcrumbs enabled, 50 max size)
- * @property vitalsConfig Configuration for mobile vitals monitoring (default: all vitals enabled with standard thresholds)
- * @property networkConfig Configuration for network instrumentation (default: privacy-first with trace propagation)
- * @property errorConfig Configuration for error instrumentation (default: all error handlers with deduplication)
- * @property uiTelemetryMode Controls whether UI interactions emit log events, child spans, or both (default: EVENTS)
- * @property textInputConfig Configuration for text-field instrumentation (default: char count + is-set, no raw text)
  */
+@Incubating
 data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,
@@ -128,12 +106,9 @@ data class MobileConfig(
     val exportTimeoutSeconds: Long = 30,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
-    // OTLP header names must be lowercase alphanumeric + hyphens per gRPC metadata spec.
-    // Values are passed as-is to the gRPC/HTTP exporter — include auth tokens here.
     val headers: Map<String, String>? = null,
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
-    // OTel-compliant sampling: 1.0 = 100% sampled, 0.0 = 0% sampled, applied via TraceIdRatioBased sampler
     val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),
     val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default(),
     val sessionConfig: SessionConfig = SessionConfig(),
@@ -159,16 +134,6 @@ data class MobileConfig(
 
     /**
      * Builder for MobileConfig with fluent API.
-     *
-     * Usage:
-     * ```kotlin
-     * val config = MobileConfig.builder()
-     *     .setServiceName("my-app")
-     *     .setServiceVersion("1.0.0")
-     *     .setCollectorEndpoint("https://collector.example.com:4317")
-     *     .setRamBufferSize(10000)
-     *     .build()
-     * ```
      */
     class Builder {
         private var serviceName: String? = null
@@ -186,8 +151,6 @@ data class MobileConfig(
         private var exportTimeoutSeconds: Long = 30
         private var configPollIntervalSeconds: Long = 300
         private var maxExportRetries: Int = 3
-        // OTLP header names must be lowercase alphanumeric + hyphens per gRPC metadata spec.
-        // Values are passed as-is to the gRPC/HTTP exporter — include auth tokens here.
         private var headers: Map<String, String>? = null
         private var attachContextAttributes: Boolean = false
         private var buildChannel: String? = null

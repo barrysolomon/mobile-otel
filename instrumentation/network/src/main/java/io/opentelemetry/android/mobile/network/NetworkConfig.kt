@@ -5,6 +5,8 @@
 
 package io.opentelemetry.android.mobile.network
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
 /**
  * Configuration for network instrumentation.
  *
@@ -43,6 +45,7 @@ package io.opentelemetry.android.mobile.network
  * @property allowedHosts List of hosts to instrument, empty = all (default: empty = all)
  * @property blockedHosts List of hosts to NOT instrument (default: empty)
  */
+@Incubating
 data class NetworkConfig(
     val enabled: Boolean = true,
 

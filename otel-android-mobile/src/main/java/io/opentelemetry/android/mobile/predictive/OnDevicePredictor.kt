@@ -11,6 +11,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import java.util.concurrent.ConcurrentLinkedDeque
 import kotlin.math.abs
 
@@ -40,6 +41,7 @@ import kotlin.math.abs
  * }
  * ```
  */
+@Incubating
 class OnDevicePredictor private constructor(
     private val context: Context
 ) {
@@ -275,6 +277,7 @@ class OnDevicePredictor private constructor(
 /**
  * Prediction result containing risk scores for various issue types.
  */
+@Incubating
 data class Prediction(
     val timestampMs: Long,
     val crashRisk: Double,              // 0.0-1.0

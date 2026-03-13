@@ -7,6 +7,7 @@ package io.opentelemetry.android.mobile.predictive
 
 import android.content.Context
 import android.util.Log
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit
  * // Metrics are automatically collected and exported
  * ```
  */
+@Incubating
 class HealthMetricsCollector private constructor(
     private val context: Context,
     private val openTelemetry: OpenTelemetry?,
