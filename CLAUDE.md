@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Mobile observability system built on OpenTelemetry. The Android SDK captures events into a dual-tier ring buffer (RAM + SQLite), evaluates export policies via a DSL engine, and selectively flushes event windows to a Go gateway that converts them to OTEL Logs and forwards via gRPC to an OTEL Collector. A React control plane provides a visual drag-and-drop policy builder.
+OpenTelemetry Android Mobile SDK. Captures events into a dual-tier ring buffer (RAM + SQLite), evaluates export policies via a DSL engine, and selectively flushes event windows via OTLP/gRPC to an OTEL Collector.
+
+The management plane (Go gateway + React control plane UI) lives in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
 **Terminology:** "Export policies" (not "workflows") and "selective flush" (not "replay"). Legacy code may still reference "workflows."
 
@@ -40,22 +42,6 @@ go build ./...                        # Build
 go vet ./...                          # Vet
 ```
 
-### Gateway (`gateway/`)
-```bash
-cd gateway
-go build ./...                        # Build
-go test ./...                         # Tests
-```
-
-### Control Plane UI (`control-plane-ui/`)
-```bash
-cd control-plane-ui
-npm install                           # Install deps
-npm run dev                           # Dev server on :3000 (proxies /api to :8080)
-npm run build                         # Production build
-npm run lint                          # ESLint
-```
-
 ### Demo App (`examples/demo-app/`)
 ```bash
 cd examples/demo-app
@@ -75,36 +61,15 @@ cd examples/demo-app
 
 ```
 Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
-    ▲                                    ▲
-    │ GET /config                        │
-    └─────────────────┐                  │
-                      │                  │
-               ┌──────┴─────────┐       │
-               │ Gateway (Go)   │───────┘
-               │ :8080          │ OTLP/gRPC
-               │ /ingest,/config│
-               │ /admin/*       │
-               └──────┬─────────┘
-                      ▲
-                      │ /api proxy
-               ┌──────┴─────────┐
-               │ Control Plane  │
-               │ React + Vite   │
-               │ :3000          │
-               └────────────────┘
 ```
 
-### Four Independent Components
+### Components in This Repo
 
 1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.opentelemetry.android:mobile:0.1.0-alpha`. Core namespace: `io.opentelemetry.android.mobile`.
 
-2. **Gateway** (`gateway/`) — Go HTTP server. Routes: `/ingest`, `/config`, `/health`, `/admin/*`. Uses SQLite for persistence, exports to OTEL Collector via gRPC.
+2. **Collector Processor** (`collector-processor/mobilepolicyprocessor/`) — Custom OTEL Collector processor plugin (Go) that evaluates mobile export policies server-side.
 
-3. **Control Plane UI** (`control-plane-ui/`) — React 18 + TypeScript + Vite. Visual policy builder using React Flow. Vite proxies `/api` requests to gateway at `:8080`.
-
-4. **OTEL Collector** (`k8s/`) — Standard OTEL Collector deployed via Kubernetes manifests. Receives OTLP/gRPC on :4317 and OTLP/HTTP on :4318.
-
-Additionally: `collector-processor/mobilepolicyprocessor/` is a custom OTEL Collector processor plugin (Go).
+The **Gateway** and **Control Plane UI** live in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
 ### Android SDK Internal Architecture
 
@@ -151,13 +116,6 @@ InstrumentationRegistry.getInstrumentation().runOnMainSync {
 
 - **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor. User adds to their OkHttpClient. Configurable via `NetworkConfig` with privacy presets (default, minimal, debug, production).
 
-### Control Plane UI Architecture
-
-- `WorkflowBuilder.tsx` — React Flow canvas with 8 node types (triggers, logic gates, actions)
-- `graphToDSL.ts` — Compiles visual graphs to executable JSON DSL (with cycle detection and type validation)
-- `gateway.ts` — API client for gateway communication
-- `ConfigManager.tsx` / `CollectorConfig.tsx` — Dash0 backend configuration
-
 ## CI/CD
 
 GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` and PRs:
@@ -172,8 +130,7 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 | Component | Key Deps |
 |-----------|----------|
 | Android SDK | OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, Kotlin Serialization 1.6.0 |
-| Gateway | Go 1.24, OTEL SDK 1.39.0, gRPC 1.77.0, SQLite3 |
-| UI | React 18, React Flow 11.10.4, Vite 5, TypeScript 5.3, Axios 1.6.5 |
+| Collector Processor | Go 1.24, OTel Collector 1.39.0 |
 
 ## Export Modes
 
@@ -203,6 +160,7 @@ cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
 - **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks: SDK completeness, testing, infrastructure, documentation/OTEPs, upstream contribution
 - **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — System architecture deep dive
 - **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Android SDK integration guide
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** — SDK configuration guide (MobileConfig, export modes, policy DSL, sub-configs)
 - **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — Export mode details
 - **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Device metrics reference
 - **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Geo/device policy DSL
