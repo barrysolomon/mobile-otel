@@ -79,6 +79,12 @@ class PolicyEvaluator(
 ) {
     private val TAG = "PolicyEvaluator"
 
+    // Regex cache to avoid recompilation on every evaluation. LRU-bounded to prevent unbounded growth.
+    private val regexCache = object : LinkedHashMap<String, Regex?>(MAX_REGEX_CACHE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex?>): Boolean =
+            size > MAX_REGEX_CACHE
+    }
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -242,8 +248,40 @@ class PolicyEvaluator(
             condition.gte != null -> (value as? Number)?.toDouble()?.let { it >= condition.gte } ?: false
             condition.lte != null -> (value as? Number)?.toDouble()?.let { it <= condition.lte } ?: false
             condition.contains != null -> value.toString().contains(condition.contains)
-            condition.regex != null -> value.toString().matches(Regex(condition.regex))
+            condition.regex != null -> matchRegexSafe(value.toString(), condition.regex)
             else -> false
+        }
+    }
+
+    /**
+     * Safely matches a value against a regex pattern with ReDoS protection.
+     *
+     * - Rejects patterns longer than MAX_REGEX_LENGTH to limit complexity
+     * - Caches compiled Regex objects to avoid repeated compilation
+     * - Catches PatternSyntaxException for malformed patterns
+     */
+    private fun matchRegexSafe(value: String, pattern: String): Boolean {
+        if (pattern.length > MAX_REGEX_LENGTH) {
+            Log.w(TAG, "Regex pattern too long (${pattern.length} > $MAX_REGEX_LENGTH), rejecting")
+            return false
+        }
+
+        val regex = synchronized(regexCache) {
+            regexCache.getOrPut(pattern) {
+                try {
+                    Regex(pattern)
+                } catch (e: java.util.regex.PatternSyntaxException) {
+                    Log.w(TAG, "Invalid regex pattern: $pattern", e)
+                    null
+                }
+            }
+        } ?: return false
+
+        return try {
+            value.matches(regex)
+        } catch (e: Exception) {
+            Log.w(TAG, "Regex evaluation failed for pattern: $pattern", e)
+            false
         }
     }
 
@@ -391,9 +429,15 @@ class PolicyEvaluator(
         val jsonObj = JSONObject(json)
         val workflowsArray = jsonObj.optJSONArray("workflows") ?: JSONArray()
 
-        val policies = mutableListOf<Policy>()
+        if (workflowsArray.length() > MAX_POLICIES) {
+            Log.w(TAG, "Remote config has ${workflowsArray.length()} policies, " +
+                "truncating to $MAX_POLICIES")
+        }
 
-        for (i in 0 until workflowsArray.length()) {
+        val policies = mutableListOf<Policy>()
+        val policyLimit = minOf(workflowsArray.length(), MAX_POLICIES)
+
+        for (i in 0 until policyLimit) {
             val workflowObj = workflowsArray.getJSONObject(i)
 
             // Parse trigger node
@@ -404,9 +448,15 @@ class PolicyEvaluator(
             val matchObj = triggerNode.getJSONObject("data").getJSONObject("match")
             val attributes = mutableMapOf<String, Condition>()
 
-            // Parse attribute conditions (existing)
+            // Parse attribute conditions with count limit
             val attrsObj = matchObj.optJSONObject("attributes")
+            var attrCount = 0
             attrsObj?.keys()?.forEach { key ->
+                if (attrCount >= MAX_CONDITIONS_PER_POLICY) {
+                    Log.w(TAG, "Policy has too many conditions, truncating at $MAX_CONDITIONS_PER_POLICY")
+                    return@forEach
+                }
+                attrCount++
                 val condObj = attrsObj.getJSONObject(key)
                 attributes[key] = Condition(
                     equals = condObj.optString("equals").takeIf { it.isNotEmpty() },
@@ -465,8 +515,13 @@ class PolicyEvaluator(
                 .getJSONArray("action")
                 .getJSONObject(0)
 
-            val flushWindowMinutes = actionNode.getJSONObject("data")
+            val rawFlushWindow = actionNode.getJSONObject("data")
                 .optInt("flush_window_minutes", 2)
+            val flushWindowMinutes = rawFlushWindow.coerceIn(MIN_FLUSH_WINDOW_MINUTES, MAX_FLUSH_WINDOW_MINUTES)
+            if (rawFlushWindow != flushWindowMinutes) {
+                Log.w(TAG, "flush_window_minutes $rawFlushWindow clamped to $flushWindowMinutes " +
+                    "(allowed range: $MIN_FLUSH_WINDOW_MINUTES-$MAX_FLUSH_WINDOW_MINUTES)")
+            }
 
             policies.add(
                 Policy(
@@ -495,6 +550,21 @@ class PolicyEvaluator(
         scope.cancel()
         httpClient.dispatcher.executorService.shutdown()
         httpClient.connectionPool.evictAll()
+    }
+
+    companion object {
+        /** Maximum number of policies allowed from remote config. */
+        internal const val MAX_POLICIES = 100
+        /** Maximum number of attribute conditions per policy. */
+        internal const val MAX_CONDITIONS_PER_POLICY = 50
+        /** Maximum regex pattern length to prevent ReDoS. */
+        internal const val MAX_REGEX_LENGTH = 200
+        /** Maximum number of cached compiled regex patterns. */
+        private const val MAX_REGEX_CACHE = 64
+        /** Minimum flush window in minutes. */
+        internal const val MIN_FLUSH_WINDOW_MINUTES = 1
+        /** Maximum flush window in minutes (24 hours). */
+        internal const val MAX_FLUSH_WINDOW_MINUTES = 1440
     }
 }
 

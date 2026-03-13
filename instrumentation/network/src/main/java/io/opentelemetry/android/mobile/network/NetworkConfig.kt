@@ -78,7 +78,13 @@ data class NetworkConfig(
 
     // Host filtering
     val allowedHosts: List<String> = emptyList(),
-    val blockedHosts: List<String> = emptyList()
+    val blockedHosts: List<String> = emptyList(),
+
+    // Trace context propagation host filtering
+    // When non-empty, W3C trace context headers are only injected to these hosts.
+    // This prevents leaking internal trace IDs to third-party services.
+    // When empty and propagateTraceContext=true, context is injected to all instrumented hosts.
+    val propagationHosts: List<String> = emptyList()
 ) {
     init {
         require(maxBodyCaptureBytes > 0) { "maxBodyCaptureBytes must be positive" }
@@ -122,6 +128,16 @@ data class NetworkConfig(
 
         // Check if host is in allowlist
         return allowedHosts.any { it.equals(host, ignoreCase = true) || host.endsWith(".$it") }
+    }
+
+    /**
+     * Check if trace context should be propagated to this host.
+     * When propagationHosts is empty, propagates to all instrumented hosts.
+     */
+    fun shouldPropagateContext(host: String): Boolean {
+        if (!propagateTraceContext) return false
+        if (propagationHosts.isEmpty()) return true
+        return propagationHosts.any { it.equals(host, ignoreCase = true) || host.endsWith(".$it") }
     }
 
     /**

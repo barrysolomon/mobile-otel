@@ -9,6 +9,8 @@ import android.util.Log
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.math.pow
@@ -25,7 +27,8 @@ import kotlin.math.pow
  * - Exponential backoff: delay = min(initialDelay * 2^attempt, maxDelay)
  *
  * **Behavior:**
- * - On failure: Retries with exponential backoff
+ * - On failure: Retries with exponential backoff using a shared scheduler (no raw threads)
+ * - On non-retryable error: Fails immediately without retry
  * - After max retries: Returns failure (caller keeps events in buffer)
  * - On success: Returns immediately
  *
@@ -49,6 +52,10 @@ class RetryableExporter(
 ) : LogRecordExporter {
 
     private val TAG = "RetryableExporter"
+
+    private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "OTel-RetryExporter").apply { isDaemon = true }
+    }
 
     /**
      * Exports logs with retry logic.
@@ -81,9 +88,7 @@ class RetryableExporter(
                         val delayMs = calculateBackoff(attempt)
                         Log.w(TAG, "Export failed on attempt ${attempt + 1}, retrying in ${delayMs}ms...")
 
-                        // Schedule retry
-                        Thread {
-                            Thread.sleep(delayMs)
+                        scheduler.schedule({
                             val retryResult = exportWithRetry(logs, attempt + 1)
                             retryResult.whenComplete {
                                 if (retryResult.isSuccess) {
@@ -92,7 +97,7 @@ class RetryableExporter(
                                     result.fail()
                                 }
                             }
-                        }.start()
+                        }, delayMs, TimeUnit.MILLISECONDS)
                     } else {
                         // Out of retries
                         Log.e(TAG, "Export failed after ${maxRetries + 1} attempts")
@@ -104,12 +109,18 @@ class RetryableExporter(
         } catch (e: Exception) {
             Log.e(TAG, "Exception during export attempt ${attempt + 1}", e)
 
+            // Don't retry client-side errors
+            if (isNonRetryableException(e)) {
+                Log.e(TAG, "Non-retryable error, giving up immediately")
+                result.fail()
+                return result
+            }
+
             if (attempt < maxRetries) {
                 val delayMs = calculateBackoff(attempt)
                 Log.w(TAG, "Retrying in ${delayMs}ms...")
 
-                Thread {
-                    Thread.sleep(delayMs)
+                scheduler.schedule({
                     val retryResult = exportWithRetry(logs, attempt + 1)
                     retryResult.whenComplete {
                         if (retryResult.isSuccess) {
@@ -118,13 +129,23 @@ class RetryableExporter(
                             result.fail()
                         }
                     }
-                }.start()
+                }, delayMs, TimeUnit.MILLISECONDS)
             } else {
                 result.fail()
             }
         }
 
         return result
+    }
+
+    /**
+     * Determines if an exception indicates a non-retryable error.
+     * Client-side errors won't be resolved by retrying.
+     */
+    private fun isNonRetryableException(e: Exception): Boolean {
+        return e is IllegalArgumentException ||
+            e is SecurityException ||
+            e is UnsupportedOperationException
     }
 
     /**
@@ -149,6 +170,7 @@ class RetryableExporter(
     }
 
     override fun shutdown(): CompletableResultCode {
+        scheduler.shutdown()
         return delegate.shutdown()
     }
 

@@ -105,8 +105,8 @@ class OTelNetworkInterceptor private constructor(
         // Start the span
         val span = spanBuilder.startSpan()
 
-        // Propagate trace context
-        val newRequest = if (config.propagateTraceContext) {
+        // Propagate trace context only to allowed hosts
+        val newRequest = if (config.shouldPropagateContext(request.url.host)) {
             injectTraceContext(request, span)
         } else {
             request

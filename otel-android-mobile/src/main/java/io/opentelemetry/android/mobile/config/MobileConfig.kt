@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.config
 
+import android.util.Log
 import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
@@ -124,12 +125,30 @@ data class MobileConfig(
         require(traceExportIntervalSeconds > 0) { "traceExportIntervalSeconds must be positive" }
         require(metricExportIntervalSeconds > 0) { "metricExportIntervalSeconds must be positive" }
         require(predictionIntervalSeconds > 0) { "predictionIntervalSeconds must be positive" }
-        require(ramBufferSize > 0) { "ramBufferSize must be positive" }
-        require(diskBufferMb > 0) { "diskBufferMb must be positive" }
-        require(diskBufferTtlHours > 0) { "diskBufferTtlHours must be positive" }
+        require(ramBufferSize in 1..100_000) { "ramBufferSize must be between 1 and 100,000" }
+        require(diskBufferMb in 1..500) { "diskBufferMb must be between 1 and 500" }
+        require(diskBufferTtlHours in 1..168) { "diskBufferTtlHours must be between 1 and 168 (7 days)" }
         require(exportTimeoutSeconds > 0) { "exportTimeoutSeconds must be positive" }
         require(configPollIntervalSeconds > 0) { "configPollIntervalSeconds must be positive" }
-        require(maxExportRetries >= 0) { "maxExportRetries must be non-negative" }
+        require(maxExportRetries in 0..10) { "maxExportRetries must be between 0 and 10" }
+
+        // Warn if collector endpoint is not using TLS (allow localhost for development)
+        val endpoint = collectorEndpoint.lowercase()
+        if (!endpoint.startsWith("https://") && !isLocalhostEndpoint(endpoint)) {
+            Log.w("MobileConfig", "collectorEndpoint is not using HTTPS. " +
+                "Telemetry data will be transmitted in plaintext. " +
+                "Use https:// in production to protect data in transit.")
+        }
+    }
+
+    companion object {
+        private fun isLocalhostEndpoint(endpoint: String): Boolean {
+            val host = endpoint.removePrefix("http://").substringBefore(":")
+                .substringBefore("/")
+            return host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
+        }
+
+        fun builder(): Builder = Builder()
     }
 
     /**
@@ -219,10 +238,4 @@ data class MobileConfig(
         }
     }
 
-    companion object {
-        /**
-         * Creates a new builder for MobileConfig.
-         */
-        fun builder(): Builder = Builder()
-    }
 }

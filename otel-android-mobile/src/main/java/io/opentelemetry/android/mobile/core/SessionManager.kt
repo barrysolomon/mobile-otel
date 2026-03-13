@@ -10,6 +10,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import io.opentelemetry.api.common.AttributeKey
@@ -40,23 +41,10 @@ class SessionManager private constructor(
     private val config: SessionConfig,
     private val logger: Logger?
 ) {
-    private val prefs: SharedPreferences = context.getSharedPreferences(
-        "otel_session",
-        Context.MODE_PRIVATE
-    )
+    private val prefs: SharedPreferences = createEncryptedPrefs(context, "otel_session_v2")
 
     private val encryptedPrefs: SharedPreferences by lazy {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        EncryptedSharedPreferences.create(
-            context,
-            "otel_session_encrypted",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        createEncryptedPrefs(context, "otel_session_encrypted")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -82,8 +70,34 @@ class SessionManager private constructor(
     private var inactivityTimerTask: ScheduledFuture<*>? = null
 
     companion object {
+        private const val TAG = "SessionManager"
+        /** Maximum length for attribute keys. */
+        internal const val MAX_ATTRIBUTE_KEY_LENGTH = 256
+        /** Maximum length for string attribute values. */
+        internal const val MAX_ATTRIBUTE_VALUE_LENGTH = 4096
+        /** Maximum number of global attributes. */
+        internal const val MAX_GLOBAL_ATTRIBUTES = 128
+
         @Volatile
         private var instance: SessionManager? = null
+
+        private fun createEncryptedPrefs(context: Context, name: String): SharedPreferences {
+            return try {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    name,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "EncryptedSharedPreferences unavailable, falling back to plaintext", e)
+                context.getSharedPreferences(name, Context.MODE_PRIVATE)
+            }
+        }
 
         /**
          * Initialize the SessionManager. Must be called before getInstance().
@@ -330,8 +344,24 @@ class SessionManager private constructor(
      * @param value Attribute value
      */
     fun addGlobalAttribute(key: String, value: Any) {
+        if (key.length > MAX_ATTRIBUTE_KEY_LENGTH) {
+            Log.w(TAG, "Attribute key too long (${key.length} > $MAX_ATTRIBUTE_KEY_LENGTH), truncating")
+        }
+        val safeKey = key.take(MAX_ATTRIBUTE_KEY_LENGTH)
+
+        val safeValue = if (value is String && value.length > MAX_ATTRIBUTE_VALUE_LENGTH) {
+            Log.w(TAG, "Attribute value too long (${value.length} > $MAX_ATTRIBUTE_VALUE_LENGTH), truncating")
+            value.take(MAX_ATTRIBUTE_VALUE_LENGTH)
+        } else {
+            value
+        }
+
         synchronized(globalAttributes) {
-            globalAttributes[key] = value
+            if (globalAttributes.size >= MAX_GLOBAL_ATTRIBUTES && safeKey !in globalAttributes) {
+                Log.w(TAG, "Global attribute limit reached ($MAX_GLOBAL_ATTRIBUTES), ignoring new key: $safeKey")
+                return
+            }
+            globalAttributes[safeKey] = safeValue
             saveGlobalAttributes()
         }
     }
