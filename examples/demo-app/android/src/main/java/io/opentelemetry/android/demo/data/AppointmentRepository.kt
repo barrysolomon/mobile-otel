@@ -11,15 +11,15 @@ import io.opentelemetry.android.demo.data.model.AppointmentType
 import io.opentelemetry.context.Context as OtelContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Calendar
 import java.util.UUID
-import kotlin.random.Random
 
 object AppointmentRepository {
 
-    // Real API base URLs — calls are traced by OTelNetworkInterceptor
-    private const val BASE_SUCCESS = "https://jsonplaceholder.typicode.com"
-    private const val BASE_HTTPBIN  = "https://httpbin.org"
+    // Real backend base URL — calls are traced by OTelNetworkInterceptor
+    private const val BACKEND_BASE_URL = "http://10.0.2.2:3001"
 
     val providers = listOf(
         "Dr. Sarah Chen",
@@ -44,6 +44,60 @@ object AppointmentRepository {
     // Initialized lazily from getMockAppointments() on first access.
     private val allAppointments: MutableList<Appointment> by lazy {
         getMockAppointments().toMutableList()
+    }
+
+    // Cache doctor_id -> name mapping from backend
+    private var doctorCache: Map<String, String> = emptyMap()
+
+    private suspend fun ensureDoctorCache(context: Context) {
+        if (doctorCache.isNotEmpty()) return
+        try {
+            val client = SchedulingApiClient.getInstance(context)
+            val json = JSONArray(client.get("$BACKEND_BASE_URL/api/doctors"))
+            doctorCache = (0 until json.length()).associate { i ->
+                val doc = json.getJSONObject(i)
+                doc.getString("id") to doc.getString("name")
+            }
+        } catch (_: Exception) {
+            // Backend unreachable — cache stays empty, will use mock data
+        }
+    }
+
+    private fun parseAppointments(json: String): List<Appointment> {
+        val arr = JSONArray(json)
+        return (0 until arr.length()).map { i ->
+            val obj = arr.getJSONObject(i)
+            val doctorId = obj.getString("doctor_id")
+            val createdAt = obj.getString("created_at")
+            Appointment(
+                id = obj.getString("id"),
+                title = obj.getString("reason"),
+                provider = doctorCache[doctorId] ?: "Unknown Doctor",
+                dateMs = try {
+                    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                        .parse(createdAt)?.time ?: System.currentTimeMillis()
+                } catch (_: Exception) { System.currentTimeMillis() },
+                timeSlot = "",
+                type = AppointmentType.CHECKUP,
+                status = if (obj.getString("status") == "confirmed")
+                    AppointmentStatus.CONFIRMED else AppointmentStatus.CANCELLED,
+                notes = obj.getString("reason")
+            )
+        }
+    }
+
+    private fun findMatchingSlotId(slotsJson: JSONArray, timeSlot: String): String? {
+        for (i in 0 until slotsJson.length()) {
+            val slot = slotsJson.getJSONObject(i)
+            val slotTime = slot.getString("time")
+            val hour = slotTime.split(":")[0].toInt()
+            val minute = slotTime.split(":")[1]
+            val amPm = if (hour < 12) "AM" else "PM"
+            val displayHour = if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
+            val formatted = "$displayHour:$minute $amPm"
+            if (formatted == timeSlot) return slot.getString("id")
+        }
+        return null
     }
 
     /** Returns true if provider + day + time slot already exists in allAppointments. */
@@ -73,29 +127,29 @@ object AppointmentRepository {
     }
 
     /**
-     * Fetch appointments via a real HTTP GET.
-     * On the success path: GET jsonplaceholder.typicode.com/todos?userId=1 (always 200).
-     * On forced error or 30% random: GET httpbin.org/status/503 (always 503) —
-     * the OTelNetworkInterceptor automatically records the http.error span.
+     * Fetch appointments via a real HTTP GET to the backend.
+     * Falls back to mock data if the backend is unreachable.
      */
     suspend fun fetchAppointments(context: Context): List<Appointment> {
         val otelCtx = OtelContext.current()
         return withContext(Dispatchers.IO) {
             val otelScope = otelCtx.makeCurrent()
             try {
-                val client = SchedulingApiClient.getInstance(context)
                 val forceError = forceNextFetchError
                 if (forceError) forceNextFetchError = false
+                if (forceError) throw ApiException(503, "Forced error from debug toolbar")
 
-                if (forceError || Random.nextFloat() < 0.3f) {
-                    try {
-                        client.get("$BASE_HTTPBIN/status/503")
-                    } catch (e: SchedulingApiClient.HttpException) {
-                        throw ApiException(e.code, "Scheduling API unavailable (HTTP ${e.code})")
-                    }
-                }
-
-                client.get("$BASE_SUCCESS/todos?userId=1")
+                ensureDoctorCache(context)
+                val client = SchedulingApiClient.getInstance(context)
+                val json = client.get("$BACKEND_BASE_URL/api/appointments")
+                val backendAppointments = parseAppointments(json)
+                allAppointments.clear()
+                allAppointments.addAll(backendAppointments)
+                backendAppointments
+            } catch (e: ApiException) {
+                throw e // Re-throw intentional errors
+            } catch (_: Exception) {
+                // Backend unreachable — return mock data
                 getMockAppointments()
             } finally {
                 otelScope.close()
@@ -104,9 +158,8 @@ object AppointmentRepository {
     }
 
     /**
-     * Book an appointment via a real HTTP POST.
-     * Success path: POST jsonplaceholder.typicode.com/posts (echoes back the body, 201).
-     * 25% random: POST httpbin.org/status/500 (always 500).
+     * Book an appointment via a real HTTP POST to the backend.
+     * Looks up doctor_id and slot_id from the backend before posting.
      */
     suspend fun bookAppointment(
         context: Context,
@@ -116,43 +169,53 @@ object AppointmentRepository {
         type: AppointmentType,
         notes: String
     ): Appointment {
-        // Duplicate check on the calling thread before doing any network work.
         if (isDuplicate(provider, dateMs, timeSlot)) {
             throw DuplicateAppointmentException(provider, timeSlot)
         }
 
-        // Capture the OTel context on the calling thread BEFORE withContext switches threads.
-        // withContext(Dispatchers.IO) may resume on a different IO thread where the
-        // thread-local OTel context is empty, breaking OTelNetworkInterceptor parenting.
         val otelCtx = OtelContext.current()
 
         return withContext(Dispatchers.IO) {
-            // Restore the caller's OTel context so OTelNetworkInterceptor sees the parent span.
             val otelScope = otelCtx.makeCurrent()
             try {
+                ensureDoctorCache(context)
                 val client = SchedulingApiClient.getInstance(context)
-                val json = """{"provider":"$provider","timeSlot":"$timeSlot","type":"${type.label}","notes":"$notes"}"""
 
-                if (Random.nextFloat() < 0.25f) {
-                    try {
-                        client.post("$BASE_HTTPBIN/status/500", json)
-                    } catch (e: SchedulingApiClient.HttpException) {
-                        throw ApiException(e.code, "Failed to create appointment (HTTP ${e.code})")
-                    }
+                // Find doctor_id from name
+                val doctorId = doctorCache.entries.find { it.value == provider }?.key
+                    ?: throw ApiException(404, "Doctor not found: $provider")
+
+                // Find available slot_id for this doctor + date + time
+                val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    .format(java.util.Date(dateMs))
+                val slotsJson = JSONArray(client.get(
+                    "$BACKEND_BASE_URL/api/slots?doctor_id=$doctorId&date=$dateStr"
+                ))
+                val slotId = findMatchingSlotId(slotsJson, timeSlot)
+                    ?: throw ApiException(404, "No available slot for $timeSlot")
+
+                val body = JSONObject().apply {
+                    put("doctor_id", doctorId)
+                    put("slot_id", slotId)
+                    put("patient", "Demo User")
+                    put("reason", notes.ifBlank { type.label })
                 }
 
-                client.post("$BASE_SUCCESS/posts", json)
+                val responseJson = client.post("$BACKEND_BASE_URL/api/appointments", body.toString())
+                val result = JSONObject(responseJson)
 
                 Appointment(
-                    id       = UUID.randomUUID().toString(),
-                    title    = type.label,
+                    id = result.getString("id"),
+                    title = type.label,
                     provider = provider,
-                    dateMs   = dateMs,
+                    dateMs = dateMs,
                     timeSlot = timeSlot,
-                    type     = type,
-                    status   = AppointmentStatus.PENDING,
-                    notes    = notes
+                    type = type,
+                    status = AppointmentStatus.CONFIRMED,
+                    notes = notes
                 ).also { allAppointments.add(it) }
+            } catch (e: SchedulingApiClient.HttpException) {
+                throw ApiException(e.code, e.message ?: "Booking failed")
             } finally {
                 otelScope.close()
             }
@@ -164,8 +227,12 @@ object AppointmentRepository {
      * Makes a real HTTP call so the network span is visible.
      */
     suspend fun loadFullHistory(context: Context): List<Appointment> = withContext(Dispatchers.IO) {
-        val client = SchedulingApiClient.getInstance(context)
-        client.get("$BASE_SUCCESS/todos")  // real HTTP call, response discarded
+        try {
+            val client = SchedulingApiClient.getInstance(context)
+            client.get("$BACKEND_BASE_URL/api/appointments") // real HTTP call for trace
+        } catch (_: Exception) {
+            // Fallback — generate synthetic data
+        }
         val now = System.currentTimeMillis()
         (0 until 500).map { i ->
             Appointment(
