@@ -8,6 +8,7 @@ import { createSchema } from "./db/schema.js";
 import { seedData } from "./db/seed.js";
 import healthRouter from "./routes/health.js";
 import doctorsRouter from "./routes/doctors.js";
+import slotsRouter from "./routes/slots.js";
 
 export function createApp() {
   const app = express();
@@ -15,6 +16,7 @@ export function createApp() {
   app.use(express.json());
   app.use(healthRouter);
   app.use(doctorsRouter);
+  app.use(slotsRouter);
   return app;
 }
 
