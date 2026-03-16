@@ -80,6 +80,15 @@ class SchedulingApiClient private constructor(context: Context) {
         return responseBody
     }
 
+    /** DELETE — returns response body string or throws on non-2xx */
+    fun delete(url: String): String {
+        val request = Request.Builder().url(url).delete().build()
+        val response = client.newCall(request).execute()
+        val body = response.body?.string() ?: ""
+        if (!response.isSuccessful) throw HttpException(response.code, body)
+        return body
+    }
+
     class HttpException(val code: Int, message: String) : Exception(message)
 
     companion object {
