@@ -9,6 +9,7 @@ import { seedData } from "./db/seed.js";
 import healthRouter from "./routes/health.js";
 import doctorsRouter from "./routes/doctors.js";
 import slotsRouter from "./routes/slots.js";
+import appointmentsRouter from "./routes/appointments.js";
 
 export function createApp() {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp() {
   app.use(healthRouter);
   app.use(doctorsRouter);
   app.use(slotsRouter);
+  app.use(appointmentsRouter);
   return app;
 }
 
