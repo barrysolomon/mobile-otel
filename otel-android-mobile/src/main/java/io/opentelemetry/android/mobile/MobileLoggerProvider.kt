@@ -200,11 +200,14 @@ class MobileLoggerProvider private constructor(
             .addLogRecordProcessor(mobileProcessor)
             .build()
 
-        // Build OpenTelemetry SDK with logging, tracing, and metrics
+        // Build OpenTelemetry SDK with logging, tracing, metrics, and W3C context propagation
         openTelemetrySdk = OpenTelemetrySdk.builder()
             .setLoggerProvider(sdkLoggerProvider)
             .setTracerProvider(tracerProvider)
             .setMeterProvider(meterProvider)
+            .setPropagators(io.opentelemetry.context.propagation.ContextPropagators.create(
+                io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator.getInstance()
+            ))
             .build()
 
         if (config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID) {

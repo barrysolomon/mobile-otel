@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./tracing.js";
 import express from "express";
 import { fileURLToPath } from "url";
 import { pathToFileURL } from "url";
@@ -17,6 +18,12 @@ export function createApp() {
   const app = express();
   app.use(corsMiddleware);
   app.use(express.json());
+  // Log incoming requests with trace context for debugging
+  app.use((req, _res, next) => {
+    const tp = req.headers["traceparent"] || "(none)";
+    console.log(`[req] ${req.method} ${req.path} traceparent=${tp}`);
+    next();
+  });
   app.use(healthRouter);
   app.use(adminRouter);
   app.use(simulateMiddleware);

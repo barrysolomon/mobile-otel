@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nodemon --exec 'tsx --import ./src/tracing.ts src/index.ts'",
-    "start": "node --import ./src/tracing.js src/index.js",
+    "dev": "nodemon --exec 'tsx src/index.ts'",
+    "start": "tsx src/index.ts",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -18,7 +18,8 @@
     "uuid": "^10.0.0",
     "@opentelemetry/sdk-node": "^0.57.0",
     "@opentelemetry/auto-instrumentations-node": "^0.56.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.0",
+    "@opentelemetry/core": "^1.30.0",
     "@opentelemetry/resources": "^1.30.0",
     "@opentelemetry/semantic-conventions": "^1.30.0"
   },

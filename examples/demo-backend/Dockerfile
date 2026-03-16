@@ -9,4 +9,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src/ ./src/
 EXPOSE 3001
-CMD ["npx", "tsx", "--import", "./src/tracing.ts", "src/index.ts"]
+CMD ["npx", "tsx", "src/index.ts"]
