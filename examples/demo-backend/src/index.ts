@@ -7,12 +7,14 @@ import { getDb } from "./db/connection.js";
 import { createSchema } from "./db/schema.js";
 import { seedData } from "./db/seed.js";
 import healthRouter from "./routes/health.js";
+import doctorsRouter from "./routes/doctors.js";
 
 export function createApp() {
   const app = express();
   app.use(corsMiddleware);
   app.use(express.json());
   app.use(healthRouter);
+  app.use(doctorsRouter);
   return app;
 }
 
