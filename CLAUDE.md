@@ -42,12 +42,96 @@ go build ./...                        # Build
 go vet ./...                          # Vet
 ```
 
+### Emulators
+
+Available AVDs: `Medium_Phone_API_36.1`, `Pixel_3a`, `Pixel_7`
+
+```bash
+# Start 1-2 emulators WITH windows (for demos / poking around)
+nohup emulator -avd Pixel_7 -no-snapshot-save > /tmp/emu1.log 2>&1 &
+nohup emulator -avd Pixel_3a -no-snapshot-save > /tmp/emu2.log 2>&1 &
+
+# Or headless (CI / background work)
+# nohup emulator -avd Pixel_7 -no-window -no-audio -no-snapshot-save > /tmp/emu1.log 2>&1 &
+
+# Wait for boot (API 36 can take ~4 min)
+adb wait-for-device
+until adb -s <serial> shell "getprop sys.boot_completed" 2>/dev/null | grep -q 1; do sleep 5; done
+
+# List running emulators
+adb devices
+```
+
+**Important:** Do NOT install APKs or run instrumented tests until both `dev.bootcomplete=1` AND `sys.boot_completed=1`.
+
 ### Demo App (`examples/demo-app/`)
 ```bash
 cd examples/demo-app
 ./gradlew assembleDebug               # Build debug APK
-./gradlew installDebug                # Install on device/emulator
+./gradlew installDebug                # Install on all connected emulators
 ```
+
+### Demo Runbook (full meeting demo)
+
+Run these steps in order. Total time: ~12 minutes with both emulators.
+
+**Step 1 — Start emulators (windowed, so you can watch)**
+```bash
+nohup emulator -avd Pixel_7 -no-snapshot-save > /tmp/emu1.log 2>&1 &
+nohup emulator -avd Pixel_3a -no-snapshot-save > /tmp/emu2.log 2>&1 &
+# Wait ~4 min for boot, then:
+adb devices   # Should show emulator-5554 and emulator-5556
+```
+
+**Step 2 — Run unit tests (~4s, 194 behavioral config tests + full suite)**
+```bash
+cd examples/demo-app
+./gradlew :otel-android-mobile:testDebugUnitTest \
+  :otel-android-mobile-core:testDebugUnitTest \
+  :instrumentation-tap:testDebugUnitTest \
+  :instrumentation-freeze:testDebugUnitTest \
+  :instrumentation-back-press:testDebugUnitTest \
+  :instrumentation-vitals:testDebugUnitTest
+```
+
+**Step 3 — Install & launch demo app on both emulators**
+```bash
+./gradlew installDebug
+adb -s emulator-5554 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
+adb -s emulator-5556 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
+```
+
+**Step 4 — Run full demo scenario suite on both emulators (~8 min)**
+```bash
+./gradlew :android:connectedDebugAndroidTest
+```
+This runs 18 tests on each emulator (36 total) across 4 scenario suites:
+- **UserJourneyScenarios** — multi-screen booking flow, error recovery, navigation breadcrumbs
+- **EmulatorStressScenarios** — battery drain, thermal throttle, memory pressure, network degradation
+- **FaultScenarios** — jank detection, ANR triggers, memory pressure faults
+- **ConditionalFlushScenarios** — silent buffer accumulation → crash triggers flush of all buffered events
+
+**Step 5 — Run SDK instrumented tests on both emulators (~30s)**
+```bash
+./gradlew :otel-android-mobile:connectedDebugAndroidTest
+```
+Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flush, TTL).
+
+**Step 6 — Show telemetry in Dash0**
+- Open Dash0 dashboard, filter to dataset `otel-mobile`
+- Show `ui.tap`, `ui.screen_view`, `ui.scroll` events from step 4
+- Show stress signals: `device.health` metrics, `battery.change`, `thermal.status`
+- Show conditional flush: 20+ events arriving at once after crash trigger
+- Show journey → page → ui.tap parent-child span hierarchy
+
+**Talking points:**
+- OTel-native: `LogRecordExporter`/`SpanExporter`, standard OTLP/gRPC
+- Dual-tier buffering: RAM ring buffer + SQLite (survives process death)
+- Export policy DSL: conditional/continuous/hybrid — battery-efficient selective flush
+- 194 behavioral config tests: every toggle proven to change runtime behavior
+- UiTelemetryMode: EVENTS/SPANS/BOTH — consumer chooses signal type
+- Privacy by default: PII scrubbing, `captureLocation=false`, network privacy presets
+- Modular instrumentation: tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network
 
 ### Cross-Project
 ```bash
