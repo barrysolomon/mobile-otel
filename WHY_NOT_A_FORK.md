@@ -237,4 +237,4 @@ That's the opposite of a fork.
 
 ---
 
-**Questions? See [OPENTELEMETRY_NATIVE_ALIGNMENT.md](OPENTELEMETRY_NATIVE_ALIGNMENT.md) for technical details.**
+**Questions? See the [Design Document](DESIGN.md) for technical details or the [Architecture Deep Dive](docs/reference/ARCHITECTURE.md) for implementation specifics.**

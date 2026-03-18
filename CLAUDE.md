@@ -15,7 +15,7 @@ The management plane (Go gateway + React control plane UI) lives in the sister r
 - **Android Gradle Plugin**: 9.0.0 (Kotlin support is bundled — do **not** add a separate `org.jetbrains.kotlin.android` plugin)
 - **Gradle**: 8.9 (via wrapper in `examples/demo-app/`)
 - **KSP**: 2.3.4
-- **JDK**: 17 for the library (`otel-android-mobile/`); demo app uses JVM 1.8 + desugaring
+- **JDK**: 17 for the library (`otel-android-mobile/`); CI runs on JDK 21; demo app uses JVM 1.8 + desugaring
 - **Min SDK**: 26 (Android 8.0); **Target/Compile SDK**: 36
 - **AGP 9.0 note**: `targetSdk` must be in `testOptions` and `lint` blocks for library modules, not in `defaultConfig`
 
@@ -133,7 +133,19 @@ Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flus
 - Privacy by default: PII scrubbing, `captureLocation=false`, network privacy presets
 - Modular instrumentation: tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network
 
+### Demo Backend (`examples/demo-backend/`)
+```bash
+cd examples/demo-backend
+npm install                            # Install dependencies
+npm run dev                            # Start with nodemon (hot-reload)
+npm start                              # Start production
+npm test                               # Unit tests (vitest)
+```
+
+Node.js + Express + SQLite (better-sqlite3) backend that serves the demo app's appointment API. Instrumented with `@opentelemetry/sdk-node` and exports via OTLP. Has Docker support via `docker-compose.yml`.
+
 ### Cross-Project
+
 ```bash
 ./run-tests.sh                        # All tests (Android + Go)
 ./run-tests.sh --android-only         # Android only
@@ -153,7 +165,9 @@ Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
 
 2. **Collector Processor** (`collector-processor/mobilepolicyprocessor/`) — Custom OTEL Collector processor plugin (Go) that evaluates mobile export policies server-side.
 
-The **Gateway** and **Control Plane UI** live in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
+3. **Demo Backend** (`examples/demo-backend/`) — Express.js/TypeScript API server with SQLite, OTel-instrumented. Serves the demo app's appointment booking flow.
+
+4. **Control Plane UI** (`control-plane-ui/`) — React UI for managing export policies. The Go gateway lives in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
 ### Android SDK Internal Architecture
 
@@ -168,6 +182,7 @@ Entry point: `OTelMobile.start()` — calls `OTelMobileBuilder` which wires all 
 
 **UI instrumentation modules** (each under `instrumentation/<name>/`):
 
+- **Lifecycle** (`lifecycle/`): `LifecycleInstrumentation` — activity/fragment lifecycle tracking.
 - **Tap** (`tap/`): `TapInstrumentation` + `TapConfig` — emits OTel log records AND zero-duration child spans (`ui.tap`, `ui.long_press`, `ui.swipe`) nested under the active page span. Gate via `TapConfig.addSpanEvents`. Swipe threshold: `swipeMinDistancePx` (default 50px).
 - **Scroll** (`scroll/`): `ScrollInstrumentation` — throttled `RecyclerView.OnScrollListener`; emits `ui.scroll` child spans.
 - **Text Input** (`text-input/`): `TextInputInstrumentation` — fires on `EditText` focus-leave; emits `ui.text_input` child spans.
@@ -235,17 +250,17 @@ cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
 ## Known Issues & Gotchas
 
 - **Kotlin `/*` in strings/comments** — The Kotlin compiler misparses `/*` inside string literals in doc comments as a block-comment start. In `PolicyEvaluator.kt`, timezone wildcards like `"America/*"` must be written as `"America/wildcard"` or similar. Symptom: `Unclosed comment` error at end of file.
-- **`factory_test.go` missing** — The collector processor has no factory tests yet (P0 backlog item).
 - **`go.sum` untracked** — `collector-processor/mobilepolicyprocessor/go.sum` is not committed. Run `go mod tidy` before building the processor for the first time.
 
 ## Key Documents
 
-- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts (buffer, policy DSL, flush triggers, session/identity), SDK modules, privacy defaults, OTel compliance, demo scenarios
-- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks: SDK completeness, testing, infrastructure, documentation/OTEPs, upstream contribution
-- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — System architecture deep dive
+- **[docs/README.md](docs/README.md)** — Full documentation index
+- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts, SDK modules, OTel compliance
+- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks
+- **[HOW_TO_DEMO.md](HOW_TO_DEMO.md)** — Full demo runbook (2 emulators, 12 min)
+- **[docs/QUICK_START.md](docs/QUICK_START.md)** — SDK integration or demo setup
 - **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Android SDK integration guide
-- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** — SDK configuration guide (MobileConfig, export modes, policy DSL, sub-configs)
-- **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — Export mode details
-- **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Device metrics reference
-- **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Geo/device policy DSL
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** — MobileConfig, export modes, policy DSL, sub-configs
+- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — Architecture deep dive
 - **[docs/guides/TESTING_STRATEGY.md](docs/guides/TESTING_STRATEGY.md)** — Testing approach
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute

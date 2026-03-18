@@ -17,39 +17,41 @@ This project follows the [OpenTelemetry Code of Conduct](https://github.com/open
 
 ### Development Setup
 
-#### Android Library
-
 ```bash
-# Clone repository (current location — will move to opentelemetry-android-contrib on upstream merge)
 git clone https://github.com/barrysolomon/mobile-otel
 cd mobile-otel
+```
 
-# Build the SDK (run from the demo-app wrapper which includes the SDK as a project dependency)
+#### Android Library
+
+The SDK library has no standalone Gradle wrapper. Build it through the demo app:
+
+```bash
 cd examples/demo-app
-./gradlew :otel-android-mobile:build
 
-# Run tests
-./gradlew :otel-android-mobile:test
-
-# Run on device
-./gradlew :otel-android-mobile:connectedAndroidTest
+./gradlew :otel-android-mobile:build                   # Build
+./gradlew :otel-android-mobile:test                    # Unit tests
+./gradlew :otel-android-mobile:connectedAndroidTest    # Instrumented tests (requires emulator)
 ```
 
 #### Collector Processor
 
 ```bash
-# Clone repository (current location — will move to opentelemetry-collector-contrib on upstream merge)
-git clone https://github.com/barrysolomon/mobile-otel
-cd mobile-otel/collector-processor/mobilepolicyprocessor
+cd collector-processor/mobilepolicyprocessor
 
-# Install dependencies
-go mod download
+go mod download     # Install dependencies
+go build ./...      # Build
+go test ./...       # Unit tests
+```
 
-# Build
-go build ./...
+#### Demo Backend
 
-# Run tests
-go test ./...
+```bash
+cd examples/demo-backend
+
+npm install         # Install dependencies
+npm test            # Unit tests (vitest)
+npm run dev         # Start with hot-reload
 ```
 
 ### Making Changes
@@ -71,12 +73,14 @@ go test ./...
 4. **Test your changes**
 
    ```bash
-   # Android
-   ./gradlew test connectedAndroidTest
+   # Android (from examples/demo-app/)
+   ./gradlew :otel-android-mobile:test
 
-   # Go
-   go test ./...
-   go vet ./...
+   # Go (from collector-processor/mobilepolicyprocessor/)
+   go test ./... && go vet ./...
+
+   # Or run everything at once from the project root
+   ./run-tests.sh
    ```
 
 5. **Commit with clear messages**

@@ -40,8 +40,8 @@ kubectl apply -f dashboards/
 
 ## Telemetry Sources
 
-These dashboards query telemetry produced by the Android SDK (`otel-android-mobile/`) and forwarded
-through the gateway to the OTEL Collector. Key signal sources:
+These dashboards query telemetry produced by the Android SDK (`otel-android-mobile/`) and exported
+via OTLP/gRPC to the OTEL Collector. Key signal sources:
 
 - **Spans**: `page.*`, `ui.tap`, `ui.scroll`, `ui.swipe`, `ui.back_press`, `ui.text_input`
 - **Logs**: screen view events, crash reports, export policy evaluations

@@ -62,5 +62,5 @@ Initial alpha release of the OpenTelemetry Android Mobile SDK.
 | Android SDK | OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2 |
 | Collector Processor | Go 1.24, OTel Collector 1.39.0 |
 
-[Unreleased]: https://github.com/open-telemetry/opentelemetry-android-contrib/compare/mobile-v0.1.0-alpha...HEAD
-[0.1.0-alpha]: https://github.com/open-telemetry/opentelemetry-android-contrib/releases/tag/mobile-v0.1.0-alpha
+[Unreleased]: https://github.com/barrysolomon/mobile-otel/compare/mobile-v0.1.0-alpha...HEAD
+[0.1.0-alpha]: https://github.com/barrysolomon/mobile-otel/releases/tag/mobile-v0.1.0-alpha

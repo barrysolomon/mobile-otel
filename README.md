@@ -81,36 +81,45 @@ val client = OkHttpClient.Builder()
 
 ```text
 mobile-otel/
-├── otel-android-mobile/          # Android SDK library (Kotlin)
+├── otel-android-mobile/          # Android SDK library (Kotlin, JDK 17)
 │   └── src/main/java/.../mobile/
 │       ├── MobileOtel.kt         # Facade — wires all modules, public API
 │       ├── OTelMobile.kt         # Auto-capture entry point (delegates to MobileOtel)
-│       ├── MobileLoggerProvider.kt  # OTel LoggerProvider + processor
-│       ├── autocapture/          # Tap, scroll, freeze, ANR, lifecycle
-│       ├── breadcrumb/           # Journey breadcrumbs (circular buffer)
 │       ├── buffering/            # Two-tier ring buffer (RAM + SQLite)
 │       ├── config/               # MobileConfig, NetworkConfig, etc.
-│       ├── core/                 # SessionManager, PiiScrubber
 │       ├── errors/               # ErrorInstrumentation (uncaught, coroutine, RxJava)
 │       ├── export/               # EnrichingLogRecordExporter, RetryableExporter
-│       ├── network/              # OTelNetworkInterceptor (OkHttp)
 │       ├── policy/               # PolicyEvaluator (DSL engine)
 │       ├── predictive/           # PredictiveExportPolicy, DeviceHealthMonitor
-│       ├── sampling/             # DynamicSampler (page spans force sampling.priority=high)
 │       └── vitals/               # VitalsCollector, JankDetector, AppStart
+│
+├── otel-android-mobile-core/     # Core non-UI subsystems (builder, hub, context)
+│
+├── instrumentation/              # Modular UI instrumentation (10 modules)
+│   ├── tap/                      # Touch, long-press, swipe detection
+│   ├── scroll/                   # RecyclerView scroll tracking
+│   ├── screen/                   # Screen view + page span lifecycle
+│   ├── text-input/               # EditText focus-leave events
+│   ├── back-press/               # Hardware back button
+│   ├── freeze/                   # App freeze / ANR detection
+│   ├── errors/                   # Uncaught exceptions, coroutine errors
+│   ├── lifecycle/                # Activity/fragment lifecycle tracking
+│   ├── network/                  # OkHttp interceptor
+│   └── vitals/                   # Memory, battery, jank, app-start metrics
 │
 ├── collector-processor/          # Custom OTEL Collector processor (Go)
 │   └── mobilepolicyprocessor/
 │
-├── examples/demo-app/            # Android demo app — Schedulr (medical scheduling)
-│   └── android/
-│       ├── ConfigActivity.kt         # OTel SDK settings (buffering, export, sampling)
-│       ├── Dash0ConfigActivity.kt    # Dash0 backend connection (endpoint, auth, dataset)
-│       └── SchedulingActivity.kt     # Main activity with debug toolbar + fault injection
+├── examples/
+│   ├── demo-app/                 # Schedulr — full-featured demo (medical scheduling)
+│   ├── demo-app-starter/         # Minimal starter template for new integrations
+│   └── demo-backend/             # Express.js/TypeScript booking API (OTel-instrumented)
 │
+├── dashboards/                   # Dash0 dashboard JSON definitions (Perses format)
+├── docs/                         # Full documentation suite (see docs/README.md)
 ├── DESIGN.md                     # Architecture & design document
 ├── BACKLOG.md                    # Prioritized remaining work
-└── CLAUDE.md                     # AI assistant guidance
+└── HOW_TO_DEMO.md                # Full demo runbook (2 emulators, 12 min)
 ```
 
 ## Architecture
@@ -154,16 +163,20 @@ mobile-otel/
 | Component | Key Dependencies |
 | --- | --- |
 | Android SDK | Kotlin, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2 |
-| Collector Processor | Go 1.24, OpenTelemetry Collector 0.91.0 |
+| Demo Backend | TypeScript, Express.js 4.21, better-sqlite3, OTel SDK Node 0.57.0 |
+| Collector Processor | Go 1.21+, OpenTelemetry Collector 1.39.0 |
 
 ## Building
 
 ```bash
-# Android SDK (via demo app)
+# Android SDK (via demo app — the SDK has no standalone gradlew)
 cd examples/demo-app && ./gradlew :otel-android-mobile:build
 
 # Collector processor
 cd collector-processor/mobilepolicyprocessor && go build ./...
+
+# Demo backend
+cd examples/demo-backend && npm install && npm run dev
 
 # Run unit tests (Android + Go)
 ./run-tests.sh
@@ -177,36 +190,38 @@ cd collector-processor/mobilepolicyprocessor && go build ./...
 
 ## Documentation
 
+Full documentation index: **[docs/README.md](docs/README.md)**
+
 ### Getting Started
 
-- **[docs/guides/TUTORIAL_ANDROID_QUICKSTART.md](docs/guides/TUTORIAL_ANDROID_QUICKSTART.md)** — Step-by-step tutorial: add OTel to the Schedulr starter app and see live data in Dash0 in ~20 minutes. Uses `examples/demo-app-starter/`.
-- **[docs/QUICK_START.md](docs/QUICK_START.md)** — SDK integration in 5 minutes, or run the full demo end-to-end
-- **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Complete Android integration guide (auto-instrumentation, network, privacy, flush control)
+- **[Quick Start](docs/QUICK_START.md)** — SDK integration in 5 minutes, or run the full demo end-to-end
+- **[Tutorial: Android Quickstart](docs/guides/TUTORIAL_ANDROID_QUICKSTART.md)** — Step-by-step with the Schedulr starter app (~20 min)
+- **[Android SDK Guide](docs/ANDROID_SDK_GUIDE.md)** — Complete integration guide
+- **[Demo Runbook](HOW_TO_DEMO.md)** — Full 12-minute demo on 2 emulators
 
 ### SDK Reference
 
-- **[docs/AUTO_INSTRUMENTATION.md](docs/AUTO_INSTRUMENTATION.md)** — All auto-captured signals, trace hierarchy, privacy controls
-- **[docs/BUFFERING_AND_TAIL_SAMPLING.md](docs/BUFFERING_AND_TAIL_SAMPLING.md)** — Two-tier ring buffer internals, tail sampling via export policies, flushWindow mechanics, crash recovery
-- **[docs/EXPORT_MODES.md](docs/EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID modes explained
-- **[docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage, predictions)
-- **[docs/GEO_DEVICE_POLICY_EXTENSION.md](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policy DSL
-- **[docs/SAMPLING.md](docs/SAMPLING.md)** — Dynamic sampling configuration
-- **[docs/LOG_TAILING.md](docs/LOG_TAILING.md)** — Log tailing and streaming
-- **[docs/BUNDLED_CONFIG.md](docs/BUNDLED_CONFIG.md)** — Offline/bundled policy configuration
-
-### Operations & Development
-
-- **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** — Extending the SDK and collector processor
-- **[docs/TROUBLESHOOTING_GUIDE.md](docs/TROUBLESHOOTING_GUIDE.md)** — Common issues
-- **[docs/guides/TESTING_STRATEGY.md](docs/guides/TESTING_STRATEGY.md)** — Testing approach
-- **[docs/reference/TESTING_IMPLEMENTATION.md](docs/reference/TESTING_IMPLEMENTATION.md)** — Test inventory, run scripts, CI/CD
+- **[Auto-Instrumentation](docs/AUTO_INSTRUMENTATION.md)** — All auto-captured signals, trace hierarchy, privacy controls
+- **[Buffering & Tail Sampling](docs/BUFFERING_AND_TAIL_SAMPLING.md)** — Ring buffer internals, flushWindow mechanics, crash recovery
+- **[Export Modes](docs/EXPORT_MODES.md)** — CONDITIONAL, CONTINUOUS, HYBRID modes
+- **[Configuration](docs/CONFIGURATION.md)** — MobileConfig, export modes, policy DSL, sub-configs
+- **[Device Metrics](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage)
+- **[Geo/Device Policy DSL](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policies
 
 ### Architecture & Design
 
-- **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts, DSL, privacy, OTel compliance
-- **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks
-- **[docs/reference/ARCHITECTURE.md](docs/reference/ARCHITECTURE.md)** — Architecture deep dive
-- **[docs/OTEPs/](docs/OTEPs/)** — OpenTelemetry Enhancement Proposals
+- **[Design Document](DESIGN.md)** — Vision, system architecture, core concepts, DSL, OTel compliance
+- **[Architecture Deep Dive](docs/reference/ARCHITECTURE.md)** — Comprehensive design reference
+- **[Why Not a Fork](WHY_NOT_A_FORK.md)** — OTel alignment and composition-over-forking rationale
+- **[OTEPs](docs/OTEPs/)** — OpenTelemetry Enhancement Proposals (buffering, conditional export, predictive)
+
+### Operations & Development
+
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** — Extending the SDK and collector processor
+- **[Troubleshooting](docs/TROUBLESHOOTING_GUIDE.md)** — Common issues and solutions
+- **[Testing Strategy](docs/guides/TESTING_STRATEGY.md)** — Testing pyramid and approach
+- **[Backlog](BACKLOG.md)** — Prioritized remaining work across 5 tracks
+- **[Contributing](CONTRIBUTING.md)** — How to contribute
 
 ## License
 
