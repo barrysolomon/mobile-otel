@@ -140,6 +140,10 @@ class SettingsActivity : AppCompatActivity() {
 
     /**
      * Saves all telemetry settings to SharedPreferences.
+     *
+     * These settings are read by ConfigManager.loadDeviceMetricsConfig() and
+     * ConfigManager.parseTelemetrySettings() at SDK initialization time. After
+     * saving, a restart is required for changes to take effect.
      */
     private fun saveSettings() {
         val prefs = getSharedPreferences("telemetry_settings", MODE_PRIVATE)
@@ -170,7 +174,7 @@ class SettingsActivity : AppCompatActivity() {
 
             .apply()
 
-        Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Settings saved. Restart app to apply changes.", Toast.LENGTH_LONG).show()
         finish()
     }
 

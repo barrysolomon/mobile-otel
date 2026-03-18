@@ -4,10 +4,11 @@
 package io.opentelemetry.android.demo
 
 import android.os.Bundle
-import android.widget.CheckBox
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 /**
  * Settings screen for configuring telemetry collection and trigger behavior.
@@ -25,28 +26,28 @@ import com.google.android.material.button.MaterialButton
 class SettingsActivity : AppCompatActivity() {
 
     // Data Collection Settings
-    private lateinit var checkboxCollectLogs: CheckBox
-    private lateinit var checkboxCollectTraces: CheckBox
-    private lateinit var checkboxCollectMetrics: CheckBox
-    private lateinit var checkboxCollectDeviceMetrics: CheckBox
+    private lateinit var checkboxCollectLogs: SwitchMaterial
+    private lateinit var checkboxCollectTraces: SwitchMaterial
+    private lateinit var checkboxCollectMetrics: SwitchMaterial
+    private lateinit var checkboxCollectDeviceMetrics: SwitchMaterial
 
     // Device Metric Categories
-    private lateinit var checkboxMetricMemory: CheckBox
-    private lateinit var checkboxMetricBattery: CheckBox
-    private lateinit var checkboxMetricCpu: CheckBox
-    private lateinit var checkboxMetricNetwork: CheckBox
-    private lateinit var checkboxMetricStorage: CheckBox
-    private lateinit var checkboxMetricThermal: CheckBox
-    private lateinit var checkboxMetricDisplay: CheckBox
-    private lateinit var checkboxMetricSystem: CheckBox
-    private lateinit var checkboxMetricApp: CheckBox
-    private lateinit var checkboxMetricLocation: CheckBox
+    private lateinit var checkboxMetricMemory: SwitchMaterial
+    private lateinit var checkboxMetricBattery: SwitchMaterial
+    private lateinit var checkboxMetricCpu: SwitchMaterial
+    private lateinit var checkboxMetricNetwork: SwitchMaterial
+    private lateinit var checkboxMetricStorage: SwitchMaterial
+    private lateinit var checkboxMetricThermal: SwitchMaterial
+    private lateinit var checkboxMetricDisplay: SwitchMaterial
+    private lateinit var checkboxMetricSystem: SwitchMaterial
+    private lateinit var checkboxMetricApp: SwitchMaterial
+    private lateinit var checkboxMetricLocation: SwitchMaterial
 
     // Trigger Settings
-    private lateinit var checkboxUiFreeze: CheckBox
-    private lateinit var checkboxCrash: CheckBox
-    private lateinit var checkboxNetworkError: CheckBox
-    private lateinit var checkboxLowMemory: CheckBox
+    private lateinit var checkboxUiFreeze: SwitchMaterial
+    private lateinit var checkboxCrash: SwitchMaterial
+    private lateinit var checkboxNetworkError: SwitchMaterial
+    private lateinit var checkboxLowMemory: SwitchMaterial
 
     // Buttons
     private lateinit var btnSave: MaterialButton
@@ -57,9 +58,10 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        // Enable back button in action bar
+        // Set up MaterialToolbar
+        val toolbar = findViewById<MaterialToolbar>(R.id.settingsToolbar)
+        setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Telemetry Settings"
 
         // Initialize data collection checkboxes
         checkboxCollectLogs = findViewById(R.id.checkboxCollectLogs)

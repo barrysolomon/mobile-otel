@@ -85,6 +85,10 @@ object ConfigManager {
     private const val KEY_ERROR_RATE_LIMIT = "error_rate_limit"
     private const val KEY_ERROR_DEDUPE_WINDOW_MINUTES = "error_dedupe_window_minutes"
 
+    // Backend
+    private const val KEY_BACKEND_URL = "backend_url"
+    private const val DEFAULT_BACKEND_URL = "http://10.0.2.2:3001"
+
     // Defaults
     private const val DEFAULT_SERVICE_NAME = "otel-mobile-demo"
     private const val DEFAULT_SERVICE_VERSION = "1.0.0"
@@ -366,6 +370,19 @@ object ConfigManager {
             .apply()
     }
 
+    /**
+     * Gets backend API base URL (for demo-backend connection).
+     */
+    fun getBackendUrl(context: Context): String =
+        getPrefs(context).getString(KEY_BACKEND_URL, DEFAULT_BACKEND_URL) ?: DEFAULT_BACKEND_URL
+
+    /**
+     * Saves backend API base URL.
+     */
+    fun saveBackendUrl(context: Context, url: String) {
+        getPrefs(context).edit().putString(KEY_BACKEND_URL, url).apply()
+    }
+
     fun saveProtocol(context: Context, protocol: String) {
         getPrefs(context).edit().putString(KEY_PROTOCOL, protocol).apply()
     }
@@ -558,6 +575,17 @@ object ConfigManager {
             ExportMode.CONDITIONAL
         }
 
+        // Parse UI telemetry mode
+        val uiTelemetryModeStr = jsonObj.optString("uiTelemetryMode", DEFAULT_UI_TELEMETRY_MODE)
+        val uiTelemetryMode = try {
+            UiTelemetryMode.valueOf(uiTelemetryModeStr)
+        } catch (e: IllegalArgumentException) {
+            UiTelemetryMode.EVENTS
+        }
+
+        // Parse sampling rate
+        val samplingRate = jsonObj.optDouble("samplingRate", DEFAULT_SAMPLING_RATE.toDouble())
+
         // Parse headers
         val headersObj = jsonObj.optJSONObject("headers")
         val headers = if (headersObj != null && headersObj.length() > 0) {
@@ -578,8 +606,14 @@ object ConfigManager {
             serviceVersion = jsonObj.optString("serviceVersion", DEFAULT_SERVICE_VERSION),
             collectorEndpoint = jsonObj.optString("collectorEndpoint", DEFAULT_COLLECTOR_ENDPOINT),
             exportMode = exportMode,
+            uiTelemetryMode = uiTelemetryMode,
+            samplingConfig = io.opentelemetry.android.mobile.sampling.SamplingConfig.dynamic(
+                normalRate = samplingRate,
+                highPriorityRate = 1.0
+            ),
             traceExportIntervalSeconds = jsonObj.optLong("traceExportIntervalSeconds", DEFAULT_TRACE_EXPORT_INTERVAL_SECONDS),
             metricExportIntervalSeconds = jsonObj.optLong("metricExportIntervalSeconds", DEFAULT_METRIC_EXPORT_INTERVAL_SECONDS),
+            predictionIntervalSeconds = jsonObj.optLong("predictionIntervalSeconds", DEFAULT_PREDICTION_INTERVAL_SECONDS),
             ramBufferSize = jsonObj.optInt("ramBufferSize", DEFAULT_RAM_BUFFER_SIZE),
             diskBufferMb = jsonObj.optInt("diskBufferMb", DEFAULT_DISK_BUFFER_MB),
             diskBufferTtlHours = jsonObj.optInt("diskBufferTtlHours", DEFAULT_DISK_BUFFER_TTL_HOURS),

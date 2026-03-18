@@ -1648,6 +1648,10 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, ConfigActivity::class.java))
                 true
             }
+            R.id.action_dash0 -> {
+                startActivity(Intent(this, Dash0ConfigActivity::class.java))
+                true
+            }
             R.id.action_logs -> {
                 startActivity(Intent(this, LogsActivity::class.java))
                 true

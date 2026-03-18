@@ -4,6 +4,7 @@
 package io.opentelemetry.android.demo.data.api
 
 import android.content.Context
+import android.util.Log
 import io.opentelemetry.android.mobile.OTelMobile
 import io.opentelemetry.android.mobile.network.NetworkConfig
 import io.opentelemetry.android.mobile.network.OTelNetworkInterceptor
@@ -53,7 +54,10 @@ class SchedulingApiClient private constructor(context: Context) {
         val request = Request.Builder().url(url).get().build()
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: ""
-        if (!response.isSuccessful) throw HttpException(response.code, body)
+        if (!response.isSuccessful) {
+            Log.w(TAG, "GET $url failed: ${response.code}")
+            throw HttpException(response.code, body)
+        }
         return body
     }
 
@@ -66,7 +70,10 @@ class SchedulingApiClient private constructor(context: Context) {
             .build()
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: ""
-        if (!response.isSuccessful) throw HttpException(response.code, body)
+        if (!response.isSuccessful) {
+            Log.w(TAG, "GET $url failed: ${response.code}")
+            throw HttpException(response.code, body)
+        }
         return body
     }
 
@@ -76,7 +83,10 @@ class SchedulingApiClient private constructor(context: Context) {
         val request = Request.Builder().url(url).post(body).build()
         val response = client.newCall(request).execute()
         val responseBody = response.body?.string() ?: ""
-        if (!response.isSuccessful) throw HttpException(response.code, responseBody)
+        if (!response.isSuccessful) {
+            Log.w(TAG, "POST $url failed: ${response.code}")
+            throw HttpException(response.code, responseBody)
+        }
         return responseBody
     }
 
@@ -85,13 +95,17 @@ class SchedulingApiClient private constructor(context: Context) {
         val request = Request.Builder().url(url).delete().build()
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: ""
-        if (!response.isSuccessful) throw HttpException(response.code, body)
+        if (!response.isSuccessful) {
+            Log.w(TAG, "DELETE $url failed: ${response.code}")
+            throw HttpException(response.code, body)
+        }
         return body
     }
 
     class HttpException(val code: Int, message: String) : Exception(message)
 
     companion object {
+        private const val TAG = "SchedulingApiClient"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         @Volatile private var instance: SchedulingApiClient? = null

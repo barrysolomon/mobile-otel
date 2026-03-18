@@ -4,14 +4,20 @@
 
     <item
         android:id="@+id/action_settings"
-        android:title="Settings"
+        android:title="Telemetry Collection"
         android:icon="@android:drawable/ic_menu_preferences"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_config"
-        android:title="Configuration"
+        android:title="SDK Configuration"
         android:icon="@android:drawable/ic_menu_manage"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_dash0"
+        android:title="Dash0 Connection"
+        android:icon="@android:drawable/ic_menu_share"
         app:showAsAction="never" />
 
     <item

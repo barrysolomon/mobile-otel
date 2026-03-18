@@ -44,4 +44,30 @@ describe("GET /api/slots", () => {
       expect(slot.date).toBe(today);
     }
   });
+
+  it("returns MISSING_DOCTOR_ID error code without doctor_id", async () => {
+    const res = await request(app).get("/api/slots");
+    expect(res.body.code).toBe("MISSING_DOCTOR_ID");
+  });
+
+  it("returns empty array for nonexistent doctor", async () => {
+    const res = await request(app).get("/api/slots?doctor_id=nonexistent");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("only returns available slots (not booked ones)", async () => {
+    // Book a slot, then verify it disappears from the available list
+    const slotsBefore = await request(app).get(`/api/slots?doctor_id=${doctorId}`);
+    const countBefore = slotsBefore.body.length;
+
+    const firstSlot = slotsBefore.body[0];
+    // Book directly via appointments endpoint
+    await request(app)
+      .post("/api/appointments")
+      .send({ doctor_id: doctorId, slot_id: firstSlot.id, patient: "Test", reason: "Test" });
+
+    const slotsAfter = await request(app).get(`/api/slots?doctor_id=${doctorId}`);
+    expect(slotsAfter.body.length).toBe(countBefore - 1);
+  });
 });

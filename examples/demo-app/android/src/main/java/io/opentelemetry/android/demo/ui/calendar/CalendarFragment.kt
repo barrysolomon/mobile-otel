@@ -71,10 +71,18 @@ class CalendarFragment : Fragment() {
         view.findViewById<View>(R.id.btnPrevMonth).setOnClickListener {
             displayedCalendar.add(Calendar.MONTH, -1)
             renderMonth()
+            MobileOtel.sendEvent("calendar.month_changed", mapOf(
+                "direction" to "previous",
+                "month" to monthFormat.format(displayedCalendar.time)
+            ))
         }
         view.findViewById<View>(R.id.btnNextMonth).setOnClickListener {
             displayedCalendar.add(Calendar.MONTH, 1)
             renderMonth()
+            MobileOtel.sendEvent("calendar.month_changed", mapOf(
+                "direction" to "next",
+                "month" to monthFormat.format(displayedCalendar.time)
+            ))
         }
 
         renderMonth()

@@ -65,9 +65,16 @@ class SchedulingActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
                     .spanBuilder("user.navigate")
                     .setAttribute(AttributeKey.stringKey("screen.destination"), destination)
                     .startSpan()
-                loadFragment(fragment)
-                span.addEvent("ui.render.complete")
-                span.end()
+                try {
+                    loadFragment(fragment)
+                    span.addEvent("ui.render.complete")
+                } catch (e: Exception) {
+                    span.recordException(e)
+                    span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.message ?: "navigation failed")
+                    throw e
+                } finally {
+                    span.end()
+                }
             } else {
                 loadFragment(fragment)
             }

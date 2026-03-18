@@ -45,7 +45,7 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var editDiskBufferMb: EditText
     private lateinit var editDiskBufferTtl: EditText
 
-    // Export
+    // Export & Advanced
     private lateinit var radioGroupExportMode: RadioGroup
     private lateinit var radioConditional: RadioButton
     private lateinit var radioContinuous: RadioButton
@@ -54,16 +54,12 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var editMetricExportInterval: EditText
     private lateinit var editExportTimeout: EditText
     private lateinit var editMaxRetries: EditText
-
-    // Advanced
     private lateinit var checkboxAttachContext: SwitchMaterial
     private lateinit var editBuildChannel: EditText
 
-    // Trace Sampling
+    // Sampling & Prediction
     private lateinit var sliderSamplingRate: Slider
     private lateinit var tvSamplingRateValue: TextView
-
-    // Prediction
     private lateinit var sliderPredictionInterval: Slider
     private lateinit var tvPredictionIntervalValue: TextView
 
@@ -135,7 +131,7 @@ class ConfigActivity : AppCompatActivity() {
         editDiskBufferMb         = findViewById(R.id.editDiskBufferMb)
         editDiskBufferTtl        = findViewById(R.id.editDiskBufferTtl)
 
-        // Export
+        // Export & Advanced
         radioGroupExportMode     = findViewById(R.id.radioGroupExportMode)
         radioConditional         = findViewById(R.id.radioConditional)
         radioContinuous          = findViewById(R.id.radioContinuous)
@@ -144,12 +140,10 @@ class ConfigActivity : AppCompatActivity() {
         editMetricExportInterval = findViewById(R.id.editMetricExportInterval)
         editExportTimeout        = findViewById(R.id.editExportTimeout)
         editMaxRetries           = findViewById(R.id.editMaxRetries)
-
-        // Advanced
         checkboxAttachContext    = findViewById(R.id.checkboxAttachContext)
         editBuildChannel         = findViewById(R.id.editBuildChannel)
 
-        // Sampling
+        // Sampling & Prediction
         sliderSamplingRate       = findViewById(R.id.sliderSamplingRate)
         tvSamplingRateValue      = findViewById(R.id.tvSamplingRateValue)
         sliderPredictionInterval = findViewById(R.id.sliderPredictionInterval)

@@ -46,7 +46,7 @@
       "lowMemory": true
     }
   },
-  "workflows": [
+  "exportPolicies": [
     {
       "id": "ui-freeze-detector",
       "name": "UI Freeze Detection",

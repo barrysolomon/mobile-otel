@@ -125,5 +125,59 @@ describe("Appointments API", () => {
       expect(res.status).toBe(404);
       expect(res.body.code).toBe("NOT_FOUND");
     });
+
+    it("allows rebooking a cancelled slot", async () => {
+      // Book, cancel, rebook
+      const created = await request(app)
+        .post("/api/appointments")
+        .send({ doctor_id: doctorId, slot_id: slotId, patient: "John Doe", reason: "Checkup" });
+      await request(app).delete(`/api/appointments/${created.body.id}`);
+
+      const rebooked = await request(app)
+        .post("/api/appointments")
+        .send({ doctor_id: doctorId, slot_id: slotId, patient: "Jane Doe", reason: "New booking" });
+      expect(rebooked.status).toBe(201);
+      expect(rebooked.body.patient).toBe("Jane Doe");
+    });
+  });
+
+  describe("GET /api/appointments (empty)", () => {
+    it("returns empty array when no appointments exist", async () => {
+      const res = await request(app).get("/api/appointments");
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+  });
+
+  describe("POST /api/appointments field validation", () => {
+    it("returns MISSING_FIELDS when only patient is provided", async () => {
+      const res = await request(app)
+        .post("/api/appointments")
+        .send({ patient: "John Doe" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("MISSING_FIELDS");
+    });
+
+    it("returns MISSING_FIELDS for empty body", async () => {
+      const res = await request(app)
+        .post("/api/appointments")
+        .send({});
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("MISSING_FIELDS");
+    });
+
+    it("created appointment has all expected fields", async () => {
+      const res = await request(app)
+        .post("/api/appointments")
+        .send({ doctor_id: doctorId, slot_id: slotId, patient: "Field Test", reason: "Verify fields" });
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty("id");
+      expect(res.body).toHaveProperty("doctor_id");
+      expect(res.body).toHaveProperty("slot_id");
+      expect(res.body).toHaveProperty("patient");
+      expect(res.body).toHaveProperty("reason");
+      expect(res.body).toHaveProperty("status");
+      expect(res.body).toHaveProperty("created_at");
+    });
   });
 });

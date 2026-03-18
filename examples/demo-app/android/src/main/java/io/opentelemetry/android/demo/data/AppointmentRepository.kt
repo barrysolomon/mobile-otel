@@ -4,6 +4,7 @@
 package io.opentelemetry.android.demo.data
 
 import android.content.Context
+import io.opentelemetry.android.demo.ConfigManager
 import io.opentelemetry.android.demo.data.api.SchedulingApiClient
 import io.opentelemetry.android.demo.data.model.Appointment
 import io.opentelemetry.android.demo.data.model.AppointmentStatus
@@ -18,8 +19,9 @@ import java.util.UUID
 
 object AppointmentRepository {
 
-    // Real backend base URL — calls are traced by OTelNetworkInterceptor
-    private const val BACKEND_BASE_URL = "http://10.0.2.2:3001"
+    /** Backend base URL — resolved from ConfigManager at call time. */
+    private fun backendUrl(context: Context): String =
+        ConfigManager.getBackendUrl(context)
 
     val providers = listOf(
         "Dr. Sarah Chen",
@@ -53,7 +55,7 @@ object AppointmentRepository {
         if (doctorCache.isNotEmpty()) return
         try {
             val client = SchedulingApiClient.getInstance(context)
-            val json = JSONArray(client.get("$BACKEND_BASE_URL/api/doctors"))
+            val json = JSONArray(client.get("${backendUrl(context)}/api/doctors"))
             doctorCache = (0 until json.length()).associate { i ->
                 val doc = json.getJSONObject(i)
                 doc.getString("id") to doc.getString("name")
@@ -141,7 +143,7 @@ object AppointmentRepository {
 
                 ensureDoctorCache(context)
                 val client = SchedulingApiClient.getInstance(context)
-                val json = client.get("$BACKEND_BASE_URL/api/appointments")
+                val json = client.get("${backendUrl(context)}/api/appointments")
                 val backendAppointments = parseAppointments(json)
                 allAppointments.clear()
                 allAppointments.addAll(backendAppointments)
@@ -189,7 +191,7 @@ object AppointmentRepository {
                 val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                     .format(java.util.Date(dateMs))
                 val slotsJson = JSONArray(client.get(
-                    "$BACKEND_BASE_URL/api/slots?doctor_id=$doctorId&date=$dateStr"
+                    "${backendUrl(context)}/api/slots?doctor_id=$doctorId&date=$dateStr"
                 ))
                 val slotId = findMatchingSlotId(slotsJson, timeSlot)
                     ?: throw ApiException(404, "No available slot for $timeSlot")
@@ -201,7 +203,7 @@ object AppointmentRepository {
                     put("reason", notes.ifBlank { type.label })
                 }
 
-                val responseJson = client.post("$BACKEND_BASE_URL/api/appointments", body.toString())
+                val responseJson = client.post("${backendUrl(context)}/api/appointments", body.toString())
                 val result = JSONObject(responseJson)
 
                 Appointment(
@@ -229,7 +231,7 @@ object AppointmentRepository {
     suspend fun loadFullHistory(context: Context): List<Appointment> = withContext(Dispatchers.IO) {
         try {
             val client = SchedulingApiClient.getInstance(context)
-            client.get("$BACKEND_BASE_URL/api/appointments") // real HTTP call for trace
+            client.get("${backendUrl(context)}/api/appointments") // real HTTP call for trace
         } catch (_: Exception) {
             // Fallback — generate synthetic data
         }
