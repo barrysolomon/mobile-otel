@@ -14,6 +14,8 @@ import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbConfig
 import io.opentelemetry.android.mobile.vitals.VitalsConfig
 import io.opentelemetry.android.mobile.network.NetworkConfig
 import io.opentelemetry.android.mobile.errors.ErrorConfig
+import io.opentelemetry.android.mobile.instrumentation.ScreenshotConfig
+import io.opentelemetry.android.mobile.instrumentation.WireframeConfig
 
 /**
  * Controls whether UI interactions (taps, scrolls, back presses, screen views, text input)
@@ -116,7 +118,11 @@ data class MobileConfig(
     val breadcrumbConfig: BreadcrumbConfig = BreadcrumbConfig.default(),
     val vitalsConfig: VitalsConfig = VitalsConfig.default(),
     val networkConfig: NetworkConfig = NetworkConfig.default(),
-    val errorConfig: ErrorConfig = ErrorConfig.default()
+    val errorConfig: ErrorConfig = ErrorConfig.default(),
+    /** Incubating — screenshot capture is not part of the OTel spec. Disabled by default. */
+    @Incubating val screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false),
+    /** Incubating — wireframe capture is not part of the OTel spec. Disabled by default. */
+    @Incubating val wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -180,6 +186,8 @@ data class MobileConfig(
         private var vitalsConfig: VitalsConfig = VitalsConfig.default()
         private var networkConfig: NetworkConfig = NetworkConfig.default()
         private var errorConfig: ErrorConfig = ErrorConfig.default()
+        private var screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false)
+        private var wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -206,6 +214,8 @@ data class MobileConfig(
         fun setVitalsConfig(config: VitalsConfig) = apply { this.vitalsConfig = config }
         fun setNetworkConfig(config: NetworkConfig) = apply { this.networkConfig = config }
         fun setErrorConfig(config: ErrorConfig) = apply { this.errorConfig = config }
+        fun setScreenshotConfig(config: ScreenshotConfig) = apply { this.screenshotConfig = config }
+        fun setWireframeConfig(config: WireframeConfig) = apply { this.wireframeConfig = config }
 
         fun build(): MobileConfig {
             return MobileConfig(
@@ -233,7 +243,9 @@ data class MobileConfig(
                 breadcrumbConfig = breadcrumbConfig,
                 vitalsConfig = vitalsConfig,
                 networkConfig = networkConfig,
-                errorConfig = errorConfig
+                errorConfig = errorConfig,
+                screenshotConfig = screenshotConfig,
+                wireframeConfig = wireframeConfig
             )
         }
     }

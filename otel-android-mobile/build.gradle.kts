@@ -72,6 +72,8 @@ dependencies {
     api(project(":instrumentation-errors"))
     api(project(":instrumentation-network"))
     api(project(":instrumentation-vitals"))
+    api(project(":instrumentation-screenshot"))
+    api(project(":instrumentation-wireframe"))
 
     // OpenTelemetry SDK - Core dependencies
     api("io.opentelemetry:opentelemetry-api:1.58.0")

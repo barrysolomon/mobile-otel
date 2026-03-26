@@ -6,6 +6,7 @@
 package io.opentelemetry.android.mobile.errors
 
 import io.opentelemetry.android.mobile.instrumentation.Incubating
+import io.opentelemetry.android.mobile.instrumentation.RateLimiter
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
@@ -17,7 +18,6 @@ import io.opentelemetry.android.mobile.core.PiiScrubber
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
 import kotlinx.coroutines.CoroutineExceptionHandler
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -47,8 +47,7 @@ class ErrorInstrumentation private constructor(
     private val errorFingerprints = ConcurrentHashMap<String, Long>()
 
     // Rate limiting
-    private val errorsThisMinute = AtomicInteger(0)
-    private var lastMinuteReset = System.currentTimeMillis()
+    private val rateLimiter = RateLimiter(config.rateLimit)
 
     /**
      * Coroutine exception handler for Kotlin coroutines.
@@ -135,7 +134,7 @@ class ErrorInstrumentation private constructor(
         }
 
         // Check rate limit
-        if (!checkRateLimit()) {
+        if (!rateLimiter.tryAcquire()) {
             return
         }
 
@@ -267,25 +266,6 @@ class ErrorInstrumentation private constructor(
     }
 
     /**
-     * Check rate limit.
-     */
-    private fun checkRateLimit(): Boolean {
-        val now = System.currentTimeMillis()
-
-        // Reset counter every minute
-        synchronized(this) {
-            if (now - lastMinuteReset > 60_000) {
-                errorsThisMinute.set(0)
-                lastMinuteReset = now
-            }
-        }
-
-        // Check if under limit
-        val count = errorsThisMinute.incrementAndGet()
-        return count <= config.rateLimit
-    }
-
-    /**
      * Manually capture an exception.
      */
     fun recordException(throwable: Throwable, context: Map<String, String> = emptyMap()) {
@@ -303,10 +283,11 @@ class ErrorInstrumentation private constructor(
      * Get error statistics.
      */
     fun getStatistics(): ErrorStatistics {
+        val count = rateLimiter.currentCount
         return ErrorStatistics(
             uniqueErrors = errorFingerprints.size,
-            errorsThisMinute = errorsThisMinute.get(),
-            rateLimitActive = errorsThisMinute.get() >= config.rateLimit
+            errorsThisMinute = count,
+            rateLimitActive = count >= config.rateLimit
         )
     }
 

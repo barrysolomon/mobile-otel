@@ -50,4 +50,24 @@ object MobileSemconv {
     @JvmField val EXCEPTION_MESSAGE      = AttributeKey.stringKey("exception.message")
     @JvmField val EXCEPTION_STACKTRACE   = AttributeKey.stringKey("exception.stacktrace")
     @JvmField val NETWORK_CONNECTION_TYPE = AttributeKey.stringKey("network.connection.type")
+
+    // ── Screenshot ──────────────────────────────────────────────────────────
+    const val UI_SCREENSHOT = "ui.screenshot"
+
+    @JvmField val SCREENSHOT_TRIGGER    = AttributeKey.stringKey("mobile.screenshot.trigger")
+    @JvmField val SCREENSHOT_FORMAT     = AttributeKey.stringKey("mobile.screenshot.format")
+    @JvmField val SCREENSHOT_WIDTH      = AttributeKey.longKey("mobile.screenshot.width")
+    @JvmField val SCREENSHOT_HEIGHT     = AttributeKey.longKey("mobile.screenshot.height")
+    @JvmField val SCREENSHOT_SIZE_BYTES = AttributeKey.longKey("mobile.screenshot.size_bytes")
+    @JvmField val SCREENSHOT_DATA_URL   = AttributeKey.stringKey("mobile.screenshot.data_url")
+    @JvmField val SCREENSHOT_REDACTED   = AttributeKey.booleanKey("mobile.screenshot.redacted")
+
+    // ── Wireframe ─────────────────────────────────────────────────────────
+    const val UI_WIREFRAME = "ui.wireframe"
+
+    @JvmField val WIREFRAME_TRIGGER    = AttributeKey.stringKey("mobile.wireframe.trigger")
+    @JvmField val WIREFRAME_SEQUENCE   = AttributeKey.longKey("mobile.wireframe.sequence")
+    @JvmField val WIREFRAME_SIZE_BYTES = AttributeKey.longKey("mobile.wireframe.size_bytes")
+    @JvmField val WIREFRAME_NODE_COUNT = AttributeKey.longKey("mobile.wireframe.node_count")
+    @JvmField val WIREFRAME_DATA       = AttributeKey.stringKey("mobile.wireframe.data")
 }

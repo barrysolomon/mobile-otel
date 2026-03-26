@@ -55,3 +55,9 @@ project(":instrumentation-network").projectDir = file("../../instrumentation/net
 
 include(":instrumentation-vitals")
 project(":instrumentation-vitals").projectDir = file("../../instrumentation/vitals")
+
+include(":instrumentation-screenshot")
+project(":instrumentation-screenshot").projectDir = file("../../instrumentation/screenshot")
+
+include(":instrumentation-wireframe")
+project(":instrumentation-wireframe").projectDir = file("../../instrumentation/wireframe")

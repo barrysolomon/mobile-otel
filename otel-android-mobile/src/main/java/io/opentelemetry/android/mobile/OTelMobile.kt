@@ -24,6 +24,8 @@ import io.opentelemetry.android.mobile.instrumentation.ScrollInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.TapInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.TextInputInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.VitalsInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.ScreenshotInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.WireframeInstrumentation
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -97,7 +99,7 @@ object OTelMobile {
                 recoveryTracker = rt
                 rt.start()
 
-                handle = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
+                val builder = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
                     .setUiTelemetryMode(config.uiTelemetryMode.toCore())
                     .addInstrumentation(LifecycleInstrumentation())
                     .addInstrumentation(ScreenViewInstrumentation())
@@ -108,7 +110,16 @@ object OTelMobile {
                     .addInstrumentation(FreezeInstrumentation())
                     .addInstrumentation(ErrorsInstrumentation())
                     .addInstrumentation(VitalsInstrumentation())
-                    .build()
+
+                // Incubating: non-OTel-native modules, opt-in via config flags.
+                if (config.screenshotConfig.enabled) {
+                    builder.addInstrumentation(ScreenshotInstrumentation(config.screenshotConfig))
+                }
+                if (config.wireframeConfig.enabled) {
+                    builder.addInstrumentation(WireframeInstrumentation(config.wireframeConfig))
+                }
+
+                handle = builder.build()
             }
         }
     }

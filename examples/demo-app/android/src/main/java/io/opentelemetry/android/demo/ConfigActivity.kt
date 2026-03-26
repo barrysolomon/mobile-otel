@@ -22,6 +22,8 @@ import io.opentelemetry.android.mobile.instrumentation.TextInputConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
 import io.opentelemetry.android.mobile.errors.ErrorConfig
 import io.opentelemetry.android.mobile.network.NetworkConfig
+import io.opentelemetry.android.mobile.instrumentation.ScreenshotConfig
+import io.opentelemetry.android.mobile.instrumentation.WireframeConfig
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.android.mobile.vitals.VitalsConfig
 
@@ -97,6 +99,11 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var switchTextCharCount: SwitchMaterial
     private lateinit var switchTextIsSet: SwitchMaterial
     private lateinit var switchTextContent: SwitchMaterial
+
+    // Incubating
+    private lateinit var switchScreenshotEnabled: SwitchMaterial
+    private lateinit var switchScreenshotOnScreenView: SwitchMaterial
+    private lateinit var switchWireframeEnabled: SwitchMaterial
 
     // What to Capture
     private lateinit var checkboxCaptureLifecycle: SwitchMaterial
@@ -183,6 +190,11 @@ class ConfigActivity : AppCompatActivity() {
         switchTextCharCount       = findViewById(R.id.switchTextCharCount)
         switchTextIsSet           = findViewById(R.id.switchTextIsSet)
         switchTextContent         = findViewById(R.id.switchTextContent)
+
+        // Incubating
+        switchScreenshotEnabled       = findViewById(R.id.switchScreenshotEnabled)
+        switchScreenshotOnScreenView  = findViewById(R.id.switchScreenshotOnScreenView)
+        switchWireframeEnabled        = findViewById(R.id.switchWireframeEnabled)
 
         // Capture
         checkboxCaptureLifecycle  = findViewById(R.id.checkboxCaptureLifecycle)
@@ -274,6 +286,17 @@ class ConfigActivity : AppCompatActivity() {
         checkboxFlushOnError.isChecked               = error.flushOnError
         editErrorRateLimit.setText(error.rateLimit.toString())
         editErrorDedupeWindowMinutes.setText((error.deduplicateWindowMs / 60_000L).toString())
+
+        val screenshot = config.screenshotConfig
+        switchScreenshotEnabled.isChecked      = screenshot.enabled
+        switchScreenshotOnScreenView.isChecked = screenshot.captureOnScreenView
+        switchScreenshotOnScreenView.isEnabled = screenshot.enabled
+        switchWireframeEnabled.isChecked       = config.wireframeConfig.enabled
+
+        // Toggle sub-option availability when screenshot is toggled.
+        switchScreenshotEnabled.setOnCheckedChangeListener { _, isChecked ->
+            switchScreenshotOnScreenView.isEnabled = isChecked
+        }
 
         when (ConfigManager.getUiTelemetryMode(this)) {
             "SPANS" -> radioUiSpans.isChecked = true
@@ -371,6 +394,13 @@ class ConfigActivity : AppCompatActivity() {
                     flushOnError               = checkboxFlushOnError.isChecked,
                     rateLimit                  = editErrorRateLimit.text.toString().toInt(),
                     deduplicateWindowMs        = editErrorDedupeWindowMinutes.text.toString().toLong() * 60_000L
+                ),
+                screenshotConfig           = ScreenshotConfig(
+                    enabled                    = switchScreenshotEnabled.isChecked,
+                    captureOnScreenView        = switchScreenshotOnScreenView.isChecked
+                ),
+                wireframeConfig            = WireframeConfig(
+                    enabled                    = switchWireframeEnabled.isChecked
                 )
             )
 
@@ -396,6 +426,11 @@ class ConfigActivity : AppCompatActivity() {
 
     private fun resetToDefaults() {
         ConfigManager.resetToDefaults(this)
+        // Reset incubating switches to off (loadConfiguration will also set them, but be explicit)
+        switchScreenshotEnabled.isChecked = false
+        switchScreenshotOnScreenView.isChecked = false
+        switchScreenshotOnScreenView.isEnabled = false
+        switchWireframeEnabled.isChecked = false
         loadConfiguration()
         Toast.makeText(this, "Reset to defaults", Toast.LENGTH_SHORT).show()
     }

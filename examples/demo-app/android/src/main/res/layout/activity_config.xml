@@ -526,6 +526,37 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ─── INCUBATING (non-OTel-native) ──────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/surface">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/primary" android:paddingHorizontal="16dp" android:paddingVertical="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="INCUBATING" android:textColor="@color/text_on_primary" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12" />
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Non-OTel-native modules (opt-in)" android:textSize="12sp" android:textColor="#666666" android:layout_marginBottom="12dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchScreenshotEnabled"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Screenshot capture" android:textSize="13sp" android:layout_marginBottom="8dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchScreenshotOnScreenView"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Auto-capture on screen transition" android:textSize="13sp" android:layout_marginBottom="8dp"
+                            android:paddingStart="24dp" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchWireframeEnabled"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="Wireframe capture" android:textSize="13sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ─── ACTIONS ───────────────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"

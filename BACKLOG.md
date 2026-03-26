@@ -80,6 +80,19 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [ ] Add settings UI for enabling/disabling individual modules
 - [ ] Environment-specific configs (dev, staging, prod)
 
+### P1 — Control Plane: Wireframe Journey Replay
+
+Visual user journey replay in the [control plane UI](https://github.com/barrysolomon/mobile-otel-control-plane),
+consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backend.
+
+- [ ] **Wireframe renderer** — React component that renders a `WireframeNode` JSON tree as SVG (rectangles for containers, rounded for buttons, X-boxes for images, gray lines for text placeholders)
+- [ ] **Journey timeline view** — Query `ui.wireframe` logs by `mobile.session.id`, order by `mobile.wireframe.sequence`, display as a horizontal filmstrip of wireframe thumbnails
+- [ ] **Interaction overlay** — Plot `ui.tap` / `ui.scroll` / `ui.swipe` events on the matching wireframe frame as colored dots/arrows at the event coordinates
+- [ ] **Screenshot final frame** — Display `ui.screenshot` data URL as the terminal frame in the journey (e.g., the crash state), rendered alongside the wireframe sequence
+- [ ] **Journey diff** — Compare wireframe sequences across two sessions side-by-side, highlighting structural differences (added/removed/moved views)
+- [ ] **Session picker** — Filter sessions by screen name, error state, duration, device type; click to open journey replay
+- [ ] **Wireframe-to-code mapping** — Click a wireframe node to see its `resource_id`, link to source when available
+
 ---
 
 ## Track 4: Documentation & OTEPs

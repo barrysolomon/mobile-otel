@@ -52,6 +52,7 @@ class DemoApp : Application() {
 
         OTelMobile.start(application = this, config = config)
 
-        Log.i("OTELDemoApp", "OTelMobile started (auto-capture enabled)")
+        Log.i("OTELDemoApp", "OTelMobile started — screenshot=${config.screenshotConfig.enabled}, " +
+            "wireframe=${config.wireframeConfig.enabled}")
     }
 }

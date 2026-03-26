@@ -14,6 +14,8 @@ import io.opentelemetry.android.mobile.core.SessionConfig
 import io.opentelemetry.android.mobile.vitals.VitalsConfig
 import io.opentelemetry.android.mobile.network.NetworkConfig
 import io.opentelemetry.android.mobile.errors.ErrorConfig
+import io.opentelemetry.android.mobile.instrumentation.ScreenshotConfig
+import io.opentelemetry.android.mobile.instrumentation.WireframeConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
 import java.util.concurrent.TimeUnit
 import org.json.JSONObject
@@ -127,6 +129,16 @@ object ConfigManager {
     private const val DEFAULT_NETWORK_SCRUB_HEADERS = true
     private const val DEFAULT_NETWORK_ERROR_THRESHOLD = 400
     private const val DEFAULT_NETWORK_MIN_DURATION_MS = 0L
+
+    // Screenshot defaults (incubating — non-OTel-native, off by default)
+    private const val KEY_SCREENSHOT_ENABLED = "screenshot_enabled"
+    private const val DEFAULT_SCREENSHOT_ENABLED = false
+    private const val KEY_SCREENSHOT_ON_SCREEN_VIEW = "screenshot_on_screen_view"
+    private const val DEFAULT_SCREENSHOT_ON_SCREEN_VIEW = false
+
+    // Wireframe defaults (incubating — non-OTel-native, off by default)
+    private const val KEY_WIREFRAME_ENABLED = "wireframe_enabled"
+    private const val DEFAULT_WIREFRAME_ENABLED = false
 
     // Error handling defaults
     private const val DEFAULT_ERROR_CAPTURE_UNCAUGHT = true
@@ -290,6 +302,13 @@ object ConfigManager {
                 flushOnError = prefs.getBoolean(KEY_ERROR_FLUSH_ON_ERROR, DEFAULT_ERROR_FLUSH_ON_ERROR),
                 rateLimit = prefs.getInt(KEY_ERROR_RATE_LIMIT, DEFAULT_ERROR_RATE_LIMIT),
                 deduplicateWindowMs = prefs.getInt(KEY_ERROR_DEDUPE_WINDOW_MINUTES, DEFAULT_ERROR_DEDUPE_WINDOW_MINUTES).toLong() * 60_000L
+            ),
+            screenshotConfig = ScreenshotConfig(
+                enabled = prefs.getBoolean(KEY_SCREENSHOT_ENABLED, DEFAULT_SCREENSHOT_ENABLED),
+                captureOnScreenView = prefs.getBoolean(KEY_SCREENSHOT_ON_SCREEN_VIEW, DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
+            ),
+            wireframeConfig = WireframeConfig(
+                enabled = prefs.getBoolean(KEY_WIREFRAME_ENABLED, DEFAULT_WIREFRAME_ENABLED)
             )
         )
     }
@@ -486,6 +505,11 @@ object ConfigManager {
             putBoolean(KEY_ERROR_FLUSH_ON_ERROR, config.errorConfig.flushOnError)
             putInt(KEY_ERROR_RATE_LIMIT, config.errorConfig.rateLimit)
             putInt(KEY_ERROR_DEDUPE_WINDOW_MINUTES, (config.errorConfig.deduplicateWindowMs / 60_000L).toInt())
+
+            // Screenshot & wireframe (incubating)
+            putBoolean(KEY_SCREENSHOT_ENABLED, config.screenshotConfig.enabled)
+            putBoolean(KEY_SCREENSHOT_ON_SCREEN_VIEW, config.screenshotConfig.captureOnScreenView)
+            putBoolean(KEY_WIREFRAME_ENABLED, config.wireframeConfig.enabled)
 
             // Extract and save headers
             config.headers?.let { headers ->

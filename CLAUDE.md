@@ -83,7 +83,15 @@ nohup emulator -avd Pixel_3a -no-snapshot-save > /tmp/emu2.log 2>&1 &
 adb devices   # Should show emulator-5554 and emulator-5556
 ```
 
-**Step 2 — Run unit tests (~4s, 194 behavioral config tests + full suite)**
+**Step 2 — Start demo backend**
+```bash
+cd examples/demo-backend
+npm install        # first time only
+npm run dev &      # starts on port 3001
+```
+The demo app connects to `http://10.0.2.2:3001` (emulator alias for host localhost). Without it, booking API calls fail with connection errors.
+
+**Step 3 — Run unit tests (~4s, 194 behavioral config tests + full suite)**
 ```bash
 cd examples/demo-app
 ./gradlew :otel-android-mobile:testDebugUnitTest \
@@ -91,17 +99,19 @@ cd examples/demo-app
   :instrumentation-tap:testDebugUnitTest \
   :instrumentation-freeze:testDebugUnitTest \
   :instrumentation-back-press:testDebugUnitTest \
-  :instrumentation-vitals:testDebugUnitTest
+  :instrumentation-vitals:testDebugUnitTest \
+  :instrumentation-screenshot:testDebugUnitTest \
+  :instrumentation-wireframe:testDebugUnitTest
 ```
 
-**Step 3 — Install & launch demo app on both emulators**
+**Step 4 — Install & launch demo app on both emulators**
 ```bash
 ./gradlew installDebug
 adb -s emulator-5554 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
 adb -s emulator-5556 shell am start -n io.opentelemetry.android.demo/.SchedulingActivity
 ```
 
-**Step 4 — Run full demo scenario suite on both emulators (~8 min)**
+**Step 5 — Run full demo scenario suite on both emulators (~8 min)**
 ```bash
 ./gradlew :android:connectedDebugAndroidTest
 ```
@@ -111,13 +121,13 @@ This runs 18 tests on each emulator (36 total) across 4 scenario suites:
 - **FaultScenarios** — jank detection, ANR triggers, memory pressure faults
 - **ConditionalFlushScenarios** — silent buffer accumulation → crash triggers flush of all buffered events
 
-**Step 5 — Run SDK instrumented tests on both emulators (~30s)**
+**Step 6 — Run SDK instrumented tests on both emulators (~30s)**
 ```bash
 ./gradlew :otel-android-mobile:connectedDebugAndroidTest
 ```
 Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flush, TTL).
 
-**Step 6 — Show telemetry in Dash0**
+**Step 7 — Show telemetry in Dash0**
 - Open Dash0 dashboard, filter to dataset `otel-mobile`
 - Show `ui.tap`, `ui.screen_view`, `ui.scroll` events from step 4
 - Show stress signals: `device.health` metrics, `battery.change`, `thermal.status`
@@ -131,7 +141,7 @@ Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flus
 - 194 behavioral config tests: every toggle proven to change runtime behavior
 - UiTelemetryMode: EVENTS/SPANS/BOTH — consumer chooses signal type
 - Privacy by default: PII scrubbing, `captureLocation=false`, network privacy presets
-- Modular instrumentation: tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network
+- Modular instrumentation: 9 OTel-native modules (tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network) + 2 incubating (screenshot, wireframe — opt-in via config flags, not OTel-native)
 
 ### Demo Backend (`examples/demo-backend/`)
 ```bash
@@ -179,6 +189,7 @@ Entry point: `OTelMobile.start()` — calls `OTelMobileBuilder` which wires all 
 - `WindowEventHubInstaller` — registers `ActivityLifecycleCallbacks` that wraps each activity's `Window.Callback` with a `HubDispatcher`. The dispatcher fans all touch/key events to the hub before delegating to the original callback. This is what connects Espresso and real user input to `TapInstrumentation` etc.
 - `WindowEventHub` — `CopyOnWriteArrayList`-backed fan-out dispatcher. Any `WindowEventListener` implementation registered via `addListener()` receives all touch and key events from all activity windows.
 - `InstrumentationContext` — carries `OpenTelemetry`, `MobileSessionProvider`, `WindowEventHub`, and `Application` to each instrumentation at install time.
+- `RateLimiter` — shared, thread-safe rolling-window rate limiter (`CopyOnWriteArrayList<Long>` timestamps). Used by screenshot, wireframe, and errors modules to prevent excessive telemetry. Configurable `maxPerWindow` and `windowMs`.
 
 **UI instrumentation modules** (each under `instrumentation/<name>/`):
 
@@ -191,6 +202,8 @@ Entry point: `OTelMobile.start()` — calls `OTelMobileBuilder` which wires all 
 - **Errors** (`errors/`): `ErrorInstrumentation` — uncaught exceptions, coroutine errors. Deduplication (5-min window), rate limiting (10/min).
 - **Vitals** (`vitals/`): OTel Meter gauges for memory, battery, jank, app-start.
 - **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor; user-wired.
+- **Screenshot** (`screenshot/`): `ScreenshotInstrumentation` — pixel capture via PixelCopy/View.draw; emits `ui.screenshot` with data URL. Configurable: resolution, JPEG quality, text redaction, payload size cap.
+- **Wireframe** (`wireframe/`): `WireframeInstrumentation` — captures view-hierarchy JSON tree (~1–5 KB); emits `ui.wireframe` on screen transitions, taps, errors. Designed for journey replay in the control plane UI.
 
 **Journey span pattern** (used in Espresso tests and production flows):
 

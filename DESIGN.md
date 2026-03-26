@@ -129,6 +129,8 @@ These modules are automatically wired by `MobileOtel.initialize()` / `OTelMobile
 | **Predictive** | crash risk, network loss, performance, battery drain | On-device only, no raw data exported | `PredictiveExportPolicy.builder()` |
 | **Health Metrics** | device memory, battery, storage, thermal as OTel metrics | Device-level aggregates | `HealthMetricsCollector.builder()` |
 | **AutoCapture** | tap, scroll, freeze, ANR, lifecycle, recovery | Coordinate bucketing, privacy modes | `AutoCaptureManager` (via OTelMobile) |
+| **Screenshot** | `ui.screenshot` — pixel capture at trigger points | TextView redaction, JPEG compression, data URL | `ScreenshotInstrumentation` (SPI) |
+| **Wireframe** | `ui.wireframe` — view-hierarchy JSON tree | Geometry only, no text content, opt-in hints | `WireframeInstrumentation` (SPI) |
 
 ### User-Wired Modules
 These require manual integration because they depend on user's specific HTTP client or navigation setup.
@@ -158,6 +160,69 @@ These require manual integration because they depend on user's specific HTTP cli
 2. **`collector-processor/`** — OTEL Collector processor (upstream target: `opentelemetry-collector-contrib`)
 3. **Gateway, Control Plane UI, k8s manifests** — Extracted to [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane)
 4. **Examples** (demo-app, demo-app-starter) — Demo/reference implementation, stays in this repo
+
+## Screenshot & Wireframe Journey Replay
+
+### Screenshot Capture (`instrumentation/screenshot/`)
+
+Captures a pixel screenshot of the current activity's window at trigger points. Emitted as a
+`ui.screenshot` log record with the image encoded as a **data URL** (`data:image/jpeg;base64,…`)
+in the `mobile.screenshot.data_url` attribute — directly renderable in any browser or dashboard.
+
+- **Triggers:** manual, uncaught exception (configurable)
+- **Privacy:** optional `redactTextViews` draws solid rectangles over all `TextView` bounds
+- **Size control:** max resolution (default 480×960), JPEG quality, `maxPayloadKb` guard (default 200 KB)
+- **Rate limiting:** configurable max captures/minute
+
+### Wireframe Capture (`instrumentation/wireframe/`)
+
+Captures a lightweight JSON tree (~1–5 KB) of the view hierarchy — class names, bounds, resource IDs,
+clickable state — enough to reconstruct a schematic wireframe rendering without any pixel data.
+
+- **Triggers:** every screen transition (default), tap (opt-in), error, manual
+- **Privacy:** geometry and view types only; never captures user-entered text; opt-in for hints/content descriptions
+- **Sequence numbering:** monotonic `mobile.wireframe.sequence` for ordering in replay
+- **Schema:** `WireframeNode` tree serialized to compact JSON:
+
+  ```json
+  {"type":"LinearLayout","bounds":[0,0,1080,2160],"children":[
+    {"type":"Toolbar","bounds":[0,0,1080,168]},
+    {"type":"RecyclerView","bounds":[0,168,1080,1800],"children":[
+      {"type":"CardView","bounds":[24,180,1056,380]},
+      {"type":"CardView","bounds":[24,400,1056,600]}
+    ]},
+    {"type":"Button","bounds":[340,1900,740,2000],"id":"btn_book","clickable":true}
+  ]}
+  ```
+
+### Control Plane Integration (Future)
+
+The [control plane UI](https://github.com/barrysolomon/mobile-otel-control-plane) will consume
+wireframe and screenshot data from the backend to render **visual user journey replay**:
+
+1. **Journey timeline** — Query `ui.wireframe` logs for a session, ordered by `mobile.wireframe.sequence`.
+   Each wireframe is rendered as an SVG/Canvas schematic (rectangles for views, rounded corners for
+   buttons, X-boxes for images, gray lines for text).
+2. **Interaction overlay** — `ui.tap`, `ui.scroll`, `ui.swipe` events from the same session are
+   plotted as colored dots/arrows on the corresponding wireframe frame, showing exactly where the
+   user interacted.
+3. **Screenshot attachment** — `ui.screenshot` images (captured on error/crash) are displayed as
+   the final frame in the journey, showing the actual pixel state at the moment of failure.
+4. **Journey diff** — Compare wireframe sequences across sessions to detect layout regressions or
+   unusual navigation patterns.
+
+**Data flow:**
+
+```text
+SDK → OTLP/gRPC → Collector → Backend (Dash0)
+                                  ↓
+                         Control Plane UI queries:
+                         - ui.wireframe logs (by session, ordered by sequence)
+                         - ui.tap / ui.scroll events (by session + timestamp)
+                         - ui.screenshot logs (by session, on error)
+                                  ↓
+                         Renders: wireframe → SVG, interactions → overlay, screenshot → final frame
+```
 
 ## Demo Scenarios
 These three scenarios must always work end-to-end:
