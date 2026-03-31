@@ -252,11 +252,14 @@
       "WebFetch(domain:www.npmjs.com)",
       "WebSearch",
       "WebFetch(domain:www.dash0.com)",
-      "WebFetch(domain:tessl.io)"
+      "WebFetch(domain:tessl.io)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "additionalDirectories": [
       "/Users/barrysolomon/Projects/Dash0/mobile-otel/docs/superpowers",
-      "/private/tmp"
+      "/private/tmp",
+      "/Users/barrysolomon/Projects/Dash0/AWS/Serverless/wildrydes/client/dist",
+      "/Users/barrysolomon/Projects/Dash0/AWS/Serverless/wildrydes/infra"
     ]
   }
 }

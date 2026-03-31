@@ -20,7 +20,7 @@ RUN apk add --no-cache curl git ca-certificates
 # Download the OpenTelemetry Collector Builder (ocb) matching our component version
 ARG OCB_VERSION=0.91.0
 ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 RUN curl -fsSL \
     "https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd/builder/v${OCB_VERSION}/ocb_${OCB_VERSION}_${TARGETOS}_${TARGETARCH}" \
     -o /usr/local/bin/ocb && \
