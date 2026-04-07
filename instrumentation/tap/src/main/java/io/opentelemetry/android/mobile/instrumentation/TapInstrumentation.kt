@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.TextView
+import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
 import io.opentelemetry.api.logs.Logger
@@ -220,5 +221,16 @@ class TapInstrumentation(
                     .spanBuilder(name).setSpanKind(SpanKind.INTERNAL).startSpan().apply { setAllAttributes(attrs); end() }
             }
         }
+
+        // Add breadcrumb for user input events
+        val screenName = context.sessionProvider.getCurrentScreenName() ?: "unknown"
+        val elementId = attrs.get(MobileSemconv.UI_ELEMENT_ID)
+        context.addBreadcrumb(
+            JourneyBreadcrumb.userInput(
+                screen = screenName,
+                action = name,
+                elementId = elementId
+            )
+        )
     }
 }

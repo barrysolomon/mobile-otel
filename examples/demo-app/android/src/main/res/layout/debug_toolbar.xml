@@ -57,6 +57,18 @@
                 android:textColor="@color/debug_status_color" />
         </LinearLayout>
 
+        <!-- Export status indicator -->
+        <TextView
+            android:id="@+id/debugExportStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="2dp"
+            android:text="Export: waiting..."
+            android:textSize="10sp"
+            android:textColor="#AAAAAA"
+            android:visibility="visible" />
+
         <!-- Expandable content -->
         <LinearLayout
             android:id="@+id/debugToolbarContent"

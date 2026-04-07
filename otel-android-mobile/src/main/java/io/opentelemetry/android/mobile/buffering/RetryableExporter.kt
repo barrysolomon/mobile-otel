@@ -6,6 +6,8 @@
 package io.opentelemetry.android.mobile.buffering
 
 import android.util.Log
+import io.opentelemetry.android.mobile.export.ExportStatus
+import io.opentelemetry.android.mobile.export.ExportStatusManager
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
@@ -79,14 +81,16 @@ class RetryableExporter(
 
             exportResult.whenComplete {
                 if (exportResult.isSuccess) {
-                    // Success - we're done
                     Log.d(TAG, "Export succeeded on attempt ${attempt + 1}")
+                    ExportStatusManager.notify(ExportStatus.Success(eventCount = logs.size))
                     result.succeed()
                 } else {
-                    // Failed - retry if we have attempts left
                     if (attempt < maxRetries) {
                         val delayMs = calculateBackoff(attempt)
                         Log.w(TAG, "Export failed on attempt ${attempt + 1}, retrying in ${delayMs}ms...")
+                        ExportStatusManager.notify(ExportStatus.Retrying(
+                            attempt = attempt + 1, maxAttempts = maxRetries + 1, delayMs = delayMs
+                        ))
 
                         scheduler.schedule({
                             val retryResult = exportWithRetry(logs, attempt + 1)
@@ -99,8 +103,9 @@ class RetryableExporter(
                             }
                         }, delayMs, TimeUnit.MILLISECONDS)
                     } else {
-                        // Out of retries
-                        Log.e(TAG, "Export failed after ${maxRetries + 1} attempts")
+                        val errorMsg = "Export failed after ${maxRetries + 1} attempts"
+                        Log.e(TAG, errorMsg)
+                        ExportStatusManager.notify(classifyFailure(errorMsg, logs.size, attempt + 1))
                         result.fail()
                     }
                 }
@@ -109,9 +114,9 @@ class RetryableExporter(
         } catch (e: Exception) {
             Log.e(TAG, "Exception during export attempt ${attempt + 1}", e)
 
-            // Don't retry client-side errors
             if (isNonRetryableException(e)) {
                 Log.e(TAG, "Non-retryable error, giving up immediately")
+                ExportStatusManager.notify(classifyFailure(e.message ?: e.javaClass.simpleName, logs.size, attempt + 1))
                 result.fail()
                 return result
             }
@@ -119,6 +124,9 @@ class RetryableExporter(
             if (attempt < maxRetries) {
                 val delayMs = calculateBackoff(attempt)
                 Log.w(TAG, "Retrying in ${delayMs}ms...")
+                ExportStatusManager.notify(ExportStatus.Retrying(
+                    attempt = attempt + 1, maxAttempts = maxRetries + 1, delayMs = delayMs
+                ))
 
                 scheduler.schedule({
                     val retryResult = exportWithRetry(logs, attempt + 1)
@@ -131,6 +139,7 @@ class RetryableExporter(
                     }
                 }, delayMs, TimeUnit.MILLISECONDS)
             } else {
+                ExportStatusManager.notify(classifyFailure(e.message ?: "unknown", logs.size, attempt + 1))
                 result.fail()
             }
         }
@@ -172,6 +181,25 @@ class RetryableExporter(
     override fun shutdown(): CompletableResultCode {
         scheduler.shutdown()
         return delegate.shutdown()
+    }
+
+    /**
+     * Classifies a failure as auth error vs generic failure based on the error message.
+     * gRPC status 16 (UNAUTHENTICATED) and common auth keywords trigger AuthError.
+     */
+    private fun classifyFailure(reason: String, eventCount: Int, attempt: Int): ExportStatus {
+        val lower = reason.lowercase()
+        val isAuth = lower.contains("authentication") ||
+            lower.contains("unauthenticated") ||
+            lower.contains("token") ||
+            lower.contains("unauthorized") ||
+            lower.contains("status code 16") ||
+            lower.contains("permission denied")
+        return if (isAuth) {
+            ExportStatus.AuthError(reason = reason, eventCount = eventCount)
+        } else {
+            ExportStatus.Failed(reason = reason, eventCount = eventCount, attempt = attempt)
+        }
     }
 
     /**

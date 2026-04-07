@@ -34,7 +34,8 @@ class ErrorsInstrumentation : MobileInstrumentation {
             ErrorInstrumentation.initialize(
                 config = ErrorConfig.default(),
                 logger = logger,
-                onFlush = null
+                onFlush = null,
+                sessionProvider = context.sessionProvider
             )
         } catch (e: Exception) {
             Log.w("ErrorsInstrumentation", "Failed to initialize ErrorInstrumentation: ${e.message}")

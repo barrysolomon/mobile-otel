@@ -11,7 +11,9 @@ import io.opentelemetry.android.mobile.core.SessionManager
 import io.opentelemetry.android.mobile.core.UserIdentity
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
 import io.opentelemetry.android.mobile.errors.ErrorInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.DefaultMobileSessionProvider
 import io.opentelemetry.android.mobile.instrumentation.Incubating
+import io.opentelemetry.android.mobile.instrumentation.MobileSessionProvider
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
 import io.opentelemetry.android.mobile.predictive.DeviceHealthMonitor
 import io.opentelemetry.android.mobile.predictive.HealthMetricsCollector
@@ -65,6 +67,7 @@ object MobileOtel {
     private var vitalsCollector: VitalsCollector? = null
     private var predictivePolicy: PredictiveExportPolicy? = null
     private var healthMetricsCollector: HealthMetricsCollector? = null
+    private var releaseHealthSessionProvider: MobileSessionProvider? = null
 
     // ─────────────────────────────────────────────────────────────
     // Initialization
@@ -108,13 +111,18 @@ object MobileOtel {
         val otelSdk = loggerProvider.getOpenTelemetrySdk()
         val meter = otelSdk.getMeter("io.opentelemetry.android.mobile")
 
+        // Create a session provider with meter for crash-free session tracking
+        val sessionProv = DefaultMobileSessionProvider(meter = meter)
+        releaseHealthSessionProvider = sessionProv
+
         // Wire ErrorInstrumentation — captures uncaught exceptions, coroutine errors, RxJava errors
         // On error → flushes all buffered telemetry immediately
         if (config.errorConfig.enabled) {
             errorInstrumentation = ErrorInstrumentation.initialize(
                 config = config.errorConfig,
                 logger = loggerProvider.get("error-instrumentation"),
-                onFlush = { processor.forceFlush() }
+                onFlush = { processor.forceFlush() },
+                sessionProvider = sessionProv
             )
         }
 
@@ -398,6 +406,7 @@ object MobileOtel {
 
         vitalsCollector = null
         errorInstrumentation = null
+        releaseHealthSessionProvider = null
 
         provider?.shutdown()
         SessionManager.getInstance().shutdown()

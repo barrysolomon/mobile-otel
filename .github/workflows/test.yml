@@ -22,10 +22,15 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Run unit tests
+      - name: Run SDK unit tests
         run: |
           cd examples/demo-app
           ./gradlew :otel-android-mobile:testDebugUnitTest --stacktrace
+
+      - name: Run core module tests
+        run: |
+          cd examples/demo-app
+          ./gradlew :otel-android-mobile-core:testDebugUnitTest --stacktrace
 
       - name: Upload test results
         if: always()
@@ -45,7 +50,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
           cache: true
           cache-dependency-path: collector-processor/mobilepolicyprocessor/go.sum
 
@@ -106,7 +111,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
 
       - name: Run Go vet
         run: |
@@ -143,7 +148,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
 
       - name: Build Go processor
         run: |

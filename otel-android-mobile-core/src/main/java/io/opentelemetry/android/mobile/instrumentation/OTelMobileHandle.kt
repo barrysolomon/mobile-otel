@@ -3,10 +3,13 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import android.util.Log
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.sdk.OpenTelemetrySdk
+import java.util.concurrent.TimeUnit
 
 /**
  * Live handle to the running Mobile OTel SDK instance.
@@ -33,15 +36,26 @@ class OTelMobileHandle internal constructor(
     fun getMeter(scope: String): Meter = openTelemetry.getMeter(scope)
 
     /**
-     * Stops all instrumentation and releases resources.
+     * Stops all instrumentation, flushes pending telemetry, and releases resources.
      * After calling [stop], this handle should not be used.
      *
      * @param timeoutSeconds Maximum time to wait for in-flight telemetry to flush.
-     * TODO: wire to OpenTelemetry SDK forceFlush when aggregator module is wired (Task 15).
      */
     fun stop(timeoutSeconds: Long = 30) {
         hubInstaller?.uninstall()
         registry.uninstall()
-        // TODO: call openTelemetry SDK shutdown/forceFlush with timeoutSeconds (Task 15)
+
+        // Flush and shut down the OTel SDK if the underlying instance supports it.
+        // The openTelemetry field is typed as the API interface, but at runtime it is
+        // typically an OpenTelemetrySdk which exposes shutdown/forceFlush.
+        val sdk = openTelemetry as? OpenTelemetrySdk
+        if (sdk != null) {
+            try {
+                sdk.shutdown()
+                    .join(timeoutSeconds, TimeUnit.SECONDS)
+            } catch (e: Exception) {
+                Log.w("OTelMobileHandle", "Error during OTel SDK shutdown", e)
+            }
+        }
     }
 }

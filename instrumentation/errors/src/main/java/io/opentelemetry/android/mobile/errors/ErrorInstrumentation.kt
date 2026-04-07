@@ -6,6 +6,7 @@
 package io.opentelemetry.android.mobile.errors
 
 import io.opentelemetry.android.mobile.instrumentation.Incubating
+import io.opentelemetry.android.mobile.instrumentation.MobileSessionProvider
 import io.opentelemetry.android.mobile.instrumentation.RateLimiter
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
@@ -14,6 +15,7 @@ import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
+import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.android.mobile.core.PiiScrubber
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -38,7 +40,8 @@ import kotlin.coroutines.CoroutineContext
 class ErrorInstrumentation private constructor(
     private val config: ErrorConfig,
     private val logger: Logger,
-    private val onFlush: (() -> Unit)?
+    private val onFlush: (() -> Unit)?,
+    private val sessionProvider: MobileSessionProvider? = null
 ) {
     private val defaultExceptionHandler: Thread.UncaughtExceptionHandler? =
         Thread.getDefaultUncaughtExceptionHandler()
@@ -144,6 +147,9 @@ class ErrorInstrumentation private constructor(
             return
         }
 
+        // Mark current session as having experienced an error (for crash-free session tracking)
+        sessionProvider?.markSessionError()
+
         // Build attributes using OTel semantic conventions for exceptions
         val attributesBuilder = Attributes.builder()
             .put(AttributeKey.stringKey("mobile.exception.origin"), source) // custom: OTel semconv has no standard for exception origin category
@@ -221,6 +227,18 @@ class ErrorInstrumentation private constructor(
             .setSeverity(Severity.ERROR)
             .setAllAttributes(attributesBuilder.build())
             .emit()
+
+        // Add breadcrumb for the error itself
+        if (BreadcrumbManager.isInitialized()) {
+            BreadcrumbManager.add(
+                JourneyBreadcrumb.error(
+                    screen = "unknown",
+                    errorType = throwable.javaClass.name,
+                    message = throwable.message,
+                    attributes = mapOf("source" to source)
+                )
+            )
+        }
 
         // Record exception on current span if active
         val currentSpan = Span.current()
@@ -310,14 +328,16 @@ class ErrorInstrumentation private constructor(
          * @param config Error configuration
          * @param logger OpenTelemetry logger
          * @param onFlush Optional callback to trigger flush
+         * @param sessionProvider Optional session provider for crash-free session tracking
          */
         fun initialize(
             config: ErrorConfig,
             logger: Logger,
-            onFlush: (() -> Unit)? = null
+            onFlush: (() -> Unit)? = null,
+            sessionProvider: MobileSessionProvider? = null
         ): ErrorInstrumentation {
             return instance ?: synchronized(this) {
-                instance ?: ErrorInstrumentation(config, logger, onFlush).also {
+                instance ?: ErrorInstrumentation(config, logger, onFlush, sessionProvider).also {
                     instance = it
                 }
             }

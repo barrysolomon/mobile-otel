@@ -4,6 +4,8 @@
 package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
+import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
+import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -40,8 +42,16 @@ class InstrumentationContext(
     val sessionProvider: MobileSessionProvider,
     val windowEventHub: WindowEventHub,
     val application: Application,
-    val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
+    val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
+    val breadcrumbManager: BreadcrumbManager? = if (BreadcrumbManager.isInitialized()) BreadcrumbManager else null
 ) {
+    /**
+     * Convenience method — adds a breadcrumb if the [BreadcrumbManager] is available.
+     * Safe to call even when breadcrumbs are not configured (no-op in that case).
+     */
+    fun addBreadcrumb(breadcrumb: JourneyBreadcrumb) {
+        breadcrumbManager?.add(breadcrumb)
+    }
     /** Convenience accessor — returns a [Tracer] scoped to [scope]. */
     fun tracer(scope: String): Tracer = openTelemetry.getTracer(scope)
 

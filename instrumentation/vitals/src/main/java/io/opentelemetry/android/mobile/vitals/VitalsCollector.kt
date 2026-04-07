@@ -11,12 +11,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.view.Choreographer
 import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.metrics.ObservableDoubleMeasurement
 import io.opentelemetry.api.metrics.ObservableLongMeasurement
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -60,12 +62,60 @@ class VitalsCollector private constructor(
     private val mainThreadBlockTime = AtomicLong(0)
     private val thermalState = AtomicReference("normal")
 
+    // Choreographer frame timing state
+    private val choreographerFrameTotal = AtomicLong(0)
+    private val choreographerJankCount = AtomicLong(0)
+    private val choreographerSevereJankCount = AtomicLong(0)
+    private val choreographerDroppedFrames = AtomicLong(0)
+    private val frameMonitoringActive = AtomicBoolean(false)
+    @Volatile private var lastFrameTimeNanos: Long = 0
+
+    /**
+     * Choreographer.FrameCallback that measures per-frame durations.
+     *
+     * Each invocation records the wall-clock time since the previous frame,
+     * classifies it (normal / jank / severe jank), and re-posts itself to
+     * keep the measurement loop running.
+     *
+     * Must be posted on the main thread (Choreographer requirement).
+     */
+    private val frameCallback: Choreographer.FrameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!frameMonitoringActive.get()) return
+
+            if (lastFrameTimeNanos > 0) {
+                val frameDurationMs = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000.0
+                choreographerFrameTotal.incrementAndGet()
+
+                if (frameDurationMs > config.jankThresholdMs) {
+                    choreographerJankCount.incrementAndGet()
+
+                    val expectedFrameDurationMs = config.jankThresholdMs
+                    val dropped = ((frameDurationMs / expectedFrameDurationMs) - 1).toLong()
+                    if (dropped > 0) {
+                        choreographerDroppedFrames.addAndGet(dropped)
+                    }
+
+                    if (frameDurationMs > config.severeJankThresholdMs) {
+                        choreographerSevereJankCount.incrementAndGet()
+                    }
+                }
+            }
+            lastFrameTimeNanos = frameTimeNanos
+
+            if (frameMonitoringActive.get()) {
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+    }
+
     private val handler = Handler(Looper.getMainLooper())
 
     init {
         if (config.enabled) {
             registerMetrics()
             startMonitoring()
+            startFrameMonitoring()
         }
     }
 
@@ -159,6 +209,51 @@ class VitalsCollector private constructor(
                     if (frames > 0) {
                         val rate = (jankCount.get().toDouble() / frames) * 100
                         measurement.record(rate)
+                    }
+                }
+
+            // Choreographer-based per-frame timing gauges
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
+            meter.gaugeBuilder("mobile.ui.frame.total")
+                .setDescription("Total frames observed via Choreographer")
+                .setUnit("{frames}")
+                .ofLongs()
+                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                    measurement.record(choreographerFrameTotal.get())
+                }
+
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
+            meter.gaugeBuilder("mobile.ui.frame.jank_count")
+                .setDescription("Number of frames exceeding the jank threshold")
+                .setUnit("{frames}")
+                .ofLongs()
+                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                    measurement.record(choreographerJankCount.get())
+                }
+
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
+            meter.gaugeBuilder("mobile.ui.frame.severe_jank_count")
+                .setDescription("Number of frames exceeding the severe jank threshold")
+                .setUnit("{frames}")
+                .ofLongs()
+                .buildWithCallback { measurement: ObservableLongMeasurement ->
+                    measurement.record(choreographerSevereJankCount.get())
+                }
+
+            // @Incubating: mobile semconv not yet standardized; aligns with OTel mobile SIG proposal
+            meter.gaugeBuilder("mobile.ui.frame.jank_ratio")
+                .setDescription("Ratio of jank frames to total frames (0.0 to 1.0)")
+                .setUnit("1")
+                .buildWithCallback { measurement: ObservableDoubleMeasurement ->
+                    val total = choreographerFrameTotal.get()
+                    if (total > 0) {
+                        val ratio = choreographerJankCount.get().toDouble() / total
+                        measurement.record(
+                            ratio,
+                            Attributes.of(
+                                AttributeKey.longKey("mobile.ui.frame.dropped"), choreographerDroppedFrames.get()
+                            )
+                        )
                     }
                 }
         }
@@ -275,6 +370,40 @@ class VitalsCollector private constructor(
     }
 
     /**
+     * Start Choreographer-based frame timing.
+     *
+     * Begins posting [Choreographer.FrameCallback] on the main thread to
+     * measure per-frame durations and classify jank. Only has an effect when
+     * [VitalsConfig.detectJank] is `true`. Calling this when monitoring is
+     * already active is a no-op.
+     *
+     * Must be called from any thread — the callback is posted to the main
+     * thread internally.
+     */
+    fun startFrameMonitoring() {
+        if (!config.detectJank) return
+        if (!frameMonitoringActive.compareAndSet(false, true)) return
+
+        handler.post {
+            lastFrameTimeNanos = 0
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
+    }
+
+    /**
+     * Stop Choreographer-based frame timing.
+     *
+     * The current callback will finish but will not re-post itself.
+     * Counters are preserved (call [reset] to zero them).
+     */
+    fun stopFrameMonitoring() {
+        frameMonitoringActive.set(false)
+        handler.post {
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+        }
+    }
+
+    /**
      * Record cold start time.
      */
     fun recordColdStart(durationMs: Long) {
@@ -388,6 +517,13 @@ class VitalsCollector private constructor(
             inputLatencies.clear()
         }
         mainThreadBlockTime.set(0)
+
+        // Choreographer frame counters
+        choreographerFrameTotal.set(0)
+        choreographerJankCount.set(0)
+        choreographerSevereJankCount.set(0)
+        choreographerDroppedFrames.set(0)
+        lastFrameTimeNanos = 0
     }
 
     /**
@@ -399,6 +535,10 @@ class VitalsCollector private constructor(
         if (config.detectJank) {
             builder.put(AttributeKey.longKey("mobile.jank.count"), jankCount.get())
             builder.put(AttributeKey.longKey("mobile.jank.severe.count"), severeJankCount.get())
+            builder.put(AttributeKey.longKey("mobile.ui.frame.total"), choreographerFrameTotal.get())
+            builder.put(AttributeKey.longKey("mobile.ui.frame.jank_count"), choreographerJankCount.get())
+            builder.put(AttributeKey.longKey("mobile.ui.frame.severe_jank_count"), choreographerSevereJankCount.get())
+            builder.put(AttributeKey.longKey("mobile.ui.frame.dropped"), choreographerDroppedFrames.get())
         }
 
         if (config.monitorAnrRisk) {

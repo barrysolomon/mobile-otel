@@ -37,7 +37,7 @@ class OTelMobileBuilder(
     private val openTelemetry: OpenTelemetry
 ) {
     private val instrumentations = mutableListOf<MobileInstrumentation>()
-    private var sessionProvider: MobileSessionProvider = DefaultMobileSessionProvider()
+    private var sessionProvider: MobileSessionProvider? = null
     private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
 
     /** Replaces the default [DefaultMobileSessionProvider] with a custom implementation. */
@@ -74,7 +74,12 @@ class OTelMobileBuilder(
         val hub = WindowEventHub()
         val hubInstaller = WindowEventHubInstaller(application, hub)
         hubInstaller.install()
-        val context = InstrumentationContext(openTelemetry, sessionProvider, hub, application, uiTelemetryMode)
+        // Use the caller's session provider if set, otherwise create a default one
+        // with a Meter so it can emit crash-free session metrics.
+        val resolvedProvider = sessionProvider ?: DefaultMobileSessionProvider(
+            meter = openTelemetry.getMeter("io.opentelemetry.android.mobile")
+        )
+        val context = InstrumentationContext(openTelemetry, resolvedProvider, hub, application, uiTelemetryMode)
         val registry = InstrumentationRegistry(instrumentations.toList())
         registry.install(application, context)
         return OTelMobileHandle(openTelemetry, registry, hubInstaller)

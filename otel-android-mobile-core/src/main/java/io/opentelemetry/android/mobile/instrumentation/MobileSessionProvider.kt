@@ -41,4 +41,17 @@ interface MobileSessionProvider {
 
     /** Called when the app goes to the background. */
     fun onAppBackground(timestampMs: Long)
+
+    /**
+     * Mark the current session as having experienced an error or crash.
+     * Called by error instrumentation when an exception is captured.
+     * Default no-op so existing implementations are not forced to override.
+     */
+    fun markSessionError() {}
+
+    /**
+     * Returns whether the current session has had an error.
+     * Default returns false for implementations that do not track release health.
+     */
+    fun sessionHadError(): Boolean = false
 }

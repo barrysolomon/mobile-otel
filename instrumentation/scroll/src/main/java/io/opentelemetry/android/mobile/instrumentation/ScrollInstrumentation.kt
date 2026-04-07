@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.Window
 import androidx.recyclerview.widget.RecyclerView
+import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Logger
@@ -150,5 +151,15 @@ class ScrollInstrumentation(
                     .apply { setAllAttributes(attrs); end() }
             }
         }
+
+        // Add breadcrumb for scroll events
+        val screenName = sessionProvider.getCurrentScreenName() ?: "unknown"
+        context.addBreadcrumb(
+            JourneyBreadcrumb.userInput(
+                screen = screenName,
+                action = MobileSemconv.UI_SCROLL,
+                attributes = mapOf("direction" to direction, "distance_bucket" to bucket)
+            )
+        )
     }
 }

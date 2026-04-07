@@ -9,6 +9,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
+import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
@@ -188,6 +190,19 @@ class OTelNetworkInterceptor private constructor(
         }
 
         span.end()
+
+        // Add breadcrumb for network requests
+        if (BreadcrumbManager.isInitialized()) {
+            BreadcrumbManager.add(
+                JourneyBreadcrumb.network(
+                    screen = "unknown", // interceptor has no screen context
+                    method = request.method,
+                    url = scrubUrl(request.url.toString()),
+                    statusCode = response.code
+                )
+            )
+        }
+
         return response
     }
 

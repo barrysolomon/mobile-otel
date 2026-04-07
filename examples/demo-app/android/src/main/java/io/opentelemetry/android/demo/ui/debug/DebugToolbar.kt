@@ -17,6 +17,9 @@ import android.widget.TextView
 import androidx.core.view.isVisible
 import com.google.android.material.button.MaterialButton
 import io.opentelemetry.android.demo.R
+import io.opentelemetry.android.mobile.export.ExportStatus
+import io.opentelemetry.android.mobile.export.ExportStatusListener
+import io.opentelemetry.android.mobile.export.ExportStatusManager
 import kotlinx.coroutines.*
 
 /**
@@ -36,6 +39,7 @@ class DebugToolbar @JvmOverloads constructor(
 
     private val expandIcon: ImageView
     private val statusText: TextView
+    private val exportStatusText: TextView
     private val toolbarContent: LinearLayout
     private val header: LinearLayout
 
@@ -46,6 +50,19 @@ class DebugToolbar @JvmOverloads constructor(
     private var lastAction: String? = null
 
     var listener: DebugToolbarListener? = null
+
+    private val exportListener = ExportStatusListener { status ->
+        scope.launch {
+            val (text, color) = when (status) {
+                is ExportStatus.Success -> "Export OK (${status.eventCount} events)" to 0xFF4CAF50.toInt()
+                is ExportStatus.AuthError -> "AUTH FAILED: ${status.reason}" to 0xFFF44336.toInt()
+                is ExportStatus.Failed -> "Export FAILED: ${status.reason}" to 0xFFF44336.toInt()
+                is ExportStatus.Retrying -> "Retrying ${status.attempt}/${status.maxAttempts}..." to 0xFFFF9800.toInt()
+            }
+            exportStatusText.text = text
+            exportStatusText.setTextColor(color)
+        }
+    }
 
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         private val SWIPE_VELOCITY = 200
@@ -78,10 +95,12 @@ class DebugToolbar @JvmOverloads constructor(
 
         expandIcon = findViewById(R.id.debugExpandIcon)
         statusText = findViewById(R.id.debugStatus)
+        exportStatusText = findViewById(R.id.debugExportStatus)
         toolbarContent = findViewById(R.id.debugToolbarContent)
         header = findViewById(R.id.debugToolbarHeader)
 
         setupClickListeners()
+        ExportStatusManager.addListener(exportListener)
     }
 
     private fun setupClickListeners() {
@@ -178,6 +197,7 @@ class DebugToolbar @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        ExportStatusManager.removeListener(exportListener)
         scope.cancel()
     }
 
