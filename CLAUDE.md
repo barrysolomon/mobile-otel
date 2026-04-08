@@ -163,6 +163,8 @@ Node.js + Express + SQLite (better-sqlite3) backend that serves the demo app's a
 ./run-tests.sh --integration          # Include emulator tests
 ```
 
+> **Note:** All scripts live canonically in `scripts/` (organized into `demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`). The root-level `./run-*.sh` and `./verify-setup.sh` are thin forwarders -- both invocation styles work.
+
 ## Architecture
 
 ```

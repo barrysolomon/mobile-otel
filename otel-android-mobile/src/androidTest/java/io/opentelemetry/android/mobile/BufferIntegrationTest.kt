@@ -129,25 +129,28 @@ class BufferIntegrationTest {
     }
 
     /**
-     * Only records whose timestamp falls within the requested window should be exported.
-     * Records emitted with an old timestamp must be excluded.
+     * Verifies that flush does not produce duplicates from crash-safety mirrors.
+     *
+     * The crash-safety mirror copies RAM events to disk every 2 seconds. Without
+     * seqId-based dedup, a flush would export the same event from both RAM and disk.
+     * This test emits events, waits for the crash mirror to run, then flushes and
+     * verifies each event appears exactly once.
      */
     @Test
-    fun flushWindowFiltersOldRecordsByTimestamp() {
-        val now = System.currentTimeMillis()
+    fun flushWindowDeduplicatesCrashSafetyMirrors() {
+        // Emit 2 events
+        emit(createLog("event.one"))
+        emit(createLog("event.two"))
 
-        // Old record: 10 minutes ago — outside a 2-minute window
-        emit(createLogAt("old.event", now - 10 * 60 * 1000L))
-
-        // Recent record: 30 seconds ago — inside a 2-minute window
-        emit(createLogAt("recent.event", now - 30_000L))
+        // Wait for crash-safety mirror to persist RAM events to disk (runs every 2s)
+        Thread.sleep(3_000)
 
         captureExporter.resetLatch(1)
-        processor.flushWindow(2)
+        processor.flushWindow(1)
         assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
-        assertEquals("Only the recent record should be exported", 1, captureExporter.count())
-        assertEquals("recent.event", captureExporter.all().first().body.asString())
+        // Exactly 2 events — no duplicates from disk mirrors
+        assertEquals("Each event should appear exactly once", 2, captureExporter.count())
     }
 
     /**

@@ -21,6 +21,8 @@ For quick setup, use the automation scripts instead of following the manual step
 
 Common flags: `--skip-emu` (emulators already running), `--headless` (no window), `--incubating` (enable screenshot + wireframe).
 
+> Scripts live in `scripts/demo/`, `scripts/ci/`, etc. The root-level `./run-*.sh` commands are forwarders -- both paths work.
+
 ```bash
 # Full demo with screenshots + wireframes (the "showstopper" run)
 ./run-demo-full.sh

@@ -59,7 +59,7 @@
 				
 				<option value="file1">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/factory.go (100.0%)</option>
 				
-				<option value="file2">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/processor.go (76.3%)</option>
+				<option value="file2">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/processor.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -82,7 +82,10 @@
 		</div>
 		<div id="content">
 		
-		<pre class="file" id="file0" style="display: none">package mobilepolicyprocessor
+		<pre class="file" id="file0" style="display: none">// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package mobilepolicyprocessor
 
 import (
         "fmt"
@@ -212,7 +215,10 @@ func validateCondition(attrKey string, condition Condition) error <span class="c
 var _ component.Config = (*Config)(nil)
 </pre>
 		
-		<pre class="file" id="file1" style="display: none">package mobilepolicyprocessor
+		<pre class="file" id="file1" style="display: none">// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package mobilepolicyprocessor
 
 import (
         "context"
@@ -259,7 +265,10 @@ func createLogsProcessor(
 }</span>
 </pre>
 		
-		<pre class="file" id="file2" style="display: none">package mobilepolicyprocessor
+		<pre class="file" id="file2" style="display: none">// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package mobilepolicyprocessor
 
 import (
         "context"
@@ -287,7 +296,7 @@ func newMobilePolicyProcessor(
         cfg *Config,
         logger *zap.Logger,
         next consumer.Logs,
-) (*mobilePolicyProcessor, error) <span class="cov9" title="19">{
+) (*mobilePolicyProcessor, error) <span class="cov5" title="46">{
         return &amp;mobilePolicyProcessor{
                 logger:   logger,
                 config:   cfg,
@@ -315,17 +324,17 @@ func (mpp *mobilePolicyProcessor) Capabilities() consumer.Capabilities <span cla
 }</span>
 
 // ConsumeLogs processes log records according to policies
-func (mpp *mobilePolicyProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error <span class="cov1" title="1">{
+func (mpp *mobilePolicyProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error <span class="cov4" title="14">{
         // Process each resource log
-        for i := 0; i &lt; ld.ResourceLogs().Len(); i++ </span><span class="cov1" title="1">{
+        for i := 0; i &lt; ld.ResourceLogs().Len(); i++ </span><span class="cov4" title="13">{
                 resourceLog := ld.ResourceLogs().At(i)
 
                 // Process each scope log
-                for j := 0; j &lt; resourceLog.ScopeLogs().Len(); j++ </span><span class="cov1" title="1">{
+                for j := 0; j &lt; resourceLog.ScopeLogs().Len(); j++ </span><span class="cov4" title="13">{
                         scopeLog := resourceLog.ScopeLogs().At(j)
 
                         // Process each log record
-                        for k := 0; k &lt; scopeLog.LogRecords().Len(); k++ </span><span class="cov3" title="2">{
+                        for k := 0; k &lt; scopeLog.LogRecords().Len(); k++ </span><span class="cov9" title="1221">{
                                 logRecord := scopeLog.LogRecords().At(k)
                                 mpp.processLogRecord(logRecord, resourceLog.Resource().Attributes())
                         }</span>
@@ -333,11 +342,11 @@ func (mpp *mobilePolicyProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs)
         }
 
         // Pass to next consumer
-        <span class="cov1" title="1">return mpp.next.ConsumeLogs(ctx, ld)</span>
+        <span class="cov4" title="14">return mpp.next.ConsumeLogs(ctx, ld)</span>
 }
 
 // processLogRecord evaluates policies and annotates the log record
-func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) <span class="cov6" title="6">{
+func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) <span class="cov9" title="1234">{
         // Extract attributes for policy evaluation
         attrs := make(map[string]interface{})
 
@@ -345,20 +354,20 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
         attrs["event.name"] = lr.Body().AsString()
 
         // Add all log record attributes
-        lr.Attributes().Range(func(k string, v pcommon.Value) bool </span><span class="cov1" title="1">{
+        lr.Attributes().Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="14">{
                 attrs[k] = convertValue(v)
                 return true
         }</span>)
 
         // Add resource attributes (prefixed with "resource.")
-        <span class="cov6" title="6">resourceAttrs.Range(func(k string, v pcommon.Value) bool </span><span class="cov1" title="1">{
+        <span class="cov9" title="1234">resourceAttrs.Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="19">{
                 attrs["resource."+k] = convertValue(v)
                 return true
         }</span>)
 
         // Evaluate policies (first match wins for policy.id annotation)
-        <span class="cov6" title="6">for _, policy := range mpp.policies </span><span class="cov6" title="7">{
-                if mpp.evaluatePolicy(policy, attrs) </span><span class="cov6" title="6">{
+        <span class="cov9" title="1234">for _, policy := range mpp.policies </span><span class="cov9" title="1234">{
+                if mpp.evaluatePolicy(policy, attrs) </span><span class="cov7" title="225">{
                         mpp.logger.Debug("Policy matched",
                                 zap.String("policy_id", policy.ID),
                                 zap.String("event.name", attrs["event.name"].(string)))
@@ -370,192 +379,192 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
 }
 
 // evaluatePolicy checks if attributes match the policy's match conditions
-func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool <span class="cov9" title="18">{
-        if !policy.Enabled </span><span class="cov1" title="1">{
+func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool <span class="cov9" title="1252">{
+        if !policy.Enabled </span><span class="cov2" title="3">{
                 return false
         }</span>
-        <span class="cov9" title="17">match := policy.Match
+        <span class="cov9" title="1249">match := policy.Match
         results := make([]bool, 0, len(match.Attributes))
 
         // Evaluate each attribute condition
-        for attrKey, condition := range match.Attributes </span><span class="cov10" title="20">{
+        for attrKey, condition := range match.Attributes </span><span class="cov9" title="1262">{
                 attrValue, exists := attrs[attrKey]
-                if !exists </span><span class="cov0" title="0">{
+                if !exists </span><span class="cov2" title="4">{
                         results = append(results, false)
                         continue</span>
                 }
 
-                <span class="cov10" title="20">matched := mpp.evaluateCondition(attrValue, condition)
+                <span class="cov9" title="1258">matched := mpp.evaluateCondition(attrValue, condition)
                 results = append(results, matched)</span>
         }
 
         // Apply logical operator
-        <span class="cov9" title="17">if match.LogicalOperator == "and" </span><span class="cov9" title="16">{
-                for _, result := range results </span><span class="cov9" title="18">{
-                        if !result </span><span class="cov5" title="4">{
+        <span class="cov9" title="1249">if match.LogicalOperator == "and" </span><span class="cov9" title="1241">{
+                for _, result := range results </span><span class="cov9" title="1247">{
+                        if !result </span><span class="cov9" title="1011">{
                                 return false
                         }</span>
                 }
-                <span class="cov8" title="12">return len(results) &gt; 0</span>
-        } else<span class="cov1" title="1"> if match.LogicalOperator == "or" </span><span class="cov1" title="1">{
-                for _, result := range results </span><span class="cov1" title="1">{
-                        if result </span><span class="cov1" title="1">{
+                <span class="cov7" title="230">return len(results) &gt; 0</span>
+        } else<span class="cov3" title="8"> if match.LogicalOperator == "or" </span><span class="cov3" title="7">{
+                for _, result := range results </span><span class="cov3" title="10">{
+                        if result </span><span class="cov2" title="4">{
                                 return true
                         }</span>
                 }
-                <span class="cov0" title="0">return false</span>
+                <span class="cov2" title="3">return false</span>
         }
 
-        <span class="cov0" title="0">return false</span>
+        <span class="cov1" title="1">return false</span>
 }
 
 // evaluateCondition checks if a value matches a condition
-func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition Condition) bool <span class="cov10" title="20">{
+func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition Condition) bool <span class="cov10" title="1270">{
         // Equals
-        if condition.Equals != nil </span><span class="cov8" title="11">{
+        if condition.Equals != nil </span><span class="cov9" title="1043">{
                 return fmt.Sprintf("%v", value) == *condition.Equals
         }</span>
 
         // Greater than
-        <span class="cov7" title="9">if condition.Gt != nil </span><span class="cov6" title="6">{
+        <span class="cov7" title="227">if condition.Gt != nil </span><span class="cov3" title="9">{
                 numValue, err := toFloat64(value)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov1" title="1">{
                         return false
                 }</span>
-                <span class="cov6" title="6">return numValue &gt; *condition.Gt</span>
+                <span class="cov3" title="8">return numValue &gt; *condition.Gt</span>
         }
 
         // Less than
-        <span class="cov4" title="3">if condition.Lt != nil </span><span class="cov1" title="1">{
+        <span class="cov7" title="218">if condition.Lt != nil </span><span class="cov1" title="2">{
                 numValue, err := toFloat64(value)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov1" title="1">{
                         return false
                 }</span>
                 <span class="cov1" title="1">return numValue &lt; *condition.Lt</span>
         }
 
         // Greater than or equal
-        <span class="cov3" title="2">if condition.Gte != nil </span><span class="cov0" title="0">{
+        <span class="cov7" title="216">if condition.Gte != nil </span><span class="cov2" title="4">{
                 numValue, err := toFloat64(value)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov1" title="1">{
                         return false
                 }</span>
-                <span class="cov0" title="0">return numValue &gt;= *condition.Gte</span>
+                <span class="cov2" title="3">return numValue &gt;= *condition.Gte</span>
         }
 
         // Less than or equal
-        <span class="cov3" title="2">if condition.Lte != nil </span><span class="cov0" title="0">{
+        <span class="cov7" title="212">if condition.Lte != nil </span><span class="cov2" title="4">{
                 numValue, err := toFloat64(value)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov1" title="1">{
                         return false
                 }</span>
-                <span class="cov0" title="0">return numValue &lt;= *condition.Lte</span>
+                <span class="cov2" title="3">return numValue &lt;= *condition.Lte</span>
         }
 
         // Contains
-        <span class="cov3" title="2">if condition.Contains != nil </span><span class="cov1" title="1">{
+        <span class="cov7" title="208">if condition.Contains != nil </span><span class="cov7" title="202">{
                 strValue := fmt.Sprintf("%v", value)
                 return containsString(strValue, *condition.Contains)
         }</span>
 
         // Regex
-        <span class="cov1" title="1">if condition.Regex != nil </span><span class="cov1" title="1">{
+        <span class="cov3" title="6">if condition.Regex != nil </span><span class="cov3" title="5">{
                 strValue := fmt.Sprintf("%v", value)
                 matched, err := regexp.MatchString(*condition.Regex, strValue)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov1" title="1">{
                         mpp.logger.Warn("Invalid regex", zap.String("regex", *condition.Regex), zap.Error(err))
                         return false
                 }</span>
-                <span class="cov1" title="1">return matched</span>
+                <span class="cov2" title="4">return matched</span>
         }
 
-        <span class="cov0" title="0">return false</span>
+        <span class="cov1" title="1">return false</span>
 }
 
 // annotateLogRecord adds policy match annotations to the log record (first match wins)
-func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) <span class="cov6" title="6">{
+func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) <span class="cov7" title="225">{
         // Add policy match marker; preserve first-matching policy.id
         lr.Attributes().PutStr("policy.matched", "true")
-        if _, exists := lr.Attributes().Get("policy.id"); !exists </span><span class="cov5" title="5">{
+        if _, exists := lr.Attributes().Get("policy.id"); !exists </span><span class="cov7" title="223">{
                 lr.Attributes().PutStr("policy.id", policy.ID)
         }</span>
 
         // Add action parameters as annotations
-        <span class="cov6" title="6">for _, action := range policy.Actions </span><span class="cov6" title="6">{
+        <span class="cov7" title="225">for _, action := range policy.Actions </span><span class="cov7" title="226">{
                 switch action.Type </span>{
-                case "annotate":<span class="cov5" title="5">
+                case "annotate":<span class="cov7" title="217">
                         // Add custom annotations from action parameters
-                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov5" title="4">{
-                                for k, v := range params </span><span class="cov5" title="5">{
+                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov3" title="9">{
+                                for k, v := range params </span><span class="cov3" title="10">{
                                         lr.Attributes().PutStr(fmt.Sprintf("policy.%s", k), fmt.Sprintf("%v", v))
                                 }</span>
                         }
 
-                case "sample":<span class="cov1" title="1">
+                case "sample":<span class="cov3" title="7">
                         // Add sampling annotation
-                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov1" title="1">{
-                                if sampleRate, ok := params["sample_rate"].(float64); ok </span><span class="cov1" title="1">{
+                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov3" title="5">{
+                                if sampleRate, ok := params["sample_rate"].(float64); ok </span><span class="cov1" title="2">{
                                         lr.Attributes().PutDouble("policy.sample_rate", sampleRate)
                                 }</span>
-                                <span class="cov1" title="1">if duration, ok := params["duration_minutes"].(float64); ok </span><span class="cov1" title="1">{
+                                <span class="cov3" title="5">if duration, ok := params["duration_minutes"].(float64); ok </span><span class="cov2" title="3">{
                                         lr.Attributes().PutDouble("policy.sample_duration_minutes", duration)
                                 }</span>
                         }
                 }
         }
 
-        <span class="cov6" title="6">mpp.logger.Debug("Annotated log record",
+        <span class="cov7" title="225">mpp.logger.Debug("Annotated log record",
                 zap.String("policy_id", policy.ID),
                 zap.Int("action_count", len(policy.Actions)))</span>
 }
 
 // Helper functions
 
-func convertValue(v pcommon.Value) interface{} <span class="cov7" title="9">{
+func convertValue(v pcommon.Value) interface{} <span class="cov5" title="45">{
         switch v.Type() </span>{
-        case pcommon.ValueTypeStr:<span class="cov3" title="2">
+        case pcommon.ValueTypeStr:<span class="cov5" title="31">
                 return v.Str()</span>
-        case pcommon.ValueTypeInt:<span class="cov6" title="7">
+        case pcommon.ValueTypeInt:<span class="cov4" title="11">
                 return v.Int()</span>
-        case pcommon.ValueTypeDouble:<span class="cov0" title="0">
+        case pcommon.ValueTypeDouble:<span class="cov1" title="1">
                 return v.Double()</span>
-        case pcommon.ValueTypeBool:<span class="cov0" title="0">
+        case pcommon.ValueTypeBool:<span class="cov1" title="1">
                 return v.Bool()</span>
-        default:<span class="cov0" title="0">
+        default:<span class="cov1" title="1">
                 return v.AsString()</span>
         }
 }
 
-func toFloat64(v interface{}) (float64, error) <span class="cov6" title="7">{
+func toFloat64(v interface{}) (float64, error) <span class="cov5" title="27">{
         switch val := v.(type) </span>{
-        case float64:<span class="cov0" title="0">
+        case float64:<span class="cov3" title="7">
                 return val, nil</span>
-        case float32:<span class="cov0" title="0">
+        case float32:<span class="cov1" title="1">
                 return float64(val), nil</span>
-        case int:<span class="cov0" title="0">
+        case int:<span class="cov1" title="1">
                 return float64(val), nil</span>
-        case int64:<span class="cov6" title="7">
+        case int64:<span class="cov3" title="10">
                 return float64(val), nil</span>
-        case int32:<span class="cov0" title="0">
+        case int32:<span class="cov1" title="1">
                 return float64(val), nil</span>
-        case string:<span class="cov0" title="0">
+        case string:<span class="cov3" title="6">
                 return strconv.ParseFloat(val, 64)</span>
-        default:<span class="cov0" title="0">
+        default:<span class="cov1" title="1">
                 return 0, fmt.Errorf("cannot convert %T to float64", v)</span>
         }
 }
 
-func containsString(s, substr string) bool <span class="cov1" title="1">{
+func containsString(s, substr string) bool <span class="cov7" title="206">{
         return len(s) &gt;= len(substr) &amp;&amp; (s == substr || findSubstring(s, substr))
 }</span>
 
-func findSubstring(s, substr string) bool <span class="cov1" title="1">{
-        for i := 0; i &lt;= len(s)-len(substr); i++ </span><span class="cov5" title="5">{
-                if s[i:i+len(substr)] == substr </span><span class="cov1" title="1">{
+func findSubstring(s, substr string) bool <span class="cov7" title="205">{
+        for i := 0; i &lt;= len(s)-len(substr); i++ </span><span class="cov9" title="1228">{
+                if s[i:i+len(substr)] == substr </span><span class="cov7" title="204">{
                         return true
                 }</span>
         }
-        <span class="cov0" title="0">return false</span>
+        <span class="cov1" title="1">return false</span>
 }
 </pre>
 		

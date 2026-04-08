@@ -22,6 +22,7 @@
 #   -x, --transactions N    Transaction flow every N actions (default: 15, 0=disable)
 #   -d, --demographics N    Change demographics every N actions (default: 50, 0=disable)
 #   -p, --package PKG       Package name (default: io.opentelemetry.android.demo)
+#       --device SERIAL     Target device/emulator (default: auto-select if one connected)
 #   -v, --verbose           Verbose output
 #   -h, --help              Show this help
 #
@@ -52,7 +53,8 @@ set -e
 
 # Default configuration
 PACKAGE_NAME="io.opentelemetry.android.demo"
-ACTIVITY_NAME=".MainActivity"
+ACTIVITY_NAME=".SchedulingActivity"
+DEVICE=""
 MAX_ACTIONS=-1
 MAX_DURATION=-1
 VERBOSE=0
@@ -152,6 +154,7 @@ Options:
   -x, --transactions N    Transaction flow every N actions (default: 15, 0=disable)
   -d, --demographics N    Change demographics every N actions (default: 50, 0=disable)
   -p, --package PKG       Package name (default: $PACKAGE_NAME)
+      --device SERIAL     Target device/emulator (default: auto-select)
   -v, --verbose           Verbose output
   -h, --help              Show this help
 
@@ -173,21 +176,21 @@ EOF
 }
 
 check_device() {
-    log_info "Checking for connected device..."
-    if ! adb devices 2>/dev/null | grep -q "device$"; then
-        log_error "No device connected. Please connect a device and try again."
+    log_info "Checking device $DEVICE..."
+    if ! $ADB get-state >/dev/null 2>&1; then
+        log_error "Device $DEVICE not responding."
         exit 1
     fi
-    log_info "Device found"
+    log_info "Device $DEVICE ready"
 }
 
 is_app_running() {
-    adb shell "pidof $PACKAGE_NAME" > /dev/null 2>&1
+    $ADB shell "pidof $PACKAGE_NAME" > /dev/null 2>&1
     return $?
 }
 
 is_app_responding() {
-    if adb shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
+    if $ADB shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
         return 1
     fi
     if ! is_app_running; then
@@ -198,30 +201,30 @@ is_app_responding() {
 
 start_app() {
     log_info "Starting app: $PACKAGE_NAME"
-    adb shell am start -n "$PACKAGE_NAME/$ACTIVITY_NAME" > /dev/null 2>&1
+    $ADB shell am start -n "$PACKAGE_NAME/$ACTIVITY_NAME" > /dev/null 2>&1
     sleep 2
 }
 
 stop_app() {
     log_info "Stopping app: $PACKAGE_NAME"
-    adb shell am force-stop "$PACKAGE_NAME"
+    $ADB shell am force-stop "$PACKAGE_NAME"
     sleep 1
 }
 
 kill_app() {
     log_warn "Force killing app"
-    adb shell am kill "$PACKAGE_NAME" 2>/dev/null || true
+    $ADB shell am kill "$PACKAGE_NAME" 2>/dev/null || true
     sleep 1
 }
 
 send_to_background() {
     log_debug "Sending app to background"
-    adb shell input keyevent KEYCODE_HOME
+    $ADB shell input keyevent KEYCODE_HOME
 }
 
 bring_to_foreground() {
     log_debug "Bringing app to foreground"
-    adb shell am start -n "$PACKAGE_NAME/$ACTIVITY_NAME" > /dev/null 2>&1
+    $ADB shell am start -n "$PACKAGE_NAME/$ACTIVITY_NAME" > /dev/null 2>&1
 }
 
 get_button_index() {
@@ -248,7 +251,7 @@ click_button() {
     local y=${BUTTON_Y[$idx]}
 
     log_debug "Clicking button: $button_name at ($x, $y)"
-    adb shell input tap $x $y
+    $ADB shell input tap $x $y
 }
 
 select_random_button() {
@@ -329,7 +332,7 @@ set_demographics() {
 
     # Send demographics to app via intent extras (using FLAG_ACTIVITY_SINGLE_TOP to avoid restart)
     log_debug "Sending demographics via intent: $intent_extras"
-    adb shell am start -n $PACKAGE_NAME/.MainActivity --activity-single-top $intent_extras >/dev/null 2>&1
+    $ADB shell am start -n "$PACKAGE_NAME/$ACTIVITY_NAME" --activity-single-top $intent_extras >/dev/null 2>&1
 
     # Cycle to next profile
     CURRENT_DEMOGRAPHIC_INDEX=$(( (CURRENT_DEMOGRAPHIC_INDEX + 1) % ${#DEMOGRAPHIC_PROFILES[@]} ))
@@ -391,7 +394,7 @@ perform_random_action() {
 
     # Check if app is responding
     if ! is_app_responding; then
-        if adb shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
+        if $ADB shell dumpsys activity 2>/dev/null | grep -q "ANR in $PACKAGE_NAME"; then
             handle_anr
             return
         elif ! is_app_running; then
@@ -552,6 +555,10 @@ while [[ $# -gt 0 ]]; do
             PACKAGE_NAME="$2"
             shift 2
             ;;
+        --device)
+            DEVICE="$2"
+            shift 2
+            ;;
         -v|--verbose)
             VERBOSE=1
             shift
@@ -578,9 +585,33 @@ case $STRETCH_MODE in
         ;;
 esac
 
+# Auto-select device if not specified
+if [ -z "$DEVICE" ]; then
+    DEVICES=()
+    while IFS= read -r line; do
+        serial=$(echo "$line" | awk '{print $1}')
+        [[ -n "$serial" ]] && DEVICES+=("$serial")
+    done < <(adb devices 2>/dev/null | tail -n +2 | grep -v "^$" | grep -v "offline")
+
+    if [ ${#DEVICES[@]} -eq 0 ]; then
+        log_error "No devices found. Connect a device or start an emulator."
+        exit 1
+    elif [ ${#DEVICES[@]} -eq 1 ]; then
+        DEVICE="${DEVICES[0]}"
+        log_info "Auto-selected device: $DEVICE"
+    else
+        log_error "Multiple devices found: ${DEVICES[*]}"
+        log_error "Use --device <serial> to select one."
+        exit 1
+    fi
+fi
+
+ADB="adb -s $DEVICE"
+
 # Print configuration
 log_info "==== Enhanced Monkey Test Configuration ===="
 log_info "Package: $PACKAGE_NAME"
+log_info "Device: $DEVICE"
 if [ $MAX_ACTIONS -gt 0 ]; then
     log_info "Max actions: $MAX_ACTIONS"
 else

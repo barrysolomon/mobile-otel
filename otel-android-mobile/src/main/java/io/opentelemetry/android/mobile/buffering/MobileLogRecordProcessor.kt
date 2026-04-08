@@ -499,16 +499,22 @@ class MobileLogRecordProcessor private constructor(
             }
 
             // Disk: use monotonic for same-boot events, wall-clock fallback for cross-boot.
+            // Use seqId to deduplicate crash-safety mirrors that are still in RAM.
             val wallNow = System.currentTimeMillis()
             val wallWindowStart = wallNow - (windowMinutes * 60 * 1000L)
-            val diskEventsToFlush = runBlocking {
-                diskBuffer.getEventsInWindowDualClock(
+            val diskEventsWithSeq = runBlocking {
+                diskBuffer.getEventsInWindowWithSeqId(
                     monoStartMs = effectiveMonoStart,
                     wallStartMs = wallWindowStart,
                     currentBootId = BootTracker.currentBootId
                 )
             }
-            val allEventsToFlush = ramEventsToFlush.map { it.logRecord } + diskEventsToFlush
+            val allRamSeqIds = HashSet<Long>(ramBuffer.size)
+            ramBuffer.forEach { allRamSeqIds.add(it.seqId) }
+            val diskOverflowOnly = diskEventsWithSeq
+                .filter { (_, seqId) -> seqId == 0L || seqId !in allRamSeqIds }
+                .map { (record, _) -> record }
+            val allEventsToFlush = ramEventsToFlush.map { it.logRecord } + diskOverflowOnly
 
             if (allEventsToFlush.isEmpty()) {
                 flushInProgress.set(false)
@@ -516,7 +522,7 @@ class MobileLogRecordProcessor private constructor(
             }
 
             Log.i(TAG, "Flushing ${allEventsToFlush.size} events " +
-                "(${ramEventsToFlush.size} RAM + ${diskEventsToFlush.size} disk) " +
+                "(${ramEventsToFlush.size} RAM + ${diskOverflowOnly.size} disk-only) " +
                 "from last $windowMinutes minutes")
 
             val results = allEventsToFlush.chunked(100).map { batch -> exporter.export(batch) }
@@ -554,7 +560,7 @@ class MobileLogRecordProcessor private constructor(
                             // between the read and delete queries.
                             runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
 
-                            Log.i(TAG, "Cleared $removed RAM + ${diskEventsToFlush.size} disk events after successful flush")
+                            Log.i(TAG, "Cleared $removed RAM + disk events after successful flush")
                         } catch (e: Exception) {
                             Log.e(TAG, "Error clearing events after successful flush", e)
                         } finally {
@@ -730,10 +736,17 @@ class MobileLogRecordProcessor private constructor(
             // identity equality, the same pattern used in flushWindow().
             val ramSnapshot = ramBuffer.toList()
 
-            val diskEvents = runBlocking { diskBuffer.getAllEvents() }
-            val allEvents = ramSnapshot.map { it.logRecord } + diskEvents
+            // Disk may contain crash-safety mirrors of events still in RAM.
+            // Use seqId to deduplicate: skip disk events whose seqId matches a RAM event.
+            val diskEventsWithSeq = runBlocking { diskBuffer.getAllEventsWithSeqId() }
+            val ramSeqIds = HashSet<Long>(ramSnapshot.size)
+            ramSnapshot.forEach { ramSeqIds.add(it.seqId) }
+            val diskOverflowOnly = diskEventsWithSeq
+                .filter { (_, seqId) -> seqId == 0L || seqId !in ramSeqIds }
+                .map { (record, _) -> record }
+            val allEvents = ramSnapshot.map { it.logRecord } + diskOverflowOnly
 
-            Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskEvents.size} disk)")
+            Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskOverflowOnly.size} disk-overflow)")
 
             if (allEvents.isEmpty()) {
                 if (acquired) flushInProgress.set(false)
@@ -759,7 +772,7 @@ class MobileLogRecordProcessor private constructor(
                         ramBufferCount.addAndGet(-removed)
                         synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                         runBlocking { diskBuffer.clearAll() }
-                        Log.i(TAG, "Force flush completed: removed $removed RAM + ${diskEvents.size} disk events")
+                        Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
                     } else {
                         Log.w(TAG, "Force flush failed, keeping events in buffer")
                     }

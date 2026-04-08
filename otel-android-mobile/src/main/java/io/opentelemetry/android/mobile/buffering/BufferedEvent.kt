@@ -7,6 +7,7 @@ package io.opentelemetry.android.mobile.buffering
 
 import android.os.SystemClock
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Wraps a [LogRecordData] with a monotonic timestamp for clock-skew-safe
@@ -17,9 +18,18 @@ import io.opentelemetry.sdk.logs.data.LogRecordData
  * and is used internally for window filtering. The original OTel timestamps
  * on [logRecord] are preserved unchanged for export.
  *
- * Overhead: 8 bytes (one Long) per buffered event.
+ * [seqId] is a process-wide monotonic sequence number used to deduplicate
+ * events that exist in both RAM and disk (crash-safety mirrors). When a RAM
+ * event is persisted to disk, the seqId is stored alongside it so flushWindow()
+ * and forceFlush() can skip disk events whose seqId is still present in RAM.
  */
 internal data class BufferedEvent(
     val logRecord: LogRecordData,
-    val monotonicMs: Long = SystemClock.elapsedRealtime()
-)
+    val monotonicMs: Long = SystemClock.elapsedRealtime(),
+    val seqId: Long = nextSeqId()
+) {
+    companion object {
+        private val counter = AtomicLong(0)
+        private fun nextSeqId(): Long = counter.incrementAndGet()
+    }
+}

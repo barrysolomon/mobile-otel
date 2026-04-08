@@ -154,6 +154,39 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Retrieves all events with their seqIds for dedup against RAM.
+     */
+    suspend fun getAllEventsWithSeqId(): List<Pair<LogRecordData, Long>> = withContext(Dispatchers.IO) {
+        try {
+            logDao.getAllEvents().mapNotNull { entity ->
+                entity.toLogRecordData()?.let { it to entity.seqId }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving events with seqId", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Retrieves windowed events with their seqIds for dedup against RAM.
+     */
+    suspend fun getEventsInWindowWithSeqId(
+        monoStartMs: Long,
+        wallStartMs: Long,
+        currentBootId: String
+    ): List<Pair<LogRecordData, Long>> = withContext(Dispatchers.IO) {
+        try {
+            logDao.getEventsInWindowDualClock(monoStartMs, wallStartMs, currentBootId)
+                .mapNotNull { entity ->
+                    entity.toLogRecordData()?.let { it to entity.seqId }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving windowed events with seqId", e)
+            emptyList()
+        }
+    }
+
+    /**
      * Clears all events from disk.
      */
     suspend fun clearAll() = withContext(Dispatchers.IO) {
@@ -365,7 +398,8 @@ data class LogRecordEntity(
     val spanId: String? = null,         // OTel spanId hex string (16 chars), null if invalid
     val attributeTypes: String? = null, // JSON: {"http.duration_ms":"long","event.name":"string"}
     val monotonicMs: Long = 0,          // SystemClock.elapsedRealtime() at capture time; 0 = unknown (pre-migration)
-    val bootId: String? = null          // Kernel boot_id; null = pre-migration or cross-boot
+    val bootId: String? = null,         // Kernel boot_id; null = pre-migration or cross-boot
+    val seqId: Long = 0                 // Process-wide sequence number for RAM/disk dedup; 0 = pre-migration
 )
 
 /**
@@ -424,7 +458,7 @@ interface LogDao {
 /**
  * Room database definition.
  */
-@Database(entities = [LogRecordEntity::class], version = 3, exportSchema = false)
+@Database(entities = [LogRecordEntity::class], version = 4, exportSchema = false)
 abstract class LogDatabase : RoomDatabase() {
     abstract fun logDao(): LogDao
 }
@@ -477,7 +511,8 @@ private fun BufferedEvent.toEntity(): LogRecordEntity {
     val base = logRecord.toEntity()
     return base.copy(
         monotonicMs = monotonicMs,
-        bootId = BootTracker.currentBootId
+        bootId = BootTracker.currentBootId,
+        seqId = seqId
     )
 }
 
