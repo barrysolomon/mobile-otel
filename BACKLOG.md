@@ -123,9 +123,52 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ---
 
-## Track 5: Upstream Contribution
+## Track 5: Scale Readiness (Production Hardening)
 
-### P2 — Code Cleanup
+**Epic:** [SCALE_READINESS_EPIC.md](docs/epics/SCALE_READINESS_EPIC.md) — 25 findings from production readiness review
+
+### P0 — Critical (before any fleet deployment)
+
+- [ ] **SR-001: Cache disk event count** — Replace `runBlocking { COUNT(*) }` on metric gauge callback with `AtomicInteger` updated on insert/delete. ANR vector on slow-storage devices.
+- [ ] **SR-002: Async flush pipeline** — Eliminate `runBlocking` in `flushWindow()`/`forceFlush()`. Dedicated coroutine scope for disk I/O so executor threads never block.
+- [ ] **SR-003: Singleton lifecycle management** — Clear `DiskLogBuffer` and `MobileLoggerProvider` singletons on `shutdown()`. Prevent stale config on re-initialization.
+- [ ] **SR-004: Bound persistedToDisk set** — Remove entries when TTL cleanup deletes disk events. Prevent unbounded memory growth in long sessions.
+- [ ] **SR-005: FleetAlertHandler thread safety** — Synchronize `alertTimestamps` and `activeOverrides` collections. Race condition defeats rate limiting.
+
+### P0 — High (before beta deployment)
+
+- [ ] **SR-006: Explicit Room migrations** — Replace `fallbackToDestructiveMigration()` with `Migration(2,3)` objects. Prevent silent data wipe during phased rollouts.
+- [ ] **SR-007: Deferred VACUUM** — Move `VACUUM` from hot insert path to periodic cleanup. Prevent exclusive DB lock during burst ingestion.
+- [ ] **SR-008: Shared OkHttpClient** — Inject app-level OkHttpClient into PolicyEvaluator instead of creating per-instance.
+- [ ] **SR-009: Retry jitter** — Add `* (0.5 + random * 0.5)` to RetryableExporter backoff. Prevent thundering herd on collector recovery.
+- [ ] **SR-010: Lock-free trigger evaluation** — Snapshot buffer before evaluating user predicates in LogTailBuffer. Prevent deadlock from user code.
+- [ ] **SR-011: Remove demo_app_prefs from SDK** — ContextSnapshot reads demo app SharedPreferences in library code. Remove and use explicit API.
+- [ ] **SR-012: Pre-compile Go regexes** — Cache compiled regexes in Go processor at policy load time. Currently recompiles on every ConsumeLogs call.
+
+### P1 — Medium (before GA)
+
+- [ ] **SR-013: Atomic sampler revert** — Fix DynamicSampler read→write lock upgrade race with `compareAndSet`.
+- [ ] **SR-014: Provider singleton reset** — Clear MobileLoggerProvider on shutdown (covered by SR-003).
+- [ ] **SR-015: Logical size enforcement** — Use row count not filesystem bytes for disk buffer limits (covered by SR-007).
+- [ ] **SR-016: Crash recovery accuracy** — Only mark clean shutdown in explicit `stop()`, not on every background event.
+- [ ] **SR-017: Crash-safe flush** — On crash path, persist to disk only (skip gRPC export). Crash-recovery handles re-export on next launch.
+- [ ] **SR-018: Multi-type attribute lookup** — Try all 4 `AttributeKey` types (string, long, double, bool) in PolicyEvaluator.getAttributeValue(). Numeric conditions currently never match.
+- [ ] **SR-019: ID-based delete in flushWindow** — Delete by row ID list instead of timestamp range to eliminate TOCTOU data loss.
+
+### P2 — Low (opportunistic)
+
+- [ ] **SR-020:** Replace synchronized regexCache with ConcurrentHashMap
+- [ ] **SR-021:** Add IPv6 loopback `[::1]` to isLocalhostEndpoint()
+- [ ] **SR-022:** Ensure JankDetector constructs Choreographer on main thread
+- [ ] **SR-023:** Fix DynamicSampler negative-Long sampling bias (50% always sampled)
+- [ ] **SR-024:** Add GDPR/CCPA privacy docs for ContextSnapshot demographics
+- [ ] **SR-025:** Use two-value type assertion in Go processor event.name
+
+---
+
+## Track 6: Upstream Contribution
+
+### P2 — Code Cleanup (includes SR-011, SR-020–SR-025)
 
 - [ ] Remove demo-specific code from Android library
 - [ ] Remove hardcoded values, add configuration validation
