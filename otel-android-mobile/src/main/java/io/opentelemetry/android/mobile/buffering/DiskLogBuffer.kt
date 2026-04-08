@@ -8,6 +8,7 @@ package io.opentelemetry.android.mobile.buffering
 import android.content.Context
 import android.util.Log
 import androidx.room.*
+import io.opentelemetry.android.mobile.core.BootTracker
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Severity
@@ -87,6 +88,36 @@ class DiskLogBuffer private constructor(
                 Log.e(TAG, "Error persisting events", e)
             }
         }
+    }
+
+    /**
+     * Persists [BufferedEvent]s to disk, including their monotonic timestamps
+     * and boot IDs for clock-skew-safe window queries.
+     */
+    internal fun persistBufferedEvents(events: List<BufferedEvent>) {
+        scope.launch {
+            try {
+                val entities = events.map { it.toEntity() }
+                logDao.insertAll(entities)
+                Log.d(TAG, "Persisted ${entities.size} buffered events to disk (with monotonicMs)")
+                enforceSizeLimit()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error persisting buffered events", e)
+            }
+        }
+    }
+
+    /**
+     * Dual-clock window query: uses monotonic time for same-boot events (immune
+     * to wall-clock changes) and wall-clock for cross-boot crash recovery events.
+     */
+    suspend fun getEventsInWindowDualClock(
+        monoStartMs: Long,
+        wallStartMs: Long,
+        currentBootId: String
+    ): List<LogRecordData> {
+        return logDao.getEventsInWindowDualClock(monoStartMs, wallStartMs, currentBootId)
+            .mapNotNull { it.toLogRecordData() }
     }
 
     /**
@@ -320,7 +351,7 @@ class DiskLogBuffer private constructor(
 /**
  * Room entity for persisting log records.
  */
-@Entity(tableName = "log_records", indices = [Index("timestampMs"), Index("traceId")])
+@Entity(tableName = "log_records", indices = [Index("timestampMs"), Index("traceId"), Index("monotonicMs")])
 data class LogRecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestampMs: Long,
@@ -332,7 +363,9 @@ data class LogRecordEntity(
     val instrumentationScopeVersion: String?,
     val traceId: String? = null,        // OTel traceId hex string (32 chars), null if invalid
     val spanId: String? = null,         // OTel spanId hex string (16 chars), null if invalid
-    val attributeTypes: String? = null  // JSON: {"http.duration_ms":"long","event.name":"string"}
+    val attributeTypes: String? = null, // JSON: {"http.duration_ms":"long","event.name":"string"}
+    val monotonicMs: Long = 0,          // SystemClock.elapsedRealtime() at capture time; 0 = unknown (pre-migration)
+    val bootId: String? = null          // Kernel boot_id; null = pre-migration or cross-boot
 )
 
 /**
@@ -369,12 +402,29 @@ interface LogDao {
 
     @Query("DELETE FROM log_records WHERE traceId = :traceId")
     suspend fun deleteEventsByTraceId(traceId: String): Int
+
+    /**
+     * Dual-clock query: uses monotonic time for same-boot events (clock-skew-safe)
+     * and wall-clock for cross-boot events (crash recovery fallback).
+     * NOTE: explicit parentheses required — SQL AND binds tighter than OR.
+     */
+    @Query("""
+        SELECT * FROM log_records
+        WHERE (bootId = :currentBootId AND monotonicMs >= :monoStartMs)
+           OR ((bootId IS NULL OR bootId != :currentBootId) AND timestampMs >= :wallStartMs)
+        ORDER BY timestampMs ASC
+    """)
+    suspend fun getEventsInWindowDualClock(
+        monoStartMs: Long,
+        wallStartMs: Long,
+        currentBootId: String
+    ): List<LogRecordEntity>
 }
 
 /**
  * Room database definition.
  */
-@Database(entities = [LogRecordEntity::class], version = 2, exportSchema = false)
+@Database(entities = [LogRecordEntity::class], version = 3, exportSchema = false)
 abstract class LogDatabase : RoomDatabase() {
     abstract fun logDao(): LogDao
 }
@@ -417,6 +467,17 @@ private fun LogRecordData.toEntity(): LogRecordEntity {
         traceId = traceId,
         spanId = spanId,
         attributeTypes = attributeTypesJson.toString().takeIf { it != "{}" }
+    )
+}
+
+/**
+ * Extension to convert BufferedEvent to LogRecordEntity, including monotonic timestamp and boot ID.
+ */
+private fun BufferedEvent.toEntity(): LogRecordEntity {
+    val base = logRecord.toEntity()
+    return base.copy(
+        monotonicMs = monotonicMs,
+        bootId = BootTracker.currentBootId
     )
 }
 

@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
@@ -99,7 +100,13 @@ class SystemEventsInstrumentation : MobileInstrumentation {
         }
 
         receiver = br
-        application.registerReceiver(br, filter)
+        // API 33+ requires explicit export flag. These are system broadcasts only
+        // (not sent by other apps), so RECEIVER_NOT_EXPORTED is the secure choice.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            application.registerReceiver(br, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            application.registerReceiver(br, filter)
+        }
     }
 
     override fun uninstall() {

@@ -6,7 +6,9 @@
 package io.opentelemetry.android.mobile.buffering
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
+import io.opentelemetry.android.mobile.core.BootTracker
 import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.android.mobile.policy.PolicyEvaluator
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsCollector
@@ -94,8 +96,8 @@ class MobileLogRecordProcessor private constructor(
 
     private val TAG = "MobileLogRecordProcessor"
 
-    // RAM buffer: fast, in-memory, bounded queue
-    private val ramBuffer = ConcurrentLinkedQueue<LogRecordData>()
+    // RAM buffer: fast, in-memory, bounded queue (wrapped with monotonic timestamp)
+    private val ramBuffer = ConcurrentLinkedQueue<BufferedEvent>()
     private val ramBufferCount = AtomicInteger(0)
 
     // Disk buffer: persistent storage with Room
@@ -117,14 +119,14 @@ class MobileLogRecordProcessor private constructor(
     // Shutdown flag
     private val isShutdown = AtomicBoolean(false)
 
-    // Tracks the start timestamp of the most recently seen screen view event.
+    // Tracks the monotonic start time of the most recently seen screen view event.
     // Used to extend flushWindow() backward to capture the full current-screen context.
-    private val currentScreenStartMs = AtomicLong(0L)
+    private val currentScreenStartMonoMs = AtomicLong(0L)
 
-    // Tracks the last successfully flushed window to prevent re-exporting the same
-    // data when overlapping policies fire within a short window.
-    private val lastFlushEndMs = AtomicLong(0L)
-    private val lastFlushStartMs = AtomicLong(0L)
+    // Tracks the last successfully flushed window (monotonic time) to prevent
+    // re-exporting the same data when overlapping policies fire within a short window.
+    private val lastFlushEndMonoMs = AtomicLong(0L)
+    private val lastFlushStartMonoMs = AtomicLong(0L)
     private val flushCooldownMs = 10_000L  // 10 seconds
 
     // Guards against concurrent flushWindow() calls (e.g. ui.freeze + app.anr emitted ms apart).
@@ -133,7 +135,7 @@ class MobileLogRecordProcessor private constructor(
 
     // Tracks RAM events that have already been mirrored to disk for crash safety.
     // Uses object identity so we only persist each event once, avoiding disk duplicates.
-    private val persistedToDisk: MutableSet<LogRecordData> = Collections.newSetFromMap(
+    private val persistedToDisk: MutableSet<BufferedEvent> = Collections.newSetFromMap(
         IdentityHashMap()
     )
 
@@ -301,13 +303,14 @@ class MobileLogRecordProcessor private constructor(
             return
         }
 
-        // Add to RAM buffer
-        ramBuffer.offer(logRecordData)
+        // Add to RAM buffer wrapped with monotonic timestamp
+        val bufferedEvent = BufferedEvent(logRecordData)
+        ramBuffer.offer(bufferedEvent)
         val count = ramBufferCount.incrementAndGet()
 
-        // Track screen start for window extension
+        // Track screen start for window extension (monotonic time)
         if (body == "screen.view") {
-            currentScreenStartMs.set(logRecordData.effectiveTimestampMs())
+            currentScreenStartMonoMs.set(bufferedEvent.monotonicMs)
         }
 
         // Check if we need to overflow to disk
@@ -454,47 +457,58 @@ class MobileLogRecordProcessor private constructor(
         }
 
         try {
-            val now = System.currentTimeMillis()
-            val lastEnd = lastFlushEndMs.get()
-            val lastStart = lastFlushStartMs.get()
+            // Use monotonic time for window calculations — immune to wall-clock changes.
+            // See docs/design/MONOTONIC_FLUSH_WINDOW.md for rationale.
+            val monoNow = SystemClock.elapsedRealtime()
+            val lastEndMono = lastFlushEndMonoMs.get()
+            val lastStartMono = lastFlushStartMonoMs.get()
 
             // Suppress if the proposed window overlaps with the last flush AND the last
             // flush completed within the cooldown period.
-            if (lastEnd > 0 && (now - lastEnd) < flushCooldownMs) {
-                val proposedStart = now - (windowMinutes * 60 * 1000L)
-                if (proposedStart < lastEnd && now > lastStart) {
-                    Log.d(TAG, "flushWindow: suppressed duplicate flush — last flush ended ${now - lastEnd}ms ago and window overlaps")
+            if (lastEndMono > 0 && (monoNow - lastEndMono) < flushCooldownMs) {
+                val proposedStartMono = monoNow - (windowMinutes * 60 * 1000L)
+                if (proposedStartMono < lastEndMono && monoNow > lastStartMono) {
+                    Log.d(TAG, "flushWindow: suppressed duplicate flush — last flush ended ${monoNow - lastEndMono}ms ago and window overlaps")
                     flushInProgress.set(false)
                     return CompletableResultCode.ofSuccess()
                 }
             }
 
-            val requestedWindowStartMs = now - (windowMinutes * 60 * 1000L)
+            val monoWindowStart = monoNow - (windowMinutes * 60 * 1000L)
 
             // Extend backward to capture the full current page span, capped at 30 minutes
-            val maxExtensionMs = now - (30 * 60 * 1000L)
-            val screenStartMs = currentScreenStartMs.get()
-            val windowStartMs = if (screenStartMs > 0 && screenStartMs < requestedWindowStartMs) {
-                maxOf(screenStartMs, maxExtensionMs)
+            val maxExtensionMonoMs = monoNow - (30 * 60 * 1000L)
+            val screenStartMonoMs = currentScreenStartMonoMs.get()
+            val effectiveMonoStart = if (screenStartMonoMs > 0 && screenStartMonoMs < monoWindowStart) {
+                maxOf(screenStartMonoMs, maxExtensionMonoMs)
             } else {
-                requestedWindowStartMs
+                monoWindowStart
             }
 
-            if (windowStartMs < requestedWindowStartMs) {
-                Log.d(TAG, "flushWindow: extending window from ${windowMinutes}min to include screen start at ${requestedWindowStartMs - windowStartMs}ms earlier")
+            if (effectiveMonoStart < monoWindowStart) {
+                Log.d(TAG, "flushWindow: extending window from ${windowMinutes}min to include screen start at ${monoWindowStart - effectiveMonoStart}ms earlier")
             }
 
-            // Snapshot the RAM events to export. Track by object identity so we can remove
-            // exactly these objects later without touching events that arrived during export.
-            val ramEventsToFlush = mutableListOf<LogRecordData>()
-            ramBuffer.forEach { logRecord ->
-                if (logRecord.effectiveTimestampMs() >= windowStartMs) {
-                    ramEventsToFlush.add(logRecord)
+            // Snapshot the RAM events to export using monotonic timestamps.
+            // Track by object identity so we can remove exactly these after export.
+            val ramEventsToFlush = mutableListOf<BufferedEvent>()
+            ramBuffer.forEach { event ->
+                if (event.monotonicMs >= effectiveMonoStart) {
+                    ramEventsToFlush.add(event)
                 }
             }
 
-            val diskEventsToFlush = runBlocking { diskBuffer.getEventsInWindow(windowStartMs) }
-            val allEventsToFlush = ramEventsToFlush + diskEventsToFlush
+            // Disk: use monotonic for same-boot events, wall-clock fallback for cross-boot.
+            val wallNow = System.currentTimeMillis()
+            val wallWindowStart = wallNow - (windowMinutes * 60 * 1000L)
+            val diskEventsToFlush = runBlocking {
+                diskBuffer.getEventsInWindowDualClock(
+                    monoStartMs = effectiveMonoStart,
+                    wallStartMs = wallWindowStart,
+                    currentBootId = BootTracker.currentBootId
+                )
+            }
+            val allEventsToFlush = ramEventsToFlush.map { it.logRecord } + diskEventsToFlush
 
             if (allEventsToFlush.isEmpty()) {
                 flushInProgress.set(false)
@@ -515,14 +529,14 @@ class MobileLogRecordProcessor private constructor(
                 executor.submit {
                     if (result.isSuccess) {
                         try {
-                            lastFlushStartMs.set(windowStartMs)
-                            lastFlushEndMs.set(System.currentTimeMillis())
+                            lastFlushStartMonoMs.set(effectiveMonoStart)
+                            lastFlushEndMonoMs.set(SystemClock.elapsedRealtime())
 
                             // Remove ONLY the exact exported objects from the RAM buffer.
                             // Using an identity set avoids the clear()+addAll() race condition
                             // that would silently drop events written during the export window.
                             val exportedIds = Collections.newSetFromMap(
-                                IdentityHashMap<LogRecordData, Boolean>()
+                                IdentityHashMap<BufferedEvent, Boolean>()
                             )
                             exportedIds.addAll(ramEventsToFlush)
 
@@ -535,9 +549,10 @@ class MobileLogRecordProcessor private constructor(
                             ramBufferCount.addAndGet(-removed)
                             synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
 
-                            // Remove the disk window — disk events don't have the same race risk
-                            // because DiskLogBuffer uses Room transactions for atomicity.
-                            runBlocking { diskBuffer.deleteEventsInWindow(windowStartMs) }
+                            // Delete disk events by the exact IDs that were SELECTed,
+                            // not by timestamp window — avoids clock-skew inconsistency
+                            // between the read and delete queries.
+                            runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
 
                             Log.i(TAG, "Cleared $removed RAM + ${diskEventsToFlush.size} disk events after successful flush")
                         } catch (e: Exception) {
@@ -580,15 +595,16 @@ class MobileLogRecordProcessor private constructor(
 
         try {
             // Collect RAM events matching traceId
-            val ramEventsToFlush = mutableListOf<LogRecordData>()
-            ramBuffer.forEach { logRecord ->
-                if (logRecord.spanContext.isValid && logRecord.spanContext.traceId == traceId) {
-                    ramEventsToFlush.add(logRecord)
+            val ramEventsToFlush = mutableListOf<BufferedEvent>()
+            ramBuffer.forEach { event ->
+                val sc = event.logRecord.spanContext
+                if (sc.isValid && sc.traceId == traceId) {
+                    ramEventsToFlush.add(event)
                 }
             }
 
             val diskEventsToFlush = runBlocking { diskBuffer.getEventsByTraceId(traceId) }
-            val allEventsToFlush = ramEventsToFlush + diskEventsToFlush
+            val allEventsToFlush = ramEventsToFlush.map { it.logRecord } + diskEventsToFlush
 
             // If trace-matched events are very few (e.g., only the trigger event itself),
             // fall back to time-window for fuller context
@@ -605,7 +621,7 @@ class MobileLogRecordProcessor private constructor(
             result.whenComplete {
                 executor.submit {
                     if (result.isSuccess) {
-                        val exportedIds = Collections.newSetFromMap(IdentityHashMap<LogRecordData, Boolean>())
+                        val exportedIds = Collections.newSetFromMap(IdentityHashMap<BufferedEvent, Boolean>())
                         exportedIds.addAll(ramEventsToFlush)
                         var removed = 0
                         ramBuffer.removeIf { event ->
@@ -639,14 +655,14 @@ class MobileLogRecordProcessor private constructor(
      */
     private fun persistRamToDiskForCrashSafety() {
         if (isShutdown.get()) return
-        val newEvents: List<LogRecordData>
+        val newEvents: List<BufferedEvent>
         synchronized(persistedToDisk) {
             newEvents = ramBuffer.filter { !persistedToDisk.contains(it) }
             if (newEvents.isEmpty()) return
             persistedToDisk.addAll(newEvents)
         }
         try {
-            diskBuffer.persistEvents(newEvents)
+            diskBuffer.persistBufferedEvents(newEvents)
             Log.d(TAG, "Crash-mirror: persisted ${newEvents.size} new RAM events to disk")
         } catch (e: Exception) {
             Log.e(TAG, "Error in crash-safety mirror write", e)
@@ -669,7 +685,7 @@ class MobileLogRecordProcessor private constructor(
             }
 
             val overflowCount = currentCount - ramBufferSize
-            val eventsToMove = mutableListOf<LogRecordData>()
+            val eventsToMove = mutableListOf<BufferedEvent>()
 
             // Remove oldest events from RAM (FIFO)
             repeat(overflowCount) {
@@ -680,7 +696,7 @@ class MobileLogRecordProcessor private constructor(
             // here because these are being removed from RAM — the crash-mirror set is cleaned up too)
             if (eventsToMove.isNotEmpty()) {
                 synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
-                diskBuffer.persistEvents(eventsToMove)
+                diskBuffer.persistBufferedEvents(eventsToMove)
                 ramBufferCount.addAndGet(-eventsToMove.size)
                 Log.d(TAG, "Overflowed ${eventsToMove.size} events to disk")
             }
@@ -715,7 +731,7 @@ class MobileLogRecordProcessor private constructor(
             val ramSnapshot = ramBuffer.toList()
 
             val diskEvents = runBlocking { diskBuffer.getAllEvents() }
-            val allEvents = ramSnapshot + diskEvents
+            val allEvents = ramSnapshot.map { it.logRecord } + diskEvents
 
             Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskEvents.size} disk)")
 
@@ -733,7 +749,7 @@ class MobileLogRecordProcessor private constructor(
                         // Remove exactly the snapshotted RAM events by object identity.
                         // Events that arrived after the snapshot was taken are preserved.
                         val exportedIds = Collections.newSetFromMap(
-                            IdentityHashMap<LogRecordData, Boolean>()
+                            IdentityHashMap<BufferedEvent, Boolean>()
                         )
                         exportedIds.addAll(ramSnapshot)
                         var removed = 0
@@ -785,7 +801,8 @@ class MobileLogRecordProcessor private constructor(
 
             val flushResult = if (ramEvents.isNotEmpty()) {
                 val batchSize = 100
-                val results = ramEvents.chunked(batchSize).map { batch -> exporter.export(batch) }
+                val logRecords = ramEvents.map { it.logRecord }
+                val results = logRecords.chunked(batchSize).map { batch -> exporter.export(batch) }
                 CompletableResultCode.ofAll(results)
             } else {
                 CompletableResultCode.ofSuccess()
