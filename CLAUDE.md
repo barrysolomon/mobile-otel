@@ -221,7 +221,7 @@ InstrumentationRegistry.getInstrumentation().runOnMainSync {
 
 **Core subsystems:**
 
-- **Buffering** (`buffering/`): `MobileLogRecordProcessor` routes logs through a dual-tier buffer — RAM via `ConcurrentLinkedQueue` (5000 events) and disk via `DiskLogBuffer` (Room/SQLite, 50MB, 24h TTL). `RetryableExporter` handles export failures. `flushWindow(minutes)` enables selective time-window export.
+- **Buffering** (`buffering/`): `MobileLogRecordProcessor` routes logs through a dual-tier buffer — RAM via `ConcurrentLinkedQueue` (5000 events) and disk via `DiskLogBuffer` (Room/SQLite v4, 50MB, 24h TTL). `RetryableExporter` handles export failures. `flushWindow(minutes)` enables selective time-window export. Each `BufferedEvent` carries a monotonic `seqId` used to deduplicate crash-safety mirrors (RAM events copied to disk) during flush — prevents double-export.
 - **Policy evaluation** (`policy/`): `PolicyEvaluator` matches events against DSL-defined trigger conditions in real-time.
 - **Export** (`export/`): `EnrichingLogRecordExporter` enriches logs with device/session attributes before export.
 - **Session** (`core/`): `SessionManager` for session lifecycle.
@@ -266,6 +266,7 @@ cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
 
 - **Kotlin `/*` in strings/comments** — The Kotlin compiler misparses `/*` inside string literals in doc comments as a block-comment start. In `PolicyEvaluator.kt`, timezone wildcards like `"America/*"` must be written as `"America/wildcard"` or similar. Symptom: `Unclosed comment` error at end of file.
 - **`go.sum` untracked** — `collector-processor/mobilepolicyprocessor/go.sum` is not committed. Run `go mod tidy` before building the processor for the first time.
+- **macOS bash 3.2** — `run-dash0-scenarios.sh` and `run-demo-single.sh` use `declare -A` (associative arrays) which requires bash 4+. macOS ships bash 3.2. Install bash 4+ via `brew install bash` or run via Gradle directly: `./gradlew :android:connectedDebugAndroidTest`
 
 ## Key Documents
 

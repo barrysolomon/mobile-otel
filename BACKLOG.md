@@ -53,7 +53,7 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 
 ### P1 — Integration Tests
 
-- [ ] **Android integration** — End-to-end buffer flow (RAM -> Disk -> Export), real Room database, crash recovery, concurrent capture (~20 tests). Requires emulator.
+- [~] **Android integration** — End-to-end buffer flow (RAM -> Disk -> Export), real Room database, crash recovery, concurrent capture. 9 tests passing on emulator. Crash-mirror dedup validated.
 - [ ] **Collector integration** — Processor in real collector, full OTLP pipeline, policy matching, annotation propagation (~20 tests). Requires custom collector via ocb.
 
 ### P2 — E2E & Performance
@@ -137,7 +137,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### P0 — High (before beta deployment)
 
-- [ ] **SR-006: Explicit Room migrations** — Replace `fallbackToDestructiveMigration()` with `Migration(2,3)` objects. Prevent silent data wipe during phased rollouts.
+- [ ] **SR-006: Explicit Room migrations** — Replace `fallbackToDestructiveMigration()` with explicit `Migration` objects (now at v4 after seqId column). Prevent silent data wipe during phased rollouts.
 - [ ] **SR-007: Deferred VACUUM** — Move `VACUUM` from hot insert path to periodic cleanup. Prevent exclusive DB lock during burst ingestion.
 - [ ] **SR-008: Shared OkHttpClient** — Inject app-level OkHttpClient into PolicyEvaluator instead of creating per-instance.
 - [ ] **SR-009: Retry jitter** — Add `* (0.5 + random * 0.5)` to RetryableExporter backoff. Prevent thundering herd on collector recovery.
@@ -206,6 +206,9 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [x] **OTelMobile delegation** — `OTelMobile.start()` delegates to `MobileOtel.initialize()` for full module wiring
 - [x] **Predictive flush** — PredictiveExportPolicy emits OTel log events for prediction cycles and high-risk alerts
 - [x] **forceFlush(windowMinutes)** — Selective time-window flush via `MobileLogRecordProcessor.flushWindow()`
+- [x] **seqId dedup** — BufferedEvent.seqId prevents crash-safety mirrors from being double-exported in forceFlush/flushWindow
+- [x] **Script organization** — All scripts in categorized `scripts/{demo,ci,e2e,test,setup,lib}` with root forwarders
+- [x] **monkey-test.sh device targeting** — `--device` flag, auto-select single emulator, fixed activity name
 - [x] **FreezeDetector infinite loop** — Reset `lastTickAtMs` + re-post tick in `emitPendingFreeze()` to prevent ever-growing freeze.duration_ms after ANR
 - [x] **Page span sampling** — `sampling.priority=high` on all page spans ensures TapCapture/ScrollCapture emit child spans (trace waterfall) not flat logs
 - [x] **Split OTel/Dash0 config** — `ConfigActivity` (OTel SDK settings) + `Dash0ConfigActivity` (backend connection) as separate screens
