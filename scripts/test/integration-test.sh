@@ -23,7 +23,8 @@ IMAGE="otelcol-mobile:latest"
 BUILD=true
 VERBOSE=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-COLLECTOR_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+COLLECTOR_DIR="$REPO_ROOT/collector-processor"
 CONTAINER_NAME="otelcol-mobile-test-$$"
 OTLP_HTTP_PORT=14318
 HEALTH_PORT=14133
@@ -120,7 +121,7 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   -p "${OTLP_HTTP_PORT}:4318" \
   -p "${HEALTH_PORT}:13133" \
-  -v "${SCRIPT_DIR}/test-config.yaml:/app/config.yaml:ro" \
+  -v "$REPO_ROOT/collector-processor/integration_test/test-config.yaml:/app/config.yaml:ro" \
   "$IMAGE" >/dev/null
 
 echo "Waiting for health check ..."
