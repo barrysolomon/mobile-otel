@@ -2,7 +2,7 @@
 # Shared helpers for all demo scripts.
 # Source this file — do not execute directly.
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[1]:-$0}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEMO_APP="$REPO_ROOT/examples/demo-app"
 DEMO_BACKEND="$REPO_ROOT/examples/demo-backend"
 PKG="io.opentelemetry.android.demo"
