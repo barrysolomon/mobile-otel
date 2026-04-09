@@ -324,7 +324,7 @@ assert_gte "offline.event from extendedOffline: 10" 10 "$OFFLINE_EVENT"
 bold ""
 bold "── 9. Attribute Quality ──"
 
-LOGS_WITH_SESSION=$(count_logs "session.id is_set")
+LOGS_WITH_SESSION=$(count_logs "mobile.session.id is_set")
 LOGS_WITH_SCREEN=$(count_logs "screen.name is_set")
 SPANS_WITH_SERVICE=$(count_spans "service.name is_set")
 LOGS_WITH_RUN_ID=$(count_logs "demo.run_id is_set")

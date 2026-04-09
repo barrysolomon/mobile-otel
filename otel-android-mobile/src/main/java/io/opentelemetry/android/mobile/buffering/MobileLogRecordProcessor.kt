@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.buffering
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -346,6 +347,7 @@ class MobileLogRecordProcessor private constructor(
      * - `buffer.disk_events`      — current disk buffer occupancy
      * - `network.type`            — wifi / cellular / none / unknown
      */
+    @SuppressLint("MissingPermission") // Permission declared in app manifest, not library
     private fun emitHeartbeat() {
         val logger = heartbeatLogger ?: run {
             Log.w(TAG, "HYBRID heartbeat skipped: heartbeatLogger not yet set")
@@ -398,6 +400,7 @@ class MobileLogRecordProcessor private constructor(
      * This runs asynchronously to avoid blocking the logging thread.
      * When a policy matches, it also captures device metrics for debugging context.
      */
+    @SuppressLint("MissingPermission") // Permission declared in app manifest, not library
     private fun evaluatePolicies(logRecord: LogRecordData) {
         try {
             val matchResult = policyEvaluator.evaluate(logRecord)

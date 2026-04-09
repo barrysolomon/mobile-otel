@@ -12,28 +12,31 @@ source "$(dirname "$0")/../lib/demo-common.sh"
 
 # ── Scenario map ─────────────────────────────────────────────────────────────
 
-declare -A SCENARIOS=(
-  # UserJourneyScenarios
-  [happyPath]="UserJourneyScenarios#happyPathBooking"
-  [errorRecovery]="UserJourneyScenarios#errorRecoveryFlow"
-  [multiScreen]="UserJourneyScenarios#multiScreenNavigation"
-  [breadcrumbs]="UserJourneyScenarios#navigationBreadcrumbs"
+# Scenario map (bash 3.2 compatible — no declare -A)
+get_scenario() {
+  case "$1" in
+    # UserJourneyScenarios
+    happyPath)          echo "UserJourneyScenarios#happyPathBooking" ;;
+    errorRecovery)      echo "UserJourneyScenarios#errorRecoveryFlow" ;;
+    multiScreen)        echo "UserJourneyScenarios#multiScreenNavigation" ;;
+    breadcrumbs)        echo "UserJourneyScenarios#navigationBreadcrumbs" ;;
+    # EmulatorStressScenarios
+    batteryDrain)       echo "EmulatorStressScenarios#batteryDrain" ;;
+    thermal)            echo "EmulatorStressScenarios#thermalThrottle" ;;
+    memoryPressure)     echo "EmulatorStressScenarios#memoryPressure" ;;
+    networkDegradation) echo "EmulatorStressScenarios#networkDegradation" ;;
+    # FaultScenarios
+    jank)               echo "FaultScenarios#jankDetection" ;;
+    anr)                echo "FaultScenarios#anrTrigger" ;;
+    memoryFault)        echo "FaultScenarios#memoryPressureFault" ;;
+    # ConditionalFlushScenarios
+    crashFlush)         echo "ConditionalFlushScenarios#quietBufferThenCrashFlush" ;;
+    conditionalFlush)   echo "ConditionalFlushScenarios#conditionalFlushDemo" ;;
+    *) return 1 ;;
+  esac
+}
 
-  # EmulatorStressScenarios
-  [batteryDrain]="EmulatorStressScenarios#batteryDrain"
-  [thermal]="EmulatorStressScenarios#thermalThrottle"
-  [memoryPressure]="EmulatorStressScenarios#memoryPressure"
-  [networkDegradation]="EmulatorStressScenarios#networkDegradation"
-
-  # FaultScenarios
-  [jank]="FaultScenarios#jankDetection"
-  [anr]="FaultScenarios#anrTrigger"
-  [memoryFault]="FaultScenarios#memoryPressureFault"
-
-  # ConditionalFlushScenarios
-  [crashFlush]="ConditionalFlushScenarios#quietBufferThenCrashFlush"
-  [conditionalFlush]="ConditionalFlushScenarios#conditionalFlushDemo"
-)
+SCENARIO_KEYS="anr batteryDrain breadcrumbs conditionalFlush crashFlush errorRecovery happyPath jank memoryFault memoryPressure multiScreen networkDegradation thermal"
 
 BASE_PKG="io.opentelemetry.android.demo.scenarios"
 
@@ -45,8 +48,8 @@ for arg in "$@"; do
     --incubating) INCUBATING=true ;;
     --list)
       echo "Available scenarios:"
-      for key in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
-        printf "  %-22s %s\n" "$key" "${SCENARIOS[$key]}"
+      for key in $SCENARIO_KEYS; do
+        printf "  %-22s %s\n" "$key" "$(get_scenario "$key")"
       done
       exit 0
       ;;
@@ -62,8 +65,9 @@ if [ -z "$SCENARIO_KEY" ]; then
 fi
 
 # Resolve scenario
-if [ -n "${SCENARIOS[$SCENARIO_KEY]+x}" ]; then
-  CLASS="$BASE_PKG.${SCENARIOS[$SCENARIO_KEY]}"
+SCENARIO_VALUE="$(get_scenario "$SCENARIO_KEY" 2>/dev/null || true)"
+if [ -n "$SCENARIO_VALUE" ]; then
+  CLASS="$BASE_PKG.${SCENARIO_VALUE}"
 else
   # Allow full class#method path
   CLASS="$SCENARIO_KEY"

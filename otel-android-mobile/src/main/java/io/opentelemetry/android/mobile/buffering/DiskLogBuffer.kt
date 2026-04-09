@@ -8,6 +8,8 @@ package io.opentelemetry.android.mobile.buffering
 import android.content.Context
 import android.util.Log
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import io.opentelemetry.android.mobile.core.BootTracker
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
@@ -19,6 +21,71 @@ import io.opentelemetry.sdk.resources.Resource
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
+
+/**
+ * Explicit Room migrations for the log_records table.
+ *
+ * Schema history:
+ *   v1: Base schema (id, timestampMs, severityText, severityNumber, body, attributes,
+ *       resource, instrumentationScopeName, instrumentationScopeVersion). Index: timestampMs.
+ *   v2: Added traceId, spanId, attributeTypes. Added traceId index. Dropped severityNumber.
+ *   v3: Added monotonicMs, bootId. Added monotonicMs index.
+ *   v4: Added seqId for RAM/disk dedup.
+ */
+internal object LogDatabaseMigrations {
+
+    /** v1 → v2: Add trace context columns, attributeTypes; drop severityNumber; add traceId index. */
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // SQLite < 3.35 (Android < 14) doesn't support DROP COLUMN.
+            // Rebuild the table to remove severityNumber.
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS log_records_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    timestampMs INTEGER NOT NULL,
+                    severityText TEXT,
+                    body TEXT NOT NULL,
+                    attributes TEXT NOT NULL,
+                    resource TEXT NOT NULL,
+                    instrumentationScopeName TEXT,
+                    instrumentationScopeVersion TEXT,
+                    traceId TEXT,
+                    spanId TEXT,
+                    attributeTypes TEXT
+                )
+            """.trimIndent())
+            db.execSQL("""
+                INSERT INTO log_records_new (id, timestampMs, severityText, body, attributes,
+                    resource, instrumentationScopeName, instrumentationScopeVersion)
+                SELECT id, timestampMs, severityText, body, attributes,
+                    resource, instrumentationScopeName, instrumentationScopeVersion
+                FROM log_records
+            """.trimIndent())
+            db.execSQL("DROP TABLE log_records")
+            db.execSQL("ALTER TABLE log_records_new RENAME TO log_records")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_log_records_timestampMs ON log_records(timestampMs)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_log_records_traceId ON log_records(traceId)")
+        }
+    }
+
+    /** v2 → v3: Add monotonic clock columns for boot-safe time windows. */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE log_records ADD COLUMN monotonicMs INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE log_records ADD COLUMN bootId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_log_records_monotonicMs ON log_records(monotonicMs)")
+        }
+    }
+
+    /** v3 → v4: Add seqId for RAM/disk deduplication during flush. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE log_records ADD COLUMN seqId INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+}
 
 /**
  * Persistent disk buffer for log records using Room database.
@@ -56,7 +123,8 @@ class DiskLogBuffer private constructor(
         LogDatabase::class.java,
         "otel_log_buffer.db"
     )
-        .fallbackToDestructiveMigration()
+        .addMigrations(*LogDatabaseMigrations.ALL)
+        .fallbackToDestructiveMigration(true)  // Safety net: if migration fails, recreate rather than crash
         .build()
         .also { db ->
             // Pre-warm: open the database connection immediately so the first insert

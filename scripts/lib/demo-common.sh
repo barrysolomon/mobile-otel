@@ -32,7 +32,9 @@ collect_emulators() {
   while IFS= read -r line; do
     local serial
     serial=$(echo "$line" | awk '{print $1}')
-    [[ "$serial" == emulator-* ]] && EMULATORS+=("$serial")
+    if [[ "$serial" == emulator-* ]]; then
+      EMULATORS+=("$serial")
+    fi
   done < <(adb devices | tail -n +2)
 }
 

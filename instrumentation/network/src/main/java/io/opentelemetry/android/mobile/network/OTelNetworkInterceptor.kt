@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.network
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -248,6 +249,7 @@ class OTelNetworkInterceptor private constructor(
     /**
      * Get current network type.
      */
+    @SuppressLint("MissingPermission") // Permission declared in app manifest, not library
     private fun getNetworkType(): String? {
         val cm = connectivityManager ?: return null
 

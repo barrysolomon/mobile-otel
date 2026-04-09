@@ -72,12 +72,17 @@ INTER_CLASS_WAIT=2
 
 # ── Package / class map ────────────────────────────────────────────────────────
 PKG="io.opentelemetry.android.demo.scenarios"
-declare -A SUITE_CLASS=(
-  [journeys]="${PKG}.UserJourneyScenarios"
-  [faults]="${PKG}.FaultScenarios"
-  [conditional]="${PKG}.ConditionalFlushScenarios"
-  [stress]="${PKG}.EmulatorStressScenarios"
-)
+
+# Suite-to-class map (bash 3.2 compatible — no declare -A)
+get_suite_class() {
+  case "$1" in
+    journeys)    echo "${PKG}.UserJourneyScenarios" ;;
+    faults)      echo "${PKG}.FaultScenarios" ;;
+    conditional) echo "${PKG}.ConditionalFlushScenarios" ;;
+    stress)      echo "${PKG}.EmulatorStressScenarios" ;;
+    *) return 1 ;;
+  esac
+}
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 log()    { echo -e "${BOLD}[dash0]${NC} $*"; }
@@ -158,10 +163,12 @@ build_runner_args() {
       args+=("-Pandroid.testInstrumentationRunnerArguments.class=${SINGLE_CLASS}")
     fi
   elif [[ -n "$SINGLE_TEST" && -n "$suite" ]]; then
-    local class="${SUITE_CLASS[$suite]}"
+    local class
+    class="$(get_suite_class "$suite")"
     args+=("-Pandroid.testInstrumentationRunnerArguments.class=${class}#${SINGLE_TEST}")
   elif [[ -n "$suite" ]]; then
-    local class="${SUITE_CLASS[$suite]}"
+    local class
+    class="$(get_suite_class "$suite")"
     args+=("-Pandroid.testInstrumentationRunnerArguments.class=${class}")
   else
     args+=("-Pandroid.testInstrumentationRunnerArguments.package=${PKG}")
@@ -248,7 +255,7 @@ for run in $(seq 1 "$REPEAT"); do
     if [[ "$suite" == "__custom__" ]]; then
       DISPLAY_NAME="${SINGLE_CLASS:-${PKG}}"
     else
-      DISPLAY_NAME="$suite (${SUITE_CLASS[$suite]##*.})"
+      DISPLAY_NAME="$suite ($(get_suite_class "$suite" | sed 's/.*\.//'))"
     fi
 
     header "Suite: $DISPLAY_NAME"

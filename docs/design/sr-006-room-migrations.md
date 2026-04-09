@@ -1,7 +1,7 @@
 # SR-006: Explicit Room Migrations
 
 **Severity:** HIGH
-**Status:** Planned
+**Status:** Done (2026-04-09)
 
 ## Problem
 

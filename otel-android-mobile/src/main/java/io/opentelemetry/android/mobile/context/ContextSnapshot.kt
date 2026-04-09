@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.annotation.SuppressLint
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
@@ -272,6 +273,7 @@ object ContextSnapshotProvider {
      * @param context Android context
      * @return Network type string
      */
+    @SuppressLint("MissingPermission") // Permission declared in app manifest, not library
     private fun getNetworkType(context: Context): String {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager

@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.predictive
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -149,6 +150,7 @@ class OnDevicePredictor private constructor(
 
     // Network loss prediction
 
+    @SuppressLint("MissingPermission") // Permission declared in app manifest, not library
     private fun predictNetworkLoss(): Double {
         var risk = 0.0
 

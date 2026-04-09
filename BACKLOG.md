@@ -137,7 +137,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### P0 — High (before beta deployment)
 
-- [ ] **SR-006: Explicit Room migrations** — Replace `fallbackToDestructiveMigration()` with explicit `Migration` objects (now at v4 after seqId column). Prevent silent data wipe during phased rollouts.
+- [x] **SR-006: Explicit Room migrations** — Added explicit `Migration` objects for v1→v2→v3→v4. `fallbackToDestructiveMigration` kept as safety net. Done 2026-04-09.
 - [ ] **SR-007: Deferred VACUUM** — Move `VACUUM` from hot insert path to periodic cleanup. Prevent exclusive DB lock during burst ingestion.
 - [ ] **SR-008: Shared OkHttpClient** — Inject app-level OkHttpClient into PolicyEvaluator instead of creating per-instance.
 - [ ] **SR-009: Retry jitter** — Add `* (0.5 + random * 0.5)` to RetryableExporter backoff. Prevent thundering herd on collector recovery.
