@@ -1,6 +1,22 @@
 # Testing Guide
 
-Quick reference for all test commands. All Android commands run from `examples/demo-app/`.
+Quick reference for all test commands.
+
+## Scripts (run from repo root)
+
+| Script | What | Emulator? | Dash0? |
+|--------|------|-----------|--------|
+| `./run-unit-tests.sh` | All unit tests (Android + Go) | No | No |
+| `./run-unit-tests.sh --android` | Android unit tests only | No | No |
+| `./run-unit-tests.sh --go` | Go processor tests only | No | No |
+| `./run-integration-tests.sh` | SDK integration tests on emulator | Yes | No |
+| `./run-dash0-tests.sh` | All 18 Dash0 scenarios | Yes | Yes |
+| `./run-dash0-tests.sh --journeys` | UserJourney suite only | Yes | Yes |
+| `./run-demo-full.sh` | Full demo (emulators + build + Dash0 scenarios) | Starts 2 | Yes |
+
+---
+
+All manual Gradle commands run from `examples/demo-app/`.
 
 ---
 
