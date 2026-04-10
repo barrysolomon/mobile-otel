@@ -153,6 +153,9 @@ class TapInstrumentation(
             return
         }
 
+        // Compose module already handled this tap — skip to avoid duplicate.
+        if (ComposeTapFlag.wasHandledRecently()) return
+
         if (!config.captureTaps) return
 
         val target = window.decorView?.let { hitTest(it, event.rawX.toInt(), event.rawY.toInt()) }

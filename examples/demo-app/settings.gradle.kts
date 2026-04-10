@@ -61,3 +61,9 @@ project(":instrumentation-screenshot").projectDir = file("../../instrumentation/
 
 include(":instrumentation-wireframe")
 project(":instrumentation-wireframe").projectDir = file("../../instrumentation/wireframe")
+
+include(":instrumentation-screen-orientation")
+project(":instrumentation-screen-orientation").projectDir = file("../../instrumentation/screen-orientation")
+
+include(":instrumentation-compose-click")
+project(":instrumentation-compose-click").projectDir = file("../../instrumentation/compose-click")
