@@ -123,6 +123,27 @@ Phase 1 (Foundation)
 
 **Goal:** Let any app that integrates our SDK optionally surface a debug toolbar (buffer stats, export status, live event stream) and a profile/diagnostics page (config viewer, session info, telemetry toggle, force flush) without the current demo-app-specific UI. The current profile page is tightly coupled to the demo app — this redesigns it as a reusable SDK component that looks good in any app. **Needs design spec before implementation.**
 
+### Phase 7 -- Real Crash Scenarios (P1, needs design)
+
+| ID | Title | Status |
+|----|-------|--------|
+| US-042 | Replace faked crash in ConditionalFlushScenarios with real uncaught exception crash + recovery | [ ] |
+| US-043 | Add real ANR scenario (block main thread >5s, recover, verify telemetry flush) | [ ] |
+| US-044 | Verify crash-recovery telemetry includes full pre-crash context window | [ ] |
+
+**Goal:** The conditional flush demo currently fakes crashes. Real crashes (uncaught exceptions that kill the process) followed by app restart should demonstrate that the dual-tier buffer survives process death and flushes the pre-crash context on next launch. This is the most compelling demo of why our architecture is superior.
+
+### Phase 8 -- Configuration Documentation + Runtime Config (P1)
+
+| ID | Title | Status |
+|----|-------|--------|
+| US-045 | User-facing configuration guide: how to set up otel-config.json, what each field does, examples | [ ] |
+| US-046 | Technical docs: MobileConfig field reference, ExportMode behavior, buffer tuning, sampling | [ ] |
+| US-047 | Runtime config override mechanism (SharedPreferences or intent) for test/debug switching | [ ] |
+| US-048 | Fix validated tests: use runtime config override instead of build-time asset swap | [ ] |
+
+**Goal:** Developers need to know how to configure the SDK. Currently the only reference is the code and CLAUDE.md. Need a proper configuration guide (user-facing) and API reference (technical). The runtime config override also unblocks validated testing — the current build-time asset swap doesn't work because Gradle caches the APK.
+
 ---
 
 ## Risks
