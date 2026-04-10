@@ -116,8 +116,14 @@ internal class ComposeClickDetector(
 
     private fun handleComposeClick(event: MotionEvent, window: Window) {
         val composeView = findComposeView(window) ?: return
-        val x = event.rawX
-        val y = event.rawY
+
+        // Convert screen-absolute rawX/rawY to window-local coordinates.
+        // getBoundsInWindow returns window-relative coordinates, so we must
+        // subtract the window's screen offset to avoid mismatch in multi-window mode.
+        val location = IntArray(2)
+        composeView.getLocationOnScreen(location)
+        val x = event.rawX - location[0]
+        val y = event.rawY - location[1]
 
         try {
             // Access semanticsOwner via reflection (internal Compose API)

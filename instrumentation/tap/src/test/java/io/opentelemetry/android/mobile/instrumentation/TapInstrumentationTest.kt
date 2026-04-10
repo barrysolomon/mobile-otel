@@ -104,6 +104,26 @@ class TapInstrumentationTest {
         assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" })
     }
 
+    @Test fun `tap is suppressed when ComposeTapFlag was recently handled`() {
+        val inst = TapInstrumentation()
+        val ctx = makeCtx()
+        inst.install(realApp(), ctx)
+
+        // Simulate Compose module handling the tap first
+        ComposeTapFlag.markHandled()
+
+        val window = mockk<android.view.Window>(relaxed = true)
+        val (down, up) = tapEvent()
+        inst.onTouchEvent(down, window)
+        inst.onTouchEvent(up, window)
+
+        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.tap" },
+            "Expected no ui.tap when ComposeTapFlag was recently handled")
+
+        // Clean up shared state
+        ComposeTapFlag.handledAtNanos = 0L
+    }
+
     @Test fun `ACTION_CANCEL does not emit any event`() {
         val inst = TapInstrumentation()
         val ctx = makeCtx()

@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 class ComposeClickInstrumentationTest {
@@ -46,5 +47,18 @@ class ComposeClickInstrumentationTest {
 
     @Test fun `uninstall before install does not throw`() {
         ComposeClickInstrumentation().uninstall()
+    }
+
+    @Test fun `install with enabled=false emits no telemetry`() {
+        val app = RuntimeEnvironment.getApplication()
+        val inst = ComposeClickInstrumentation(ComposeClickConfig(enabled = false))
+        inst.install(app, makeContext(app))
+
+        // With enabled=false, no detector is created and no lifecycle callbacks are registered.
+        // Verify no log records were emitted during install.
+        assertTrue(otelRule.logRecords.isEmpty(),
+            "Expected no log records when compose click is disabled")
+
+        inst.uninstall()
     }
 }
