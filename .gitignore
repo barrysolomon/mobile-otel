@@ -240,3 +240,6 @@ examples/demo-app-starter/android/src/release/assets/otel-config.json
 
 # Keep templates only
 !**/*.template
+
+# Local collector test output
+scripts/test/collector/output/

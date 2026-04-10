@@ -1,0 +1,31 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  # Write all signals to JSON files for validation
+  file/logs:
+    path: /data/output/logs.json
+  file/traces:
+    path: /data/output/traces.json
+  file/metrics:
+    path: /data/output/metrics.json
+  # Also log to stdout for debugging
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [file/logs, debug]
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces, debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [file/metrics, debug]

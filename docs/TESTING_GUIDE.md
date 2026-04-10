@@ -12,7 +12,43 @@ Quick reference for all test commands.
 | `./run-integration-tests.sh` | SDK integration tests on emulator | Yes | No |
 | `./run-dash0-tests.sh` | All 18 Dash0 scenarios | Yes | Yes |
 | `./run-dash0-tests.sh --journeys` | UserJourney suite only | Yes | Yes |
+| `./run-validated-tests.sh` | Scenarios + local collector + validation | Yes | No (local) |
 | `./run-demo-full.sh` | Full demo (emulators + build + Dash0 scenarios) | Starts 2 | Yes |
+
+---
+
+## Validated Tests (local collector, no Dash0 needed)
+
+The gold standard: runs scenarios against a local OTel Collector (Docker), then validates that all expected signals were received. **No Dash0 account required.**
+
+```bash
+./run-validated-tests.sh              # emulator must be running
+./run-validated-tests.sh --start-emu  # starts emulator for you
+./run-validated-tests.sh --skip-scenarios  # just validate (data already collected)
+```
+
+What it does:
+1. Starts a local OTel Collector in Docker (ports 4317/4318)
+2. Configures the demo app to export to the local collector
+3. Runs UserJourney scenario tests on the emulator
+4. Waits for collector to flush to JSON files
+5. Validates received telemetry (checks for expected signals)
+6. Stops the collector
+7. Restores original Dash0 config
+
+Signals validated:
+- `ui.tap`, `ui.screen_view` (required)
+- `app.foreground`/`app.background` (required)
+- `session.id`, `view.id`, `screen.name` attributes (required)
+- `page.*` trace spans (required)
+- `service.name`, `device.id` resource attributes (required)
+- `ui.scroll`, `ui.back_press`, `device.orientation` (optional — may not trigger in all scenarios)
+
+**Requires Docker.** To validate manually:
+```bash
+# Just the validation part (if collector output already exists):
+./scripts/test/validate-telemetry.sh
+```
 
 ---
 
