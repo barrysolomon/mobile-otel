@@ -7,6 +7,9 @@ package io.opentelemetry.android.mobile.config
 
 import android.util.Log
 import io.opentelemetry.android.mobile.instrumentation.Incubating
+import io.opentelemetry.sdk.logs.export.LogRecordExporter
+import io.opentelemetry.sdk.metrics.export.MetricExporter
+import io.opentelemetry.sdk.trace.export.SpanExporter
 import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.android.mobile.metrics.DeviceMetricsConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
@@ -161,6 +164,7 @@ data class MobileConfig(
      * Builder for MobileConfig with fluent API.
      */
     class Builder {
+        private val exporterCustomizers = ExporterCustomizers.Builder()
         private var serviceName: String? = null
         private var serviceVersion: String? = null
         private var collectorEndpoint: String? = null
@@ -217,6 +221,16 @@ data class MobileConfig(
         fun setScreenshotConfig(config: ScreenshotConfig) = apply { this.screenshotConfig = config }
         fun setWireframeConfig(config: WireframeConfig) = apply { this.wireframeConfig = config }
 
+        fun addLogExporterCustomizer(customizer: (LogRecordExporter) -> LogRecordExporter) = apply {
+            exporterCustomizers.addLog(customizer)
+        }
+        fun addSpanExporterCustomizer(customizer: (SpanExporter) -> SpanExporter) = apply {
+            exporterCustomizers.addSpan(customizer)
+        }
+        fun addMetricExporterCustomizer(customizer: (MetricExporter) -> MetricExporter) = apply {
+            exporterCustomizers.addMetric(customizer)
+        }
+
         fun build(): MobileConfig {
             return MobileConfig(
                 serviceName = requireNotNull(serviceName) { "serviceName is required" },
@@ -247,6 +261,10 @@ data class MobileConfig(
                 screenshotConfig = screenshotConfig,
                 wireframeConfig = wireframeConfig
             )
+        }
+
+        fun buildWithCustomizers(): Pair<MobileConfig, ExporterCustomizers> {
+            return Pair(build(), exporterCustomizers.build())
         }
     }
 

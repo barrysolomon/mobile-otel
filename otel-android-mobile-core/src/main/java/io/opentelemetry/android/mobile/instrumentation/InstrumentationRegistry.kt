@@ -25,6 +25,9 @@ class InstrumentationRegistry(
 ) {
     private val installed = mutableListOf<MobileInstrumentation>()
 
+    var sessionProvider: MobileSessionProvider? = null
+        private set
+
     /**
      * Activates registered instrumentations by calling
      * [MobileInstrumentation.install] on each in registration order.
@@ -33,6 +36,7 @@ class InstrumentationRegistry(
      * [MobileInstrumentation] (via [@Supersedes][Supersedes]) are skipped.
      */
     fun install(application: Application, context: InstrumentationContext) {
+        sessionProvider = context.sessionProvider
         val supersededNames = mutableSetOf<String>()
         for (inst in instrumentations) {
             val ann = inst::class.java.getAnnotation(Supersedes::class.java)

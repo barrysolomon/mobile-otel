@@ -22,10 +22,12 @@ import java.util.concurrent.TimeUnit
  */
 @Incubating
 class OTelMobileHandle internal constructor(
-    private val openTelemetry: OpenTelemetry,
+    internal val openTelemetry: OpenTelemetry,
     private val registry: InstrumentationRegistry,
     private val hubInstaller: WindowEventHubInstaller? = null
 ) {
+    val sessionProvider: MobileSessionProvider? get() = registry.sessionProvider
+
     /** Returns a [Tracer] scoped to [scope]. */
     fun getTracer(scope: String): Tracer = openTelemetry.getTracer(scope)
 

@@ -7,6 +7,7 @@ package io.opentelemetry.android.mobile
 
 import android.content.Context
 import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
+import io.opentelemetry.android.mobile.config.ExporterCustomizers
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.instrumentation.Incubating
 import io.opentelemetry.api.logs.Logger
@@ -64,7 +65,8 @@ import java.util.concurrent.TimeUnit
 @Incubating
 class MobileLoggerProvider private constructor(
     private val context: Context,
-    private val config: MobileConfig
+    private val config: MobileConfig,
+    private val customizers: ExporterCustomizers = ExporterCustomizers()
 ) : LoggerProvider {
 
     private val sdkLoggerProvider: SdkLoggerProvider
@@ -92,7 +94,7 @@ class MobileLoggerProvider private constructor(
         )
 
         // Create OTLP gRPC exporter with headers
-        val otlpExporter = OtlpGrpcLogRecordExporter.builder()
+        var baseLogExporter: LogRecordExporter = OtlpGrpcLogRecordExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -102,10 +104,11 @@ class MobileLoggerProvider private constructor(
                 }
             }
             .build()
+        for (c in customizers.log) { baseLogExporter = c(baseLogExporter) }
 
         // Wrap with logging for debugging
         val loggingExporter = io.opentelemetry.android.mobile.export.LoggingHttpExporter(
-            delegate = otlpExporter,
+            delegate = baseLogExporter,
             endpoint = config.collectorEndpoint
         )
 
@@ -116,7 +119,7 @@ class MobileLoggerProvider private constructor(
         )
 
         // Create OTLP metric exporter
-        val metricExporter = OtlpGrpcMetricExporter.builder()
+        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpGrpcMetricExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -125,6 +128,7 @@ class MobileLoggerProvider private constructor(
                 }
             }
             .build()
+        for (c in customizers.metric) { baseMetricExporter = c(baseMetricExporter) }
 
         // Build SDK Meter Provider with mode-appropriate configuration
         val meterProvider = SdkMeterProvider.builder()
@@ -132,17 +136,17 @@ class MobileLoggerProvider private constructor(
             .registerMetricReader(
                 when (config.exportMode) {
                     io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        PeriodicMetricReader.builder(metricExporter)
+                        PeriodicMetricReader.builder(baseMetricExporter)
                             .setInterval(3600, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        PeriodicMetricReader.builder(metricExporter)
+                        PeriodicMetricReader.builder(baseMetricExporter)
                             .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        PeriodicMetricReader.builder(metricExporter)
+                        PeriodicMetricReader.builder(baseMetricExporter)
                             .setInterval(config.metricExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
@@ -151,7 +155,7 @@ class MobileLoggerProvider private constructor(
             .build()
 
         // Create OTLP trace exporter
-        val traceExporter = OtlpGrpcSpanExporter.builder()
+        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpGrpcSpanExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
@@ -160,6 +164,7 @@ class MobileLoggerProvider private constructor(
                 }
             }
             .build()
+        for (c in customizers.span) { baseSpanExporter = c(baseSpanExporter) }
 
         val tracerProvider = SdkTracerProvider.builder()
             .setResource(resource)
@@ -167,18 +172,18 @@ class MobileLoggerProvider private constructor(
             .addSpanProcessor(
                 when (config.exportMode) {
                     io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        BatchSpanProcessor.builder(traceExporter)
+                        BatchSpanProcessor.builder(baseSpanExporter)
                             .setScheduleDelay(3600, TimeUnit.SECONDS)
                             .setMaxQueueSize(10000)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        BatchSpanProcessor.builder(traceExporter)
+                        BatchSpanProcessor.builder(baseSpanExporter)
                             .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
                             .build()
                     }
                     io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        BatchSpanProcessor.builder(traceExporter)
+                        BatchSpanProcessor.builder(baseSpanExporter)
                             .setScheduleDelay(3600, TimeUnit.SECONDS)
                             .setMaxQueueSize(10000)
                             .build()
@@ -282,12 +287,14 @@ class MobileLoggerProvider private constructor(
         @Volatile
         private var instance: MobileLoggerProvider? = null
 
-        fun getInstance(context: Context, config: MobileConfig): MobileLoggerProvider {
+        fun getInstance(
+            context: Context,
+            config: MobileConfig,
+            customizers: ExporterCustomizers = ExporterCustomizers()
+        ): MobileLoggerProvider {
             return instance ?: synchronized(this) {
-                instance ?: MobileLoggerProvider(
-                    context.applicationContext,
-                    config
-                ).also { instance = it }
+                instance ?: MobileLoggerProvider(context.applicationContext, config, customizers)
+                    .also { instance = it }
             }
         }
 

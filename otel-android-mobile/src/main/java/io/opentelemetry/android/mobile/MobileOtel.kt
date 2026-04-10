@@ -6,6 +6,7 @@
 package io.opentelemetry.android.mobile
 
 import android.content.Context
+import io.opentelemetry.android.mobile.config.ExporterCustomizers
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.core.SessionManager
 import io.opentelemetry.android.mobile.core.UserIdentity
@@ -69,6 +70,10 @@ object MobileOtel {
     private var healthMetricsCollector: HealthMetricsCollector? = null
     private var releaseHealthSessionProvider: MobileSessionProvider? = null
 
+    /** The active OpenTelemetryMobile instance, available after initialize(context) { } DSL. */
+    var openTelemetryMobile: OpenTelemetryMobile? = null
+        private set
+
     // ─────────────────────────────────────────────────────────────
     // Initialization
     // ─────────────────────────────────────────────────────────────
@@ -87,7 +92,11 @@ object MobileOtel {
      * @param config Mobile configuration
      * @return The initialized MobileLoggerProvider
      */
-    fun initialize(context: Context, config: MobileConfig): MobileLoggerProvider {
+    fun initialize(
+        context: Context,
+        config: MobileConfig,
+        customizers: ExporterCustomizers = ExporterCustomizers()
+    ): MobileLoggerProvider {
         val appContext = context.applicationContext
 
         // Initialize SessionManager FIRST (early init strategy)
@@ -104,7 +113,7 @@ object MobileOtel {
         )
 
         // Initialize core MobileLoggerProvider (creates processor, exporters, OTel SDK)
-        val loggerProvider = MobileLoggerProvider.getInstance(appContext, config)
+        val loggerProvider = MobileLoggerProvider.getInstance(appContext, config, customizers)
         provider = loggerProvider
 
         val processor = loggerProvider.getMobileProcessor()
@@ -160,6 +169,48 @@ object MobileOtel {
             .build()
 
         return loggerProvider
+    }
+
+    /**
+     * Initialize the Mobile OpenTelemetry SDK using a Kotlin DSL.
+     *
+     * This is the primary entry point, matching upstream's
+     * `OpenTelemetryRumInitializer.initialize(context) { }` pattern.
+     */
+    fun initialize(
+        context: Context,
+        block: io.opentelemetry.android.mobile.config.MobileOtelDsl.() -> Unit
+    ): OpenTelemetryMobile {
+        val dsl = io.opentelemetry.android.mobile.config.MobileOtelDsl().apply(block)
+        val config = dsl.buildConfig()
+        val customizers = dsl.buildCustomizers()
+
+        // 1. Initialize core SDK (existing path)
+        val loggerProvider = initialize(context, config, customizers)
+
+        // 2. Build instrumentation registry (OTelMobileBuilder path)
+        val app = context.applicationContext as android.app.Application
+        val builder = io.opentelemetry.android.mobile.instrumentation.OTelMobileBuilder(
+            app, loggerProvider.getOpenTelemetrySdk()
+        )
+        // Bridge UiTelemetryMode between config package and instrumentation package
+        val instrMode = io.opentelemetry.android.mobile.instrumentation.UiTelemetryMode.valueOf(
+            dsl.uiTelemetryMode.name
+        )
+        builder.setUiTelemetryMode(instrMode)
+        dsl.applyInstrumentationsTo(builder)
+        val handle = builder.build()
+
+        // 3. Create and store the return type
+        val mobile = OpenTelemetryMobile(
+            openTelemetry = loggerProvider.getOpenTelemetrySdk(),
+            handle = handle,
+            sessionProvider = handle.sessionProvider
+                ?: error("sessionProvider not set — OTelMobileBuilder.build() must call registry.install() first"),
+            loggerProvider = loggerProvider
+        )
+        openTelemetryMobile = mobile
+        return mobile
     }
 
     /**
@@ -407,6 +458,7 @@ object MobileOtel {
         vitalsCollector = null
         errorInstrumentation = null
         releaseHealthSessionProvider = null
+        openTelemetryMobile = null
 
         provider?.shutdown()
         SessionManager.getInstance().shutdown()
