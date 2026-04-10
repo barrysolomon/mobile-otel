@@ -1,8 +1,8 @@
 # iOS SDK Port — Design Specification
 
-**Date:** 2026-04-08
+**Date:** 2026-04-08 (updated 2026-04-10)
 **Status:** Approved
-**Scope:** Port Dash0 Mobile Observability Android SDK to iOS with full feature parity
+**Scope:** Port Dash0 Mobile Observability Android SDK to iOS with full feature parity + iPad-specific telemetry
 
 ---
 
@@ -13,8 +13,11 @@
 3. [Dual-Tier Buffer System](#3-dual-tier-buffer-system)
 4. [Policy DSL v2 Evaluator](#4-policy-dsl-v2-evaluator)
 5. [Instrumentation Module System](#5-instrumentation-module-system)
+    - 5.5 [Upstream Compatibility Layer](#55-upstream-compatibility-layer)
 6. [Platform Integration Layer & Privacy](#6-platform-integration-layer--privacy)
+    - 6.5 [iPad-Specific Telemetry](#65-ipad-specific-telemetry)
 7. [Demo Apps & Debug Diagnostics Panel](#7-demo-apps--debug-diagnostics-panel)
+    - 7.5 [Runtime Config Override](#75-runtime-config-override)
 8. [Control Plane Changes & Gateway Updates](#8-control-plane-changes--gateway-updates)
 9. [Testing Strategy](#9-testing-strategy)
 10. [Sprint Structure & Epics](#10-sprint-structure--epics)
@@ -25,7 +28,35 @@
 
 ### What We're Porting
 
-The Dash0 Mobile Observability Android SDK: ~10,700 lines of Kotlin across 48 files, 16 instrumentation modules, a dual-tier buffer (RAM + SQLite), policy DSL v2 evaluator, OTLP/gRPC export, predictive export, and session/journey tracking. Plus a full demo app (~7,300 LOC) and a minimal starter app.
+The Dash0 Mobile Observability Android SDK: ~10,700 lines of Kotlin across 48 files, 18 instrumentation modules, a dual-tier buffer (RAM + SQLite), policy DSL v2 evaluator, OTLP/gRPC export, predictive export, session/journey tracking, upstream adapter layer, and ExporterCustomizers chain. Plus a full demo app (~7,300 LOC) and a minimal starter app.
+
+### Why Not Just Use opentelemetry-swift?
+
+The `opentelemetry-swift` project (v2.x) is dramatically less mature than `opentelemetry-android`. It provides standard OTel APIs (traces, metrics, logs) but essentially zero auto-instrumentation for iOS. Our SDK is not just a superset -- it is the only production-grade iOS OTel instrumentation SDK.
+
+| Capability | opentelemetry-swift v2.x | Dash0 iOS SDK |
+|-----------|--------------------------|---------------|
+| Auto-instrumentation | None | 18 modules, swizzle-based |
+| Crash detection | None | `NSSetUncaughtExceptionHandler` + signal handlers |
+| ANR/freeze detection | None | `MainThreadWatchdog` + `CADisplayLink` |
+| Network capture | Manual spans only | Auto via `URLProtocol` |
+| Buffering | None (export or lose) | Dual-tier RAM + SQLite, survives process death |
+| Policy engine | None | Full DSL v2 FSM, server-managed |
+| Selective flush | None | `flushWindow(minutes)` for time-windowed export |
+| Export modes | Always-on only | CONDITIONAL, CONTINUOUS, HYBRID |
+| iPad support | None | Split view, Stage Manager, Pencil, multi-window |
+| Battery efficiency | Poor (always exports) | CONDITIONAL mode exports only on policy trigger |
+| UI telemetry | None | Tap, scroll, text input, back press, screen view, freeze, screenshot, wireframe |
+| SwiftUI instrumentation | None | `SwiftUITapInstrumentation` with view introspection |
+| Predictive export | None | On-device ML for crash/battery/network risk prediction |
+| Privacy | Basic | PII scrubbing, coordinate bucketing, network privacy presets |
+| Debug tools | None | 4-tab floating overlay with live buffer/policy/export visualization |
+| Instrumentation registry | None (no `AndroidInstrumentation` equivalent) | Full registry with conflict resolution and `@Supersedes` |
+| Configuration DSL | None | Swift result builder DSL (`OTelMobile.configure { }`) |
+| Exporter customization | None | `ExporterCustomizers` chain pattern |
+| Runtime config override | None | `UserDefaults`-based override for testing + `otel-device-ios.sh` CLI |
+
+**Key insight:** Since `opentelemetry-swift` has no instrumentation registry or auto-instrumentation framework at all, our SDK doesn't need to "supersede" existing modules the way the Android SDK supersedes `opentelemetry-android` modules. Instead, our upstream adapter layer is **forward-looking** -- it will matter when/if the community eventually builds iOS instrumentations. We are architecting for that future while owning the entire instrumentation story today.
 
 ### Architecture: "Shared Core, Native Shell" (Approach C)
 
@@ -94,6 +125,65 @@ mobile.start(application: application)
 // Identify user
 mobile.setUser(UserIdentity(userId: "u123", email: "user@example.com"))
 ```
+
+### Swift DSL Configuration (Result Builder)
+
+In addition to the builder pattern, the SDK supports a Swift-native DSL using result builders (Swift's equivalent of Kotlin's type-safe builders). This is the **recommended** configuration style for Swift developers:
+
+```swift
+let otel = OTelMobile.configure {
+    service {
+        name("my-app")
+        version("2.0.0")
+    }
+    export {
+        endpoint("https://ingress.dash0.com:4317")
+        mode(.hybrid)
+        headers(["Authorization": "Bearer \(token)"])
+    }
+    buffering {
+        ramSize(5000)
+        diskMb(50)
+        ttlHours(24)
+    }
+    exportCustomizers {
+        span { exporter in FilteringSpanExporter(wrapping: exporter) }
+        log { exporter in EnrichingLogExporter(wrapping: exporter) }
+    }
+    instrumentations {
+        discoverAll()
+    }
+}
+```
+
+The result builder DSL compiles to the same `MobileConfig` struct as the builder pattern. Both styles are fully supported and interchangeable. The DSL uses `@resultBuilder` structs for each configuration block (`ServiceBuilder`, `ExportBuilder`, `BufferingBuilder`, `InstrumentationsBuilder`).
+
+### ExporterCustomizers
+
+The `ExporterCustomizers` chain pattern allows customers to wrap or decorate the SDK's exporters without replacing them. Each customizer receives the existing exporter and returns a wrapped version:
+
+```swift
+public struct ExporterCustomizers {
+    public let log: [(LogRecordExporter) -> LogRecordExporter]
+    public let span: [(SpanExporter) -> SpanExporter]
+    public let metric: [(MetricExporter) -> MetricExporter]
+
+    public static let empty = ExporterCustomizers(log: [], span: [], metric: [])
+
+    /// Apply all customizers in chain order (first registered = outermost wrapper)
+    func applySpan(_ base: SpanExporter) -> SpanExporter {
+        span.reduce(base) { exporter, customizer in customizer(exporter) }
+    }
+    func applyLog(_ base: LogRecordExporter) -> LogRecordExporter {
+        log.reduce(base) { exporter, customizer in customizer(exporter) }
+    }
+    func applyMetric(_ base: MetricExporter) -> MetricExporter {
+        metric.reduce(base) { exporter, customizer in customizer(exporter) }
+    }
+}
+```
+
+Use cases: filtering sensitive spans before export, adding custom attributes to all logs, routing metrics to a secondary backend, sampling at the exporter level.
 
 ### Design Details
 
@@ -326,6 +416,24 @@ Centralized swizzle registry. All swizzling goes through one place:
 | `BackPressInstrumentation` | `UINavigationController` pop detection (no hardware back on iOS) |
 | `ScreenshotInstrumentation` | `UIGraphicsImageRenderer` / `drawHierarchy(in:afterScreenUpdates:)` |
 | `WireframeInstrumentation` | `UIView` hierarchy traversal → JSON |
+| `SwiftUITapInstrumentation` | SwiftUI tap detection via view introspection (see below) |
+| `OrientationInstrumentation` | Device orientation change tracking (see below) |
+
+**SwiftUITapInstrumentation** (equivalent of Android's `ComposeClickInstrumentation`):
+
+- Detects taps on SwiftUI views using `_onTapGesture` modifier injection via SwiftUI view introspection
+- Falls back to accessibility identifiers when view identity cannot be resolved via introspection
+- Detects composable identity via `Mirror` reflection on the SwiftUI view tree to extract view type names and structural paths
+- Emits `ui.tap` log events with `view.type`, `view.identifier`, and `view.path` attributes
+- Works alongside `TapInstrumentation` (UIKit) without conflict -- the SwiftUI module handles `SwiftUI.UIHostingController` subtrees, while `TapInstrumentation` handles native UIKit views
+- Known limitation: SwiftUI view tree introspection uses private API patterns that may change between iOS versions. The module includes version-specific adapters and degrades gracefully (falls back to accessibility labels) on unsupported versions.
+
+**OrientationInstrumentation** (equivalent of Android's `ScreenOrientationInstrumentation`):
+
+- Observes `UIDevice.orientationDidChangeNotification` via `NotificationCenter`
+- Emits `device.orientation` log event with attributes: `orientation.value` (portrait, landscapeLeft, landscapeRight, portraitUpsideDown, faceUp, faceDown), `orientation.is_flat` (boolean for faceUp/faceDown), `orientation.previous` (previous orientation for transition tracking)
+- On iPad, also tracks `UIWindowScene.interfaceOrientation` for split-view scenarios where device orientation and window orientation may differ
+- Debounced: only emits after orientation is stable for 200ms (prevents rapid flip-flop noise)
 
 **Tier 3 — Sprint 3 (harder / less direct mapping):**
 
@@ -347,7 +455,7 @@ let package = Package(
         .library(name: "OTelMobileCore", targets: ["OTelMobileCore"]),
         .library(name: "TapInstrumentation", targets: ["TapInstrumentation"]),
         .library(name: "NetworkInstrumentation", targets: ["NetworkInstrumentation"]),
-        // ... all 16 modules as separate products
+        // ... all 18 modules as separate products
     ],
     dependencies: [
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.1.1"),
@@ -386,6 +494,131 @@ Key facts verified against the actual opentelemetry-swift repo (v2.3.0 as of 202
 - **gRPC binary size impact**: The gRPC exporter pulls in `grpc-swift` (pinned at 1.26.1), which adds ~15-20MB uncompressed to binary size. If binary size is a concern, the HTTP exporter is lighter but still experimental. For Sprint 1 we use gRPC (matching Android); evaluate HTTP as an option in Sprint 3.
 - **Minimum iOS**: opentelemetry-swift requires iOS 13+, which is within our iOS 15+ floor.
 - **Swift concurrency**: Full async/await support via `TaskLocalContextManager`.
+
+---
+
+## 5.5. Upstream Compatibility Layer
+
+> **Added 2026-04-10** — iOS equivalent of the Android Upstream Supersession epic (Phases 1-3).
+
+### Context
+
+The Android SDK introduced an adapter layer to wrap upstream `opentelemetry-android` instrumentation modules, with `@Supersedes` annotations for conflict resolution. On iOS, `opentelemetry-swift` has **no instrumentation modules at all** -- no equivalent to `AndroidInstrumentation`, no instrumentation registry, no auto-instrumentation framework. This means our adapter layer is **forward-looking**: it establishes the architecture for when the community eventually builds iOS instrumentations, while owning the entire instrumentation story today.
+
+### OTelSwiftInstrumentationAdapter
+
+Wraps any future `opentelemetry-swift` instrumentation to work in our registry:
+
+```swift
+/// Adapter that wraps an upstream opentelemetry-swift instrumentation
+/// to conform to our MobileInstrumentation protocol.
+public struct OTelSwiftInstrumentationAdapter: MobileInstrumentation {
+    public let id: String
+    public let isAutoCapture: Bool = false
+
+    private let installBlock: (InstrumentationContext) -> Void
+    private let uninstallBlock: () -> Void
+
+    /// Wrap any upstream instrumentation that follows a start/stop pattern
+    public init(
+        id: String,
+        install: @escaping (InstrumentationContext) -> Void,
+        uninstall: @escaping () -> Void
+    ) {
+        self.id = id
+        self.installBlock = install
+        self.uninstallBlock = uninstall
+    }
+
+    public func install(context: InstrumentationContext) { installBlock(context) }
+    public func uninstall() { uninstallBlock() }
+}
+```
+
+### Supersedes Protocol
+
+Swift does not have annotations like Kotlin's `@Supersedes`. Instead, we use protocol conformance:
+
+```swift
+/// Declares that this instrumentation supersedes (replaces) one or more
+/// upstream instrumentations when both are registered.
+public protocol SupersedingInstrumentation: MobileInstrumentation {
+    /// IDs of upstream instrumentations that this module replaces.
+    var supersedes: [String] { get }
+
+    /// Conflict resolution strategy when the superseded module is also registered.
+    var conflictResolution: ConflictResolution { get }
+}
+
+public enum ConflictResolution {
+    case replace          // Remove the upstream module entirely
+    case wrapAndDelegate  // Keep upstream but wrap its output through ours
+    case disabled         // Register but don't install (manual opt-in)
+}
+```
+
+All 18 Dash0 instrumentation modules conform to `SupersedingInstrumentation` with empty `supersedes` arrays today (no upstream modules exist to supersede). When community iOS instrumentations appear, we add the upstream IDs to `supersedes` and the registry handles conflict resolution automatically.
+
+### InstrumentationRegistry
+
+Manages discovery, conflict resolution, and lifecycle for all instrumentations:
+
+```swift
+public actor InstrumentationRegistry {
+    private var registered: [String: MobileInstrumentation] = [:]
+    private var installed: [String: MobileInstrumentation] = [:]
+    private var supersessionMap: [String: String] = [:]  // upstreamId -> ourId
+
+    /// Discover all Dash0 instrumentation modules
+    public func discoverOwnInstrumentations() -> [MobileInstrumentation]
+
+    /// Discover upstream opentelemetry-swift instrumentations (forward-looking)
+    public func discoverUpstreamInstrumentations() -> [MobileInstrumentation]
+
+    /// Discover all, resolve conflicts, return the winning set
+    public func discoverAllInstrumentations() -> [MobileInstrumentation] {
+        let own = discoverOwnInstrumentations()
+        let upstream = discoverUpstreamInstrumentations()
+        return resolveConflicts(own: own, upstream: upstream)
+    }
+
+    /// Register an instrumentation. If it supersedes an already-registered
+    /// module, the conflict resolution strategy determines the outcome.
+    public func register(_ instrumentation: MobileInstrumentation)
+
+    /// Install all registered instrumentations with the given context.
+    public func installAll(context: InstrumentationContext)
+
+    /// Uninstall all and clear state.
+    public func uninstallAll()
+
+    private func resolveConflicts(
+        own: [MobileInstrumentation],
+        upstream: [MobileInstrumentation]
+    ) -> [MobileInstrumentation] {
+        // 1. Register all own modules
+        // 2. For each upstream module, check if any own module supersedes it
+        // 3. Apply ConflictResolution strategy
+        // 4. Return the resolved set (own modules win by default)
+    }
+}
+```
+
+### Discovery in DSL Configuration
+
+The `discoverAll()` function in the Swift DSL configuration maps to `InstrumentationRegistry.discoverAllInstrumentations()`:
+
+```swift
+let otel = OTelMobile.configure {
+    instrumentations {
+        discoverAll()              // Discover + resolve conflicts automatically
+        // OR: explicit selection
+        include(TapInstrumentation())
+        include(NetworkInstrumentation())
+        exclude("lifecycle")       // Opt out by ID
+    }
+}
+```
 
 ---
 
@@ -444,6 +677,74 @@ Platform-agnostic, nearly identical to Android:
 | Disk free | `FileManager.attributesOfFileSystem` |
 | Locale/timezone | `Locale.current` / `TimeZone.current` |
 | Screen size | `UIWindowScene`-based screen bounds (iOS 16+), fallback to `UIScreen.main.bounds` on iOS 15 |
+
+---
+
+## 6.5. iPad-Specific Telemetry
+
+> **Added 2026-04-10** — Expanded from Sprint 3 iPad bullet points into a full subsection. These features produce **unique telemetry that no other SDK captures**.
+
+### Multitasking Events
+
+iPad multitasking creates telemetry scenarios that do not exist on iPhone or Android:
+
+- **Split View enter/exit:** Detects via `UIWindowScene.activationState` changes and trait collection updates. Emits `ui.multitask` log events with `multitask.mode` attribute (`split_view_half`, `split_view_third`, `split_view_two_thirds`). Tracks which portion of the screen the app occupies.
+- **Slide Over activation:** Detects Slide Over state via window frame size relative to screen bounds. Emits `ui.multitask` with `multitask.mode: "slide_over"`.
+- **Transition events:** When the user drags the divider to resize split view, emits `ui.multitask_resize` with `multitask.from_mode` and `multitask.to_mode` attributes.
+
+Implementation: Observes `UIScene.didActivateNotification`, `UIScene.willDeactivateNotification`, and `UIWindowScene` geometry changes via `traitCollectionDidChange(_:)` and `windowScene(_:didUpdate:)`.
+
+### Stage Manager (iPadOS 16+)
+
+Stage Manager introduces true windowed multitasking on iPad:
+
+- **Window resize:** Emits `ui.window_resize` log events with `window.width`, `window.height`, `window.scale` attributes when the user resizes the Stage Manager window.
+- **Window move:** Emits `ui.window_move` with `window.origin_x`, `window.origin_y` when the window is repositioned.
+- **Window minimize:** Emits `ui.window_minimize` when the app moves to the shelf.
+- **Window count:** Tracks how many windows the app has open simultaneously via `UIApplication.shared.connectedScenes`.
+
+Implementation: Uses `UIWindowScene.geometryPreferences` and `UIWindowSceneGeometryPreferencesUserActivity` APIs gated behind `#available(iPadOS 16.0, *)`.
+
+### Multi-Window Scenes
+
+iPadOS supports multiple `UIWindowScene` instances for the same app:
+
+- Tracks each `UIWindowScene` independently with a `scene.id` attribute on all events.
+- Emits `scene.foreground` and `scene.background` events per window (not just per app).
+- Session tracking accounts for multi-window: a single user session spans all scenes, but scene-specific spans are nested under scene-scoped parent spans.
+- The debug panel shows per-scene event counts.
+
+### Input Type Differentiation
+
+iPad supports multiple input modalities that iPhone does not:
+
+- **Touch vs Pointer vs Pencil:** `TapInstrumentation` and `SwiftUITapInstrumentation` add an `input.type` attribute to all tap events: `"touch"` (finger), `"indirect_pointer"` (trackpad/mouse), `"pencil"` (Apple Pencil). Detected via `UITouch.type` (`UITouch.TouchType.direct`, `.indirectPointer`, `.pencil`).
+- **Hover events:** Pointer hover (trackpad/mouse) detected via `UIHoverGestureRecognizer`. Emits `ui.hover` log events on iPad when a hover interaction lasts more than 500ms on a single element (to avoid noise from cursor movement).
+
+### External Keyboard
+
+- `TextInputInstrumentation` adds `input.source` attribute: `"external_keyboard"` vs `"virtual_keyboard"`. Detected via `GameController.framework`'s `GCKeyboard.coalesced` (iPadOS 14+) or by observing `UIResponder.keyboardWillShowNotification` absence (if physical keyboard is connected, the virtual keyboard does not appear for standard text fields).
+- Emits keyboard shortcut events when Cmd+key combinations are used (detected via `UIKeyCommand` pressesBegan/pressesEnded).
+
+### Apple Pencil
+
+- **Pencil tap gestures:** Double-tap on Apple Pencil 2 detected via `UIPencilInteraction.tap`. Emits `ui.pencil_tap` log event with `pencil.tap_action` (current tool switch setting).
+- **Pencil squeeze:** Apple Pencil Pro squeeze gesture detected via `UIPencilInteraction.squeeze` (iPadOS 17.5+). Emits `ui.pencil_squeeze`.
+- **Pressure data:** When the app uses PencilKit or custom drawing, `TapInstrumentation` captures `touch.force` and `touch.altitude_angle` attributes for Pencil touches, enabling analysis of drawing interaction patterns.
+
+### iPad Feature Gating
+
+All iPad-specific features are gated behind `UIDevice.current.userInterfaceIdiom == .pad` checks. On iPhone, these code paths are never executed and add zero overhead. The features are organized into an `iPadInstrumentation` meta-module that can be included/excluded independently:
+
+```swift
+let otel = OTelMobile.configure {
+    instrumentations {
+        discoverAll()           // Includes iPad features when running on iPad
+        // OR explicitly:
+        include(iPadInstrumentation())  // Split view, Stage Manager, Pencil, etc.
+    }
+}
+```
 
 ---
 
@@ -516,6 +817,99 @@ Floating overlay with 4 tabs:
 ### Backport Note
 
 The Policy State debug panel concept (Tab 2) should be backported to the Android `RingBufferActivity` after the iOS implementation validates the approach.
+
+---
+
+## 7.5. Runtime Config Override
+
+> **Added 2026-04-10** — iOS equivalent of Android's SharedPreferences runtime config override.
+
+### Purpose
+
+For testing and debugging, developers need to override SDK configuration at runtime without rebuilding the app. On Android, this uses `SharedPreferences` written via `adb`. On iOS, the equivalent is `UserDefaults` written via `xcrun simctl` (simulator) or MDM profiles (physical devices).
+
+### ConfigManager Priority Chain
+
+`ConfigManager` reads configuration from multiple sources in priority order:
+
+1. **UserDefaults override** (highest priority) -- suite name `"com.dash0.otel.config"`
+2. **Bundled JSON** -- `otel-config.json` from the app bundle
+3. **Hardcoded defaults** (lowest priority)
+
+```swift
+public actor ConfigManager {
+    private let overrideDefaults = UserDefaults(suiteName: "com.dash0.otel.config")
+    private let bundledConfig: MobileConfig?
+
+    /// Read a config value with priority chain: UserDefaults > bundled JSON > default
+    public func value<T: Codable>(for key: ConfigKey<T>) -> T {
+        // 1. Check UserDefaults override
+        if let override = overrideDefaults?.object(forKey: key.rawValue) {
+            return decode(override, as: T.self)
+        }
+        // 2. Check bundled config
+        if let bundled = bundledConfig?[keyPath: key.configPath] {
+            return bundled
+        }
+        // 3. Return default
+        return key.defaultValue
+    }
+
+    /// Write a runtime override (used by otel-device-ios.sh and tests)
+    public func setOverride<T: Codable>(_ value: T, for key: ConfigKey<T>) {
+        overrideDefaults?.set(encode(value), forKey: key.rawValue)
+    }
+
+    /// Clear all runtime overrides
+    public func clearOverrides() {
+        let keys = overrideDefaults?.dictionaryRepresentation().keys ?? []
+        keys.forEach { overrideDefaults?.removeObject(forKey: $0) }
+    }
+}
+```
+
+### Simulator Override via xcrun simctl
+
+On the iOS simulator, `UserDefaults` can be written from the host machine:
+
+```bash
+# Set export mode to continuous for testing
+xcrun simctl spawn booted defaults write com.dash0.otel.config export_mode -string "continuous"
+
+# Set buffer size for stress testing
+xcrun simctl spawn booted defaults write com.dash0.otel.config ram_buffer_size -integer 100
+
+# Enable all instrumentation modules
+xcrun simctl spawn booted defaults write com.dash0.otel.config instrumentations_enabled -string "all"
+
+# Clear all overrides
+xcrun simctl spawn booted defaults delete com.dash0.otel.config
+```
+
+### otel-device-ios.sh CLI Tool
+
+Equivalent of Android's `otel-device.sh` but uses `xcrun simctl` instead of `adb`:
+
+```bash
+# Usage: otel-device-ios.sh <command> [options]
+./scripts/test/otel-device-ios.sh set-mode continuous       # Set export mode
+./scripts/test/otel-device-ios.sh set-buffer-size 100        # Set RAM buffer size
+./scripts/test/otel-device-ios.sh set-endpoint https://...   # Override endpoint
+./scripts/test/otel-device-ios.sh get-config                 # Dump current config
+./scripts/test/otel-device-ios.sh clear                      # Clear all overrides
+./scripts/test/otel-device-ios.sh list-devices               # List booted simulators
+./scripts/test/otel-device-ios.sh trigger-flush              # Force a buffer flush
+```
+
+The CLI tool detects booted simulators via `xcrun simctl list devices booted` and defaults to the first one. Use `--device <UDID>` to target a specific simulator.
+
+### Physical Device Override
+
+On physical devices, `UserDefaults` cannot be written from the host. Options:
+
+- **Settings.bundle:** The SDK ships an optional `Settings.bundle` that exposes key configuration toggles in the iOS Settings app. Customers include it in their app for debug/internal builds.
+- **MDM profiles:** Enterprise deployments can push `UserDefaults` values via MDM configuration profiles (key `com.dash0.otel.config`).
+- **Debug panel:** The in-app debug panel (Section 7) includes config override controls directly in the UI.
 
 ---
 
@@ -634,6 +1028,78 @@ examples/demo-app-ios/
 ├── DemoAppUITests/                  # XCUITest E2E scenarios
 ```
 
+### Validated Test Infrastructure (Local Collector)
+
+> **Added 2026-04-10** — Port of Android's validated test pattern (Phase 9).
+
+Validated tests verify that the SDK produces correct OTLP telemetry end-to-end by running a local OTel Collector in Docker and validating the exported JSON:
+
+```
+iOS Simulator App → OTLP/gRPC → Local OTel Collector (Docker) → JSON file exporter → Validation script
+```
+
+**Setup:**
+
+```bash
+# Start local collector (same Docker image as Android tests)
+docker run -d --name otel-collector-test \
+  -p 4317:4317 \
+  -v $(pwd)/test-config/collector-config.yaml:/etc/otelcol/config.yaml \
+  -v $(pwd)/test-output:/output \
+  otel/opentelemetry-collector-contrib:latest
+
+# Run validated iOS tests
+./scripts/test/run-validated-ios-tests.sh
+```
+
+**`run-validated-ios-tests.sh`** orchestrates:
+
+1. Starts the local collector (if not running)
+2. Sets the SDK endpoint override to `localhost:4317` via `xcrun simctl` UserDefaults
+3. Runs the XCUITest suite that exercises all 18 instrumentation modules
+4. Waits for collector flush (5 seconds)
+5. Validates exported JSON against expected schema (event types, required attributes, semantic conventions)
+6. Reports pass/fail per instrumentation module
+
+**Validation checks per module:**
+
+- Event type present (e.g., `ui.tap`, `ui.screen_view`, `device.orientation`)
+- Required attributes present and correctly typed
+- Semantic conventions followed (OTel resource attributes, span naming)
+- No PII leakage in exported telemetry
+- Sequence IDs are monotonic (no dedup failures)
+- Session ID consistent across events in the same session
+
+**UserDefaults runtime config override for testing:**
+
+Tests use the `ConfigManager` override chain (Section 7.5) to configure the SDK without modifying app code:
+
+```bash
+# Point SDK at local collector for validated tests
+xcrun simctl spawn booted defaults write com.dash0.otel.config endpoint -string "http://localhost:4317"
+xcrun simctl spawn booted defaults write com.dash0.otel.config export_mode -string "continuous"
+xcrun simctl spawn booted defaults write com.dash0.otel.config auth_token -string "test-token"
+```
+
+**Simulator management via xcrun simctl:**
+
+```bash
+# Boot a specific simulator
+xcrun simctl boot "iPhone 16"
+
+# List booted devices
+xcrun simctl list devices booted
+
+# Install the test app
+xcrun simctl install booted path/to/DemoApp.app
+
+# Launch with arguments
+xcrun simctl launch booted io.dash0.otel.demo --enable-all-instrumentations
+
+# Terminate
+xcrun simctl terminate booted io.dash0.otel.demo
+```
+
 ### CI Integration
 
 ```bash
@@ -644,9 +1110,19 @@ xcodebuild test -scheme DemoApp \
 ./run-tests.sh              # Android only (backward compat)
 ./run-tests.sh --ios        # iOS only  
 ./run-tests.sh --all        # Both platforms
+
+# Validated tests (requires Docker)
+./scripts/test/run-validated-ios-tests.sh           # Full validation suite
+./scripts/test/run-validated-ios-tests.sh --module tap  # Single module validation
 ```
 
-**CI advantage:** SPM unit tests (`swift test`) run on any macOS runner without Xcode simulator overhead. **However**, `swift test` can only run tests that don't import UIKit — this means buffer logic, policy evaluation, DSL parsing, PII scrubbing, and coordinate bucketing tests all run via `swift test`. Tests for instrumentation modules, platform layer, or anything that touches UIKit/SwiftUI require `xcodebuild test` with a simulator. Structure test targets accordingly: `OTelMobileSDKTests` (pure logic, `swift test`-compatible) vs `OTelMobilePlatformTests` (UIKit-dependent, simulator-required).
+**CI advantage:** SPM unit tests (`swift test`) run on any macOS runner without Xcode simulator overhead. **However**, `swift test` can only run tests that don't import UIKit -- this means buffer logic, policy evaluation, DSL parsing, PII scrubbing, and coordinate bucketing tests all run via `swift test`. Tests for instrumentation modules, platform layer, or anything that touches UIKit/SwiftUI require `xcodebuild test` with a simulator. Structure test targets accordingly: `OTelMobileSDKTests` (pure logic, `swift test`-compatible) vs `OTelMobilePlatformTests` (UIKit-dependent, simulator-required).
+
+**CI pipeline additions for validated tests:**
+
+- `ios-validated-tests` job: macOS runner with Docker, boots simulator, runs `run-validated-ios-tests.sh`
+- Runs on PRs that touch `otel-ios-mobile/` or `scripts/test/`
+- Nightly: full suite on iPhone 16 (iOS 18) + iPad Pro (iPadOS 18) simulators
 
 ---
 
@@ -654,7 +1130,7 @@ xcodebuild test -scheme DemoApp \
 
 ### Sprint 1: Foundation + Tier 1 Instrumentation
 
-**Goal:** SDK initializes, buffers events, evaluates policies, exports to Dash0, 6 instrumentation modules working.
+**Goal:** SDK initializes, buffers events, evaluates policies, exports to Dash0, 6 Tier 1 instrumentation modules working, upstream compatibility layer and Swift DSL in place.
 
 | Epic | Deliverables |
 |------|-------------|
@@ -668,15 +1144,17 @@ xcodebuild test -scheme DemoApp \
 | Context | `ContextSnapshot` (device, OS, network via `NWPathMonitor`, battery, thermal, locale) |
 | Testing | Unit tests for all core components, CI script |
 | Demo Starter | `demo-app-ios-starter/` — minimal app |
+| Upstream Compat | `OTelSwiftInstrumentationAdapter`, `SupersedingInstrumentation` protocol, `InstrumentationRegistry` with conflict resolution |
+| Swift DSL | Result builder configuration DSL (`OTelMobile.configure { }`), `ExporterCustomizers` chain pattern |
 | Gateway | Add `platform` column, platform filter on config delivery |
 
 ### Sprint 2: Tier 2 Instrumentation + Full Demo App
 
-**Goal:** All UI auto-capture modules, full demo app with debug panel, session/journey tracking.
+**Goal:** All UI auto-capture modules (8 Tier 2 including SwiftUITap and Orientation), full demo app with debug panel, session/journey tracking.
 
 | Epic | Deliverables |
 |------|-------------|
-| Tier 2 Modules | Tap, Scroll, TextInput, BackPress (nav pop), Screenshot, Wireframe |
+| Tier 2 Modules | Tap, Scroll, TextInput, BackPress (nav pop), Screenshot, Wireframe, SwiftUITap, Orientation |
 | Session/Journey | `BreadcrumbManager`, `JourneyBreadcrumb`, journey span hierarchy |
 | Predictive Export | `OnDevicePredictor`, `PredictiveExportPolicy`, `DeviceHealthMonitor` |
 | Dynamic Sampling | `DynamicSampler`, `SamplingConfig` |
@@ -687,7 +1165,7 @@ xcodebuild test -scheme DemoApp \
 
 ### Sprint 3: Tier 3 + E2E + Parity Hardening
 
-**Goal:** Full feature parity with Android, all E2E scenarios passing, production-ready.
+**Goal:** Full feature parity with Android (18 modules total), iPad-specific telemetry, validated test suite, runtime config override, all E2E scenarios passing, production-ready.
 
 | Epic | Deliverables |
 |------|-------------|
@@ -696,7 +1174,9 @@ xcodebuild test -scheme DemoApp \
 | Fleet Alerts | `FleetAlertHandler`, `FleetAlertDeduplicator` |
 | E2E Scenarios | All 5 suites ported (XCUITest) |
 | Stress Testing | Thermal, memory pressure, battery, network degradation |
-| iPad Support | Multitasking (split view, slide over), multi-window scenes, different screen sizes, pointer/trackpad events in `TapInstrumentation`, external keyboard in `TextInputInstrumentation`, Stage Manager on iPadOS 16+ |
+| iPad Support | Full iPad telemetry (Section 6.5): multitasking events, Stage Manager, multi-window scenes, input type differentiation (touch/pointer/pencil), external keyboard, Apple Pencil gestures, `iPadInstrumentation` meta-module |
+| Runtime Config | `ConfigManager` priority chain, `UserDefaults` override, `otel-device-ios.sh` CLI tool, `Settings.bundle` for physical devices |
+| Validated Tests | Local OTel Collector testing (Docker), `run-validated-ios-tests.sh`, per-module telemetry validation, Phase 9 validation suite port |
 | iOS 15 Compat | `#available` audit, fallback paths, test on iOS 15 simulator |
 | Documentation | Integration guide, API reference, migration guide |
 | Backport | Policy State debug panel → Android `RingBufferActivity` |
@@ -737,3 +1217,13 @@ xcodebuild test -scheme DemoApp \
 | OTLP gRPC Exporter (Java) | `OpenTelemetryProtocolExporter` (grpc-swift) |
 | Espresso (UI tests) | XCUITest |
 | Robolectric (unit tests) | XCTest (no simulator needed for unit tests) |
+| `@Supersedes` annotation | `SupersedingInstrumentation` protocol conformance |
+| `AndroidInstrumentation` interface | `MobileInstrumentation` protocol (ours; upstream has none) |
+| `InstrumentationRegistry` (Android) | `InstrumentationRegistry` actor (same logic, Swift actors) |
+| Kotlin DSL (`mobileOtel { }`) | Swift result builder DSL (`OTelMobile.configure { }`) |
+| `ExporterCustomizers` (Kotlin) | `ExporterCustomizers` struct (same chain pattern) |
+| `ComposeClickInstrumentation` | `SwiftUITapInstrumentation` (view introspection + Mirror) |
+| `ScreenOrientationInstrumentation` | `OrientationInstrumentation` (`UIDevice.orientationDidChangeNotification`) |
+| `SharedPreferences` config override | `UserDefaults` config override (suite `com.dash0.otel.config`) |
+| `otel-device.sh` (adb) | `otel-device-ios.sh` (xcrun simctl) |
+| `OpenTelemetryRum` compat shim | `OTelSwiftInstrumentationAdapter` (forward-looking wrapper) |

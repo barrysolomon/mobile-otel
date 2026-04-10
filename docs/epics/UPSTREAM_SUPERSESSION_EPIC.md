@@ -97,6 +97,10 @@ Phase 1 (Foundation)
     +---> Phase 2a (Compose + Screen Orientation)  --+
     +---> Phase 2b (WebSocket + Android Log)         +---> Phase 4 (Convergence)
     +---> Phase 3 (DSL + Customizers + Compat)     --+
+
+Phase 8 (Config Docs + Runtime Config) ──► Phase 9 (Telemetry Validation Suite)
+                                                         ▲
+Phase 7 (Real Crash Scenarios) ──────────────────────────┘
 ```
 
 ### Phase 5 -- Comparison Tutorial (P1, after Phase 1)
@@ -137,12 +141,52 @@ Phase 1 (Foundation)
 
 | ID | Title | Status |
 |----|-------|--------|
-| US-045 | User-facing configuration guide: how to set up otel-config.json, what each field does, examples | [ ] |
-| US-046 | Technical docs: MobileConfig field reference, ExportMode behavior, buffer tuning, sampling | [ ] |
-| US-047 | Runtime config override mechanism (SharedPreferences or intent) for test/debug switching | [ ] |
-| US-048 | Fix validated tests: use runtime config override instead of build-time asset swap | [ ] |
+| US-045 | User-facing configuration guide: how to set up otel-config.json, what each field does, examples | [x] |
+| US-046 | Technical docs: MobileConfig field reference, ExportMode behavior, buffer tuning, sampling | [x] |
+| US-047 | Runtime config override mechanism (SharedPreferences or intent) for test/debug switching | [x] |
+| US-048 | Fix validated tests: use runtime config override instead of build-time asset swap | [x] |
 
 **Goal:** Developers need to know how to configure the SDK. Currently the only reference is the code and CLAUDE.md. Need a proper configuration guide (user-facing) and API reference (technical). The runtime config override also unblocks validated testing — the current build-time asset swap doesn't work because Gradle caches the APK.
+
+### Phase 9 -- Comprehensive Telemetry Validation Suite (P0)
+
+| ID | Title | Status |
+|----|-------|--------|
+| US-049 | Validation framework: structured JSON assertion library for collector output (ordered events, timestamps, attribute checks, parent-child spans) | [ ] |
+| US-050 | Journey: Happy path booking — calendar → book → confirm → appointments; validate page span hierarchy, ui.tap sequence, booking.submit HTTP span, form fill timing | [ ] |
+| US-051 | Journey: Browse and refresh — appointments list → swipe-to-refresh × 3; validate ui.scroll events, HTTP retry spans, refresh timing histogram | [ ] |
+| US-052 | Journey: Network error recovery — trigger HTTP 500 → verify error span + policy flush → retry succeeds; validate flush_window(5min) fires, error context propagates | [ ] |
+| US-053 | Journey: Get directions — location permission → geocode → route; validate 2 child HTTP spans (Nominatim + OSRM) under navigation parent, location attributes present | [ ] |
+| US-054 | Journey: Multi-screen navigation breadcrumb — visit all 5 tabs in sequence; validate screen_view log for each, page span start/end ordering, breadcrumb trail in correct order | [ ] |
+| US-055 | Journey: Form input lifecycle — BookFragment: tap provider → tap slot → type notes → submit; validate ui.tap, ui.text_input, form.fill_time attribute, booking event with device context | [ ] |
+| US-056 | Journey: Session lifecycle — launch → interact → 15min idle → interact again; validate session.id changes after timeout, new session events carry new ID, old session flushed | [ ] |
+| US-057 | Journey: App background/foreground — launch → home → return; validate app.background + app.foreground events with correct timestamps, page span paused/resumed | [ ] |
+| US-058 | Stress: Battery drain progression — 100% → 5% in steps; validate device.battery_level gauge at each step, mobile.prediction with crash_risk ≥ 0.7 at ≤ 15%, pre-emptive flush trigger | [ ] |
+| US-059 | Stress: Thermal throttle escalation — inject thermal status 0→4; validate device.thermal_status gauge, network_loss_risk prediction, SDK behavior at EMERGENCY level | [ ] |
+| US-060 | Stress: Memory pressure cascade — inject RUNNING_LOW → CRITICAL; validate device.memory.trim_level logs, available_memory_mb gauge, crash_risk prediction, flush at CRITICAL | [ ] |
+| US-061 | Stress: Combined stress — simultaneous battery (12%) + thermal (SEVERE) + memory (CRITICAL); validate combined risk prediction, accelerated flush, all signals present together | [ ] |
+| US-062 | Stress: Network loss and recovery — disable wifi+cellular → generate events → reconnect; validate connectivity.change log, buffer accumulation during offline, drain after reconnect | [ ] |
+| US-063 | Policy: Crash-triggered conditional flush — accumulate 30 silent events → emit app.crash → validate flush_window(5min) exports exactly the buffered events, verify event count and time window | [ ] |
+| US-064 | Policy: HTTP error-triggered flush — accumulate 20 silent events → emit http.error (500) → validate policy match, flush window, error event included in flush batch | [ ] |
+| US-065 | Policy: UI freeze-triggered flush — accumulate events → emit ui.freeze (>2s) → validate ui-freeze-detector policy fires, flush_window(2min), freeze event attributes (duration, stack) | [ ] |
+| US-066 | Policy: No false flushes — accumulate 50 normal events over 5 minutes with no policy triggers; validate ZERO exports in CONDITIONAL mode (buffer grows, nothing leaves) | [ ] |
+| US-067 | Buffer: RAM overflow to disk — generate > ramBufferSize events; validate disk buffer receives overflow, total event count preserved, no data loss, seqId monotonic | [ ] |
+| US-068 | Buffer: Disk TTL enforcement — write events, advance clock past diskBufferTtlHours; validate expired events pruned, recent events retained | [ ] |
+| US-069 | Buffer: Selective time-window flush — buffer 10min of events → flushWindow(3) → validate only last 3 minutes exported, older events still in buffer | [ ] |
+| US-070 | Telemetry ordering: Timestamp monotonicity — run full booking journey; validate all exported events have monotonically increasing observedTimeUnixNano within each scope | [ ] |
+| US-071 | Telemetry ordering: Span parent-child integrity — run multi-screen journey; validate every child span's parentSpanId matches an existing span, journey → page → ui.tap hierarchy correct | [ ] |
+| US-072 | Telemetry ordering: Cross-signal correlation — run booking + HTTP; validate log event timestamps fall within parent span duration, HTTP span traceId matches page span traceId | [ ] |
+| US-073 | Service identity: Resource attributes — validate every exported batch has service.name, service.version, device.id, device.manufacturer, device.model.name, os.name, os.version, telemetry.sdk.* | [ ] |
+| US-074 | Sampling: Dynamic sampling correctness — configure dynamic(0.1, 1.0); generate 100 normal + 10 error events; validate ~10% normal sampled, 100% errors sampled (within tolerance) | [ ] |
+| US-075 | Export modes: CONTINUOUS periodic flush — set CONTINUOUS with 5s interval; generate events for 20s; validate ≥ 3 export batches with roughly uniform timing | [ ] |
+| US-076 | Export modes: HYBRID heartbeat + conditional — set HYBRID; validate device metrics export periodically while event data waits for policy trigger | [ ] |
+| US-077 | Validation CI integration — wire validate-telemetry.sh into GitHub Actions as emulator-based job, docker-compose collector, test matrix across API levels 28/33/36 | [ ] |
+
+**Goal:** Prove that every major user journey produces exactly the right telemetry — right signals, right order, right timestamps, right parent-child relationships — validated against a local OTel Collector. This is the test suite that makes our SDK demonstrably superior: not just "we emit telemetry" but "we emit correct, complete, ordered telemetry for every real-world scenario." The validated test infrastructure from Phase 8 (SharedPreferences runtime config → local collector → file exporter → JSON validation) is the foundation.
+
+**Architecture:** Each test scenario runs as an Espresso instrumented test on an emulator, exporting to a local OTel Collector (Docker) with file exporters. After the scenario completes, a bash validation script reads the JSON output and asserts on structure, ordering, and content. The validation framework (US-049) provides reusable assertion functions: `assert_event_exists`, `assert_event_order`, `assert_span_hierarchy`, `assert_timestamp_monotonic`, `assert_attribute_value`.
+
+**Dependency:** Phase 8 (runtime config override) must be complete (it is). Phase 7 (real crash scenarios) feeds US-063.
 
 ---
 

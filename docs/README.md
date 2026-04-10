@@ -5,7 +5,8 @@
 - [Quick Start](QUICK_START.md) — SDK integration in 5 minutes, or run the full demo end-to-end
 - [Android SDK Guide](ANDROID_SDK_GUIDE.md) — Complete integration guide (auto-instrumentation, network, privacy, flush control)
 - [Tutorial: Android Quickstart](guides/TUTORIAL_ANDROID_QUICKSTART.md) — Step-by-step tutorial with the Schedulr starter app
-- [Configuration](CONFIGURATION.md) — MobileConfig reference, export modes, policy DSL, sub-configs
+- [Configuration Guide](CONFIGURATION_GUIDE.md) — Complete config guide: all methods, export modes, buffer tuning, runtime override
+- [Configuration Reference](CONFIGURATION.md) — MobileConfig reference, export modes, policy DSL, sub-configs
 
 ## SDK Reference
 
@@ -17,7 +18,7 @@
 - [Sampling](SAMPLING.md) — Dynamic sampling configuration
 - [Log Tailing](LOG_TAILING.md) — Circular buffer for pattern detection and crash context
 - [Bundled Config](BUNDLED_CONFIG.md) — Ship apps with pre-configured export policies
-- [API Reference](API_REFERENCE.md) — Public API surface
+- [API Reference](API_REFERENCE.md) — Full public API: MobileOtel, MobileConfig, DSL, all 18 instrumentation modules
 
 ## Architecture
 

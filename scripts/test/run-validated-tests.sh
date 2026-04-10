@@ -8,11 +8,14 @@
 #   ./run-validated-tests.sh --skip-scenarios  # just validate (collector already has data)
 #
 # What it does:
-#   1. Starts a local OTel Collector (Docker) with file exporters
-#   2. Configures the demo app to export to the local collector
-#   3. Runs Dash0 scenario tests (on emulator)
-#   4. Validates that expected telemetry was received
-#   5. Stops the collector
+#   1. Starts emulator (if --start-emu)
+#   2. Starts a local OTel Collector (Docker) with file exporters
+#   3. Builds and installs the demo app (normal build)
+#   4. Writes SharedPreferences override → local collector (no rebuild needed)
+#   5. Runs scenario tests (on emulator)
+#   6. Restores device config (removes SharedPreferences override)
+#   7. Validates that expected telemetry was received
+#   8. Stops the collector
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -74,34 +77,10 @@ for i in $(seq 1 15); do
   sleep 1
 done
 
-# ── 3. Configure demo app for local collector ───────────────────────────────
+# ── 3. Build and install demo app ──────────────────────────────────────────
 
 if [ "$SKIP_SCENARIOS" = false ]; then
-  log "Configuring demo app for local collector"
-
-  # Create a temporary otel-config.json pointing to local collector
-  # Must match the full MobileConfig JSON schema the app expects
-  local_config="$DEMO_APP/android/src/debug/assets/otel-config.local.json"
-  cat > "$local_config" <<'JSON'
-{
-  "serviceName": "validated-test",
-  "serviceVersion": "1.0.0",
-  "collectorEndpoint": "http://10.0.2.2:14317",
-  "exportMode": "CONTINUOUS",
-  "headers": {}
-}
-JSON
-
-  # Back up existing config and swap in local
-  original_config="$DEMO_APP/android/src/debug/assets/otel-config.json"
-  backup_config="$DEMO_APP/android/src/debug/assets/otel-config.json.bak"
-  if [ -f "$original_config" ]; then
-    cp "$original_config" "$backup_config"
-  fi
-  cp "$local_config" "$original_config"
-  ok "Demo app configured to export to localhost"
-
-  # ── 4. Start backend + build + run scenarios ──────────────────────────────
+  PACKAGE="io.opentelemetry.android.demo"
 
   log "Starting demo backend"
   if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
@@ -111,10 +90,38 @@ JSON
   fi
   ok "Backend running"
 
-  log "Building and installing demo app"
+  log "Building and installing demo app (normal build, no config swap)"
   cd "$DEMO_APP"
   ./gradlew installDebug --quiet
   ok "Installed"
+
+  # ── 4. Write SharedPreferences override → local collector ────────────────
+  # ConfigManager reads SharedPreferences with highest priority.
+  # Writing here AFTER install bypasses Gradle's APK cache entirely.
+
+  log "Writing SharedPreferences override → localhost:14317"
+
+  # auth_token must be non-blank so isDash0Configured() returns true and
+  # scenario tests don't skip. The local collector ignores auth headers.
+  PREFS_XML='<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<map>
+  <string name="collector_endpoint">http://10.0.2.2:14317</string>
+  <string name="export_mode">CONTINUOUS</string>
+  <string name="service_name">validated-test</string>
+  <string name="service_version">1.0.0</string>
+  <string name="auth_token">local-test</string>
+  <boolean name="config_loaded_from_bundle" value="true" />
+</map>'
+
+  for serial in $(adb devices | grep "emulator" | awk '{print $1}'); do
+    adb -s "$serial" shell "run-as $PACKAGE mkdir -p shared_prefs"
+    echo "$PREFS_XML" | adb -s "$serial" shell "run-as $PACKAGE sh -c 'cat > shared_prefs/otel_config.xml'"
+    # Force-stop so app picks up new config on relaunch
+    adb -s "$serial" shell am force-stop "$PACKAGE"
+    ok "Configured $serial → localhost:14317"
+  done
+
+  # ── 5. Run scenario tests ───────────────────────────────────────────────
 
   log "Running scenario tests → local collector"
   ./gradlew :android:connectedDebugAndroidTest \
@@ -125,19 +132,20 @@ JSON
   log "Waiting for collector to flush (5s)"
   sleep 5
 
-  # Restore original config
-  if [ -f "$backup_config" ]; then
-    mv "$backup_config" "$original_config"
-    ok "Restored original otel-config.json"
-  fi
-  rm -f "$local_config"
+  # ── 6. Restore device config ────────────────────────────────────────────
+
+  log "Restoring device config (removing SharedPreferences override)"
+  for serial in $(adb devices | grep "emulator" | awk '{print $1}'); do
+    adb -s "$serial" shell "run-as $PACKAGE rm -f shared_prefs/otel_config.xml" 2>/dev/null || true
+    ok "Restored $serial"
+  done
 fi
 
-# ── 5. Validate received telemetry ──────────────────────────────────────────
+# ── 7. Validate received telemetry ──────────────────────────────────────────
 
 "$SCRIPT_DIR/validate-telemetry.sh"
 
-# ── 6. Stop collector ───────────────────────────────────────────────────────
+# ── 8. Stop collector ───────────────────────────────────────────────────────
 
 log "Stopping collector"
 docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" down 2>/dev/null || \

@@ -56,6 +56,19 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [~] **Android integration** — End-to-end buffer flow (RAM -> Disk -> Export), real Room database, crash recovery, concurrent capture. 9 tests passing on emulator. Crash-mirror dedup validated.
 - [ ] **Collector integration** — Processor in real collector, full OTLP pipeline, policy matching, annotation propagation (~20 tests). Requires custom collector via ocb.
 
+### P1 — Comprehensive Telemetry Validation (Phase 9)
+
+- [ ] **Validation framework** — Structured JSON assertion library for collector output: event existence, ordering, timestamp monotonicity, span hierarchy, attribute checks
+- [ ] **User journey validation** — 8 journeys: happy path booking, browse+refresh, network error recovery, get directions, multi-tab navigation, form input lifecycle, session lifecycle, background/foreground
+- [ ] **Stress signal validation** — Battery drain, thermal throttle, memory pressure, combined stress, network loss — verify device metrics, prediction scores, and flush triggers in collector output
+- [ ] **Policy flush validation** — Crash-triggered, HTTP-error-triggered, UI-freeze-triggered, no-false-flush (CONDITIONAL accumulation without export)
+- [ ] **Buffer validation** — RAM overflow to disk, disk TTL enforcement, selective time-window flush (flushWindow(N) exports only last N minutes)
+- [ ] **Telemetry ordering** — Timestamp monotonicity, span parent-child integrity, cross-signal correlation (log timestamps within parent span duration)
+- [ ] **Export mode validation** — CONTINUOUS periodic flush timing, HYBRID heartbeat + conditional, CONDITIONAL zero-export under normal conditions
+- [ ] **CI integration** — Wire into GitHub Actions with Docker collector, test matrix across API 28/33/36
+
+See [Upstream Supersession Epic — Phase 9](docs/epics/UPSTREAM_SUPERSESSION_EPIC.md) (US-049 through US-077) for full breakdown.
+
 ### P2 — E2E & Performance
 
 - [ ] **E2E test scripts** — Android -> Collector -> Backend for all 3 demo scenarios, `demo_run_id` correlation
