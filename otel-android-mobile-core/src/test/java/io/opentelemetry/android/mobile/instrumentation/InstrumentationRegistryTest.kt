@@ -8,6 +8,8 @@ import io.mockk.*
 import io.opentelemetry.sdk.testing.junit4.OpenTelemetryRule
 import org.junit.Rule
 import org.junit.Test
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class InstrumentationRegistryTest {
@@ -52,5 +54,19 @@ class InstrumentationRegistryTest {
     @Test fun `uninstall before install does not throw`() {
         InstrumentationRegistry(emptyList()).uninstall()
         assertTrue(true)
+    }
+
+    @Test fun `sessionProvider is null before install`() {
+        val registry = InstrumentationRegistry(emptyList())
+        assertNull(registry.sessionProvider)
+    }
+
+    @Test fun `sessionProvider is set after install`() {
+        val app = mockk<Application>(relaxed = true)
+        val provider = DefaultMobileSessionProvider()
+        val ctx = InstrumentationContext(otelRule.openTelemetry, provider, WindowEventHub(), app)
+        val registry = InstrumentationRegistry(emptyList())
+        registry.install(app, ctx)
+        assertSame(provider, registry.sessionProvider)
     }
 }

@@ -81,4 +81,18 @@ class OTelMobileBuilderTest {
         val handle = OTelMobileBuilder(app, otelRule.openTelemetry).build()
         assertNotNull(handle.getMeter("test"))
     }
+
+    @Test fun `discoverAllInstrumentations with manual module does not crash`() {
+        val app = mockk<Application>(relaxed = true)
+        val manual = mockk<MobileInstrumentation>(relaxed = true)
+        every { manual.instrumentationName } returns "test-module"
+
+        val handle = OTelMobileBuilder(app, otelRule.openTelemetry)
+            .addInstrumentation(manual)
+            .discoverAllInstrumentations()
+            .build()
+
+        assertNotNull(handle)
+        verify { manual.install(app, any()) }
+    }
 }

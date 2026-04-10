@@ -66,5 +66,26 @@ class ScreenOrientationInstrumentationTest {
             io.opentelemetry.api.common.AttributeKey.stringKey("device.orientation")))
     }
 
+    @Test fun `same orientation does not emit event`() {
+        val app = RuntimeEnvironment.getApplication()
+        val i = inst()
+        i.install(app, makeContext(app))
+
+        // Clear any records from install
+        val countBefore = otelRule.logRecords.size
+
+        // Dispatch the same orientation that is already active (portrait by default in Robolectric)
+        val sameConfig = Configuration(app.resources.configuration).apply {
+            orientation = Configuration.ORIENTATION_PORTRAIT
+        }
+        app.onConfigurationChanged(sameConfig)
+
+        assertEquals(
+            countBefore,
+            otelRule.logRecords.size,
+            "Expected no new log records when orientation does not change"
+        )
+    }
+
     private fun inst() = ScreenOrientationInstrumentation()
 }

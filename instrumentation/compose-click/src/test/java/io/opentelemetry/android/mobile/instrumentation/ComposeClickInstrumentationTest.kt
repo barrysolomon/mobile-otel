@@ -61,4 +61,13 @@ class ComposeClickInstrumentationTest {
 
         inst.uninstall()
     }
+
+    @Test fun `install then uninstall then reinstall does not throw`() {
+        val app = RuntimeEnvironment.getApplication()
+        val inst = ComposeClickInstrumentation()
+        inst.install(app, makeContext(app))
+        inst.uninstall()
+        inst.install(app, makeContext(app))  // re-install after uninstall
+        inst.uninstall()
+    }
 }

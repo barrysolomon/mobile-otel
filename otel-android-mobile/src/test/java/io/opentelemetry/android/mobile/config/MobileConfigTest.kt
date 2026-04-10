@@ -5,10 +5,12 @@
 
 package io.opentelemetry.android.mobile.config
 
+import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 
 /**
  * Unit tests for MobileConfig.
@@ -252,5 +254,20 @@ class MobileConfigTest {
         )
 
         assertEquals(config1.hashCode(), config2.hashCode())
+    }
+
+    @Test
+    fun `buildWithCustomizers returns config and customizers`() {
+        val customizer: (LogRecordExporter) -> LogRecordExporter = { it }
+        val (config, customizers) = MobileConfig.builder()
+            .setServiceName("test")
+            .setServiceVersion("1.0")
+            .setCollectorEndpoint("https://example.com:4317")
+            .addLogExporterCustomizer(customizer)
+            .buildWithCustomizers()
+
+        assertEquals("test", config.serviceName)
+        assertEquals(1, customizers.log.size)
+        assertSame(customizer, customizers.log[0])
     }
 }
