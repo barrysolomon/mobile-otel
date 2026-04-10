@@ -3,6 +3,8 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import io.opentelemetry.android.session.SessionProvider
+
 /**
  * Swappable session management provider.
  *
@@ -12,11 +14,14 @@ package io.opentelemetry.android.mobile.instrumentation
  * [OTelMobileBuilder.setSessionProvider].
  *
  * Follows the OTel provider pattern (IdGenerator, Sampler, TextMapPropagator).
+ *
+ * Extends upstream [SessionProvider] so that a [MobileSessionProvider] can be
+ * passed directly to any upstream component that expects a [SessionProvider].
  */
 @Incubating
-interface MobileSessionProvider {
+interface MobileSessionProvider : SessionProvider {
     /** Returns the current session identifier. */
-    fun getSessionId(): String
+    override fun getSessionId(): String
 
     /** Returns the current view/screen identifier. Changes with each [onScreenView] call. */
     fun getViewId(): String

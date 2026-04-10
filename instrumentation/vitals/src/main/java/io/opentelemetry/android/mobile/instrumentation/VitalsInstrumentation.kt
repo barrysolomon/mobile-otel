@@ -19,6 +19,7 @@ import io.opentelemetry.android.mobile.vitals.VitalsConfig
  * complete silently so the host app does not crash.
  */
 @Incubating
+@Supersedes("anr", "startup")
 class VitalsInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.vitals"

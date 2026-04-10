@@ -260,6 +260,12 @@ The 7 fleet matchers (`fleet_threshold`, `fleet_rate`, etc.) and 3 backend match
 
 ## 5. Instrumentation Module System
 
+> **STALE (2026-04-09):** The `MobileInstrumentation` interface is being
+> aligned with upstream `opentelemetry-android`'s `AndroidInstrumentation`
+> as part of the Upstream Supersession epic. The iOS `MobileInstrumentation`
+> protocol will be updated when Phase 4 (Interface Convergence) completes.
+> See: `docs/superpowers/specs/2026-04-09-upstream-supersession-design.md`
+
 ### Core Protocol
 
 ```swift

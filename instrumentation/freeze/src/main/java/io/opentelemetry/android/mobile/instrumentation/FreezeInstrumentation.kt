@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit
  * where a blocked main thread causes repeated events with ever-growing duration_ms.
  */
 @Incubating
+@Supersedes("slowrendering")
 class FreezeInstrumentation(
     private val config: FreezeConfig = FreezeConfig()
 ) : MobileInstrumentation {

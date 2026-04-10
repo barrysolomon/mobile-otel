@@ -4,6 +4,7 @@
 package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
+import io.opentelemetry.android.instrumentation.AndroidInstrumentation
 import io.opentelemetry.api.OpenTelemetry
 import java.util.ServiceLoader
 
@@ -64,6 +65,42 @@ class OTelMobileBuilder(
             MobileInstrumentation::class.java,
             MobileInstrumentation::class.java.classLoader
         ).forEach { instrumentations.add(it) }
+    }
+
+    /**
+     * Discovers and adds all upstream [AndroidInstrumentation] implementations
+     * available on the classpath via [ServiceLoader], wrapping each in an
+     * [UpstreamInstrumentationAdapter].
+     */
+    fun discoverUpstreamInstrumentations(): OTelMobileBuilder = apply {
+        ServiceLoader.load(
+            AndroidInstrumentation::class.java,
+            AndroidInstrumentation::class.java.classLoader
+        ).forEach { upstream ->
+            instrumentations.add(UpstreamInstrumentationAdapter(upstream, upstream.javaClass.name))
+        }
+    }
+
+    /**
+     * Discovers both [MobileInstrumentation] and upstream [AndroidInstrumentation]
+     * implementations via [ServiceLoader]. Upstream modules whose names collide
+     * with already-discovered mobile modules are skipped (deduplication by name).
+     *
+     * Conflict resolution for superseded modules happens later in
+     * [InstrumentationRegistry.install] via the [@Supersedes][Supersedes] annotation.
+     */
+    fun discoverAllInstrumentations(): OTelMobileBuilder = apply {
+        discoverInstrumentations()
+        val existingNames = instrumentations.map { it.instrumentationName }.toSet()
+        ServiceLoader.load(
+            AndroidInstrumentation::class.java,
+            AndroidInstrumentation::class.java.classLoader
+        ).forEach { upstream ->
+            val upstreamName = upstream.javaClass.name
+            if (upstreamName !in existingNames) {
+                instrumentations.add(UpstreamInstrumentationAdapter(upstream, upstreamName))
+            }
+        }
     }
 
     /**

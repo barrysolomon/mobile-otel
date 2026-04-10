@@ -32,6 +32,7 @@ import io.opentelemetry.api.trace.SpanKind
  * **Thread note:** [onTouchEvent] is always called on the Android main thread.
  */
 @Incubating
+@Supersedes("view.click")
 class TapInstrumentation(
     private val config: TapConfig = TapConfig()
 ) : MobileInstrumentation, WindowEventListener {

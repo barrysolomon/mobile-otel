@@ -30,6 +30,7 @@ import okhttp3.Interceptor
  * ```
  */
 @Incubating
+@Supersedes("okhttp")
 class NetworkInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.network"

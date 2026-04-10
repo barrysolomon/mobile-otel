@@ -80,9 +80,6 @@ dependencies {
     api("io.opentelemetry:opentelemetry-sdk:1.58.0")
     api("io.opentelemetry:opentelemetry-sdk-logs:1.58.0")
 
-    // OpenTelemetry Android Instrumentation
-    api("io.opentelemetry.android:instrumentation:0.4.0-alpha")
-
     // OTLP Exporter (includes logs, traces, and metrics)
     implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.58.0")
 

@@ -10,6 +10,7 @@ import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.sdk.common.Clock
 
 /**
  * Controls how UI interactions are emitted. Duplicated here from [MobileConfig] so the
@@ -43,7 +44,8 @@ class InstrumentationContext(
     val windowEventHub: WindowEventHub,
     val application: Application,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
-    val breadcrumbManager: BreadcrumbManager? = if (BreadcrumbManager.isInitialized()) BreadcrumbManager else null
+    val breadcrumbManager: BreadcrumbManager? = if (BreadcrumbManager.isInitialized()) BreadcrumbManager else null,
+    val clock: Clock? = null
 ) {
     /**
      * Convenience method — adds a breadcrumb if the [BreadcrumbManager] is available.

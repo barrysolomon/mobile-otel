@@ -24,6 +24,7 @@ import io.opentelemetry.api.logs.Severity
  * from the [MobileSessionProvider].
  */
 @Incubating
+@Supersedes("activity", "fragment")
 class LifecycleInstrumentation : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.lifecycle"

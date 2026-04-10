@@ -187,6 +187,52 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ---
 
+## Track 7: Upstream Supersession
+
+**Epic:** [UPSTREAM_SUPERSESSION_EPIC.md](docs/epics/UPSTREAM_SUPERSESSION_EPIC.md) — Compatible superset of `opentelemetry-android`, 31 work items across 4 phases
+
+### Phase 1 — Foundation (P0)
+
+- [ ] Remove phantom dep `instrumentation:0.4.0-alpha`, add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
+- [ ] Update semconv `1.39.0` → `1.40.0`
+- [ ] `MobileSessionProvider extends SessionProvider` + `UpstreamSessionProviderAdapter`
+- [ ] `UpstreamInstrumentationAdapter` (upstream modules in our framework)
+- [ ] `MobileInstrumentationAdapter` (our modules in upstream framework)
+- [ ] `@Supersedes` annotation + conflict resolution in `InstrumentationRegistry`
+- [ ] `discoverUpstreamInstrumentations()` + `discoverAllInstrumentations()` on builder
+- [ ] Optional `Clock` field on `InstrumentationContext`
+- [ ] Phase 1 test suite (7 test classes)
+- [ ] iOS spec section 5 stale notice
+
+### Phase 2a — New Modules (P1, parallel with 2b/3)
+
+- [ ] `ComposeClickInstrumentation` + `ComposeClickConfig` — Compose-aware tap detection
+- [ ] `ScreenOrientationInstrumentation` — orientation change events
+- [ ] New Gradle modules, tests, wire into demo app
+
+### Phase 2b — Reimplemented Modules (P2, parallel with 2a/3)
+
+- [ ] `WebSocketInstrumentation` + `OTelWebSocketListener` — OkHttp WebSocket spans
+- [ ] `AndroidLogInstrumentation` — android.util.Log bridge (optional, P2)
+
+### Phase 3 — API Surface Parity (P1, parallel with 2a/2b)
+
+- [ ] Kotlin DSL configuration (`mobileOtel { }` entry point + `@MobileOtelDsl`)
+- [ ] Exporter customizer chain (log, span, metric)
+- [ ] `OpenTelemetryRumCompat` shim for upstream migration
+- [ ] Tests for DSL, customizers, compat shim
+
+### Phase 4 — Interface Convergence (P1, after all above)
+
+- [ ] Converge `InstrumentationContext` to embed `InstallationContext`
+- [ ] Converge `MobileInstrumentation extends AndroidInstrumentation`
+- [ ] Update all 20+ modules to converged interface
+- [ ] Remove `MobileInstrumentationAdapter` (no longer needed)
+- [ ] Update iOS port spec section 5 (full rewrite)
+- [ ] Full regression test pass
+
+---
+
 ## Completed (reference)
 
 - [x] Phase 1-3: Foundation, Android OTEL migration, collector processor
