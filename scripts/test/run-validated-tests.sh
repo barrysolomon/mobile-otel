@@ -58,23 +58,21 @@ mkdir -p "$OUTPUT_DIR"
 # Ensure output files exist so the collector can write to them
 touch "$OUTPUT_DIR/logs.json" "$OUTPUT_DIR/traces.json" "$OUTPUT_DIR/metrics.json"
 
-docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>/dev/null || \
-  docker-compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>/dev/null
-sleep 3
+docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>&1 || \
+  docker-compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>&1
 
-# Verify collector is accepting connections
-if curl -sf http://localhost:4318/v1/traces > /dev/null 2>&1 || \
-   curl -sf -o /dev/null -w "%{http_code}" http://localhost:4318/ 2>/dev/null | grep -q "405\|200"; then
-  ok "Collector running on ports 4317 (gRPC) + 4318 (HTTP)"
-else
-  # Collector may not respond to plain HTTP — check docker is running
-  if docker ps 2>/dev/null | grep -q "otel.*collector"; then
-    ok "Collector container running"
-  else
+# Wait for collector to be ready
+for i in $(seq 1 15); do
+  if docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" ps 2>/dev/null | grep -q "Up"; then
+    ok "Collector running on ports 14317 (gRPC) + 14318 (HTTP)"
+    break
+  fi
+  if [ "$i" -eq 15 ]; then
     err "Collector failed to start. Check: docker compose -f $COLLECTOR_DIR/docker-compose.yaml logs"
     exit 1
   fi
-fi
+  sleep 1
+done
 
 # ── 3. Configure demo app for local collector ───────────────────────────────
 
@@ -82,10 +80,14 @@ if [ "$SKIP_SCENARIOS" = false ]; then
   log "Configuring demo app for local collector"
 
   # Create a temporary otel-config.json pointing to local collector
+  # Must match the full MobileConfig JSON schema the app expects
   local_config="$DEMO_APP/android/src/debug/assets/otel-config.local.json"
   cat > "$local_config" <<'JSON'
 {
-  "endpoint": "http://10.0.2.2:4317",
+  "serviceName": "validated-test",
+  "serviceVersion": "1.0.0",
+  "collectorEndpoint": "http://10.0.2.2:14317",
+  "exportMode": "CONTINUOUS",
   "headers": {}
 }
 JSON

@@ -1,10 +1,10 @@
 services:
   collector:
-    image: otel/opentelemetry-collector-contrib:0.115.0
+    image: otel/opentelemetry-collector-contrib:latest
     volumes:
       - ./collector.yaml:/etc/otelcol/config.yaml
       - ./output:/data/output
     command: ["--config", "/etc/otelcol/config.yaml"]
     ports:
-      - "4317:4317"   # OTLP gRPC (our SDK)
-      - "4318:4318"   # OTLP HTTP (upstream SDK)
+      - "14317:4317"   # OTLP gRPC (mapped to 14317 to avoid conflicts)
+      - "14318:4318"   # OTLP HTTP (mapped to 14318 to avoid conflicts)
