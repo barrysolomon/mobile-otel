@@ -1,0 +1,6 @@
+{
+  "endpoint": "YOUR_COLLECTOR_ENDPOINT",
+  "headers": {
+    "Authorization": "Bearer YOUR_AUTH_TOKEN"
+  }
+}
