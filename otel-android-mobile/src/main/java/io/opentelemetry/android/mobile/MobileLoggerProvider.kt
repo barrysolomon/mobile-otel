@@ -300,6 +300,13 @@ class MobileLoggerProvider private constructor(
 
         fun getInstanceOrNull(): MobileLoggerProvider? = instance
 
+        /** Reset singleton for test isolation. Only call from androidTest. */
+        @androidx.annotation.VisibleForTesting
+        fun resetForTesting() {
+            instance?.shutdown()
+            instance = null
+        }
+
         private fun getOrCreateDeviceId(context: Context): String {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             return prefs.getString(KEY_DEVICE_ID, null) ?: run {
