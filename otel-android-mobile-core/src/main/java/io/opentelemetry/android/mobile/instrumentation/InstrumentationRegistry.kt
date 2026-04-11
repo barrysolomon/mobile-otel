@@ -46,8 +46,8 @@ class InstrumentationRegistry(
         }
 
         for (inst in instrumentations) {
-            if (inst is UpstreamInstrumentationAdapter
-                && inst.instrumentationName in supersededNames
+            if (inst.instrumentationName in supersededNames
+                && inst::class.java.getAnnotation(Supersedes::class.java) == null
             ) {
                 Log.i(TAG, "Skipping ${inst.instrumentationName} -- superseded by a MobileInstrumentation module")
                 continue

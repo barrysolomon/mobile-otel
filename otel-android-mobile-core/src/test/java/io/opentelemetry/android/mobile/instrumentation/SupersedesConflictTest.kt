@@ -41,7 +41,8 @@ class SupersedesConflictTest {
 
     private fun fakeUpstream(name: String): UpstreamInstrumentationAdapter {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
-        return UpstreamInstrumentationAdapter(upstream, name)
+        every { upstream.name } returns name
+        return UpstreamInstrumentationAdapter(upstream)
     }
 
     @Test fun `superseded upstream module is skipped`() {

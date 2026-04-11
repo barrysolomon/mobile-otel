@@ -77,7 +77,9 @@ class OTelMobileBuilder(
             AndroidInstrumentation::class.java,
             AndroidInstrumentation::class.java.classLoader
         ).forEach { upstream ->
-            instrumentations.add(UpstreamInstrumentationAdapter(upstream, upstream.javaClass.name))
+            if (upstream !is MobileInstrumentation) {
+                instrumentations.add(UpstreamInstrumentationAdapter(upstream))
+            }
         }
     }
 
@@ -96,9 +98,8 @@ class OTelMobileBuilder(
             AndroidInstrumentation::class.java,
             AndroidInstrumentation::class.java.classLoader
         ).forEach { upstream ->
-            val upstreamName = upstream.javaClass.name
-            if (upstreamName !in existingNames) {
-                instrumentations.add(UpstreamInstrumentationAdapter(upstream, upstreamName))
+            if (upstream !is MobileInstrumentation && upstream.name !in existingNames) {
+                instrumentations.add(UpstreamInstrumentationAdapter(upstream))
             }
         }
     }

@@ -52,10 +52,10 @@ dependencies {
     api("io.opentelemetry:opentelemetry-sdk-logs:1.58.0")
     // Upstream opentelemetry-android interfaces for adapter compatibility
     // Exclude api-incubator to avoid ExtendedAttributeKey conflict with our OTel SDK 1.58.0
-    api("io.opentelemetry.android:session:0.10.0-alpha") {
+    api("io.opentelemetry.android:session:1.2.0-alpha") {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
-    api("io.opentelemetry.android:instrumentation-android-instrumentation:0.10.0-alpha") {
+    api("io.opentelemetry.android.instrumentation:android-instrumentation:1.2.0-alpha") {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
     implementation("androidx.core:core-ktx:1.17.0")

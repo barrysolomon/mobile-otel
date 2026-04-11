@@ -6,6 +6,7 @@ package io.opentelemetry.android.mobile.instrumentation
 import android.app.Application
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
+import io.opentelemetry.android.instrumentation.InstallationContext
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -47,6 +48,22 @@ class InstrumentationContext(
     val breadcrumbManager: BreadcrumbManager? = if (BreadcrumbManager.isInitialized()) BreadcrumbManager else null,
     val clock: Clock? = null
 ) {
+    companion object {
+        fun fromInstallationContext(ctx: InstallationContext): InstrumentationContext {
+            val app = ctx.application
+                ?: throw IllegalStateException("Application context required")
+            val hub = WindowEventHub()
+            WindowEventHubInstaller(app, hub).install()
+            return InstrumentationContext(
+                openTelemetry = ctx.openTelemetry,
+                sessionProvider = UpstreamSessionProviderAdapter(ctx.sessionProvider),
+                windowEventHub = hub,
+                application = app,
+                clock = ctx.clock
+            )
+        }
+    }
+
     /**
      * Convenience method — adds a breadcrumb if the [BreadcrumbManager] is available.
      * Safe to call even when breadcrumbs are not configured (no-op in that case).

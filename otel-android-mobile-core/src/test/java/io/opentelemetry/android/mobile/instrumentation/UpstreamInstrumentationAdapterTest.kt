@@ -21,42 +21,45 @@ class UpstreamInstrumentationAdapterTest {
     private fun makeContext(): InstrumentationContext =
         InstrumentationContext(otelRule.openTelemetry, DefaultMobileSessionProvider(), WindowEventHub(), app)
 
-    @Test fun `instrumentationName returns the name passed at construction`() {
+    @Test fun `instrumentationName returns upstream name`() {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
-        val adapter = UpstreamInstrumentationAdapter(upstream, "upstream.crash")
+        every { upstream.name } returns "upstream.crash"
+        val adapter = UpstreamInstrumentationAdapter(upstream)
         assertEquals("upstream.crash", adapter.instrumentationName)
     }
 
     @Test fun `install creates InstallationContext and calls upstream install`() {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
-        val adapter = UpstreamInstrumentationAdapter(upstream, "upstream.session")
+        every { upstream.name } returns "upstream.session"
+        val adapter = UpstreamInstrumentationAdapter(upstream)
         val ctx = makeContext()
 
         adapter.install(app, ctx)
 
         verify { upstream.install(match<InstallationContext> {
-            it.application === app && it.openTelemetry === ctx.openTelemetry
+            it.application == app && it.openTelemetry === ctx.openTelemetry
         }) }
     }
 
-    @Test fun `install passes SessionManager that delegates to context sessionProvider`() {
+    @Test fun `install passes SessionProvider that delegates to context sessionProvider`() {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
+        every { upstream.name } returns "upstream.session"
         val sessionProvider = DefaultMobileSessionProvider()
         val ctx = InstrumentationContext(otelRule.openTelemetry, sessionProvider, WindowEventHub(), app)
-        val adapter = UpstreamInstrumentationAdapter(upstream, "upstream.session")
+        val adapter = UpstreamInstrumentationAdapter(upstream)
 
         adapter.install(app, ctx)
 
         verify { upstream.install(match<InstallationContext> {
-            it.sessionManager.getSessionId() == sessionProvider.getSessionId()
+            it.sessionProvider.getSessionId() == sessionProvider.getSessionId()
         }) }
     }
 
     @Test fun `uninstall is a no-op and does not throw`() {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
-        val adapter = UpstreamInstrumentationAdapter(upstream, "upstream.session")
+        every { upstream.name } returns "upstream.session"
+        val adapter = UpstreamInstrumentationAdapter(upstream)
 
-        // uninstall before install -- should be safe (default no-op from interface)
         adapter.uninstall()
     }
 }
