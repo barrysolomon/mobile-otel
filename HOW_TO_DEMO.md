@@ -19,6 +19,7 @@ For quick setup, use the automation scripts instead of following the manual step
 | `scripts/demo/run-dash0-scenarios.sh` | — | Run suites with Dash0 run-id tagging and reporting | ~8 min |
 | `scripts/ci/run-demo-ci.sh` | `./run-demo-ci.sh` | Headless CI: unit + lint + build + instrumented + Go tests | ~15 min |
 | `scripts/demo/run-demo-backend.sh` | `./run-demo-backend.sh` | Start/stop/status for the demo backend | instant |
+| `scripts/test/run-real-crash-test.sh` | — | **Crash Demo Control Center** — interactive menu for crash + airplane mode demos | ~3-5 min |
 
 Common flags: `--skip-emu` (emulators already running), `--headless` (no window), `--incubating` (enable screenshot + wireframe).
 
@@ -226,6 +227,74 @@ Runs 9 buffer integration tests per emulator (RAM + SQLite ring buffer, flush, T
 
 1. Filter for `ui.screenshot` — each event contains a `mobile.screenshot.data_url` attribute with a base64 JPEG data URL. Paste it into a browser address bar to see the captured screen (text redacted by default).
 2. Filter for `ui.wireframe` — each event contains a `mobile.wireframe.data` attribute with a compact JSON view-hierarchy tree (~1–5 KB). Shows the structural layout of every screen the user visited.
+
+---
+
+## Crash Recovery Demo (the showstopper)
+
+The **Crash Demo Control Center** is an interactive menu-driven tool that proves the dual-tier buffer survives real process death. It runs real crashes — not simulated — and validates every event arrives at the collector.
+
+### Quick start
+
+```bash
+# Interactive menu (recommended for meetings)
+./scripts/test/run-real-crash-test.sh
+
+# Or jump straight to a mode:
+./scripts/test/run-real-crash-test.sh --ci           # automated, no prompts
+./scripts/test/run-real-crash-test.sh --interactive   # crash demo with pauses
+./scripts/test/run-real-crash-test.sh --airplane      # airplane mode + crash
+./scripts/test/run-real-crash-test.sh --full-demo     # crash then airplane, narrated
+./scripts/test/run-real-crash-test.sh --status        # pre-flight check
+./scripts/test/run-real-crash-test.sh --dump          # show last telemetry
+```
+
+### Prerequisites
+
+- 1 running emulator (`emulator-5554`)
+- Local OTel Collector (Docker) — script can start it for you
+- Demo backend running on port 3001 — script can start it for you
+- Demo app + test APK installed — script can build for you
+- `jq` installed (`brew install jq`) for telemetry dump
+
+Run `--status` first — it checks everything and offers to fix what's missing.
+
+### Menu options
+
+| Key | What it does |
+| --- | --- |
+| **s** | Pre-flight status check (emulator, collector, backend, app, config, jq) |
+| **t** | Toggle export target between Local OTel Collector and Dash0 |
+| **1** | Full automated run (CI mode) — crash + recovery + validate + dump, no prompts |
+| **2** | Interactive crash demo — pauses at each step for narration |
+| **3** | Airplane mode crash demo — offline crash, network restore, delayed export |
+| **4** | Full demo — runs 2 then 3 back-to-back |
+| **v** | Validate last run (re-run signal checks against collector output) |
+| **d** | Dump telemetry (formatted timeline from collector output via jq) |
+| **c** | Start local OTel Collector |
+| **x** | Stop collector |
+| **r** | Restart collector + clear output |
+| **q** | Quit (ensures airplane mode is off) |
+
+### How the crash test works
+
+1. **Phase 1** — Espresso test navigates 4 screens, generates ~15-20 events, then triggers a real `RuntimeException` via the debug toolbar. The app process dies.
+2. **Interstitial** — Script detects process death, dismisses the Android crash dialog via `adb shell input keyevent BACK`.
+3. **Phase 2** — Fresh Espresso test launches the app. `RecoveryTracker` reads the crash marker from SharedPreferences, emits `app.recovery` with `recovery_type=crash`, and flushes all disk-buffered events to the collector.
+4. **Validation** — Script checks collector output for pre-crash events, crash event, recovery event, service identity, and session continuity.
+5. **Telemetry dump** — Formatted timeline showing every event from launch through crash to recovery.
+
+### Airplane mode variant
+
+Same as above, but airplane mode is enabled before Phase 1. The device has no network during the crash. After Phase 2 verifies recovery (with failed export), the script disables airplane mode, restarts the app, and waits for the recovery flush to export over the restored network. Proves zero data loss even with crash + no network combined.
+
+### Narration guide
+
+- "Watch the emulator — real app, real user journey. 18 events buffered in RAM, mirrored to SQLite every 2 seconds."
+- "Now watch — real RuntimeException. Process is dead. Gone."
+- "The dual-tier buffer survived. SQLite doesn't care about your process."
+- "RecoveryTracker reads the crash marker, knows what happened, flushes everything. Check the timeline — full breadcrumb trail from launch to crash to recovery. Zero data loss."
+- (Airplane mode) "Crashed with no network. Worst case. App detected the crash, tried to flush, failed. Events are patient — they wait in SQLite. Network comes back, app restarts, everything exports. Same event count. Nothing lost."
 
 ---
 
