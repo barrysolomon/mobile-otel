@@ -125,9 +125,15 @@ run_airplane_mode_crash() {
   dismiss_crash_dialog
   prompt_action "Press ENTER to restart app (still offline — recovery flush will fail)" run_phase2
   prompt_action "Press ENTER to disable airplane mode (network restores, events flush)" disable_airplane_mode
-  log "Waiting for periodic CONTINUOUS flush to export (35s)"
-  sleep 35
-  prompt_continue "Network restored. Events should have landed."
+  # RetryableExporter exhausts retries while offline (3 attempts, gives up).
+  # Force-restart the app so RecoveryTracker does a fresh forceFlush from disk.
+  log "Restarting app to trigger fresh export from disk buffer"
+  adb -s "$SERIAL" shell am force-stop "$PACKAGE"
+  sleep 2
+  adb -s "$SERIAL" shell am start -n "$PACKAGE/.SchedulingActivity" > /dev/null 2>&1
+  log "Waiting for recovery flush to export (20s)"
+  sleep 20
+  prompt_continue "Network restored. App restarted. Events should have landed."
   validate --airplane-mode
   dump_telemetry
 }
@@ -165,7 +171,11 @@ show_menu() {
     echo "│  TELEMETRY                                                │"
     echo "│  v) Validate last run                                     │"
     echo "│  d) Dump telemetry                                        │"
-    echo "│  r) Reset collector output                                │"
+    echo "│                                                           │"
+    echo "│  COLLECTOR                                                │"
+    echo "│  c) Start collector                                       │"
+    echo "│  x) Stop collector                                        │"
+    echo "│  r) Restart collector + clear output                      │"
     echo "│                                                           │"
     echo "│  q) Quit                                                  │"
     echo "└───────────────────────────────────────────────────────────┘"
@@ -181,6 +191,8 @@ show_menu() {
       4) run_full_demo ;;
       v) validate ;;
       d) dump_telemetry ;;
+      c) start_collector ;;
+      x) stop_collector ;;
       r) reset_collector_output ;;
       q) teardown; exit 0 ;;
       *) echo "  Unknown option: $choice" ;;

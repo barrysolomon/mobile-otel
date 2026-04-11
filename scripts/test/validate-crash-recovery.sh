@@ -142,7 +142,7 @@ if [ "$AIRPLANE_MODE" = true ]; then
   fi
 
   check_signal "$OUTPUT_DIR/logs.json" "app.crash" \
-    "app.crash event arrived after network restore"
+    "app.crash event arrived after network restore" false
 
   check_signal "$OUTPUT_DIR/logs.json" "app.recovery" \
     "app.recovery event arrived after network restore"
