@@ -6,27 +6,11 @@
 #   ./run-validated-tests.sh              # requires running emulator
 #   ./run-validated-tests.sh --start-emu  # start emulator first
 #   ./run-validated-tests.sh --skip-scenarios  # just validate (collector already has data)
-#
-# What it does:
-#   1. Starts emulator (if --start-emu)
-#   2. Starts a local OTel Collector (Docker) with file exporters
-#   3. Builds and installs the demo app (normal build)
-#   4. Writes SharedPreferences override → local collector (no rebuild needed)
-#   5. Runs scenario tests (on emulator)
-#   6. Restores device config (removes SharedPreferences override)
-#   7. Validates that expected telemetry was received
-#   8. Stops the collector
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DEMO_APP="$REPO_ROOT/examples/demo-app"
-COLLECTOR_DIR="$SCRIPT_DIR/collector"
-OUTPUT_DIR="$COLLECTOR_DIR/output"
-
-log()  { echo -e "\n\033[1;36m▸ $*\033[0m"; }
-ok()   { echo -e "\033[1;32m  ✓ $*\033[0m"; }
-err()  { echo -e "\033[1;31m  ✗ $*\033[0m"; }
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/export-target.sh"
 
 START_EMU=false; SKIP_SCENARIOS=false
 for arg in "$@"; do
@@ -55,40 +39,14 @@ fi
 
 # ── 2. Start local collector ────────────────────────────────────────────────
 
-log "Starting local OTel Collector (Docker)"
-rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR"
-# Ensure output files exist so the collector can write to them
-touch "$OUTPUT_DIR/logs.json" "$OUTPUT_DIR/traces.json" "$OUTPUT_DIR/metrics.json"
+start_collector
 
-docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>&1 || \
-  docker-compose -f "$COLLECTOR_DIR/docker-compose.yaml" up -d 2>&1
-
-# Wait for collector to be ready
-for i in $(seq 1 15); do
-  if docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" ps 2>/dev/null | grep -q "Up"; then
-    ok "Collector running on ports 14317 (gRPC) + 14318 (HTTP)"
-    break
-  fi
-  if [ "$i" -eq 15 ]; then
-    err "Collector failed to start. Check: docker compose -f $COLLECTOR_DIR/docker-compose.yaml logs"
-    exit 1
-  fi
-  sleep 1
-done
-
-# ── 3. Build and install demo app ──────────────────────────────────────────
+# ── 3. Build and install + run scenarios ──────────────────────────────────────
 
 if [ "$SKIP_SCENARIOS" = false ]; then
-  PACKAGE="io.opentelemetry.android.demo"
+  find_emulator || exit 1
 
-  log "Starting demo backend"
-  if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
-    cd "$REPO_ROOT/examples/demo-backend"
-    npm run dev > /tmp/demo-backend.log 2>&1 &
-    sleep 3
-  fi
-  ok "Backend running"
+  start_demo_backend
 
   log "Building and installing demo app (normal build, no config swap)"
   cd "$DEMO_APP"
@@ -96,27 +54,10 @@ if [ "$SKIP_SCENARIOS" = false ]; then
   ok "Installed"
 
   # ── 4. Write SharedPreferences override → local collector ────────────────
-  # ConfigManager reads SharedPreferences with highest priority.
-  # Writing here AFTER install bypasses Gradle's APK cache entirely.
 
   log "Writing SharedPreferences override → localhost:14317"
-
-  # auth_token must be non-blank so isDash0Configured() returns true and
-  # scenario tests don't skip. The local collector ignores auth headers.
-  PREFS_XML='<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<map>
-  <string name="collector_endpoint">http://10.0.2.2:14317</string>
-  <string name="export_mode">CONTINUOUS</string>
-  <string name="service_name">validated-test</string>
-  <string name="service_version">1.0.0</string>
-  <string name="auth_token">local-test</string>
-  <boolean name="config_loaded_from_bundle" value="true" />
-</map>'
-
   for serial in $(adb devices | grep "emulator" | awk '{print $1}'); do
-    adb -s "$serial" shell "run-as $PACKAGE mkdir -p shared_prefs"
-    echo "$PREFS_XML" | adb -s "$serial" shell "run-as $PACKAGE sh -c 'cat > shared_prefs/otel_config.xml'"
-    # Force-stop so app picks up new config on relaunch
+    SERIAL="$serial" write_collector_prefs
     adb -s "$serial" shell am force-stop "$PACKAGE"
     ok "Configured $serial → localhost:14317"
   done
@@ -147,10 +88,7 @@ fi
 
 # ── 8. Stop collector ───────────────────────────────────────────────────────
 
-log "Stopping collector"
-docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" down 2>/dev/null || \
-  docker-compose -f "$COLLECTOR_DIR/docker-compose.yaml" down 2>/dev/null
-ok "Collector stopped"
+stop_collector
 
 echo ""
 ok "Validated test run complete"

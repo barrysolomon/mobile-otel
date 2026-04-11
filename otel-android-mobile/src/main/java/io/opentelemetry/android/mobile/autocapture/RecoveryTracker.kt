@@ -154,7 +154,9 @@ class RecoveryTracker(
     private fun installCrashHandler() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         val handler = UncaughtExceptionHandler { thread, throwable ->
-            prefs.edit().putBoolean(KEY_CRASH_MARKER, true).apply()
+            // commit() not apply() — must be synchronous because the process is about to die.
+            // apply() is async and may not persist before SIGKILL.
+            prefs.edit().putBoolean(KEY_CRASH_MARKER, true).commit()
             previous?.uncaughtException(thread, throwable)
         }
         Thread.setDefaultUncaughtExceptionHandler(handler)
