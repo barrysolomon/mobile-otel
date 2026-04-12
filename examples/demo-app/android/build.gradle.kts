@@ -63,6 +63,7 @@ android {
         versionName = "1.1.0-20260306"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "false"
     }
 
     buildTypes {
@@ -82,6 +83,7 @@ android {
     }
 
     testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
@@ -95,6 +97,9 @@ dependencies {
 
     // OTEL Android Mobile Library (our library)
     implementation(project(":otel-android-mobile"))
+
+    // Debug widget (incubating — development/demo builds only)
+    implementation(project(":instrumentation-debug-widget"))
 
     // Android Core
     implementation("androidx.core:core-ktx:1.17.0")
@@ -136,4 +141,5 @@ dependencies {
     // Testing - Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
 }

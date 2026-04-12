@@ -6,6 +6,11 @@ package io.opentelemetry.android.demo
 import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.OTelMobile
+import io.opentelemetry.android.mobile.debug.DebugWidgetConfig
+import io.opentelemetry.android.mobile.debug.DebugWidgetInstrumentation
+import io.opentelemetry.android.mobile.instrumentation.DefaultMobileSessionProvider
+import io.opentelemetry.android.mobile.instrumentation.InstrumentationContext
+import io.opentelemetry.android.mobile.instrumentation.WindowEventHub
 
 class DemoApp : Application() {
 
@@ -54,5 +59,27 @@ class DemoApp : Application() {
 
         Log.i("OTELDemoApp", "OTelMobile started — screenshot=${config.screenshotConfig.enabled}, " +
             "wireframe=${config.wireframeConfig.enabled}")
+
+        // Incubating: debug widget overlay for development/demo builds.
+        // Wired separately because the debug-widget module depends on otel-android-mobile
+        // (needs MobileOtel.getBufferStats(), ExportStatusManager, etc.) and cannot be
+        // added as a dependency of otel-android-mobile without creating a circular reference.
+        val debugWidgetConfig = DebugWidgetConfig(enabled = true)
+        if (debugWidgetConfig.enabled) {
+            try {
+                val otelSdk = OTelMobile.getLoggerProvider().getOpenTelemetrySdk()
+                val instrCtx = InstrumentationContext(
+                    openTelemetry = otelSdk,
+                    sessionProvider = DefaultMobileSessionProvider(),
+                    windowEventHub = WindowEventHub(),
+                    application = this
+                )
+                val debugWidget = DebugWidgetInstrumentation(debugWidgetConfig)
+                debugWidget.install(this, instrCtx)
+                Log.i("OTELDemoApp", "Debug widget installed")
+            } catch (e: Exception) {
+                Log.w("OTELDemoApp", "Debug widget failed to install: ${e.message}")
+            }
+        }
     }
 }
