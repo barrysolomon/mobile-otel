@@ -51,6 +51,17 @@ class DebugWidgetInstrumentation(
     override fun install(application: Application, context: InstrumentationContext) {
         if (!config.enabled) return
 
+        // Enable RingBufferActivity if it exists in the host app (disabled by default in manifest)
+        try {
+            val ringBufferClass = "${application.packageName}.ui.debug.RingBufferActivity"
+            val component = android.content.ComponentName(application.packageName, ringBufferClass)
+            application.packageManager.setComponentEnabledSetting(
+                component,
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
+        } catch (_: Exception) { /* RingBufferActivity not in this app */ }
+
         installedApplication = application
         dataSource = DebugWidgetDataSource(context).also { it.start() }
         handler = Handler(Looper.getMainLooper())

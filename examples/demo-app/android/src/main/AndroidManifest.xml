@@ -69,11 +69,13 @@
             android:label="Login"
             android:theme="@style/AppTheme" />
 
+        <!-- Only accessible when debug widget is enabled (launched from overlay Details button) -->
         <activity
             android:name=".ui.debug.RingBufferActivity"
             android:label="Ring Buffer"
             android:parentActivityName=".SchedulingActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:enabled="false" />
 
         <!-- FileProvider for sharing exported logs -->
         <provider
