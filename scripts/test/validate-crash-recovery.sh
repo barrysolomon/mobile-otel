@@ -9,7 +9,7 @@
 #   - Session continuity (session.id present)
 #
 # Prerequisites: run the crash test with a local collector first:
-#   ./run-real-crash-test.sh
+#   ./demo-control-center.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

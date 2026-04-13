@@ -19,7 +19,7 @@ For quick setup, use the automation scripts instead of following the manual step
 | `scripts/demo/run-dash0-scenarios.sh` | — | Run suites with Dash0 run-id tagging and reporting | ~8 min |
 | `scripts/ci/run-demo-ci.sh` | `./run-demo-ci.sh` | Headless CI: unit + lint + build + instrumented + Go tests | ~15 min |
 | `scripts/demo/run-demo-backend.sh` | `./run-demo-backend.sh` | Start/stop/status for the demo backend | instant |
-| `scripts/test/run-real-crash-test.sh` | — | **Crash Demo Control Center** — interactive menu for crash + airplane mode demos | ~3-5 min |
+| `scripts/test/demo-control-center.sh` | — | **Crash Demo Control Center** — interactive menu for crash + airplane mode demos | ~3-5 min |
 
 Common flags: `--skip-emu` (emulators already running), `--headless` (no window), `--incubating` (enable screenshot + wireframe).
 
@@ -238,15 +238,15 @@ The **Crash Demo Control Center** is an interactive menu-driven tool that proves
 
 ```bash
 # Interactive menu (recommended for meetings)
-./scripts/test/run-real-crash-test.sh
+./scripts/test/demo-control-center.sh
 
 # Or jump straight to a mode:
-./scripts/test/run-real-crash-test.sh --ci           # automated, no prompts
-./scripts/test/run-real-crash-test.sh --interactive   # crash demo with pauses
-./scripts/test/run-real-crash-test.sh --airplane      # airplane mode + crash
-./scripts/test/run-real-crash-test.sh --full-demo     # crash then airplane, narrated
-./scripts/test/run-real-crash-test.sh --status        # pre-flight check
-./scripts/test/run-real-crash-test.sh --dump          # show last telemetry
+./scripts/test/demo-control-center.sh --ci           # automated, no prompts
+./scripts/test/demo-control-center.sh --interactive   # crash demo with pauses
+./scripts/test/demo-control-center.sh --airplane      # airplane mode + crash
+./scripts/test/demo-control-center.sh --full-demo     # crash then airplane, narrated
+./scripts/test/demo-control-center.sh --status        # pre-flight check
+./scripts/test/demo-control-center.sh --dump          # show last telemetry
 ```
 
 ### Prerequisites

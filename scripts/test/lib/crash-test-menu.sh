@@ -159,6 +159,56 @@ select_export_mode() {
   esac
 }
 
+# ── Live Controls ─────────────────────────────────────────────────────────────
+
+toggle_airplane_mode() {
+  local current
+  current=$(adb -s "$SERIAL" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r')
+  if [ "$current" = "1" ]; then
+    log "Disabling airplane mode"
+    adb -s "$SERIAL" shell cmd connectivity airplane-mode disable
+    # Wait for network
+    for i in $(seq 1 10); do
+      if adb -s "$SERIAL" shell ping -c 1 -W 1 10.0.2.2 > /dev/null 2>&1; then
+        ok "Airplane mode OFF — network restored"
+        return
+      fi
+      sleep 1
+    done
+    ok "Airplane mode OFF"
+  else
+    log "Enabling airplane mode"
+    adb -s "$SERIAL" shell cmd connectivity airplane-mode enable
+    sleep 1
+    ok "Airplane mode ON — device is offline"
+  fi
+}
+
+force_crash_app() {
+  log "Triggering real crash (RuntimeException)"
+  # Use the test APK's RealCrashPhase1Test which generates pre-crash events then crashes
+  if ! adb -s "$SERIAL" shell pm list packages 2>/dev/null | grep -q "$PACKAGE.test"; then
+    err "Test APK not installed — run 'b' to build and install first"
+    return 1
+  fi
+  adb -s "$SERIAL" shell am instrument -w -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase1Test \
+    "$PACKAGE.test/androidx.test.runner.AndroidJUnitRunner" > /dev/null 2>&1 || true
+  sleep 2
+  dismiss_crash_dialog
+  ok "App crashed — process is dead"
+  echo -e "  ${_D}Use 'l' to relaunch (triggers recovery flush)${_R}"
+}
+
+launch_app() {
+  adb -s "$SERIAL" shell am start -n "$PACKAGE/.SchedulingActivity" > /dev/null 2>&1
+  ok "App launched"
+}
+
+kill_app() {
+  adb -s "$SERIAL" shell am force-stop "$PACKAGE"
+  ok "App killed"
+}
+
 # ── Mode Composition ──────────────────────────────────────────────────────────
 
 run_ci_mode() {
@@ -358,6 +408,12 @@ show_menu() {
     _item "c" "Start local collector"
     _item "x" "Stop local collector"
 
+    _section "LIVE CONTROLS"
+    _item "a" "Toggle airplane mode ${_D}(currently: $(if [ "$airplane" = "1" ]; then echo -e "${_YL}ON${_D}"; else echo -e "${_GR}off${_D}"; fi))${_R}"
+    _item "!" "Force crash the app ${_D}(real RuntimeException → process death)${_R}"
+    _item "l" "Launch app"
+    _item "k" "Kill app ${_D}(force-stop)${_R}"
+
     _section "RUN A DEMO"
     _item "1" "Automated crash + recovery ${_D}(CI mode, no prompts)${_R}"
     _item "2" "Interactive crash demo ${_D}(step-by-step with prompts)${_R}"
@@ -384,6 +440,10 @@ show_menu() {
       m) select_export_mode ;;
       c) start_collector ;;
       x) stop_collector ;;
+      a) toggle_airplane_mode ;;
+      !) force_crash_app ;;
+      l) launch_app ;;
+      k) kill_app ;;
       1) run_ci_mode ;;
       2) run_interactive_crash ;;
       3) run_airplane_mode_crash ;;

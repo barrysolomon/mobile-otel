@@ -123,7 +123,7 @@ This runs 18 tests on each emulator (36 total) across 4 scenario suites:
 
 **Step 5b — Run crash recovery demo**
 ```bash
-./scripts/test/run-real-crash-test.sh    # Interactive menu
+./scripts/test/demo-control-center.sh    # Interactive menu
 ```
 Proves the dual-tier buffer survives real process death. Run in a meeting for maximum impact — real RuntimeException, real crash dialog, full recovery validated automatically. See HOW_TO_DEMO.md → "Crash Recovery Demo" for full narration guide.
 
