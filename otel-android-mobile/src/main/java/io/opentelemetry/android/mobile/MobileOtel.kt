@@ -72,7 +72,11 @@ object MobileOtel {
 
     /** The active OpenTelemetryMobile instance, available after initialize(context) { } DSL. */
     var openTelemetryMobile: OpenTelemetryMobile? = null
-        private set
+
+    /** Current export mode, set during initialization. */
+    private var currentExportMode: io.opentelemetry.android.mobile.config.ExportMode? = null
+
+    fun getExportMode() = currentExportMode
 
     // ─────────────────────────────────────────────────────────────
     // Initialization
@@ -98,6 +102,7 @@ object MobileOtel {
         customizers: ExporterCustomizers = ExporterCustomizers()
     ): MobileLoggerProvider {
         val appContext = context.applicationContext
+        currentExportMode = config.exportMode
 
         // Initialize SessionManager FIRST (early init strategy)
         SessionManager.initialize(

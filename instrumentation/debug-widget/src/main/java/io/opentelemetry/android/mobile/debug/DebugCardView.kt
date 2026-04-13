@@ -60,17 +60,19 @@ class DebugCardView(context: Context) : FrameLayout(context) {
         container.addView(makeDivider())
 
         // SDK state rows
-        addRow(container, "RAM", "\u2014")
-        addRow(container, "Disk", "\u2014")
-        addRow(container, "Export", "\u2014")
-        addRow(container, "Recovery", "\u2014")
+        addRow(container, "RAM", "\u2014")          // 0
+        addRow(container, "Disk", "\u2014")         // 1
+        addRow(container, "Export", "\u2014")        // 2
+        addRow(container, "Recovery", "\u2014")      // 3
+        addRow(container, "Mode", "\u2014")          // 4
         container.addView(makeDivider())
 
         // Device health rows
-        addRow(container, "Battery", "\u2014")
-        addRow(container, "Memory", "\u2014")
-        addRow(container, "Network", "\u2014")
-        addRow(container, "Last flush", "\u2014")
+        addRow(container, "Battery", "\u2014")       // 5
+        addRow(container, "Memory", "\u2014")        // 6
+        addRow(container, "Network", "\u2014")       // 7
+        addRow(container, "Airplane", "\u2014")      // 8
+        addRow(container, "Last flush", "\u2014")    // 9
         container.addView(makeDivider())
 
         // Footer
@@ -156,17 +158,28 @@ class DebugCardView(context: Context) : FrameLayout(context) {
         }
         setRowValue(3, recoveryText, recoveryColor)
 
+        // Export mode
+        val (modeText, modeColor) = when (state.exportMode) {
+            "CONTINUOUS" -> "CONTINUOUS" to colorGreen
+            "CONDITIONAL" -> "CONDITIONAL" to colorOrange
+            "HYBRID" -> "HYBRID" to 0xFF42A5F5.toInt()  // blue
+            else -> state.exportMode to colorDim
+        }
+        setRowValue(4, modeText, modeColor)
+
         // Device health
         val battColor = if (state.batteryPercent <= 15) colorRed else colorValue
-        setRowValue(4, if (state.batteryPercent >= 0) "${state.batteryPercent}%" else "\u2014", battColor)
-        setRowValue(5, "${state.memoryAvailableMb} MB", colorValue)
-        setRowValue(6, state.networkType, if (state.networkType == "none") colorRed else colorValue)
+        setRowValue(5, if (state.batteryPercent >= 0) "${state.batteryPercent}%" else "\u2014", battColor)
+        setRowValue(6, "${state.memoryAvailableMb} MB", colorValue)
+        setRowValue(7, state.networkType, if (state.networkType == "none") colorRed else colorValue)
+        setRowValue(8, if (state.airplaneMode) "ON" else "off",
+            if (state.airplaneMode) colorOrange else colorGreen)
 
         val flushAgo = if (state.lastExportTimeMs > 0) {
             val secs = (System.currentTimeMillis() - state.lastExportTimeMs) / 1000
             if (secs < 60) "${secs}s ago" else "${secs / 60}m ago"
         } else "\u2014"
-        setRowValue(7, flushAgo, colorValue)
+        setRowValue(9, flushAgo, colorValue)
 
         // Footer
         val shortSession = if (state.sessionId.length > 12)

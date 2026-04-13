@@ -34,6 +34,8 @@ class DebugWidgetDataSource(
         val diskEvents: Int,
         val exportStatus: ExportStatus?,
         val recoveryType: String?,
+        val exportMode: String,
+        val airplaneMode: Boolean,
         val batteryPercent: Int,
         val memoryAvailableMb: Long,
         val networkType: String,
@@ -71,6 +73,8 @@ class DebugWidgetDataSource(
             diskEvents = stats?.diskBufferSize ?: 0,
             exportStatus = lastExportStatus,
             recoveryType = OTelMobile.getLastRecoveryType(),
+            exportMode = MobileOtel.getExportMode()?.name ?: "?",
+            airplaneMode = isAirplaneModeOn(app),
             batteryPercent = getBatteryPercent(app),
             memoryAvailableMb = getAvailableMemoryMb(app),
             networkType = getNetworkType(app),
@@ -89,6 +93,14 @@ class DebugWidgetDataSource(
         val mi = ActivityManager.MemoryInfo()
         am?.getMemoryInfo(mi)
         return mi.availMem / (1024 * 1024)
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun isAirplaneModeOn(context: Context): Boolean {
+        return android.provider.Settings.Global.getInt(
+            context.contentResolver,
+            android.provider.Settings.Global.AIRPLANE_MODE_ON, 0
+        ) != 0
     }
 
     private fun getNetworkType(context: Context): String {
