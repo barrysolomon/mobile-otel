@@ -254,4 +254,62 @@ class AmplifyDataStoreInstrumentationTest {
             assertTrue(sessionId != null && sessionId.isNotEmpty(), "Log '${log.body.asString()}' should have session.id")
         }
     }
+
+    // ── Sync timeout ───────────────────────────────────────────────────────
+
+    @Test
+    fun `sync timeout emits failure after configured delay`() {
+        val inst = installAndTrack(AmplifyDataStoreConfig(syncTimeoutMs = 100))
+        fireHubEvent(inst, "syncStarted")
+        Thread.sleep(200)
+        val failLogs = otelRule.logRecords.filter { it.body.asString() == MobileSemconv.DATASTORE_SYNC_FAILED }
+        assertTrue(failLogs.size == 1, "Timeout should emit exactly one sync.failed")
+        assertTrue(failLogs[0].severity == Severity.ERROR)
+        val errorType = failLogs[0].attributes[MobileSemconv.ERROR_TYPE]
+        assertTrue(errorType == "timeout", "Error type should be 'timeout'")
+    }
+
+    @Test
+    fun `syncQueriesReady cancels timeout - no failure emitted`() {
+        val inst = installAndTrack(AmplifyDataStoreConfig(syncTimeoutMs = 200))
+        fireHubEvent(inst, "syncStarted")
+        fireHubEvent(inst, "syncQueriesReady")
+        Thread.sleep(300)
+        val failLogs = otelRule.logRecords.filter { it.body.asString() == MobileSemconv.DATASTORE_SYNC_FAILED }
+        assertTrue(failLogs.isEmpty(), "No failure after successful sync completion")
+    }
+
+    @Test
+    fun `timeout and completion race is safe`() {
+        val inst = installAndTrack(AmplifyDataStoreConfig(syncTimeoutMs = 50))
+        fireHubEvent(inst, "syncStarted")
+        Thread.sleep(40)
+        fireHubEvent(inst, "syncQueriesReady")
+        Thread.sleep(100)
+        val spans = otelRule.spans.filter { it.name == MobileSemconv.DATASTORE_SYNC }
+        assertTrue(spans.size == 1, "Exactly one sync span")
+        assertTrue(spans[0].hasEnded(), "Span should be ended")
+    }
+
+    @Test
+    fun `syncTimeoutMs configures timeout duration`() {
+        val inst = installAndTrack(AmplifyDataStoreConfig(syncTimeoutMs = 500))
+        fireHubEvent(inst, "syncStarted")
+        Thread.sleep(200)
+        val failLogs = otelRule.logRecords.filter { it.body.asString() == MobileSemconv.DATASTORE_SYNC_FAILED }
+        assertTrue(failLogs.isEmpty(), "Should not timeout yet at 200ms with 500ms timeout")
+        fireHubEvent(inst, "syncQueriesReady")
+    }
+
+    // ── Uninstall cleanup ──────────────────────────────────────────────────
+
+    @Test
+    fun `uninstall ends active span`() {
+        val inst = installAndTrack()
+        fireHubEvent(inst, "syncStarted")
+        inst.uninstall()
+        activeInst = null
+        val spans = otelRule.spans.filter { it.name == MobileSemconv.DATASTORE_SYNC }
+        assertTrue(spans.isNotEmpty() && spans[0].hasEnded(), "Uninstall should end active span")
+    }
 }
