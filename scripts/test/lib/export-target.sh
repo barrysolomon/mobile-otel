@@ -36,6 +36,21 @@ get_export_target_label() {
   esac
 }
 
+# Colored version for menu display
+get_export_target_colored() {
+  local endpoint
+  endpoint=$(get_current_endpoint)
+  local target
+  target=$(get_export_target)
+  local C="\033[0m" G="\033[1;32m" Y="\033[1;33m" D="\033[2m" M="\033[1;35m" R="\033[1;31m"
+  case "$target" in
+    local)   echo -e "${Y}Local Collector${C} ${D}(10.0.2.2:14317)${C}" ;;
+    dash0)   echo -e "${G}Dash0${C} ${D}(${endpoint})${C}" ;;
+    custom)  echo -e "${M}Custom${C} ${D}(${endpoint})${C}" ;;
+    *)       echo -e "${R}Unknown${C}" ;;
+  esac
+}
+
 # ── Write prefs helpers ──────────────────────────────────────────────────────
 
 _write_otel_prefs() {

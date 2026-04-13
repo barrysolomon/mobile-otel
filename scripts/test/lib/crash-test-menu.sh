@@ -148,75 +148,113 @@ run_full_demo() {
 
 # ── Menu ──────────────────────────────────────────────────────────────────────
 
+# Color constants
+_R="\033[0m"     # reset
+_B="\033[1m"     # bold
+_D="\033[2m"     # dim
+_GR="\033[1;32m" # green
+_RD="\033[1;31m" # red
+_YL="\033[1;33m" # yellow
+_CY="\033[1;36m" # cyan
+_WH="\033[1;37m" # bright white
+_BG="\033[48;5;236m" # dark gray bg
+
+_status() {
+  # _status <label> <value_colored>
+  printf "  ${_D}%-12s${_R} %b\n" "$1" "$2"
+}
+
+_section() {
+  echo ""
+  echo -e "  ${_CY}${_B}$1${_R}"
+  echo -e "  ${_D}$(printf '%.0s─' {1..54})${_R}"
+}
+
+_item() {
+  # _item <key> <description>
+  printf "  ${_WH}%s${_R})  %s\n" "$1" "$2"
+}
+
 show_menu() {
   while true; do
     # ── Gather live status ──────────────────────────────────────────────────
-    local target_label collector_status backend_status app_status test_status airplane_status
-    target_label=$(get_export_target_label)
+    local collector_status backend_status app_status test_status airplane_status
+    local export_colored output_size
 
     if docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" ps 2>/dev/null | grep -q "Up"; then
-      collector_status="\033[1;32mrunning\033[0m"
+      collector_status="${_GR}running${_R}"
     else
-      collector_status="\033[1;31mstopped\033[0m"
+      collector_status="${_RD}stopped${_R}"
     fi
 
     if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
-      backend_status="\033[1;32mrunning\033[0m"
+      backend_status="${_GR}running${_R}"
     else
-      backend_status="\033[1;31mstopped\033[0m"
+      backend_status="${_RD}stopped${_R}"
     fi
 
     if adb -s "$SERIAL" shell pm list packages 2>/dev/null | grep -q "$PACKAGE$"; then
-      app_status="\033[1;32minstalled\033[0m"
+      app_status="${_GR}installed${_R}"
     else
-      app_status="\033[1;31mmissing\033[0m"
+      app_status="${_RD}missing${_R}"
     fi
 
     if adb -s "$SERIAL" shell pm list packages 2>/dev/null | grep -q "$PACKAGE.test"; then
-      test_status="\033[1;32minstalled\033[0m"
+      test_status="${_GR}installed${_R}"
     else
-      test_status="\033[1;31mmissing\033[0m"
+      test_status="${_RD}missing${_R}"
     fi
 
     local airplane
     airplane=$(adb -s "$SERIAL" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r')
     if [ "$airplane" = "1" ]; then
-      airplane_status="\033[1;33mON\033[0m"
+      airplane_status="${_YL}ON${_R}"
     else
-      airplane_status="\033[1;32moff\033[0m"
+      airplane_status="${_GR}off${_R}"
     fi
 
-    # ── Render menu ─────────────────────────────────────────────────────────
+    export_colored=$(get_export_target_colored)
+    output_size=$(du -sh "$OUTPUT_DIR" 2>/dev/null | awk '{print $1}')
+
+    # ── Render ──────────────────────────────────────────────────────────────
+    clear
     echo ""
-    echo "┌─────────────────────────────────────────────────────────────┐"
-    echo "│  Dash0 Mobile Observability — Demo Control Center           │"
-    echo "├─────────────────────────────────────────────────────────────┤"
-    echo -e "│  Emulator:  $SERIAL                            │"
-    echo -e "│  Collector: $collector_status   Backend: $backend_status   Airplane: $airplane_status"
-    echo -e "│  App: $app_status   Test APK: $test_status"
-    echo -e "│  Export to: $target_label"
-    echo "├─────────────────────────────────────────────────────────────┤"
-    echo "│                                                             │"
-    echo "│  STEP 1 — PREPARE                                          │"
-    echo "│  s) Full status check (diagnose + auto-fix)                 │"
-    echo "│  b) Build + install app & test APK                          │"
-    echo "│  e) Select export endpoint (Dash0 / local / custom)         │"
-    echo "│  c) Start local collector   x) Stop collector               │"
-    echo "│                                                             │"
-    echo "│  STEP 2 — RUN A DEMO                                       │"
-    echo "│  1) Automated crash + recovery (CI mode, no prompts)        │"
-    echo "│  2) Interactive crash demo (step-by-step with prompts)      │"
-    echo "│  3) Airplane mode demo (offline crash → reconnect → flush)  │"
-    echo "│  4) Full narrated demo (2 then 3, for meetings)             │"
-    echo "│                                                             │"
-    echo "│  STEP 3 — INSPECT RESULTS                                   │"
-    echo "│  v) Validate telemetry from last run                        │"
-    echo "│  d) Dump raw telemetry (JSON)                               │"
-    echo "│  r) Clear collector output (reset for next run)             │"
-    echo "│                                                             │"
-    echo "│  q) Quit                                                    │"
-    echo "└─────────────────────────────────────────────────────────────┘"
-    echo -n "  > "
+    echo -e "  ${_B}${_CY}Dash0 Mobile Observability${_R}  ${_D}—  Demo Control Center${_R}"
+    echo -e "  ${_D}$(printf '%.0s═' {1..54})${_R}"
+    echo ""
+    _status "Emulator"   "${_WH}${SERIAL}${_R}"
+    _status "Collector"  "$collector_status"
+    _status "Backend"    "$backend_status"
+    _status "App"        "$app_status  ${_D}│${_R}  Test APK: $test_status"
+    _status "Airplane"   "$airplane_status"
+    _status "Export to"  "$export_colored"
+    if [ -n "$output_size" ] && [ "$output_size" != "0B" ]; then
+      _status "Output"    "${_D}${output_size} captured${_R}"
+    fi
+
+    _section "PREPARE"
+    _item "s" "Full status check ${_D}(diagnose + auto-fix)${_R}"
+    _item "b" "Build + install app & test APK"
+    _item "e" "Select export endpoint ${_D}(Dash0 / local / custom)${_R}"
+    _item "c" "Start local collector"
+    _item "x" "Stop local collector"
+
+    _section "RUN A DEMO"
+    _item "1" "Automated crash + recovery ${_D}(CI mode, no prompts)${_R}"
+    _item "2" "Interactive crash demo ${_D}(step-by-step with prompts)${_R}"
+    _item "3" "Airplane mode demo ${_D}(offline crash → reconnect → flush)${_R}"
+    _item "4" "Full narrated demo ${_D}(2 then 3, for meetings)${_R}"
+
+    _section "INSPECT RESULTS"
+    _item "v" "Validate telemetry from last run"
+    _item "d" "Dump raw telemetry ${_D}(JSON)${_R}"
+    _item "r" "Clear collector output ${_D}(reset for next run)${_R}"
+
+    echo ""
+    echo -e "  ${_D}$(printf '%.0s─' {1..54})${_R}"
+    _item "q" "Quit"
+    echo ""
+    echo -ne "  ${_CY}›${_R} "
     read -r choice
 
     case "$choice" in
@@ -233,7 +271,12 @@ show_menu() {
       d) dump_telemetry ;;
       r) reset_collector_output ;;
       q) teardown; exit 0 ;;
-      *) echo "  Unknown option: $choice" ;;
+      *) echo -e "  ${_RD}Unknown option:${_R} $choice" ;;
     esac
+
+    # Pause after action so user can read output before menu redraws
+    echo ""
+    echo -ne "  ${_D}Press ENTER to return to menu${_R}"
+    read -r
   done
 }
