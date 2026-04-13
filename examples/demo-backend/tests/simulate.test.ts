@@ -24,7 +24,7 @@ describe("Simulation", () => {
     it("GET /api/admin/simulate returns default state", async () => {
       const res = await request(app).get("/api/admin/simulate");
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ error: false, latency: 0, crash: false });
+      expect(res.body).toMatchObject({ error: false, latency: 0, crash: false });
     });
 
     it("POST /api/admin/simulate sets state", async () => {
@@ -40,7 +40,7 @@ describe("Simulation", () => {
       await request(app).post("/api/admin/simulate").send({ error: true });
       await request(app).delete("/api/admin/simulate");
       const res = await request(app).get("/api/admin/simulate");
-      expect(res.body).toEqual({ error: false, latency: 0, crash: false });
+      expect(res.body).toMatchObject({ error: false, latency: 0, crash: false });
     });
   });
 
@@ -87,6 +87,58 @@ describe("Simulation", () => {
   describe("Per-request header override", () => {
     it("X-Simulate-Error forces 503", async () => {
       const res = await request(app).get("/api/doctors").set("X-Simulate-Error", "true");
+      expect(res.status).toBe(503);
+    });
+  });
+
+  describe("Operations state", () => {
+    it("GET returns default operations state", async () => {
+      const res = await request(app).get("/api/admin/simulate");
+      expect(res.body.operations).toEqual({
+        availability: { timeout: 0, errorRate: 0 },
+        conflicts: { raceCondition: false },
+        authorization: { timeout: 0, deny: false },
+        notifications: { partialFailure: false, slowChannel: null },
+      });
+    });
+
+    it("POST deep-merges operations without resetting others", async () => {
+      await request(app)
+        .post("/api/admin/simulate")
+        .send({ operations: { authorization: { deny: true } } });
+      const res = await request(app)
+        .post("/api/admin/simulate")
+        .send({ operations: { conflicts: { raceCondition: true } } });
+      expect(res.body.operations.authorization.deny).toBe(true);
+      expect(res.body.operations.conflicts.raceCondition).toBe(true);
+      expect(res.body.operations.availability.timeout).toBe(0);
+    });
+
+    it("POST deep-merges within an operation without resetting sibling fields", async () => {
+      await request(app)
+        .post("/api/admin/simulate")
+        .send({ operations: { availability: { timeout: 3000 } } });
+      const res = await request(app)
+        .post("/api/admin/simulate")
+        .send({ operations: { availability: { errorRate: 0.5 } } });
+      expect(res.body.operations.availability.timeout).toBe(3000);
+      expect(res.body.operations.availability.errorRate).toBe(0.5);
+    });
+
+    it("DELETE resets operations to defaults", async () => {
+      await request(app)
+        .post("/api/admin/simulate")
+        .send({ operations: { authorization: { deny: true } } });
+      await request(app).delete("/api/admin/simulate");
+      const res = await request(app).get("/api/admin/simulate");
+      expect(res.body.operations.authorization.deny).toBe(false);
+    });
+
+    it("existing global simulate still works alongside operations", async () => {
+      await request(app)
+        .post("/api/admin/simulate")
+        .send({ error: true, operations: { authorization: { deny: true } } });
+      const res = await request(app).get("/api/doctors");
       expect(res.status).toBe(503);
     });
   });
