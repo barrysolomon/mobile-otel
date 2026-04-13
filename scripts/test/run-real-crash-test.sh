@@ -41,6 +41,7 @@ for arg in "$@"; do
     --full-demo)    MODE="full-demo" ;;
     --status)       MODE="status" ;;
     --dump)         MODE="dump" ;;
+    --validate-dash0) MODE="validate-dash0" ;;
     --dash0)        MODE="set-dash0" ;;
     --local)        MODE="set-local" ;;
     --endpoint)     MODE="set-endpoint" ;;
@@ -80,6 +81,7 @@ case "$MODE" in
   full-demo)     run_full_demo ;;
   status)        status_check ;;
   dump)          dump_telemetry ;;
+  validate-dash0) "$SCRIPT_DIR/validate-dash0.sh" "$@" ;;
   set-dash0)     write_dash0_prefs && ok "Switched to Dash0" && adb -s "$SERIAL" shell am force-stop "$PACKAGE" ;;
   set-local)     write_collector_prefs && ok "Switched to Local Collector" && adb -s "$SERIAL" shell am force-stop "$PACKAGE" ;;
   set-endpoint)  select_export_target ;;

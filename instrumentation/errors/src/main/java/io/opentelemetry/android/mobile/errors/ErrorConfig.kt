@@ -70,8 +70,17 @@ data class ErrorConfig(
     // ProGuard support
     val proguardMappingFile: String? = null,
 
-    // Filtering
-    val filterExceptions: List<String> = emptyList(),
+    // Filtering — network I/O exceptions are captured by OTelNetworkInterceptor as
+    // http.error; letting them also fire as app.crash causes duplicate signals and
+    // repeated policy flushes.
+    val filterExceptions: List<String> = listOf(
+        "java.net.SocketTimeoutException",
+        "java.net.ConnectException",
+        "java.net.UnknownHostException",
+        "java.net.SocketException",
+        "javax.net.ssl.SSLException",
+        "java.io.InterruptedIOException",
+    ),
 
     // Privacy
     val captureExceptionMessages: Boolean = true,

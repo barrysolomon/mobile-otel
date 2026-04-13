@@ -122,7 +122,7 @@ class PolicyEvaluator(
                     logicalOperator = "and",
                     attributes = mapOf("event.name" to Condition(equals = "http.error"))
                 ),
-                actions = Actions(flushWindowMinutes = 5)
+                actions = Actions(flushWindowMinutes = 2)
             )
         )
     )
@@ -243,6 +243,7 @@ class PolicyEvaluator(
 
         return when {
             condition.equals != null -> value.toString() == condition.equals
+            condition.notEquals != null -> value.toString() != condition.notEquals
             condition.gt != null -> (value as? Number)?.toDouble()?.let { it > condition.gt } ?: false
             condition.lt != null -> (value as? Number)?.toDouble()?.let { it < condition.lt } ?: false
             condition.gte != null -> (value as? Number)?.toDouble()?.let { it >= condition.gte } ?: false
@@ -460,6 +461,7 @@ class PolicyEvaluator(
                 val condObj = attrsObj.getJSONObject(key)
                 attributes[key] = Condition(
                     equals = condObj.optString("equals").takeIf { it.isNotEmpty() },
+                    notEquals = condObj.optString("notEquals").takeIf { it.isNotEmpty() },
                     gt = condObj.optDouble("gt").takeIf { !it.isNaN() },
                     lt = condObj.optDouble("lt").takeIf { !it.isNaN() },
                     gte = condObj.optDouble("gte").takeIf { !it.isNaN() },
@@ -609,6 +611,7 @@ data class Match(
  */
 data class Condition(
     val equals: String? = null,
+    val notEquals: String? = null,
     val gt: Double? = null,
     val lt: Double? = null,
     val gte: Double? = null,

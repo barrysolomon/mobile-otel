@@ -366,5 +366,18 @@ class ErrorInstrumentation private constructor(
          * Check if error instrumentation is initialized.
          */
         fun isInitialized(): Boolean = instance != null
+
+        /**
+         * Reset the singleton. Visible for testing only.
+         */
+        internal fun reset() {
+            instance?.restoreDefaultExceptionHandler()
+            instance = null
+        }
+    }
+
+    /** Restore the exception handler we replaced during init. */
+    private fun restoreDefaultExceptionHandler() {
+        defaultExceptionHandler?.let { Thread.setDefaultUncaughtExceptionHandler(it) }
     }
 }

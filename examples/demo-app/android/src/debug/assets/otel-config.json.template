@@ -120,6 +120,38 @@
           "reason": "App returned to foreground - capturing background session data"
         }
       ]
+    },
+    {
+      "id": "http-error-flush",
+      "name": "HTTP Error Handler",
+      "enabled": true,
+      "description": "Flushes surrounding context on HTTP errors (>= 400), excluding 404s",
+      "trigger": {
+        "all": [
+          {
+            "event": "http.error",
+            "where": [
+              {
+                "attr": "http.status_code",
+                "op": ">=",
+                "value": 400
+              },
+              {
+                "attr": "http.status_code",
+                "op": "!=",
+                "value": 404
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "flush_window",
+          "minutes": 2,
+          "scope": "session"
+        }
+      ]
     }
   ]
 }

@@ -408,7 +408,7 @@ class PolicyEvaluatorConditionTest {
         val result = evaluator.evaluate(logRecord)
         assertNotNull(result)
         assertEquals("http-error-detector", result.policyId)
-        assertEquals(5, result.flushWindowMinutes)
+        assertEquals(2, result.flushWindowMinutes)
     }
 
     @Test

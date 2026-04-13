@@ -293,7 +293,7 @@ class MobileLogRecordProcessor private constructor(
         }
 
         // Convert to LogRecordData for processing
-        val logRecordData = logRecord.toLogRecordData()
+        val logRecordData = logRecord.toLogRecordData().ensureTimestamp()
 
         val body = logRecordData.body.asString()
 
@@ -926,4 +926,24 @@ class MobileLogRecordProcessor private constructor(
 private fun LogRecordData.effectiveTimestampMs(): Long {
     val tsNs = timestampEpochNanos
     return if (tsNs > 0) tsNs / 1_000_000 else observedTimestampEpochNanos / 1_000_000
+}
+
+/**
+ * Ensures that [timestampEpochNanos] is always populated.
+ *
+ * The OTel SDK only auto-sets observedTimestampEpochNanos — most emitters don't call
+ * setTimestamp(), leaving timestampEpochNanos = 0. Backends (Dash0) and the OTLP JSON
+ * exporter surface this as a null timestamp, which hides the event's true time.
+ *
+ * This copies observedTimestamp into timestamp when timestamp is unset, so every
+ * exported event has an explicit event time matching when it was generated.
+ */
+private fun LogRecordData.ensureTimestamp(): LogRecordData {
+    if (timestampEpochNanos > 0) return this
+    val effectiveTs = observedTimestampEpochNanos
+    if (effectiveTs <= 0) return this
+    val original = this
+    return object : LogRecordData by original {
+        override fun getTimestampEpochNanos(): Long = effectiveTs
+    }
 }

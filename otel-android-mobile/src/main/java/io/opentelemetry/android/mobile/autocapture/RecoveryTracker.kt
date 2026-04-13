@@ -24,7 +24,7 @@ class RecoveryTracker(
     private val sessionTracker: SessionTracker
 ) : ComponentCallbacks2 {
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val backgroundExecutor = Executors.newSingleThreadExecutor { r ->
+    private val backgroundExecutor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "OTel-Recovery").apply { isDaemon = true }
     }
 
@@ -135,6 +135,12 @@ class RecoveryTracker(
             backgroundExecutor.submit {
                 provider.forceFlush(30)
             }
+
+            // Schedule reset after a delay — gives the debug widget time to show
+            // the recovery type, then transitions to "clean_start".
+            backgroundExecutor.schedule({
+                lastRecoveryType = "clean_start"
+            }, 30, java.util.concurrent.TimeUnit.SECONDS)
         }
 
         prefs.edit()

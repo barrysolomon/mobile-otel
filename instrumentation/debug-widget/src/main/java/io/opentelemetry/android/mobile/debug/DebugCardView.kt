@@ -29,24 +29,24 @@ class DebugCardView(context: Context) : FrameLayout(context) {
     private var footerSessionText: TextView
     private var footerRefreshText: TextView
 
-    private val colorLabel = 0xFF666666.toInt()
+    private val colorLabel = 0xFF9E9EAE.toInt()
     private val colorValue = 0xFFFFFFFF.toInt()
-    private val colorGreen = 0xFF4CAF50.toInt()
-    private val colorRed = 0xFFF44336.toInt()
-    private val colorOrange = 0xFFFF9800.toInt()
-    private val colorDim = 0xFF555555.toInt()
+    private val colorGreen = 0xFF66BB6A.toInt()
+    private val colorRed = 0xFFEF5350.toInt()
+    private val colorOrange = 0xFFFFB74D.toInt()
+    private val colorDim = 0xFF6E6E7E.toInt()
 
     init {
-        val cardWidth = (230 * density).toInt()
+        val cardWidth = (270 * density).toInt()
         layoutParams = FrameLayout.LayoutParams(cardWidth, LayoutParams.WRAP_CONTENT)
         elevation = 24f * density
 
         val bg = GradientDrawable().apply {
-            setColor(0xF00F0F19.toInt())
-            cornerRadius = 12 * density
+            setColor(0xF5101020.toInt())
+            cornerRadius = 14 * density
         }
         background = bg
-        val pad = (12 * density).toInt()
+        val pad = (16 * density).toInt()
         setPadding(pad, pad, pad, pad)
 
         val container = LinearLayout(context).apply {
@@ -55,7 +55,7 @@ class DebugCardView(context: Context) : FrameLayout(context) {
         }
 
         // Header
-        val headerText = makeText("\u25CF OTel Debug", 11f, colorValue, Typeface.BOLD)
+        val headerText = makeText("\u25CF OTel Debug", 13f, colorValue, Typeface.BOLD)
         container.addView(headerText)
         container.addView(makeDivider())
 
@@ -78,8 +78,8 @@ class DebugCardView(context: Context) : FrameLayout(context) {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
-        footerSessionText = makeText("Session \u2014", 9f, colorDim)
-        footerRefreshText = makeText("\u21BB 2s", 9f, colorDim).apply {
+        footerSessionText = makeText("Session \u2014", 10f, colorDim)
+        footerRefreshText = makeText("\u21BB 2s", 10f, colorDim).apply {
             gravity = Gravity.END
         }
         footerSessionText.layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
@@ -96,12 +96,12 @@ class DebugCardView(context: Context) : FrameLayout(context) {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (3 * density).toInt()
+                bottomMargin = (5 * density).toInt()
             }
         }
-        val labelView = makeText(label, 10f, colorLabel)
+        val labelView = makeText(label, 12f, colorLabel)
         labelView.layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-        val valueView = makeText(value, 10f, colorValue)
+        val valueView = makeText(value, 12f, colorValue, Typeface.BOLD)
         valueView.layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         valueView.gravity = Gravity.END
         row.addView(labelView)
@@ -122,10 +122,10 @@ class DebugCardView(context: Context) : FrameLayout(context) {
     private fun makeDivider(): View {
         return View(context).apply {
             layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1).apply {
-                topMargin = (6 * density).toInt()
-                bottomMargin = (6 * density).toInt()
+                topMargin = (8 * density).toInt()
+                bottomMargin = (8 * density).toInt()
             }
-            setBackgroundColor(0xFF2A2A3A.toInt())
+            setBackgroundColor(0xFF2E2E42.toInt())
         }
     }
 
@@ -146,7 +146,15 @@ class DebugCardView(context: Context) : FrameLayout(context) {
             null -> "\u2014" to colorDim
         }
         setRowValue(2, exportText, exportColor)
-        setRowValue(3, state.recoveryType ?: "clean", if (state.recoveryType == "crash") colorOrange else colorValue)
+        val (recoveryText, recoveryColor) = when (state.recoveryType) {
+            "crash" -> "crash" to colorRed
+            "anr_force_kill" -> "ANR" to colorRed
+            "low_memory_kill" -> "OOM" to colorOrange
+            "system_force_kill" -> "killed" to colorOrange
+            "clean_start", null -> "ok" to colorGreen
+            else -> (state.recoveryType ?: "ok") to colorValue
+        }
+        setRowValue(3, recoveryText, recoveryColor)
 
         // Device health
         val battColor = if (state.batteryPercent <= 15) colorRed else colorValue
