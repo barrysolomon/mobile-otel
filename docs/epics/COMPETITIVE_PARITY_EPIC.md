@@ -64,6 +64,57 @@ The control plane (React UI + Go gateway) builds and starts, but the full loop �
 
 ---
 
+## Phase 13.6 — Offline Sync Framework Instrumentation (AWS Amplify + MongoDB Realm)
+
+**Competitive impact: DEAL-DRIVEN — directly addresses prospect pain (sync failures between Start/End events during network drops)**
+**Status: NOT STARTED**
+**No competitor has this.** Datadog, Splunk, and Sentry have zero auto-instrumentation for offline-first sync frameworks.
+
+This is the prospect's exact pain: "so many escalations on sync failures" using AWS Amplify DataStore and/or MongoDB Realm. They need to see the full sync lifecycle — start, conflict, retry, failure, resolution — as OTel spans, correlated with the network state and device health that caused the failure.
+
+### AWS Amplify DataStore Instrumentation
+
+| ID | Item | Priority | Notes |
+|----|------|----------|-------|
+| SYNC-001 | **Amplify DataStore sync lifecycle spans** — instrument `Amplify.DataStore.start()`, `observe()`, `query()`, `save()`, `delete()` as OTel spans with sync status attributes | P0 | Wrap the Amplify Kotlin SDK's DataStore API |
+| SYNC-002 | **Sync event capture** — hook into `DataStore.observeQuery()` and `Hub.subscribe(HubChannel.DATASTORE)` to capture `syncStarted`, `modelSynced`, `outboxMutationEnqueued`, `outboxMutationProcessed`, `syncQueriesReady` as OTel log events | P0 | Amplify Hub is the event bus |
+| SYNC-003 | **Conflict resolution tracking** — capture `ConflictHandler` invocations as spans with `conflict.strategy` (optimistic/custom), `conflict.model`, `conflict.resolved` attributes | P1 | Key for debugging sync failures |
+| SYNC-004 | **Network-correlated sync failures** — attach network state (wifi/cellular/none), signal strength, and retry count to every sync span | P0 | Combines our network instrumentation with sync events |
+| SYNC-005 | **Offline queue depth metric** — OTel gauge for Amplify's outbox mutation queue size, updated on each sync cycle | P1 | "How much data is stuck on device?" |
+
+### MongoDB Realm Sync Instrumentation
+
+| ID | Item | Priority | Notes |
+|----|------|----------|-------|
+| SYNC-010 | **Realm Sync session lifecycle spans** — instrument `SyncSession` state changes (active, dying, inactive, waiting-for-access-token) as OTel spans | P0 | Realm Kotlin SDK's `SyncSession.state` flow |
+| SYNC-011 | **Sync progress tracking** — hook into `SyncSession.progressAsFlow()` to emit `realm.sync.progress` metrics (transferredBytes, transferableBytes, direction) | P0 | Shows sync progress in real-time |
+| SYNC-012 | **Sync error capture** — instrument `SyncSession.ErrorHandler` to capture `SyncException` subtypes (compensating writes, client reset, bad changeset) as OTel error events with full context | P0 | The exact errors causing their escalations |
+| SYNC-013 | **Client reset tracking** — capture client reset strategy (recover/discard/manual) and outcome as spans | P1 | Critical for debugging data loss |
+| SYNC-014 | **Offline write queue metric** — OTel gauge for pending local changes not yet synced to Atlas | P1 | Paired with network state = explains sync delays |
+
+### Shared / Framework-Agnostic
+
+| ID | Item | Priority | Notes |
+|----|------|----------|-------|
+| SYNC-020 | **Sync health composite metric** — combines sync success rate, queue depth, retry count, network state into a single "sync health" score | P1 | Policy trigger: "flush when sync health drops below threshold" |
+| SYNC-021 | **Sync failure → selective flush policy** — built-in DSL policy that triggers flush window when sync fails after N retries | P0 | The demo moment: "sync failed → 2 minutes of context exported automatically" |
+| SYNC-022 | **Sync journey breadcrumbs** — add sync events (start, conflict, retry, fail, success) to the breadcrumb buffer | P0 | Attached to crash/error reports |
+
+### Implementation Approach
+
+Both Amplify and Realm expose Kotlin-friendly APIs with Flow/coroutine support. The instrumentation modules follow the same pattern as our existing modules:
+
+- **Amplify**: Wrap `Amplify.DataStore` calls via a delegating API or use `Amplify.Hub.subscribe()` for event-driven capture (no bytecode manipulation needed)
+- **Realm**: Use `SyncSession.progressAsFlow()` and `SyncSession.ErrorHandler` — pure Kotlin, no reflection
+
+Each module is opt-in, auto-discovered via SPI, and requires zero code changes from the app developer beyond adding the Gradle dependency.
+
+**Exit criteria:** Demo showing: app syncs data → goes offline → continues working → sync queue builds → comes back online → sync retries → failure captured with full context → selective flush exports the sync failure window to Dash0. Visible in Dash0 as correlated spans: sync.start → sync.conflict → sync.retry → sync.failed, with network state and device health on each.
+
+**Why Phase 13.6 (immediate):** This is a deal-driver. The prospect's #1 pain is sync failures between Start and End events during network drops. No competitor offers auto-instrumentation for offline sync frameworks. This is whitespace we can own.
+
+---
+
 ## Phase 14 — iOS SDK Port
 
 **Competitive impact: TABLE STAKES — cannot sell mobile without this**
@@ -261,10 +312,11 @@ These are pure advantages to emphasize in sales conversations:
 
 **Recommended execution order:**
 1. **Phase 13.5 (control plane E2E)** — validate our #1 differentiator claim before anything else
-2. Phase 14 (iOS SDK) — table stakes, highest competitive impact
-3. Phase 10 (production readiness) — CI/CD, publishing, credibility
-4. Phase 15 (crash symbolication) — closes #2 gap
-5. Phase 16 (session replay viewer) — closes #3 gap, leverages existing capture primitives
-6. Phase 17 (APM correlation) — connects mobile → backend story
-7. Phase 12 + 13 (tech debt + Sentry parity) — quality + depth
-8. Phases 18-21 (NDK, cross-platform, network depth, error tracking) — extend lead
+2. **Phase 13.6 (Amplify + Realm sync instrumentation)** — deal-driven, no competitor has this
+3. Phase 14 (iOS SDK) — table stakes, highest competitive impact
+4. Phase 10 (production readiness) — CI/CD, publishing, credibility
+5. Phase 15 (crash symbolication) — closes #2 gap
+6. Phase 16 (session replay viewer) — closes #3 gap, leverages existing capture primitives
+7. Phase 17 (APM correlation) — connects mobile → backend story
+8. Phase 12 + 13 (tech debt + Sentry parity) — quality + depth
+9. Phases 18-21 (NDK, cross-platform, network depth, error tracking) — extend lead

@@ -260,6 +260,18 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [ ] Config polling integration test (SDK polls gateway, receives updates, applies them)
 - [ ] Bundled config fallback test (SDK starts offline, falls back, later receives remote update)
 
+### Phase 13.6 — Offline Sync Framework Instrumentation (P0, deal-driven)
+
+- [ ] AWS Amplify DataStore sync lifecycle spans (start, query, save, delete)
+- [ ] Amplify Hub event capture (syncStarted, modelSynced, outboxMutation*)
+- [ ] Amplify conflict resolution tracking (ConflictHandler spans)
+- [ ] MongoDB Realm SyncSession lifecycle spans (state changes)
+- [ ] Realm sync progress metrics (transferredBytes, transferableBytes)
+- [ ] Realm SyncException error capture (compensating writes, client reset)
+- [ ] Network-correlated sync failures (attach connectivity state to sync spans)
+- [ ] Sync failure → selective flush policy (built-in DSL trigger)
+- [ ] Sync journey breadcrumbs (sync events in breadcrumb buffer)
+
 ### Phase 14 — iOS SDK Port (P0, table stakes)
 
 - [ ] iOS SDK core (Swift package, buffer, export, session, policy engine)
