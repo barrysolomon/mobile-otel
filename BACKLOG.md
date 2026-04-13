@@ -246,6 +246,72 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ---
 
+## Track 8: Competitive Parity & Superiority
+
+**Epic:** [COMPETITIVE_PARITY_EPIC.md](docs/epics/COMPETITIVE_PARITY_EPIC.md) — Close gaps vs Datadog & Splunk, then extend lead. 9 phases, 35+ work items.
+
+### Phase 13.5 — Control Plane E2E Validation (P0, de-risks everything)
+
+- [ ] Contract test: v1 DSL roundtrip (UI → gateway → SDK parseConfig → policy evaluates)
+- [ ] Contract test: v2 DSL roundtrip (same with `?dsl_version=2`)
+- [ ] SDK v2 negotiation (update PolicyEvaluator to request and parse v2 FSM format)
+- [ ] Live E2E test: publish workflow from UI → demo app polls config → trigger crash → verify flush
+- [ ] React component tests (WorkflowBuilder graph validity, compiler output shape)
+- [ ] Config polling integration test (SDK polls gateway, receives updates, applies them)
+- [ ] Bundled config fallback test (SDK starts offline, falls back, later receives remote update)
+
+### Phase 14 — iOS SDK Port (P0, table stakes)
+
+- [ ] iOS SDK core (Swift package, buffer, export, session, policy engine)
+- [ ] iOS auto-instrumentation (UIViewController, UIKit gestures, URLSession)
+- [ ] iOS SwiftUI support (view lifecycle, navigation, gestures)
+- [ ] iOS crash reporting (NSException, Mach exceptions, signal handlers)
+- [ ] iOS dSYM symbolication (upload + deobfuscation pipeline)
+
+### Phase 15 — Crash Symbolication Pipeline (P0)
+
+- [ ] ProGuard/R8 mapping.txt upload (Gradle task or CLI)
+- [ ] Server-side deobfuscation (mapping storage + stack trace rewriting)
+- [ ] Build ID matching (auto-associate mappings to app versions)
+- [ ] iOS dSYM upload (CLI tool, after Phase 14)
+
+### Phase 16 — Session Replay Viewer (P1)
+
+- [ ] Wireframe renderer (React component, SVG from WireframeNode JSON)
+- [ ] Journey timeline (horizontal filmstrip by session)
+- [ ] Interaction overlay (tap/scroll/swipe markers on wireframes)
+- [ ] Screenshot final frame + session picker + privacy controls
+
+### Phase 17 — APM Trace Correlation (P1)
+
+- [ ] W3C Trace Context propagation in OkHttp interceptor
+- [ ] Server-side trace stitching (collector processor)
+- [ ] Dash0 UI correlation (mobile span → backend trace)
+
+### Phase 18 — NDK / Native Crash Reporting (P2)
+
+- [ ] NDK crash handler (SIGSEGV/SIGABRT/SIGBUS)
+- [ ] Native symbol upload + server-side symbolication
+
+### Phase 19 — Cross-Platform Framework Support (P2)
+
+- [ ] React Native bridge (JS → native SDK)
+- [ ] Flutter plugin (Dart → native SDK) — **whitespace opportunity**
+
+### Phase 20 — Network Depth (P1)
+
+- [ ] Connection timing breakdown (DNS, TLS, connect via OkHttp EventListener)
+- [ ] GraphQL instrumentation (Apollo operation-level)
+- [ ] WebSocket instrumentation (already specced in Track 7 Phase 2b)
+
+### Phase 21 — Advanced Error Tracking (P1)
+
+- [ ] Error grouping (cluster by stack signature)
+- [ ] Version regression detection (flag new errors per version)
+- [ ] Crash-free session rate metric
+
+---
+
 ## Completed (reference)
 
 - [x] Phase 1-3: Foundation, Android OTEL migration, collector processor

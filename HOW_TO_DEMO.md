@@ -308,7 +308,8 @@ Same as above, but airplane mode is enabled before Phase 1. The device has no ne
 | **Behavioral test coverage** | 194 tests proving every config toggle changes runtime behavior |
 | **UiTelemetryMode** | EVENTS / SPANS / BOTH — backend consumer chooses the signal type |
 | **Privacy by default** | PII scrubbing, `captureLocation=false`, configurable network privacy presets |
-| **Modular instrumentation** | 9 OTel-native modules + 2 incubating (screenshot, wireframe) — opt-in via config flags |
+| **Modular instrumentation** | 9 OTel-native modules + 3 incubating (screenshot, wireframe, debug-widget) — opt-in via config flags |
+| **Debug widget** | In-app overlay showing live buffer stats, export status, device health — visible during demos |
 | **Selective flush** | `flushWindow(minutes)` exports only a time slice — not the entire buffer |
 
 ---

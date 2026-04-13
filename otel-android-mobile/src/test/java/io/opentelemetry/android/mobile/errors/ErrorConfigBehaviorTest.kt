@@ -284,7 +284,7 @@ class ErrorConfigBehaviorTest {
         val flushCount = AtomicInteger(0)
         val inst = createInstrumentation(
             ErrorConfig(flushOnError = true),
-            onFlush = { flushCount.incrementAndGet() }
+            onFlush = { flushCount.incrementAndGet(); io.opentelemetry.sdk.common.CompletableResultCode.ofSuccess() }
         )
         inst.captureException(RuntimeException("boom"), "manual")
 
@@ -297,7 +297,7 @@ class ErrorConfigBehaviorTest {
         val flushCount = AtomicInteger(0)
         val inst = createInstrumentation(
             ErrorConfig(flushOnError = false),
-            onFlush = { flushCount.incrementAndGet() }
+            onFlush = { flushCount.incrementAndGet(); io.opentelemetry.sdk.common.CompletableResultCode.ofSuccess() }
         )
         inst.captureException(RuntimeException("boom"), "manual")
 
@@ -412,7 +412,7 @@ class ErrorConfigBehaviorTest {
 
     private fun createInstrumentation(
         config: ErrorConfig,
-        onFlush: (() -> Unit)? = null
+        onFlush: (() -> io.opentelemetry.sdk.common.CompletableResultCode)? = null
     ): ErrorInstrumentation {
         return ErrorInstrumentation.initialize(
             config = config,

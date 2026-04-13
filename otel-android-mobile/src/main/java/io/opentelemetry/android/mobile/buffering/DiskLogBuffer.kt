@@ -127,9 +127,23 @@ class DiskLogBuffer private constructor(
         .fallbackToDestructiveMigration(true)  // Safety net: if migration fails, recreate rather than crash
         .build()
         .also { db ->
-            // Pre-warm: open the database connection immediately so the first insert
-            // does not incur schema-creation delay (critical for test reliability).
-            runBlocking(Dispatchers.IO) { db.openHelper.writableDatabase }
+            // Pre-warm: open the database connection and force WAL checkpoint.
+            // This ensures crash-mirrored events from a previous process (written
+            // to the WAL before process death) are visible to subsequent queries.
+            // Without the checkpoint, getMaxSeqId() returns 0 and the seqId counter
+            // isn't seeded, causing dedup collisions that silently drop disk events.
+            runBlocking(Dispatchers.IO) {
+                val sqliteDb = db.openHelper.writableDatabase
+                try {
+                    // Force WAL checkpoint so crash-mirrored events from a dead
+                    // process are visible to subsequent DAO queries. Room's
+                    // SupportSQLiteDatabase doesn't allow PRAGMA via execSQL,
+                    // so use query() which returns a cursor (side-effect: checkpoint).
+                    sqliteDb.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+                } catch (e: Exception) {
+                    Log.w("DiskLogBuffer", "WAL checkpoint failed (non-fatal)", e)
+                }
+            }
         }
 
     private val logDao = database.logDao()
@@ -328,6 +342,22 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Returns the maximum seqId stored on disk, or 0 if the buffer is empty.
+     * Used to seed the in-process seqId counter on startup so that new events
+     * never collide with crash-mirrored events from a previous process.
+     */
+    fun getMaxSeqId(): Long {
+        return runBlocking {
+            try {
+                logDao.getMaxSeqId() ?: 0L
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting max seqId", e)
+                0L
+            }
+        }
+    }
+
+    /**
      * Performs cleanup of expired events based on TTL.
      *
      * Called periodically by MobileLogRecordProcessor.
@@ -498,6 +528,9 @@ interface LogDao {
 
     @Query("DELETE FROM log_records")
     suspend fun deleteAll(): Int
+
+    @Query("SELECT MAX(seqId) FROM log_records")
+    suspend fun getMaxSeqId(): Long?
 
     @Query("SELECT * FROM log_records WHERE traceId = :traceId ORDER BY timestampMs ASC")
     suspend fun getEventsByTraceId(traceId: String): List<LogRecordEntity>

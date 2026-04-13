@@ -158,6 +158,16 @@ class MobileLogRecordProcessor private constructor(
         .buildWithCallback { obs -> obs.record(diskBuffer.getEventCount().toLong()) }
 
     init {
+        // Seed the seqId counter from the max seqId on disk so that new events in
+        // this process never collide with crash-mirrored events from a previous process.
+        // Without this, forceFlush() dedup filters out disk events whose seqId matches
+        // a RAM event — causing crash-mirrored events to be silently dropped on recovery.
+        val maxDiskSeqId = diskBuffer.getMaxSeqId()
+        if (maxDiskSeqId > 0) {
+            BufferedEvent.seedCounter(maxDiskSeqId)
+            Log.i(TAG, "Seeded seqId counter from disk: starting at ${maxDiskSeqId + 1}")
+        }
+
         // Schedule periodic disk overflow (every 5 seconds)
         executor.scheduleAtFixedRate(
             { overflowToDisk() },

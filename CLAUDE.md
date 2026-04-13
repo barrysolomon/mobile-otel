@@ -121,6 +121,12 @@ This runs 18 tests on each emulator (36 total) across 4 scenario suites:
 - **FaultScenarios** — jank detection, ANR triggers, memory pressure faults
 - **ConditionalFlushScenarios** — silent buffer accumulation → crash triggers flush of all buffered events
 
+**Step 5b — Run crash recovery demo**
+```bash
+./scripts/test/run-real-crash-test.sh    # Interactive menu
+```
+Proves the dual-tier buffer survives real process death. Run in a meeting for maximum impact — real RuntimeException, real crash dialog, full recovery validated automatically. See HOW_TO_DEMO.md → "Crash Recovery Demo" for full narration guide.
+
 **Step 6 — Run SDK instrumented tests on both emulators (~30s)**
 ```bash
 ./gradlew :otel-android-mobile:connectedDebugAndroidTest
@@ -141,7 +147,7 @@ Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flus
 - 194 behavioral config tests: every toggle proven to change runtime behavior
 - UiTelemetryMode: EVENTS/SPANS/BOTH — consumer chooses signal type
 - Privacy by default: PII scrubbing, `captureLocation=false`, network privacy presets
-- Modular instrumentation: 9 OTel-native modules (tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network) + 2 incubating (screenshot, wireframe — opt-in via config flags, not OTel-native)
+- Modular instrumentation: 9 OTel-native modules (tap, scroll, text-input, back-press, freeze, screen, errors, vitals, network) + 3 incubating (screenshot, wireframe, debug-widget — opt-in via config flags, not OTel-native)
 
 ### Demo Backend (`examples/demo-backend/`)
 ```bash
@@ -173,7 +179,7 @@ Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
 
 ### Components in This Repo
 
-1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.opentelemetry.android:mobile:0.1.0-alpha`. Core namespace: `io.opentelemetry.android.mobile`.
+1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.opentelemetry.android:mobile:0.1.0-alpha`. Core namespace: `io.opentelemetry.android.mobile`. `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with the opentelemetry-android project is complete.
 
 2. **Collector Processor** (`collector-processor/mobilepolicyprocessor/`) — Custom OTEL Collector processor plugin (Go) that evaluates mobile export policies server-side.
 
@@ -206,6 +212,7 @@ Entry point: `OTelMobile.start()` — calls `OTelMobileBuilder` which wires all 
 - **Network** (`network/`): `OTelNetworkInterceptor` — OkHttp interceptor; user-wired.
 - **Screenshot** (`screenshot/`): `ScreenshotInstrumentation` — pixel capture via PixelCopy/View.draw; emits `ui.screenshot` with data URL. Configurable: resolution, JPEG quality, text redaction, payload size cap.
 - **Wireframe** (`wireframe/`): `WireframeInstrumentation` — captures view-hierarchy JSON tree (~1–5 KB); emits `ui.wireframe` on screen transitions, taps, errors. Designed for journey replay in the control plane UI.
+- **Debug Widget** (`debug-widget/`): *(incubating)* In-app overlay that renders live buffer stats, export status, and device health metrics on top of the running app. Enabled via config flag; not OTel-native. Useful during demos and local development.
 
 **Journey span pattern** (used in Espresso tests and production flows):
 
@@ -243,7 +250,7 @@ GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` a
 
 | Component | Key Deps |
 |-----------|----------|
-| Android SDK | OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, Kotlin Serialization 1.6.0 |
+| Android SDK | OpenTelemetry Android 1.2.0-alpha, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, Kotlin Serialization 1.6.0 |
 | Collector Processor | Go 1.24, OTel Collector 1.39.0 |
 
 ## Export Modes

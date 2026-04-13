@@ -14,6 +14,9 @@
 #   ./run-real-crash-test.sh --status           # status check only
 #   ./run-real-crash-test.sh --dump             # dump last telemetry
 #   ./run-real-crash-test.sh --start-emu --ci   # start emulator + CI mode
+#   ./run-real-crash-test.sh --dash0             # switch to Dash0 endpoint
+#   ./run-real-crash-test.sh --local             # switch to local collector
+#   ./run-real-crash-test.sh --endpoint          # select endpoint interactively
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,6 +41,9 @@ for arg in "$@"; do
     --full-demo)    MODE="full-demo" ;;
     --status)       MODE="status" ;;
     --dump)         MODE="dump" ;;
+    --dash0)        MODE="set-dash0" ;;
+    --local)        MODE="set-local" ;;
+    --endpoint)     MODE="set-endpoint" ;;
   esac
 done
 
@@ -58,6 +64,7 @@ find_emulator || exit 1
 # ── Teardown handler ──────────────────────────────────────────────────────────
 
 teardown() {
+  _stop_spinner 2>/dev/null || true
   stop_memory_watchdog
   # Ensure airplane mode is off
   adb -s "$SERIAL" shell cmd connectivity airplane-mode disable 2>/dev/null || true
@@ -67,11 +74,14 @@ trap teardown EXIT
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 
 case "$MODE" in
-  ci)           run_ci_mode ;;
-  interactive)  run_interactive_crash ;;
-  airplane)     run_airplane_mode_crash ;;
-  full-demo)    run_full_demo ;;
-  status)       status_check ;;
-  dump)         dump_telemetry ;;
-  *)            show_menu ;;
+  ci)            run_ci_mode ;;
+  interactive)   run_interactive_crash ;;
+  airplane)      run_airplane_mode_crash ;;
+  full-demo)     run_full_demo ;;
+  status)        status_check ;;
+  dump)          dump_telemetry ;;
+  set-dash0)     write_dash0_prefs && ok "Switched to Dash0" && adb -s "$SERIAL" shell am force-stop "$PACKAGE" ;;
+  set-local)     write_collector_prefs && ok "Switched to Local Collector" && adb -s "$SERIAL" shell am force-stop "$PACKAGE" ;;
+  set-endpoint)  select_export_target ;;
+  *)             show_menu ;;
 esac

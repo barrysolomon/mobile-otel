@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "io.opentelemetry.android.mobile.instrumentation.debug"
+    namespace = "io.opentelemetry.android.mobile.instrumentation.amplifydatastore"
     compileSdk = 36
 
     defaultConfig {
@@ -31,7 +31,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlin {
@@ -42,8 +41,11 @@ android {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    api(project(":otel-android-mobile"))
+    api(project(":otel-android-mobile-core"))
+
+    // compileOnly — module compiles against Amplify but doesn't pull it in.
+    // At runtime, if Amplify isn't on classpath, install() silently no-ops.
+    compileOnly("com.amplifyframework:core-kotlin:2.25.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")
@@ -51,5 +53,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+
+    // Amplify on test classpath so we can fabricate HubEvent objects
+    testImplementation("com.amplifyframework:core-kotlin:2.25.2")
 }

@@ -150,49 +150,87 @@ run_full_demo() {
 
 show_menu() {
   while true; do
-    local target_label
+    # ── Gather live status ──────────────────────────────────────────────────
+    local target_label collector_status backend_status app_status test_status airplane_status
     target_label=$(get_export_target_label)
 
+    if docker compose -f "$COLLECTOR_DIR/docker-compose.yaml" ps 2>/dev/null | grep -q "Up"; then
+      collector_status="\033[1;32mrunning\033[0m"
+    else
+      collector_status="\033[1;31mstopped\033[0m"
+    fi
+
+    if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+      backend_status="\033[1;32mrunning\033[0m"
+    else
+      backend_status="\033[1;31mstopped\033[0m"
+    fi
+
+    if adb -s "$SERIAL" shell pm list packages 2>/dev/null | grep -q "$PACKAGE$"; then
+      app_status="\033[1;32minstalled\033[0m"
+    else
+      app_status="\033[1;31mmissing\033[0m"
+    fi
+
+    if adb -s "$SERIAL" shell pm list packages 2>/dev/null | grep -q "$PACKAGE.test"; then
+      test_status="\033[1;32minstalled\033[0m"
+    else
+      test_status="\033[1;31mmissing\033[0m"
+    fi
+
+    local airplane
+    airplane=$(adb -s "$SERIAL" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r')
+    if [ "$airplane" = "1" ]; then
+      airplane_status="\033[1;33mON\033[0m"
+    else
+      airplane_status="\033[1;32moff\033[0m"
+    fi
+
+    # ── Render menu ─────────────────────────────────────────────────────────
     echo ""
-    echo "┌───────────────────────────────────────────────────────────┐"
-    echo "│  Dash0 Mobile Observability — Demo Control                │"
-    echo "│───────────────────────────────────────────────────────────│"
-    echo "│                                                           │"
-    echo "│  SETUP                                                    │"
-    echo "│  s) Status check                                          │"
-    echo "│  t) Toggle export target  [-> $target_label]"
-    echo "│                                                           │"
-    echo "│  CRASH DEMOS                                              │"
-    echo "│  1) Full automated run (CI mode)                          │"
-    echo "│  2) Interactive crash demo                                │"
-    echo "│  3) Airplane mode crash demo                              │"
-    echo "│  4) Full demo (2 then 3, narrated)                        │"
-    echo "│                                                           │"
-    echo "│  TELEMETRY                                                │"
-    echo "│  v) Validate last run                                     │"
-    echo "│  d) Dump telemetry                                        │"
-    echo "│                                                           │"
-    echo "│  COLLECTOR                                                │"
-    echo "│  c) Start collector                                       │"
-    echo "│  x) Stop collector                                        │"
-    echo "│  r) Restart collector + clear output                      │"
-    echo "│                                                           │"
-    echo "│  q) Quit                                                  │"
-    echo "└───────────────────────────────────────────────────────────┘"
+    echo "┌─────────────────────────────────────────────────────────────┐"
+    echo "│  Dash0 Mobile Observability — Demo Control Center           │"
+    echo "├─────────────────────────────────────────────────────────────┤"
+    echo -e "│  Emulator:  $SERIAL                            │"
+    echo -e "│  Collector: $collector_status   Backend: $backend_status   Airplane: $airplane_status"
+    echo -e "│  App: $app_status   Test APK: $test_status"
+    echo -e "│  Export to: $target_label"
+    echo "├─────────────────────────────────────────────────────────────┤"
+    echo "│                                                             │"
+    echo "│  STEP 1 — PREPARE                                          │"
+    echo "│  s) Full status check (diagnose + auto-fix)                 │"
+    echo "│  b) Build + install app & test APK                          │"
+    echo "│  e) Select export endpoint (Dash0 / local / custom)         │"
+    echo "│  c) Start local collector   x) Stop collector               │"
+    echo "│                                                             │"
+    echo "│  STEP 2 — RUN A DEMO                                       │"
+    echo "│  1) Automated crash + recovery (CI mode, no prompts)        │"
+    echo "│  2) Interactive crash demo (step-by-step with prompts)      │"
+    echo "│  3) Airplane mode demo (offline crash → reconnect → flush)  │"
+    echo "│  4) Full narrated demo (2 then 3, for meetings)             │"
+    echo "│                                                             │"
+    echo "│  STEP 3 — INSPECT RESULTS                                   │"
+    echo "│  v) Validate telemetry from last run                        │"
+    echo "│  d) Dump raw telemetry (JSON)                               │"
+    echo "│  r) Clear collector output (reset for next run)             │"
+    echo "│                                                             │"
+    echo "│  q) Quit                                                    │"
+    echo "└─────────────────────────────────────────────────────────────┘"
     echo -n "  > "
     read -r choice
 
     case "$choice" in
       s) status_check ;;
-      t) toggle_export_target ;;
+      b) build_and_install ;;
+      e) select_export_target ;;
+      c) start_collector ;;
+      x) stop_collector ;;
       1) run_ci_mode ;;
       2) run_interactive_crash ;;
       3) run_airplane_mode_crash ;;
       4) run_full_demo ;;
       v) validate ;;
       d) dump_telemetry ;;
-      c) start_collector ;;
-      x) stop_collector ;;
       r) reset_collector_output ;;
       q) teardown; exit 0 ;;
       *) echo "  Unknown option: $choice" ;;

@@ -71,5 +71,8 @@ project(":instrumentation-compose-click").projectDir = file("../../instrumentati
 include(":instrumentation-debug-widget")
 project(":instrumentation-debug-widget").projectDir = file("../../instrumentation/debug-widget")
 
+include(":instrumentation-amplify-datastore")
+project(":instrumentation-amplify-datastore").projectDir = file("../../instrumentation/amplify-datastore")
+
 include(":upstream-demo-app")
 project(":upstream-demo-app").projectDir = file("../upstream-demo-app")

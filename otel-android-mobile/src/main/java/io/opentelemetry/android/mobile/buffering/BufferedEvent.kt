@@ -31,5 +31,16 @@ internal data class BufferedEvent(
     companion object {
         private val counter = AtomicLong(0)
         private fun nextSeqId(): Long = counter.incrementAndGet()
+
+        /**
+         * Seeds the seqId counter so that new events start after [startValue].
+         * Must be called once at startup with the max seqId from the disk buffer,
+         * otherwise crash-mirrored events from a previous process will have the
+         * same seqIds as new events, causing the dedup filter in forceFlush() to
+         * drop them.
+         */
+        internal fun seedCounter(startValue: Long) {
+            counter.set(startValue)
+        }
     }
 }

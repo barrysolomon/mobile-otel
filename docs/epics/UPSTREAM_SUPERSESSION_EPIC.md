@@ -82,12 +82,12 @@ Compatible superset (Phase A) leading to interface convergence and merge proposa
 
 | ID | Title | Status |
 |----|-------|--------|
-| US-026 | Converge `InstrumentationContext` to embed `InstallationContext` | [ ] |
-| US-027 | Converge `MobileInstrumentation extends AndroidInstrumentation` | [ ] |
-| US-028 | Update all 20+ modules to converged interface | [ ] |
-| US-029 | Remove `MobileInstrumentationAdapter` | [ ] |
-| US-030 | Update iOS port spec section 5 (full rewrite) | [ ] |
-| US-031 | Full regression test pass | [ ] |
+| US-026 | Converge `InstrumentationContext` to embed `InstallationContext` | [x] |
+| US-027 | Converge `MobileInstrumentation extends AndroidInstrumentation` | [x] |
+| US-028 | Update all 20+ modules to converged interface | [x] |
+| US-029 | Remove `MobileInstrumentationAdapter` | [x] |
+| US-030 | Update iOS port spec section 5 (full rewrite) | [x] |
+| US-031 | Full regression test pass | [x] |
 
 ## Dependencies
 
@@ -127,15 +127,20 @@ Phase 7 (Real Crash Scenarios) ────────────────�
 
 **Goal:** Let any app that integrates our SDK optionally surface a debug toolbar (buffer stats, export status, live event stream) and a profile/diagnostics page (config viewer, session info, telemetry toggle, force flush) without the current demo-app-specific UI. The current profile page is tightly coupled to the demo app — this redesigns it as a reusable SDK component that looks good in any app. **Needs design spec before implementation.**
 
-### Phase 7 -- Real Crash Scenarios (P1, needs design)
+### Phase 7 -- Real Crash Scenarios (P1)
 
 | ID | Title | Status |
 |----|-------|--------|
-| US-042 | Replace faked crash in ConditionalFlushScenarios with real uncaught exception crash + recovery | [ ] |
-| US-043 | Add real ANR scenario (block main thread >5s, recover, verify telemetry flush) | [ ] |
-| US-044 | Verify crash-recovery telemetry includes full pre-crash context window | [ ] |
+| US-042 | Real uncaught exception crash + recovery via orchestrator (RealCrashScenarios.kt) | [ ] |
+| US-043 | Add real ANR scenario (block main thread >5s, system kill, verify recovery_type=anr_force_kill) | [ ] |
+| US-043b | Add real OOM scenario (allocate until system kill, verify recovery_type=low_memory_kill) | [ ] |
+| US-044 | Verify crash-recovery telemetry includes full pre-crash context window (validated against local collector) | [ ] |
 
-**Goal:** The conditional flush demo currently fakes crashes. Real crashes (uncaught exceptions that kill the process) followed by app restart should demonstrate that the dual-tier buffer survives process death and flushes the pre-crash context on next launch. This is the most compelling demo of why our architecture is superior.
+**Design spec:** `docs/superpowers/specs/2026-04-10-phase7-real-crash-design.md`
+
+**Goal:** Real crashes (uncaught exceptions that kill the process) followed by app restart demonstrate that the dual-tier buffer survives process death and flushes the pre-crash context on next launch. Uses `androidx.test:orchestrator` so the test runner survives app death. ANR and OOM scenarios are on the roadmap after the uncaught exception scenario is proven.
+
+**Implementation order:** US-042 + US-044 first (uncaught exception + validated telemetry). US-043 (ANR) and US-043b (OOM) follow once the orchestrator infrastructure is proven.
 
 ### Phase 8 -- Configuration Documentation + Runtime Config (P1)
 
@@ -152,7 +157,7 @@ Phase 7 (Real Crash Scenarios) ────────────────�
 
 | ID | Title | Status |
 |----|-------|--------|
-| US-049 | Validation framework: structured JSON assertion library for collector output (ordered events, timestamps, attribute checks, parent-child spans) | [ ] |
+| US-049 | Validation framework: structured JSON assertion library for collector output (ordered events, timestamps, attribute checks, parent-child spans) | [x] |
 | US-050 | Journey: Happy path booking — calendar → book → confirm → appointments; validate page span hierarchy, ui.tap sequence, booking.submit HTTP span, form fill timing | [ ] |
 | US-051 | Journey: Browse and refresh — appointments list → swipe-to-refresh × 3; validate ui.scroll events, HTTP retry spans, refresh timing histogram | [ ] |
 | US-052 | Journey: Network error recovery — trigger HTTP 500 → verify error span + policy flush → retry succeeds; validate flush_window(5min) fires, error context propagates | [ ] |
@@ -181,6 +186,8 @@ Phase 7 (Real Crash Scenarios) ────────────────�
 | US-075 | Export modes: CONTINUOUS periodic flush — set CONTINUOUS with 5s interval; generate events for 20s; validate ≥ 3 export batches with roughly uniform timing | [ ] |
 | US-076 | Export modes: HYBRID heartbeat + conditional — set HYBRID; validate device metrics export periodically while event data waits for policy trigger | [ ] |
 | US-077 | Validation CI integration — wire validate-telemetry.sh into GitHub Actions as emulator-based job, docker-compose collector, test matrix across API levels 28/33/36 | [ ] |
+
+**Note (2026-04-11):** US-049 (validation framework) is complete. US-050 through US-077 scripts are implemented but have not yet been run against real emulator data for every scenario — marked [ ] pending full emulator validation runs.
 
 **Goal:** Prove that every major user journey produces exactly the right telemetry — right signals, right order, right timestamps, right parent-child relationships — validated against a local OTel Collector. This is the test suite that makes our SDK demonstrably superior: not just "we emit telemetry" but "we emit correct, complete, ordered telemetry for every real-world scenario." The validated test infrastructure from Phase 8 (SharedPreferences runtime config → local collector → file exporter → JSON validation) is the foundation.
 

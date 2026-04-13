@@ -19,8 +19,10 @@ import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.android.mobile.core.PiiScrubber
 import io.opentelemetry.android.mobile.vitals.VitalsCollector
+import io.opentelemetry.sdk.common.CompletableResultCode
 import kotlinx.coroutines.CoroutineExceptionHandler
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -42,7 +44,7 @@ import kotlin.coroutines.CoroutineContext
 class ErrorInstrumentation private constructor(
     private val config: ErrorConfig,
     private val logger: Logger,
-    private val onFlush: (() -> Unit)?,
+    private val onFlush: (() -> CompletableResultCode)?,
     private val sessionProvider: MobileSessionProvider? = null
 ) {
     private val defaultExceptionHandler: Thread.UncaughtExceptionHandler? =
@@ -80,9 +82,18 @@ class ErrorInstrumentation private constructor(
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             captureException(throwable, "uncaught", thread.name)
 
-            // Flush immediately on uncaught exception
+            // Flush immediately on uncaught exception.
+            // MUST block until export completes — the process will die as soon as
+            // the original handler runs. Without join(), the HTTP request fires
+            // asynchronously and gets killed mid-flight, losing all buffered events.
+            // 5s timeout: if export can't finish in time, events are on disk and
+            // RecoveryTracker will re-export on next launch.
             if (config.flushOnError) {
-                onFlush?.invoke()
+                try {
+                    onFlush?.invoke()?.join(5, TimeUnit.SECONDS)
+                } catch (e: Exception) {
+                    // Don't let flush failure prevent the original handler from running
+                }
             }
 
             // Call original handler
@@ -329,13 +340,14 @@ class ErrorInstrumentation private constructor(
          *
          * @param config Error configuration
          * @param logger OpenTelemetry logger
-         * @param onFlush Optional callback to trigger flush
+         * @param onFlush Optional callback to trigger flush. Returns CompletableResultCode
+         *                so the crash handler can block until export completes.
          * @param sessionProvider Optional session provider for crash-free session tracking
          */
         fun initialize(
             config: ErrorConfig,
             logger: Logger,
-            onFlush: (() -> Unit)? = null,
+            onFlush: (() -> CompletableResultCode)? = null,
             sessionProvider: MobileSessionProvider? = null
         ): ErrorInstrumentation {
             return instance ?: synchronized(this) {

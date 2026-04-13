@@ -5,15 +5,69 @@
 
 INTERACTIVE=false
 WATCHDOG_PID=""
+SPINNER_PID=""
+
+# ── Spinner ──────────────────────────────────────────────────────────────────
+
+_start_spinner() {
+  local msg="$1"
+  (
+    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    while true; do
+      local frame="${frames:i%${#frames}:1}"
+      printf "\r\033[1;36m  %s %s\033[0m" "$frame" "$msg"
+      i=$((i + 1))
+      sleep 0.1
+    done
+  ) &
+  SPINNER_PID=$!
+}
+
+_stop_spinner() {
+  if [ -n "${SPINNER_PID:-}" ]; then
+    kill "$SPINNER_PID" 2>/dev/null || true
+    wait "$SPINNER_PID" 2>/dev/null || true
+    SPINNER_PID=""
+    printf "\r\033[K"  # clear spinner line
+  fi
+}
+
+# Runs a command with a spinner, capturing output to a temp file.
+# On failure, prints the captured output for debugging.
+_run_with_spinner() {
+  local msg="$1"; shift
+  local tmpfile
+  tmpfile=$(mktemp /tmp/otel-phase-XXXXXX)
+
+  _start_spinner "$msg"
+  "$@" > "$tmpfile" 2>&1
+  local rc=$?
+  _stop_spinner
+
+  if [ $rc -ne 0 ]; then
+    # Check if it's an expected crash (Phase 1 kills the process)
+    if grep -q "INSTRUMENTATION_RESULT\|Process crashed\|shortMsg=.*RuntimeException" "$tmpfile" 2>/dev/null; then
+      rm -f "$tmpfile"
+      return 0  # expected crash
+    fi
+    # Real failure — show output
+    err "Command failed (exit $rc):"
+    sed 's/^/    /' "$tmpfile"
+  fi
+  rm -f "$tmpfile"
+  return $rc
+}
 
 # ── Phase Execution ───────────────────────────────────────────────────────────
 
 run_phase1() {
   log "Phase 1: Generating pre-crash events + triggering crash"
   start_memory_watchdog
-  adb -s "$SERIAL" shell am instrument -w \
-    -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase1Test \
-    io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner \
+  _run_with_spinner "Running RealCrashPhase1Test..." \
+    adb -s "$SERIAL" shell am instrument -w \
+      -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase1Test \
+      io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner \
     || true  # expected non-zero (process death)
   stop_memory_watchdog
   ok "Phase 1 complete — app crashed"
@@ -21,9 +75,10 @@ run_phase1() {
 
 run_phase2() {
   log "Phase 2: Verifying recovery"
-  adb -s "$SERIAL" shell am instrument -w \
-    -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase2Test \
-    io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner
+  _run_with_spinner "Running RealCrashPhase2Test..." \
+    adb -s "$SERIAL" shell am instrument -w \
+      -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase2Test \
+      io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner
   local rc=$?
   if [ $rc -ne 0 ]; then
     err "Phase 2 failed (exit code $rc)"

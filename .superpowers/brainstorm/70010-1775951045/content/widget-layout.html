@@ -1,0 +1,110 @@
+<h2>Debug Widget Layout</h2>
+<p class="subtitle">How should the widget appear on screen? Click to select.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#1a1a2e;">
+      <!-- Floating pill mockup -->
+      <div style="position:relative;width:280px;height:480px;background:#f5f5f5;border-radius:24px;overflow:hidden;margin:0 auto;border:2px solid #333;">
+        <!-- Status bar -->
+        <div style="height:28px;background:#333;display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+          <span style="color:#fff;font-size:10px;">9:41</span>
+          <span style="color:#fff;font-size:10px;">●●● ◗ ■</span>
+        </div>
+        <!-- App content placeholder -->
+        <div style="padding:16px;">
+          <div style="background:#e0e0e0;height:24px;width:60%;border-radius:4px;margin-bottom:12px;"></div>
+          <div style="background:#e8e8e8;height:120px;border-radius:8px;margin-bottom:12px;"></div>
+          <div style="background:#e0e0e0;height:16px;width:80%;border-radius:4px;margin-bottom:8px;"></div>
+          <div style="background:#e0e0e0;height:16px;width:65%;border-radius:4px;"></div>
+        </div>
+        <!-- Floating pill at bottom -->
+        <div style="position:absolute;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:6px 16px;border-radius:20px;font-size:11px;white-space:nowrap;font-family:monospace;">
+          <span style="color:#4CAF50;">●</span> RAM 42/5K &nbsp; Disk 18 &nbsp; <span style="color:#4CAF50;">Export OK</span>
+        </div>
+        <!-- Nav bar -->
+        <div style="position:absolute;bottom:0;left:0;right:0;height:44px;background:#fafafa;border-top:1px solid #ddd;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A: Floating Pill</h3>
+      <p>Compact one-line pill anchored at bottom. Always visible. Tap to expand into a card with full details. Minimal screen intrusion.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#1a1a2e;">
+      <!-- Corner badge mockup -->
+      <div style="position:relative;width:280px;height:480px;background:#f5f5f5;border-radius:24px;overflow:hidden;margin:0 auto;border:2px solid #333;">
+        <div style="height:28px;background:#333;display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+          <span style="color:#fff;font-size:10px;">9:41</span>
+          <span style="color:#fff;font-size:10px;">●●● ◗ ■</span>
+        </div>
+        <div style="padding:16px;">
+          <div style="background:#e0e0e0;height:24px;width:60%;border-radius:4px;margin-bottom:12px;"></div>
+          <div style="background:#e8e8e8;height:120px;border-radius:8px;margin-bottom:12px;"></div>
+          <div style="background:#e0e0e0;height:16px;width:80%;border-radius:4px;margin-bottom:8px;"></div>
+          <div style="background:#e0e0e0;height:16px;width:65%;border-radius:4px;"></div>
+        </div>
+        <!-- Corner FAB -->
+        <div style="position:absolute;top:40px;right:8px;width:36px;height:36px;background:rgba(0,0,0,0.85);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+          <span style="color:#4CAF50;font-size:16px;">●</span>
+        </div>
+        <!-- Expanded card (shown as if tapped) -->
+        <div style="position:absolute;top:80px;right:8px;width:220px;background:rgba(0,0,0,0.9);border-radius:12px;padding:12px;color:#fff;font-family:monospace;font-size:10px;line-height:1.6;">
+          <div><span style="color:#888;">RAM</span> <span style="color:#4CAF50;">42</span>/5000 &nbsp; <span style="color:#888;">Disk</span> 18</div>
+          <div><span style="color:#888;">Export</span> <span style="color:#4CAF50;">OK</span> (24 events)</div>
+          <div><span style="color:#888;">Recovery</span> crash</div>
+          <div><span style="color:#888;">Battery</span> 78% &nbsp; <span style="color:#888;">Mem</span> 412MB</div>
+          <div><span style="color:#888;">Network</span> wifi &nbsp; <span style="color:#888;">Flush</span> 3s ago</div>
+        </div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:44px;background:#fafafa;border-top:1px solid #ddd;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B: Corner Badge + Card</h3>
+      <p>Small circular badge (green/red/orange) in top-right corner. Tap to expand into a dark card with all details. Draggable to reposition.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#1a1a2e;">
+      <!-- Bottom sheet mockup -->
+      <div style="position:relative;width:280px;height:480px;background:#f5f5f5;border-radius:24px;overflow:hidden;margin:0 auto;border:2px solid #333;">
+        <div style="height:28px;background:#333;display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+          <span style="color:#fff;font-size:10px;">9:41</span>
+          <span style="color:#fff;font-size:10px;">●●● ◗ ■</span>
+        </div>
+        <div style="padding:16px;">
+          <div style="background:#e0e0e0;height:24px;width:60%;border-radius:4px;margin-bottom:12px;"></div>
+          <div style="background:#e8e8e8;height:120px;border-radius:8px;margin-bottom:12px;"></div>
+        </div>
+        <!-- Bottom sheet -->
+        <div style="position:absolute;bottom:44px;left:0;right:0;background:rgba(0,0,0,0.92);border-radius:16px 16px 0 0;padding:12px 16px;color:#fff;font-family:monospace;font-size:10px;line-height:1.8;">
+          <!-- Drag handle -->
+          <div style="width:40px;height:4px;background:#555;border-radius:2px;margin:0 auto 8px;"></div>
+          <div style="display:flex;justify-content:space-between;">
+            <span><span style="color:#4CAF50;">●</span> OTel Debug</span>
+            <span style="color:#888;">v1.0.0</span>
+          </div>
+          <div style="border-top:1px solid #333;margin:6px 0;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+            <div><span style="color:#888;">RAM</span> <span style="color:#4CAF50;">42</span>/5K</div>
+            <div><span style="color:#888;">Disk</span> 18 events</div>
+            <div><span style="color:#888;">Export</span> <span style="color:#4CAF50;">OK</span></div>
+            <div><span style="color:#888;">Recovery</span> crash</div>
+            <div><span style="color:#888;">Battery</span> 78%</div>
+            <div><span style="color:#888;">Memory</span> 412MB</div>
+            <div><span style="color:#888;">Network</span> wifi</div>
+            <div><span style="color:#888;">Last flush</span> 3s</div>
+          </div>
+        </div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:44px;background:#fafafa;border-top:1px solid #ddd;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C: Bottom Sheet</h3>
+      <p>Peek-able bottom sheet with drag handle. Shows 2-column grid of stats. Swipe up to expand, swipe down to collapse to a single line. Standard Android Material pattern.</p>
+    </div>
+  </div>
+</div>
