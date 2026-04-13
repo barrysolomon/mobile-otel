@@ -45,7 +45,7 @@ dependencies {
 
     // compileOnly — module compiles against Amplify but doesn't pull it in.
     // At runtime, if Amplify isn't on classpath, install() silently no-ops.
-    compileOnly("com.amplifyframework:core-kotlin:2.25.2")
+    compileOnly("com.amplifyframework:core-kotlin:2.26.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")
@@ -55,5 +55,5 @@ dependencies {
     testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
 
     // Amplify on test classpath so we can fabricate HubEvent objects
-    testImplementation("com.amplifyframework:core-kotlin:2.25.2")
+    testImplementation("com.amplifyframework:core-kotlin:2.26.0")
 }
