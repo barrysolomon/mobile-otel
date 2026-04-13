@@ -309,6 +309,7 @@ class AmplifyDataStoreInstrumentation(
 
     // ── Network attributes helper ──────────────────────────────────────────
 
+    @android.annotation.SuppressLint("MissingPermission")
     private fun getNetworkAttributes(application: Application): Map<String, String> {
         val attrs = mutableMapOf<String, String>()
         try {
