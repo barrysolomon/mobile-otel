@@ -129,8 +129,9 @@ class OTelNetworkInterceptor private constructor(
 
         val duration = System.currentTimeMillis() - startTime
 
-        // Check if request meets minimum duration threshold
-        if (duration < config.minDurationMs) {
+        // Check if request meets minimum duration threshold.
+        // Errors always pass through — a fast error is still an error.
+        if (duration < config.minDurationMs && response.code < config.errorStatusThreshold) {
             span.end()
             return response
         }
