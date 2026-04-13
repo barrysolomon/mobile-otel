@@ -67,7 +67,7 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" },
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.tap" },
             "captureTaps=true should emit ui.tap")
     }
 
@@ -81,7 +81,7 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.tap" },
+        assertTrue(otelRule.logRecords.none { it.bodyValue?.asString() == "ui.tap" },
             "captureTaps=false should NOT emit ui.tap")
     }
 
@@ -99,7 +99,7 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.swipe" },
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.swipe" },
             "captureSwipe=true should still emit ui.swipe even when captureTaps=false")
     }
 
@@ -115,7 +115,7 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.swipe" },
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.swipe" },
             "captureSwipe=true should emit ui.swipe for distance exceeding threshold")
     }
 
@@ -133,9 +133,9 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.swipe" },
+        assertTrue(otelRule.logRecords.none { it.bodyValue?.asString() == "ui.swipe" },
             "captureSwipe=false should NOT emit ui.swipe")
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" },
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.tap" },
             "captureSwipe=false should fall through to tap")
     }
 
@@ -180,10 +180,10 @@ class TapConfigBehaviorTest {
         inst.onTouchEvent(up, window)
 
         // Tap still works
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" },
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.tap" },
             "captureTaps=true should still work when captureLongPress=false")
         // No long-press event (would need actual 500ms hold to trigger)
-        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.long_press" },
+        assertTrue(otelRule.logRecords.none { it.bodyValue?.asString() == "ui.long_press" },
             "No long-press event should appear from a quick tap")
     }
 

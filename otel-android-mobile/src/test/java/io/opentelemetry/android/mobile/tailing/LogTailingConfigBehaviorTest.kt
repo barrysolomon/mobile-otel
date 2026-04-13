@@ -142,9 +142,9 @@ class LogTailingConfigBehaviorTest {
 
         // getTail returns newest first
         val tail = buffer.getTail()
-        assertEquals("newest log should be first in tail", "newest", tail[0].body.asString())
-        assertEquals("recent log should be second in tail", "recent", tail[1].body.asString())
-        assertEquals("middle log should be third in tail", "middle", tail[2].body.asString())
+        assertEquals("newest log should be first in tail", "newest", tail[0].bodyValue?.asString())
+        assertEquals("recent log should be second in tail", "recent", tail[1].bodyValue?.asString())
+        assertEquals("middle log should be third in tail", "middle", tail[2].bodyValue?.asString())
     }
 
     // ── 10. tailSize validation (must be 1-1000) ────────────────────────────

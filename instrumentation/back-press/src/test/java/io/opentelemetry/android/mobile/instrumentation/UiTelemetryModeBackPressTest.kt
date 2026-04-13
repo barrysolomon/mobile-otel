@@ -54,7 +54,7 @@ class UiTelemetryModeBackPressTest {
         fireBackPress(inst)
 
         assertTrue(otelRule.logRecords.isNotEmpty(), "EVENTS mode should emit log records")
-        assertEquals("ui.back_press", otelRule.logRecords.first().body.asString())
+        assertEquals("ui.back_press", otelRule.logRecords.first().bodyValue?.asString())
         assertTrue(otelRule.spans.isEmpty(), "EVENTS mode should NOT emit spans")
     }
 
@@ -83,7 +83,7 @@ class UiTelemetryModeBackPressTest {
 
         assertTrue(otelRule.logRecords.isNotEmpty(), "BOTH mode should emit log records")
         assertTrue(otelRule.spans.isNotEmpty(), "BOTH mode should emit spans")
-        assertEquals("ui.back_press", otelRule.logRecords.first().body.asString())
+        assertEquals("ui.back_press", otelRule.logRecords.first().bodyValue?.asString())
         assertEquals("ui.back_press", otelRule.spans.first().name)
     }
 

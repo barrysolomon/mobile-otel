@@ -106,14 +106,14 @@ class FreezeConfigBehaviorTest {
         // Call emitFreeze with duration below ANR threshold
         invokeEmitFreeze(inst, delayMs = 3000L, isAnr = false, screenName = "TestScreen")
 
-        val bodies = otelRule.logRecords.map { it.body.asString() }
+        val bodies = otelRule.logRecords.map { it.bodyValue?.asString() }
         assertTrue(bodies.contains("ui.freeze"),
             "Should emit ui.freeze for freeze below ANR threshold")
         assertFalse(bodies.contains("app.anr"),
             "Should NOT emit app.anr for freeze below ANR threshold")
 
         // Check duration attribute
-        val freezeLog = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeLog = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         val duration = freezeLog.attributes.get(AttributeKey.longKey("mobile.freeze.duration_ms"))
         assertEquals(3000L, duration, "Duration should be 3000ms")
 
@@ -129,7 +129,7 @@ class FreezeConfigBehaviorTest {
         // Call emitFreeze with duration at ANR threshold
         invokeEmitFreeze(inst, delayMs = 5000L, isAnr = true, screenName = "HomeScreen")
 
-        val bodies = otelRule.logRecords.map { it.body.asString() }
+        val bodies = otelRule.logRecords.map { it.bodyValue?.asString() }
         assertTrue(bodies.contains("ui.freeze"),
             "Should emit ui.freeze for ANR-level freeze")
         assertTrue(bodies.contains("app.anr"),
@@ -145,7 +145,7 @@ class FreezeConfigBehaviorTest {
 
         invokeEmitFreeze(inst, delayMs = 3000L, isAnr = false, screenName = "SettingsScreen")
 
-        val freezeLog = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeLog = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         val screenName = freezeLog.attributes.get(MobileSemconv.SCREEN_NAME)
         assertEquals("SettingsScreen", screenName,
             "Freeze event should include screen name")
@@ -160,7 +160,7 @@ class FreezeConfigBehaviorTest {
 
         invokeEmitFreeze(inst, delayMs = 3000L, isAnr = false, screenName = null)
 
-        val freezeLog = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeLog = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         val screenName = freezeLog.attributes.get(MobileSemconv.SCREEN_NAME)
         assertEquals(null, screenName,
             "Freeze event should omit screen name when null")
@@ -178,7 +178,7 @@ class FreezeConfigBehaviorTest {
         // Even a 500ms freeze should be classified as ANR
         invokeEmitFreeze(inst, delayMs = 500L, isAnr = true, screenName = null)
 
-        val bodies = otelRule.logRecords.map { it.body.asString() }
+        val bodies = otelRule.logRecords.map { it.bodyValue?.asString() }
         assertTrue(bodies.contains("app.anr"),
             "With anrThresholdMs=500, a 500ms freeze should emit app.anr")
 
@@ -194,7 +194,7 @@ class FreezeConfigBehaviorTest {
         // 10 second freeze, but ANR threshold is 30s
         invokeEmitFreeze(inst, delayMs = 10_000L, isAnr = false, screenName = null)
 
-        val bodies = otelRule.logRecords.map { it.body.asString() }
+        val bodies = otelRule.logRecords.map { it.bodyValue?.asString() }
         assertTrue(bodies.contains("ui.freeze"))
         assertFalse(bodies.contains("app.anr"),
             "With anrThresholdMs=30000, a 10s freeze should NOT emit app.anr")
@@ -209,7 +209,7 @@ class FreezeConfigBehaviorTest {
 
         invokeEmitFreeze(inst, delayMs = 3000L, isAnr = false, screenName = null)
 
-        val freezeLog = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeLog = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         assertEquals(io.opentelemetry.api.logs.Severity.ERROR, freezeLog.severity,
             "Freeze events should have ERROR severity")
 
@@ -223,7 +223,7 @@ class FreezeConfigBehaviorTest {
 
         invokeEmitFreeze(inst, delayMs = 6000L, isAnr = true, screenName = null)
 
-        val anrLog = otelRule.logRecords.first { it.body.asString() == "app.anr" }
+        val anrLog = otelRule.logRecords.first { it.bodyValue?.asString() == "app.anr" }
         assertEquals(io.opentelemetry.api.logs.Severity.ERROR, anrLog.severity,
             "ANR events should have ERROR severity")
 

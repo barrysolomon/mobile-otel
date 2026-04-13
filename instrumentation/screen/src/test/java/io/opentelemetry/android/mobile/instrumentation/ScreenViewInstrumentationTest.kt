@@ -257,8 +257,8 @@ class ScreenViewInstrumentationTest {
 
         val logs = otelRule.logRecords
         assertTrue(
-            logs.any { it.body.asString() == MobileSemconv.UI_SCREEN_VIEW },
-            "Expected ui.screen_view log, got: ${logs.map { it.body.asString() }}"
+            logs.any { it.bodyValue?.asString() == MobileSemconv.UI_SCREEN_VIEW },
+            "Expected ui.screen_view log, got: ${logs.map { it.bodyValue?.asString() }}"
         )
     }
 
@@ -276,7 +276,7 @@ class ScreenViewInstrumentationTest {
         callbackSlot.captured.onActivityResumed(activity)
 
         val screenViewLog = otelRule.logRecords
-            .firstOrNull { it.body.asString() == MobileSemconv.UI_SCREEN_VIEW }
+            .firstOrNull { it.bodyValue?.asString() == MobileSemconv.UI_SCREEN_VIEW }
         assertNotNull(screenViewLog, "Expected ui.screen_view log record")
         assertNotNull(
             screenViewLog.attributes.get(MobileSemconv.SESSION_ID),
@@ -297,7 +297,7 @@ class ScreenViewInstrumentationTest {
 
         val logs = otelRule.logRecords
         assertFalse(
-            logs.any { it.body.asString() == MobileSemconv.UI_SCREEN_VIEW },
+            logs.any { it.bodyValue?.asString() == MobileSemconv.UI_SCREEN_VIEW },
             "In SPANS mode, ui.screen_view log must NOT be emitted"
         )
     }
@@ -315,7 +315,7 @@ class ScreenViewInstrumentationTest {
 
         val logs = otelRule.logRecords
         assertTrue(
-            logs.any { it.body.asString() == MobileSemconv.UI_SCREEN_VIEW },
+            logs.any { it.bodyValue?.asString() == MobileSemconv.UI_SCREEN_VIEW },
             "In BOTH mode, ui.screen_view log must be emitted"
         )
     }

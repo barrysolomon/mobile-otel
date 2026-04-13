@@ -106,7 +106,7 @@ class BufferIntegrationTest {
 
         assertEquals("Exactly one record should be exported", 1, captureExporter.count())
         val exported = captureExporter.all().first()
-        assertEquals("Exported body must match emitted body", body, exported.body.asString())
+        assertEquals("Exported body must match emitted body", body, exported.bodyValue?.asString())
         assertEquals("Attribute 'env' must be preserved", "test",
             exported.attributes.get(AttributeKey.stringKey("env")))
     }
@@ -260,7 +260,7 @@ class BufferIntegrationTest {
         assertTrue("Export callback must fire within 5s", captureExporter.awaitExport())
 
         val markerRecord = captureExporter.all()
-            .find { it.body.asString() == "marker.event" }
+            .find { it.bodyValue?.asString() == "marker.event" }
 
         assertTrue(
             "marker.event should be exported (found ${captureExporter.count()} records total)",

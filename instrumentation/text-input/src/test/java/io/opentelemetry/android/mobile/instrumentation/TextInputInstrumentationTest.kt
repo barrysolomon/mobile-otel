@@ -50,7 +50,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx())
         inst.emitTextInput(resourceId = "email_field", enabled = true, charCount = 5)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.text_input" })
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.text_input" })
     }
 
     @Test fun `char_count and is_set emitted by default`() {
@@ -58,7 +58,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx())
         inst.emitTextInput(resourceId = "name_field", enabled = true, charCount = 8)
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertEquals(8L, record.attributes[MobileSemconv.TEXT_CHAR_COUNT])
         assertEquals(true, record.attributes[MobileSemconv.TEXT_IS_SET])
     }
@@ -68,7 +68,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx())
         inst.emitTextInput(resourceId = "name_field", enabled = true, charCount = 0)
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertEquals(0L, record.attributes[MobileSemconv.TEXT_CHAR_COUNT])
         assertFalse(record.attributes[MobileSemconv.TEXT_IS_SET]!!)
     }
@@ -78,7 +78,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx())
         inst.emitTextInput(resourceId = "name_field", enabled = true, charCount = 5, text = "hello")
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertNull(record.attributes[MobileSemconv.TEXT_CONTENT])
     }
 
@@ -88,7 +88,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx(config))
         inst.emitTextInput(resourceId = "search_field", enabled = true, charCount = 5, text = "shoes")
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertEquals("shoes", record.attributes[MobileSemconv.TEXT_CONTENT])
     }
 
@@ -98,7 +98,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx(config))
         inst.emitTextInput(resourceId = "password_field", enabled = true, charCount = 8, text = "secret")
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertNull(record.attributes[MobileSemconv.TEXT_CONTENT])
     }
 
@@ -108,7 +108,7 @@ class TextInputInstrumentationTest {
         inst.install(mockk(relaxed = true), makeCtx(config))
         inst.emitTextInput(resourceId = "field", enabled = true, charCount = 3)
 
-        val record = otelRule.logRecords.first { it.body.asString() == "ui.text_input" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.text_input" }
         assertNull(record.attributes[MobileSemconv.TEXT_CHAR_COUNT])
         assertNull(record.attributes[MobileSemconv.TEXT_IS_SET])
     }

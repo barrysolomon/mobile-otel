@@ -176,7 +176,7 @@ class ShowcaseDemoTest {
         }
 
         // ── Phase 4: Verify the ENTIRE pre-crash context arrived ─────────
-        val bodies = mockExporter.exportedLogs.map { it.body.asString() }
+        val bodies = mockExporter.exportedLogs.map { it.bodyValue?.asString() }
         assertTrue("app.start should be in context", "app.start" in bodies)
         assertTrue("screen_views should be in context", bodies.count { it == "ui.screen_view" } >= 2)
         assertTrue("taps should be in context", bodies.count { it == "ui.tap" } >= 2)
@@ -254,7 +254,7 @@ class ShowcaseDemoTest {
         )
 
         // Regular taps should NOT be exported yet
-        val taps = mockExporter.exportedLogs.filter { it.body.asString().startsWith("user.tap") }
+        val taps = mockExporter.exportedLogs.filter { it.bodyValue?.asString()?.startsWith("user.tap") == true }
         assertEquals(
             "HYBRID: regular events should be buffered until policy match",
             0, taps.size
@@ -304,10 +304,10 @@ class ShowcaseDemoTest {
         )
 
         // Verify event ordering
-        val firstBody = mockExporter.exportedLogs.first().body.asString()
-        val lastBody = mockExporter.exportedLogs.last().body.asString()
-        assertTrue("Events should include earliest", firstBody.startsWith("offline-event-"))
-        assertTrue("Events should include latest", lastBody.startsWith("offline-event-"))
+        val firstBody = mockExporter.exportedLogs.first().bodyValue?.asString()
+        val lastBody = mockExporter.exportedLogs.last().bodyValue?.asString()
+        assertTrue("Events should include earliest", firstBody?.startsWith("offline-event-") == true)
+        assertTrue("Events should include latest", lastBody?.startsWith("offline-event-") == true)
 
         processor.shutdown()
     }
@@ -394,7 +394,7 @@ class ShowcaseDemoTest {
         assertTrue("All journey events should export", arrived)
 
         // ── Verify the complete narrative ────────────────────────────────
-        val bodies = mockExporter.exportedLogs.map { it.body.asString() }
+        val bodies = mockExporter.exportedLogs.map { it.bodyValue?.asString() }
 
         // Count each event type
         assertEquals("1 app.start", 1, bodies.count { it == "app.start" })
@@ -461,7 +461,7 @@ class ShowcaseDemoTest {
 
         // Verify buffered activity events are also exported
         val activities = mockExporter.exportedLogs.filter {
-            it.body.asString().startsWith("user.activity")
+            it.bodyValue?.asString()?.startsWith("user.activity") == true
         }
         assertTrue(
             "Buffered activity events should be exported preemptively (got ${activities.size})",

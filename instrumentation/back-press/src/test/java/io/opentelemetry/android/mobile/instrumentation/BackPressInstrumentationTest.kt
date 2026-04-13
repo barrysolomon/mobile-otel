@@ -53,6 +53,6 @@ class BackPressInstrumentationTest {
         every { event.action } returns KeyEvent.ACTION_UP
         hub.dispatchKeyEvent(event, mockk(relaxed = true))
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.back_press" })
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.back_press" })
     }
 }

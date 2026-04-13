@@ -72,7 +72,7 @@ class TapInstrumentationTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" })
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.tap" })
     }
 
     @Test fun `swipe beyond threshold emits ui_swipe with direction`() {
@@ -85,7 +85,7 @@ class TapInstrumentationTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        val swipe = otelRule.logRecords.find { it.body.asString() == "ui.swipe" }
+        val swipe = otelRule.logRecords.find { it.bodyValue?.asString() == "ui.swipe" }
         assertTrue(swipe != null, "Expected ui.swipe log record")
         assertEquals("right", swipe.attributes[MobileSemconv.SWIPE_DIRECTION])
     }
@@ -100,8 +100,8 @@ class TapInstrumentationTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.swipe" })
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.tap" })
+        assertTrue(otelRule.logRecords.none { it.bodyValue?.asString() == "ui.swipe" })
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.tap" })
     }
 
     @Test fun `tap is suppressed when ComposeTapFlag was recently handled`() {
@@ -117,7 +117,7 @@ class TapInstrumentationTest {
         inst.onTouchEvent(down, window)
         inst.onTouchEvent(up, window)
 
-        assertTrue(otelRule.logRecords.none { it.body.asString() == "ui.tap" },
+        assertTrue(otelRule.logRecords.none { it.bodyValue?.asString() == "ui.tap" },
             "Expected no ui.tap when ComposeTapFlag was recently handled")
 
         // Clean up shared state

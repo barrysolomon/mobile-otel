@@ -133,7 +133,7 @@ class UserJourneyExportModeTest {
             assertEquals(4, exporter.exportedLogs.size)
             assertTrue(
                 "All exported events must be screen.navigation",
-                exporter.exportedLogs.all { it.body.asString() == "screen.navigation" }
+                exporter.exportedLogs.all { it.bodyValue?.asString() == "screen.navigation" }
             )
         } finally { p.shutdown() }
     }
@@ -187,7 +187,7 @@ class UserJourneyExportModeTest {
             // All events exported in a single flush window batch (may be chunked into 100-record
             // sub-batches internally, but total event count is what matters)
             assertEquals(6, exporter.exportedLogs.size)
-            val bodies = exporter.exportedLogs.map { it.body.asString() }.toSet()
+            val bodies = exporter.exportedLogs.map { it.bodyValue?.asString() }.toSet()
             assertTrue("Exported set must contain api.request", bodies.contains("api.request"))
             assertTrue("Exported set must contain the http.error trigger", bodies.contains("http.error"))
         } finally { p.shutdown() }
@@ -212,7 +212,7 @@ class UserJourneyExportModeTest {
             assertTrue(
                 "First batch must include pre-error requests (CONDITIONAL holds until flush)",
                 exporter.exportBatches.isNotEmpty() &&
-                    exporter.exportBatches.flatMap { it }.any { it.body.asString() == "api.request" }
+                    exporter.exportBatches.flatMap { it }.any { it.bodyValue?.asString() == "api.request" }
             )
         } finally { p.shutdown() }
     }

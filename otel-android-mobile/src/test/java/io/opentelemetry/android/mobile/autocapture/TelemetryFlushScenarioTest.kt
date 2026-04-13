@@ -97,7 +97,7 @@ class TelemetryFlushScenarioTest {
         setPrefs(KEY_CRASH, true)
         startTracker()
 
-        val bodies = mockExporter.exportedLogs.map { it.body.asString() }
+        val bodies = mockExporter.exportedLogs.map { it.bodyValue?.asString() }
         assertFalse("app.crash must NOT be re-emitted by RecoveryTracker", "app.crash" in bodies)
         assertTrue("app.recovery expected", "app.recovery" in bodies)
     }
@@ -107,7 +107,7 @@ class TelemetryFlushScenarioTest {
         setPrefs(KEY_CRASH, true)
         startTracker()
 
-        val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
+        val recovery = mockExporter.exportedLogs.first { it.bodyValue?.asString() == "app.recovery" }
         assertEquals(Severity.ERROR, recovery.severity)
     }
 
@@ -116,7 +116,7 @@ class TelemetryFlushScenarioTest {
         setPrefs(KEY_CRASH, true)
         startTracker()
 
-        val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
+        val recovery = mockExporter.exportedLogs.first { it.bodyValue?.asString() == "app.recovery" }
         assertEquals("crash", recovery.attributes.get(AttributeKey.stringKey("mobile.recovery_type")))
     }
 
@@ -125,7 +125,7 @@ class TelemetryFlushScenarioTest {
         setPrefs(KEY_CRASH, true)
         startTracker()
 
-        val recovery = mockExporter.exportedLogs.first { it.body.asString() == "app.recovery" }
+        val recovery = mockExporter.exportedLogs.first { it.bodyValue?.asString() == "app.recovery" }
         assertFalse("mobile.session.id should be present and non-empty",
             recovery.attributes.get(AttributeKey.stringKey("mobile.session.id")).isNullOrBlank())
     }

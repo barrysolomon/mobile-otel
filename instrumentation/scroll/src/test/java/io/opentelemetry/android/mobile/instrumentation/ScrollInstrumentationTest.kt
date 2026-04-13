@@ -49,6 +49,6 @@ class ScrollInstrumentationTest {
         inst.install(app, ctx)
         inst.emitScroll(0, 100)
 
-        assertTrue(otelRule.logRecords.any { it.body.asString() == "ui.scroll" })
+        assertTrue(otelRule.logRecords.any { it.bodyValue?.asString() == "ui.scroll" })
     }
 }

@@ -53,8 +53,8 @@ class LifecycleInstrumentationTest {
         callbackSlot.captured.onActivityCreated(mockk(relaxed = true), null)
 
         val logs = otelRule.logRecords
-        assertTrue(logs.any { it.body.asString() == MobileSemconv.APP_START },
-            "Expected app.start log, got: ${logs.map { it.body.asString() }}")
+        assertTrue(logs.any { it.bodyValue?.asString() == MobileSemconv.APP_START },
+            "Expected app.start log, got: ${logs.map { it.bodyValue?.asString() }}")
     }
 
     @Test fun `app start log emitted only once across multiple activities`() {
@@ -69,7 +69,7 @@ class LifecycleInstrumentationTest {
         cb.onActivityCreated(mockk(relaxed = true), null)
         cb.onActivityCreated(mockk(relaxed = true), null)
 
-        val startLogs = otelRule.logRecords.filter { it.body.asString() == MobileSemconv.APP_START }
+        val startLogs = otelRule.logRecords.filter { it.bodyValue?.asString() == MobileSemconv.APP_START }
         assertEquals(1, startLogs.size, "app.start should only be emitted once")
     }
 
@@ -83,7 +83,7 @@ class LifecycleInstrumentationTest {
         callbackSlot.captured.onActivityStarted(mockk(relaxed = true))
 
         val logs = otelRule.logRecords
-        assertTrue(logs.any { it.body.asString() == MobileSemconv.APP_FOREGROUND },
+        assertTrue(logs.any { it.bodyValue?.asString() == MobileSemconv.APP_FOREGROUND },
             "Expected app.foreground log")
     }
 
@@ -100,7 +100,7 @@ class LifecycleInstrumentationTest {
         cb.onActivityStopped(mockk(relaxed = true))   // activeActivities = 0 → background
 
         val logs = otelRule.logRecords
-        assertTrue(logs.any { it.body.asString() == MobileSemconv.APP_BACKGROUND },
+        assertTrue(logs.any { it.bodyValue?.asString() == MobileSemconv.APP_BACKGROUND },
             "Expected app.background log")
     }
 

@@ -58,10 +58,10 @@ class ScreenOrientationInstrumentationTest {
         app.onConfigurationChanged(landscapeConfig)
 
         assertTrue(
-            otelRule.logRecords.any { it.body.asString() == "device.orientation" },
+            otelRule.logRecords.any { it.bodyValue?.asString() == "device.orientation" },
             "Expected device.orientation log record after orientation change"
         )
-        val record = otelRule.logRecords.first { it.body.asString() == "device.orientation" }
+        val record = otelRule.logRecords.first { it.bodyValue?.asString() == "device.orientation" }
         assertEquals("landscape", record.attributes.get(
             io.opentelemetry.api.common.AttributeKey.stringKey("device.orientation")))
     }

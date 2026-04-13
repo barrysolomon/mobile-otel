@@ -391,10 +391,10 @@ class OfflineOnlinePermutationTest {
         )
 
         // Verify diversity of event types
-        val bodies = exporter.exportedLogs.map { it.body.asString() }.toSet()
-        assertTrue("ui.tap survived", bodies.any { it.startsWith("ui.tap") })
-        assertTrue("ui.scroll survived", bodies.any { it.startsWith("ui.scroll") })
-        assertTrue("ui.screen_view survived", bodies.any { it.startsWith("ui.screen_view") })
+        val bodies = exporter.exportedLogs.map { it.bodyValue?.asString() }.toSet()
+        assertTrue("ui.tap survived", bodies.any { it?.startsWith("ui.tap") == true })
+        assertTrue("ui.scroll survived", bodies.any { it?.startsWith("ui.scroll") == true })
+        assertTrue("ui.screen_view survived", bodies.any { it?.startsWith("ui.screen_view") == true })
         assertTrue("ui.text_input survived", "ui.text_input" in bodies)
         assertTrue("ui.back_press survived", "ui.back_press" in bodies)
         assertTrue("http.error survived", "http.error" in bodies)

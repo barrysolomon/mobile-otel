@@ -321,5 +321,5 @@ class RecoveryTrackerEdgeCaseTest {
 
     private fun getPrefs() = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private fun findByBody(body: String) = mockExporter.findLogs { it.body.asString() == body }
+    private fun findByBody(body: String) = mockExporter.findLogs { it.bodyValue?.asString() == body }
 }

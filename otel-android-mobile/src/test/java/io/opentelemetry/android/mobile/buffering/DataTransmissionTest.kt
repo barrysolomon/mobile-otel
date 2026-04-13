@@ -95,7 +95,7 @@ class DataTransmissionTest {
         val received = capturedLogs[0]
 
         // Verify body is readable plain text (not encrypted)
-        assertEquals("ui.tap", received.body.asString(),
+        assertEquals("ui.tap", received.bodyValue?.asString(),
             "Body should be plain text event name, not ciphertext")
 
         // Verify attributes are readable (not encrypted)
@@ -149,7 +149,7 @@ class DataTransmissionTest {
         val retrieved = events[0]
 
         // Verify body is plain text after round-trip
-        assertEquals("app.crash", retrieved.body.asString(),
+        assertEquals("app.crash", retrieved.bodyValue?.asString(),
             "Body should survive disk round-trip as plain text")
 
         // Verify attributes are readable after deserialization

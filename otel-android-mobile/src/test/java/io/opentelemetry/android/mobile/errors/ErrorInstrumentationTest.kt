@@ -83,7 +83,7 @@ class ErrorInstrumentationTest {
 
         assertEquals(1, mockExporter.getExportedCount())
         val log = mockExporter.exportedLogs.first()
-        assertEquals("app.crash", log.body.asString())
+        assertEquals("app.crash", log.bodyValue?.asString())
         assertEquals(Severity.ERROR, log.severity)
         assertEquals(
             "java.lang.RuntimeException",

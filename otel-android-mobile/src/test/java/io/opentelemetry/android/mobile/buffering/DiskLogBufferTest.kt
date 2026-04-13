@@ -132,7 +132,7 @@ class DiskLogBufferTest {
 
         val retrieved = diskBuffer.getAllEvents()
         assertEquals(1, retrieved.size)
-        assertEquals("retrievable", retrieved[0].body.asString())
+        assertEquals("retrievable", retrieved[0].bodyValue?.asString())
     }
 
     @Test
@@ -168,7 +168,7 @@ class DiskLogBufferTest {
         val windowEvents = diskBuffer.getEventsInWindow(windowStart)
 
         assertEquals(1, windowEvents.size)
-        assertEquals("recent", windowEvents[0].body.asString())
+        assertEquals("recent", windowEvents[0].bodyValue?.asString())
     }
 
     @Test
@@ -212,7 +212,7 @@ class DiskLogBufferTest {
 
         val remaining = diskBuffer.getAllEvents()
         assertEquals(1, remaining.size)
-        assertEquals("valid", remaining[0].body.asString())
+        assertEquals("valid", remaining[0].bodyValue?.asString())
     }
 
     @Test
@@ -347,7 +347,7 @@ class DiskLogBufferTest {
 
         val retrieved = diskBuffer.getAllEvents()
         assertEquals(1, retrieved.size)
-        assertEquals(largeBody, retrieved[0].body.asString())
+        assertEquals(largeBody, retrieved[0].bodyValue?.asString())
     }
 
     @Test
@@ -520,7 +520,7 @@ class DiskLogBufferTest {
 
         val trace2Events = diskBuffer.getEventsByTraceId(traceId2)
         assertEquals(1, trace2Events.size)
-        assertEquals("trace2.event1", trace2Events[0].body.asString())
+        assertEquals("trace2.event1", trace2Events[0].bodyValue?.asString())
     }
 
     @Test
@@ -542,7 +542,7 @@ class DiskLogBufferTest {
 
         val remaining = diskBuffer.getAllEvents()
         assertEquals(1, remaining.size)
-        assertEquals("trace2.event1", remaining[0].body.asString())
+        assertEquals("trace2.event1", remaining[0].bodyValue?.asString())
     }
 
     @Test

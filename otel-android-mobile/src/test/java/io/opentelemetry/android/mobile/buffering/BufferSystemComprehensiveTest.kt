@@ -152,7 +152,7 @@ class BufferSystemComprehensiveTest {
         val arrived = mockExporter.waitForLogs(3, timeoutMs = 5000)
         assertTrue("All 3 same-boot events are within monotonic 2-min window", arrived)
 
-        val bodies = mockExporter.exportedLogs.map { it.body.asString() }
+        val bodies = mockExporter.exportedLogs.map { it.bodyValue?.asString() }
         assertTrue("recent-event-1 exported", "recent-event-1" in bodies)
         assertTrue("recent-event-2 exported", "recent-event-2" in bodies)
         assertTrue("old-event also exported (monotonically recent)", "old-event" in bodies)

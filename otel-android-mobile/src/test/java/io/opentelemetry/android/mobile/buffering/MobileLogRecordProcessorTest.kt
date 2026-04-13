@@ -618,6 +618,6 @@ class MobileLogRecordProcessorTest {
             2,
             mockExporter.exportedLogs.size
         )
-        assertTrue(mockExporter.exportedLogs.any { it.body.asString() == "screen.view" })
+        assertTrue(mockExporter.exportedLogs.any { it.bodyValue?.asString() == "screen.view" })
     }
 }

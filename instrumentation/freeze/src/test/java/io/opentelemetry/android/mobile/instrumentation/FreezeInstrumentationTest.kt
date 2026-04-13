@@ -211,7 +211,7 @@ class FreezeInstrumentationTest {
         // Main thread recovers -- tick runnable finally runs
         mainLooper.idle()
 
-        val freezeEvents = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }
+        val freezeEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }
         assertEquals(1, freezeEvents.size, "Exactly one ui.freeze event after recovery")
     }
 
@@ -223,7 +223,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val freezeEvent = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeEvent = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         val durationMs = freezeEvent.attributes[AttributeKey.longKey("mobile.freeze.duration_ms")]
         assertTrue(durationMs != null && durationMs > 0, "duration_ms should be positive")
     }
@@ -236,7 +236,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val anrEvents = otelRule.logRecords.filter { it.body.asString() == "app.anr" }
+        val anrEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "app.anr" }
         assertTrue(anrEvents.isEmpty(), "No app.anr for sub-ANR-threshold freeze")
     }
 
@@ -250,8 +250,8 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val freezeEvents = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }
-        val anrEvents = otelRule.logRecords.filter { it.body.asString() == "app.anr" }
+        val freezeEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }
+        val anrEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "app.anr" }
 
         assertEquals(1, freezeEvents.size, "Exactly one ui.freeze for ANR")
         assertEquals(1, anrEvents.size, "Exactly one app.anr for ANR")
@@ -265,9 +265,9 @@ class FreezeInstrumentationTest {
         mainLooper.idle()
 
         val durationKey = AttributeKey.longKey("mobile.freeze.duration_ms")
-        val freezeDuration = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeDuration = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
             .attributes[durationKey]
-        val anrDuration = otelRule.logRecords.first { it.body.asString() == "app.anr" }
+        val anrDuration = otelRule.logRecords.first { it.bodyValue?.asString() == "app.anr" }
             .attributes[durationKey]
 
         assertEquals(freezeDuration, anrDuration, "Both events should report same duration")
@@ -297,7 +297,7 @@ class FreezeInstrumentationTest {
         // Main thread recovers
         mainLooper.idle()
 
-        val freezeEvents = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }
+        val freezeEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }
         assertEquals(1, freezeEvents.size, "Only ONE ui.freeze event despite multiple watchdog checks")
     }
 
@@ -309,7 +309,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle() // recover
 
-        val afterFirst = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }.size
+        val afterFirst = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }.size
         assertEquals(1, afterFirst, "One event after first freeze")
 
         // Brief healthy period -- checkFreeze resets freezeInProgress and posts new tick
@@ -322,7 +322,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle() // recover
 
-        val afterSecond = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }.size
+        val afterSecond = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }.size
         assertEquals(2, afterSecond, "Two events after two distinct freezes")
     }
 
@@ -341,7 +341,7 @@ class FreezeInstrumentationTest {
         mainLooper.idle()
 
         val durationKey = AttributeKey.longKey("mobile.freeze.duration_ms")
-        val duration = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val duration = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
             .attributes[durationKey]
 
         // Duration should be approximately 3000ms.
@@ -362,7 +362,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val freezeEvents = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }
+        val freezeEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }
         assertEquals(1, freezeEvents.size, "Custom 500ms threshold catches 700ms freeze")
     }
 
@@ -390,7 +390,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val anrEvents = otelRule.logRecords.filter { it.body.asString() == "app.anr" }
+        val anrEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "app.anr" }
         assertEquals(1, anrEvents.size, "Custom 3000ms ANR threshold catches 4s freeze")
     }
 
@@ -402,8 +402,8 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val freezeEvents = otelRule.logRecords.filter { it.body.asString() == "ui.freeze" }
-        val anrEvents = otelRule.logRecords.filter { it.body.asString() == "app.anr" }
+        val freezeEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "ui.freeze" }
+        val anrEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "app.anr" }
 
         assertEquals(1, freezeEvents.size, "Should have ui.freeze")
         assertTrue(anrEvents.isEmpty(), "Should NOT have app.anr for 2s freeze with 3s ANR threshold")
@@ -419,7 +419,7 @@ class FreezeInstrumentationTest {
 
         // Duration is measured as (now - freezeStartMs). With uptimeMillis advancing by 3000
         // and freezeStartMs being the lastTickAtMs, the duration should be >= 3000.
-        val anrEvents = otelRule.logRecords.filter { it.body.asString() == "app.anr" }
+        val anrEvents = otelRule.logRecords.filter { it.bodyValue?.asString() == "app.anr" }
         assertEquals(1, anrEvents.size, "Exact ANR threshold should emit app.anr")
     }
 
@@ -432,7 +432,7 @@ class FreezeInstrumentationTest {
         invokeCheckFreeze(inst)
         mainLooper.idle()
 
-        val freezeEvent = otelRule.logRecords.first { it.body.asString() == "ui.freeze" }
+        val freezeEvent = otelRule.logRecords.first { it.bodyValue?.asString() == "ui.freeze" }
         val sessionId = freezeEvent.attributes[MobileSemconv.SESSION_ID]
         assertTrue(
             sessionId != null && sessionId.isNotEmpty(),
