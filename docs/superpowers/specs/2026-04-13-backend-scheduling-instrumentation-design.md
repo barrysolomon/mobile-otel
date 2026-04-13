@@ -126,6 +126,10 @@ curl -X DELETE http://localhost:3001/api/admin/simulate
 
 The admin route deep-merges `operations` into current state so you can set one fault without resetting others.
 
+### Fault Priority
+
+Global faults (`error`, `latency`, `crash`) are evaluated by the `simulate.ts` middleware *before* the route handler runs. If a global fault fires (e.g., `error=true` returns 503), scheduling operations are skipped entirely. Per-operation faults only apply when the request reaches the route handler.
+
 ---
 
 ## Implementation
@@ -185,8 +189,8 @@ export function schedulingAttributes(ctx: {
 1. Start `scheduling.check_availability` span
 2. For each provider (currently: the requested doctor + one other doctor in same specialty), start parallel `scheduling.provider.query` child spans
 3. Each provider query does a simulated delay (20-80ms random)
-4. If `operations.availability.timeout > 0`, one provider query sleeps for that duration, then errors with timeout
-5. If `operations.availability.errorRate > 0`, each provider query has that probability of failing
+4. If `operations.availability.timeout > 0`, the *secondary* provider query sleeps for that duration, then errors with timeout. The primary provider always uses normal timing. Timeout alone cannot fail availability — the primary always succeeds.
+5. If `operations.availability.errorRate > 0`, each provider query has that probability of failing. To fail availability entirely, set `errorRate: 1.0` (both providers get 100% error rate).
 6. Parent span records `scheduling.provider.count` and `scheduling.available_slots`
 7. Returns successfully if at least one provider returned results; throws if all failed
 
@@ -194,8 +198,8 @@ export function schedulingAttributes(ctx: {
 
 1. Start `scheduling.resolve_conflicts` span
 2. Check if the slot is still available (SELECT with `available = 1`)
-3. If `operations.conflicts.raceCondition` is true on first call: set `scheduling.conflict.detected = true`, sleep 50ms (simulating retry backoff), check again (succeeds on retry), set `scheduling.conflict.retries = 1`
-4. If slot genuinely unavailable: error span, throw (HTTP 409)
+3. If `operations.conflicts.raceCondition` is true: the race condition is **deterministic** — first check returns `scheduling.conflict.detected = true`, sleep 50ms (simulating retry backoff), second check always succeeds. This ensures the demo reliably shows the retry pattern. Set `scheduling.conflict.retries = 1`.
+4. If slot genuinely unavailable (not a simulated race): error span, throw (HTTP 409)
 5. Otherwise: `scheduling.conflict.detected = false`, return
 
 ### authorization.ts — verifyAuthorization()
@@ -216,6 +220,10 @@ export function schedulingAttributes(ctx: {
 6. Parent span waits for all 3 to settle, records `scheduling.notifications.channels = 3` and `scheduling.notifications.succeeded = N`
 7. Never throws — notifications are non-blocking. The booking already succeeded.
 
+### bookSlot() — in appointments.ts
+
+Wraps the existing DB transaction (UPDATE `slots.available=0` + INSERT appointment) in a `scheduling.book_slot` span. Attributes: `scheduling.booking.id` (the new appointment UUID), `scheduling.booking.status` ("confirmed"). This is the existing logic extracted into a function with a span wrapper — no behavioral change.
+
 ### appointments.ts — Modified POST Handler
 
 ```typescript
@@ -235,15 +243,18 @@ router.post("/", async (req, res) => {
     return res.status(err.statusCode).json({ error: err.message, code: err.code });
   }
 
-  // 4. Book the slot (existing DB logic, now wrapped in scheduling.book_slot span)
+  // 4. Book the slot (existing DB logic, wrapped in scheduling.book_slot span)
   const appointment = bookSlot(bookingContext);
 
-  // 5. NEW: Non-blocking notifications (don't await for HTTP response)
-  dispatchNotifications(bookingContext, simulationState).catch(() => {});
-
-  return res.status(201).json(appointment);
+  // 5. NEW: Non-blocking notifications — send response first, then await
+  //    so notification spans have valid parent context
+  const notificationPromise = dispatchNotifications(bookingContext, simulationState);
+  res.status(201).json(appointment);
+  await notificationPromise.catch(() => {});
 });
 ```
+
+**Why send-then-await:** `res.json()` flushes the HTTP response immediately — the client gets 201 without waiting for notifications. But by `await`ing the promise *after* sending the response, the notification child spans complete within the active span context. Without this, the auto-instrumented HTTP span would end before notification spans finish, orphaning them from the trace.
 
 ### simulate.ts — Extended State
 
