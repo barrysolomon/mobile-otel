@@ -70,4 +70,29 @@ object MobileSemconv {
     @JvmField val WIREFRAME_SIZE_BYTES = AttributeKey.longKey("mobile.wireframe.size_bytes")
     @JvmField val WIREFRAME_NODE_COUNT = AttributeKey.longKey("mobile.wireframe.node_count")
     @JvmField val WIREFRAME_DATA       = AttributeKey.stringKey("mobile.wireframe.data")
+
+    // ── DataStore (Amplify) ──────────────────────────────────────────────
+    const val DATASTORE_SYNC              = "datastore.sync"
+    const val DATASTORE_OUTBOX_ENQUEUED   = "datastore.outbox.enqueued"
+    const val DATASTORE_OUTBOX_PROCESSED  = "datastore.outbox.processed"
+    const val DATASTORE_OUTBOX_CONFLICT   = "datastore.outbox.conflict"
+    const val DATASTORE_MODEL_SYNCED      = "datastore.model.synced"
+    const val DATASTORE_SYNC_FAILED       = "datastore.sync.failed"
+    const val DATASTORE_NETWORK_CHANGED   = "datastore.network.changed"
+    const val DATASTORE_SUBSCRIPTION_EST  = "datastore.subscription.established"
+
+    @JvmField val SYNC_DIRECTION          = AttributeKey.stringKey("sync.direction")
+    @JvmField val SYNC_MODEL              = AttributeKey.stringKey("sync.model")
+    @JvmField val SYNC_ADDED             = AttributeKey.longKey("sync.added")
+    @JvmField val SYNC_UPDATED           = AttributeKey.longKey("sync.updated")
+    @JvmField val SYNC_DELETED           = AttributeKey.longKey("sync.deleted")
+    @JvmField val MUTATION_MODEL          = AttributeKey.stringKey("mutation.model")
+    @JvmField val MUTATION_TYPE           = AttributeKey.stringKey("mutation.type")
+    @JvmField val MUTATION_SUCCESS        = AttributeKey.booleanKey("mutation.success")
+    @JvmField val CONFLICT_STRATEGY       = AttributeKey.stringKey("conflict.strategy")
+    @JvmField val NETWORK_TYPE            = AttributeKey.stringKey("network.type")
+    @JvmField val NETWORK_SUBTYPE         = AttributeKey.stringKey("network.subtype")
+    @JvmField val NETWORK_PREVIOUS_TYPE   = AttributeKey.stringKey("network.previous_type")
+    @JvmField val ERROR_TYPE              = AttributeKey.stringKey("error.type")
+    @JvmField val ERROR_MESSAGE           = AttributeKey.stringKey("error.message")
 }
