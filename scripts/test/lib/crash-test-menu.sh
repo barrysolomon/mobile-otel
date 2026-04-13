@@ -395,7 +395,8 @@ show_menu() {
       *)           mode_colored="${_D}${export_mode}${_R}" ;;
     esac
 
-    _status "Export to"  "$export_colored  ${_D}│${_R}  Mode: $mode_colored"
+    _status "Export to"  "$export_colored"
+    _status "Mode"       "$mode_colored"
     if [ -n "$output_size" ] && [ "$output_size" != "0B" ]; then
       _status "Output"    "${_D}${output_size} captured${_R}"
     fi
