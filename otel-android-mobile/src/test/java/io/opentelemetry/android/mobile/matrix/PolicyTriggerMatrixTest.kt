@@ -382,7 +382,7 @@ class PolicyTriggerMatrixTest {
     // This test documents the current behavior and will flip when 404 exclusion is wired.
 
     @Test
-    fun `http_error_404 CONDITIONAL triggers flush (known gap - 404 exclusion not wired)`() {
+    fun `http_error_404 CONDITIONAL triggers flush - 404 is an error by default`() {
         val processor = buildProcessor(ExportMode.CONDITIONAL)
         try {
             emitAndWait(
@@ -390,9 +390,10 @@ class PolicyTriggerMatrixTest {
                 TestUtils.createNavigationEvent("Screen1"),
                 TestUtils.createApiRequestEvent(0, statusCode = 404)
             )
-            // TODO: When 404 exclusion is wired to PolicyEvaluator, change to assertEquals(0, ...)
+            // 404 IS treated as an error and triggers flush. Users can exclude
+            // specific status codes via config if they want different behavior.
             assertTrue(
-                "404 currently triggers flush (exclusion not yet wired)",
+                "404 should trigger flush (all HTTP errors are errors by default)",
                 exporter.getExportedCount() >= 2
             )
         } finally {

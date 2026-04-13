@@ -125,23 +125,12 @@
       "id": "http-error-flush",
       "name": "HTTP Error Handler",
       "enabled": true,
-      "description": "Flushes surrounding context on HTTP errors (>= 400), excluding 404s",
+      "description": "Flushes surrounding context on any HTTP error (4xx/5xx). Users can customize via where clauses to exclude specific status codes.",
       "trigger": {
         "all": [
           {
             "event": "http.error",
-            "where": [
-              {
-                "attr": "http.status_code",
-                "op": ">=",
-                "value": 400
-              },
-              {
-                "attr": "http.status_code",
-                "op": "!=",
-                "value": 404
-              }
-            ]
+            "where": []
           }
         ]
       },
