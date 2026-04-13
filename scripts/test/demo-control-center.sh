@@ -59,9 +59,29 @@ if [ "$START_EMU" = true ]; then
   ok "Emulator booted"
 fi
 
-# ── Find emulator ─────────────────────────────────────────────────────────────
+# ── Find emulator (offer to start one if none running) ───────────────────────
 
-find_emulator || exit 1
+if ! find_emulator 2>/dev/null; then
+  echo ""
+  warn "No emulator running"
+  echo -n "  Start one? [Y/n] "
+  read -r yn
+  if [ "$yn" != "n" ] && [ "$yn" != "N" ]; then
+    log "Starting emulator (Pixel_7)"
+    nohup emulator -avd Pixel_7 -no-snapshot-save > /tmp/emu.log 2>&1 &
+    echo -n "  Waiting for boot"
+    adb wait-for-device
+    until adb shell "getprop sys.boot_completed" 2>/dev/null | grep -q 1; do
+      echo -n "."
+      sleep 5
+    done
+    echo ""
+    ok "Emulator booted"
+    find_emulator || { err "Still no emulator found"; exit 1; }
+  else
+    exit 0
+  fi
+fi
 
 # ── Teardown handler ──────────────────────────────────────────────────────────
 
