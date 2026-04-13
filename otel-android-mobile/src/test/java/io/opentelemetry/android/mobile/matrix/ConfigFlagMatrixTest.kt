@@ -180,4 +180,46 @@ class ConfigFlagMatrixTest {
         assertEquals(1, otelRule.logRecords.size,
             "captureUncaughtExceptions=false should only control handler install, not direct capture")
     }
+
+    // ── Flag interactions ──────────────────────────────────────────────────
+
+    private fun crashes() = otelRule.logRecords
+
+    @Test
+    fun `enabled=false suppresses all capture`() {
+        init(ErrorConfig(enabled = false))
+            .captureException(RuntimeException("crash"), "uncaught")
+        assertEquals(0, crashes().size, "enabled=false should suppress everything")
+    }
+
+    @Test
+    fun `rateLimit + deduplication interact correctly`() {
+        // Dedup window is 5 min, rate limit is 3
+        // 5 unique exceptions → dedup allows all 5 → rate limit caps at 3
+        val inst = init(ErrorConfig(
+            rateLimit = 3,
+            deduplicateWindowMs = 300_000,
+            captureUncaughtExceptions = false,
+            flushOnError = false
+        ))
+        for (i in 1..5) {
+            inst.captureException(RuntimeException("crash $i"), "uncaught")
+        }
+        assertTrue(crashes().size <= 3, "Rate limit should cap at 3 even when dedup allows all, got ${crashes().size}")
+    }
+
+    @Test
+    fun `captureExceptionMessages=false + scrubStackTraces=true both active`() {
+        init(ErrorConfig(
+            captureExceptionMessages = false,
+            scrubStackTraces = true,
+            captureUncaughtExceptions = false,
+            flushOnError = false
+        )).captureException(RuntimeException("sensitive data here"), "uncaught")
+        val event = crashes().first()
+        val message = event.attributes[AttributeKey.stringKey("exception.message")]
+        assertTrue(message == null || message.isEmpty(), "Message should be omitted when captureExceptionMessages=false")
+        val stackTrace = event.attributes[AttributeKey.stringKey("exception.stacktrace")]
+        assertTrue(stackTrace != null, "Stack trace should still be present (scrubbed)")
+    }
 }

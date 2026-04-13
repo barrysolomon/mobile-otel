@@ -125,4 +125,34 @@ class SignalContractTest {
         val events = emitJourney()
         TelemetryContract.assertOrdering(events, "app.start", "ui.screen_view")
     }
+
+    // ── Negative signal assertions ─────────────────────────────────────────
+
+    private fun emitGoldenJourney(): List<io.opentelemetry.sdk.logs.data.LogRecordData> {
+        val logger = otelRule.openTelemetry.logsBridge.get("negative-signal")
+        val tracer = otelRule.openTelemetry.getTracer("negative-signal")
+        GoldenJourneyEmitter(logger, tracer).emit()
+        return otelRule.logRecords.toList()
+    }
+
+    @Test
+    fun `golden journey does NOT contain app_crash event`() {
+        val events = emitGoldenJourney()
+        val crashes = events.filter { it.bodyValue?.asString() == "app.crash" }
+        assertEquals(0, crashes.size, "Golden journey should not produce app.crash")
+    }
+
+    @Test
+    fun `golden journey does NOT contain device_heartbeat`() {
+        val events = emitGoldenJourney()
+        val heartbeats = events.filter { it.bodyValue?.asString() == "device.heartbeat" }
+        assertEquals(0, heartbeats.size, "Golden journey emitter should not produce heartbeats")
+    }
+
+    @Test
+    fun `golden journey does NOT contain prediction_cycle`() {
+        val events = emitGoldenJourney()
+        val predictions = events.filter { it.bodyValue?.asString() == "prediction.cycle" }
+        assertEquals(0, predictions.size, "Golden journey emitter should not produce predictions")
+    }
 }

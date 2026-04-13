@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Task 2: Export mode equivalence tests.
@@ -124,5 +125,50 @@ class ExportModeEquivalenceTest {
             "CONTINUOUS vs CONDITIONAL log bodies should be equivalent")
         assertEquals(normalize(bodies1), normalize(bodies3),
             "CONTINUOUS vs HYBRID log bodies should be equivalent")
+    }
+
+    // ── Golden journey completeness ────────────────────────────────────────
+
+    @Test
+    fun `golden journey produces exact event count`() {
+        val logger = otelRule.openTelemetry.logsBridge.get("exact-count")
+        val tracer = otelRule.openTelemetry.getTracer("exact-count")
+        val expectation = GoldenJourneyEmitter(logger, tracer).emit()
+
+        assertEquals(
+            expectation.expectedLogCount,
+            otelRule.logRecords.size,
+            "Golden journey should produce exactly ${expectation.expectedLogCount} log events, got ${otelRule.logRecords.size}"
+        )
+        assertEquals(
+            expectation.expectedSpanCount,
+            otelRule.spans.size,
+            "Golden journey should produce exactly ${expectation.expectedSpanCount} spans, got ${otelRule.spans.size}"
+        )
+    }
+
+    @Test
+    fun `golden journey has no unexpected duplicate spans`() {
+        val logger = otelRule.openTelemetry.logsBridge.get("no-dupes")
+        val tracer = otelRule.openTelemetry.getTracer("no-dupes")
+        GoldenJourneyEmitter(logger, tracer).emit()
+        // Spans should have unique spanIds (no accidental double-emit)
+        val spanIds = otelRule.spans.map { it.spanContext.spanId }
+        val dupeSpanIds = spanIds.groupingBy { it }.eachCount().filter { it.value > 1 }
+        assertTrue(dupeSpanIds.isEmpty(), "Duplicate span IDs found: ${dupeSpanIds.keys}")
+        // Log events: verify total count matches expected (repeated screen_views are intentional)
+        assertEquals(
+            GoldenJourneyEmitter.EXPECTED.expectedLogCount,
+            otelRule.logRecords.size,
+            "Log event count should match golden journey expectation"
+        )
+    }
+
+    @Test
+    fun `golden journey span hierarchy - HTTP span is child of page BookFragment`() {
+        val logger = otelRule.openTelemetry.logsBridge.get("hierarchy")
+        val tracer = otelRule.openTelemetry.getTracer("hierarchy")
+        GoldenJourneyEmitter(logger, tracer).emit()
+        TelemetryContract.assertSpanParentage(otelRule.spans, "page.BookFragment", "HTTP POST /api/appointments")
     }
 }

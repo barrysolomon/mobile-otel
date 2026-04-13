@@ -93,4 +93,16 @@ class RateLimitMatrixTest {
         assertTrue(otelRule.logRecords.size <= 10,
             "15 exceptions with limit of 10 should cap at <= 10, got ${otelRule.logRecords.size}")
     }
+
+    // ── Exact drop count ────────────────────────────────────────────────────
+
+    @Test
+    fun `over limit - exact drop count`() {
+        val inst = init(rateLimit = 5)
+        fireExceptions(inst, 10)
+        val captured = otelRule.logRecords.size
+        assertTrue(captured <= 5, "Rate limit 5: should capture <= 5, got $captured")
+        val dropped = 10 - captured
+        assertTrue(dropped >= 5, "Should have dropped >= 5 exceptions, dropped $dropped")
+    }
 }

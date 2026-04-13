@@ -136,4 +136,88 @@ class HybridTimingTest {
             processor.shutdown()
         }
     }
+
+    @Test
+    fun `hybrid heartbeat export contains correct event bodies`() {
+        DiskLogBuffer.resetForTesting()
+        val exporter = MockLogRecordExporter()
+        val config = MobileConfig(
+            serviceName = "hybrid-content",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "http://localhost:4317",
+            exportMode = ExportMode.HYBRID,
+            ramBufferSize = 100,
+            traceExportIntervalSeconds = 30
+        )
+        val processor = MobileLogRecordProcessor.builder(context)
+            .setExporter(exporter)
+            .setConfig(config)
+            .setMeter(OpenTelemetry.noop().meterProvider.get("test"))
+            .setRamBufferSize(100)
+            .setDiskBufferMb(10)
+            .setDiskBufferTtlHours(1)
+            .build()
+
+        try {
+            TestUtils.emitAll(processor, listOf(
+                TestUtils.createTestLogRecord("device.heartbeat"),
+                TestUtils.createTestLogRecord("prediction.cycle")
+            ))
+            Thread.sleep(500)
+
+            val exportedBodies = exporter.exportedLogs.map { it.body.asString() }
+            assertTrue(
+                "Heartbeat should be in exported logs",
+                exportedBodies.contains("device.heartbeat")
+            )
+            assertTrue(
+                "Prediction should be in exported logs",
+                exportedBodies.contains("prediction.cycle")
+            )
+        } finally {
+            processor.shutdown()
+        }
+    }
+
+    @Test
+    fun `CONTINUOUS with short interval actually exports periodically`() {
+        DiskLogBuffer.resetForTesting()
+        val exporter = MockLogRecordExporter()
+        val config = MobileConfig(
+            serviceName = "continuous-periodic",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "http://localhost:4317",
+            exportMode = ExportMode.CONTINUOUS,
+            ramBufferSize = 100,
+            traceExportIntervalSeconds = 1  // 1 second interval
+        )
+        val processor = MobileLogRecordProcessor.builder(context)
+            .setExporter(exporter)
+            .setConfig(config)
+            .setMeter(OpenTelemetry.noop().meterProvider.get("test"))
+            .setRamBufferSize(100)
+            .setDiskBufferMb(10)
+            .setDiskBufferTtlHours(1)
+            .build()
+
+        try {
+            TestUtils.emitAll(processor, listOf(
+                TestUtils.createNavigationEvent("Screen1"),
+                TestUtils.createNavigationEvent("Screen2")
+            ))
+
+            // Wait for periodic flush to fire (1s interval + margin)
+            val exported = exporter.waitForLogs(2, 3000)
+            assertTrue(
+                "CONTINUOUS with 1s interval should auto-export within 3s",
+                exported
+            )
+            assertTrue(
+                "Should export both events periodically",
+                exporter.getExportedCount() >= 2
+            )
+        } finally {
+            processor.shutdown()
+        }
+    }
 }

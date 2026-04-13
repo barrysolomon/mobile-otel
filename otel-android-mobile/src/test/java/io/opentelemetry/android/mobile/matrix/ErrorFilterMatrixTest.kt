@@ -70,6 +70,12 @@ class ErrorFilterMatrixTest {
         captureUncaughtExceptions = false // avoid installing handler in tests
     )
 
+    /** Shortcut: init with default config */
+    private fun initInstrumentation(): ErrorInstrumentation = initInstrumentation(defaultConfig())
+
+    /** Shortcut: count of captured crash log records */
+    private fun crashCount(): Int = otelRule.logRecords.size
+
     private fun resetSingleton() {
         try {
             val field = ErrorInstrumentation::class.java.getDeclaredField("instance")
@@ -211,5 +217,54 @@ class ErrorFilterMatrixTest {
         val inst = initInstrumentation(permissiveConfig())
         inst.captureException(ArithmeticException("divide by zero"), "uncaught")
         assertEquals(1, otelRule.logRecords.size, "ArithmeticException should be captured by permissive config")
+    }
+
+    // ── Edge cases ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `default filter - SSLHandshakeException NOT filtered (string match not inheritance)`() {
+        // shouldFilterException uses className string matching, not Java inheritance.
+        // SSLHandshakeException (javax.net.ssl.SSLHandshakeException) does NOT match
+        // the filter entry "javax.net.ssl.SSLException" by equality or startsWith("...SSLException.").
+        initInstrumentation().captureException(
+            javax.net.ssl.SSLHandshakeException("handshake failed"), "uncaught"
+        )
+        assertEquals(1, crashCount(),
+            "SSLHandshakeException is not string-matched by SSLException filter, so it is captured")
+    }
+
+    @Test
+    fun `default filter - exception with null message captured`() {
+        initInstrumentation().captureException(RuntimeException(null as String?), "uncaught")
+        assertEquals(1, crashCount(), "Null message should not prevent capture")
+    }
+
+    @Test
+    fun `default filter - exception with very long message captured`() {
+        val longMsg = "x".repeat(5000)
+        initInstrumentation().captureException(RuntimeException(longMsg), "uncaught")
+        assertEquals(1, crashCount(), "Long message should not prevent capture")
+    }
+
+    @Test
+    fun `default filter - nested cause chain with filtered root cause still captured`() {
+        // The outer exception is RuntimeException (not filtered), wrapping a SocketTimeoutException
+        val cause = java.net.SocketTimeoutException("timeout")
+        val wrapper = RuntimeException("network call failed", cause)
+        initInstrumentation().captureException(wrapper, "uncaught")
+        // Filter checks the TOP-LEVEL exception class, not causes
+        assertEquals(1, crashCount(), "Outer RuntimeException should be captured even with filtered cause")
+    }
+
+    @Test
+    fun `default filter - SocketException filtered`() {
+        initInstrumentation().captureException(java.net.SocketException("Connection reset"), "uncaught")
+        assertEquals(0, crashCount())
+    }
+
+    @Test
+    fun `default filter - InterruptedIOException filtered`() {
+        initInstrumentation().captureException(java.io.InterruptedIOException("interrupted"), "uncaught")
+        assertEquals(0, crashCount())
     }
 }
