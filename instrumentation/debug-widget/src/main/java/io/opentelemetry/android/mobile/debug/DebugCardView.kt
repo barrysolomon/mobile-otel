@@ -84,6 +84,43 @@ class DebugCardView(context: Context) : FrameLayout(context) {
         footerRefreshText = makeText("\u21BB 2s", 10f, colorDim).apply {
             gravity = Gravity.END
         }
+        // "Details ›" button — only shown if RingBufferActivity exists in the host app
+        val ringBufferClass = "${context.packageName}.ui.debug.RingBufferActivity"
+        val hasRingBuffer = try {
+            context.packageManager.getActivityInfo(
+                android.content.ComponentName(context.packageName, ringBufferClass), 0
+            )
+            true
+        } catch (_: Exception) { false }
+
+        val detailsButton = makeText("Details \u203A", 11f, 0xFF42A5F5.toInt(), Typeface.BOLD).apply {
+            gravity = Gravity.CENTER
+            val btnPad = (8 * density).toInt()
+            setPadding(btnPad, (4 * density).toInt(), btnPad, (4 * density).toInt())
+            val btnBg = GradientDrawable().apply {
+                setColor(0xFF1A1A2E.toInt())
+                cornerRadius = 6 * density
+                setStroke(1, 0xFF2E2E42.toInt())
+            }
+            background = btnBg
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = (8 * density).toInt()
+            }
+            setOnClickListener {
+                try {
+                    val intent = android.content.Intent()
+                    intent.setClassName(context.packageName, "${context.packageName}.ui.debug.RingBufferActivity")
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    // RingBufferActivity not available in this app — ignore
+                }
+            }
+        }
+        if (hasRingBuffer) {
+            container.addView(detailsButton)
+        }
+
         footerSessionText.layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         footerRefreshText.layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         footerLayout.addView(footerSessionText)
