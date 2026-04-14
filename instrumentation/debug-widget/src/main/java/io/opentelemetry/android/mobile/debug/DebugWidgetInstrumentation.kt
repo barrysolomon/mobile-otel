@@ -136,9 +136,28 @@ class DebugWidgetInstrumentation(
             }
         }
 
-        // Position card relative to badge
-        newCard.x = newBadge.x - (230 * density) + (32 * density)
-        newCard.y = newBadge.y + (40 * density)
+        // Position card relative to badge, clamped to screen bounds
+        val screenW = activity.resources.displayMetrics.widthPixels.toFloat()
+        val screenH = activity.resources.displayMetrics.heightPixels.toFloat()
+        val cardW = 270 * density
+        val cardH = 520 * density  // estimated max height with all rows + details button
+
+        var cardX = newBadge.x - cardW + (32 * density)
+        var cardY = newBadge.y + (40 * density)
+
+        // Clamp horizontal: keep card within screen with 8dp margin
+        if (cardX < margin) cardX = margin
+        if (cardX + cardW > screenW - margin) cardX = screenW - cardW - margin
+
+        // Clamp vertical: if card would overflow bottom, position above the badge
+        if (cardY + cardH > screenH - margin) {
+            cardY = newBadge.y - cardH - (8 * density)
+        }
+        // If still off top, just pin to top
+        if (cardY < margin) cardY = margin
+
+        newCard.x = cardX
+        newCard.y = cardY
 
         decorContent.addView(newCard)
         decorContent.addView(newBadge)
