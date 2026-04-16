@@ -165,7 +165,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [ ] **SR-015: Logical size enforcement** — Use row count not filesystem bytes for disk buffer limits (covered by SR-007).
 - [ ] **SR-016: Crash recovery accuracy** — Only mark clean shutdown in explicit `stop()`, not on every background event.
 - [ ] **SR-017: Crash-safe flush** — On crash path, persist to disk only (skip gRPC export). Crash-recovery handles re-export on next launch.
-- [ ] **SR-018: Multi-type attribute lookup** — Try all 4 `AttributeKey` types (string, long, double, bool) in PolicyEvaluator.getAttributeValue(). Numeric conditions currently never match.
+- [x] **SR-018: Multi-type attribute lookup** — Try all 4 `AttributeKey` types (string, long, double, bool) in PolicyEvaluator.getAttributeValue(). Done 2026-04-14.
 - [ ] **SR-019: ID-based delete in flushWindow** — Delete by row ID list instead of timestamp range to eliminate TOCTOU data loss.
 
 ### P2 — Low (opportunistic)

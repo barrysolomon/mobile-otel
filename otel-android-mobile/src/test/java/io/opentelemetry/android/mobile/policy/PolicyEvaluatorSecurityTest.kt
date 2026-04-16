@@ -201,12 +201,7 @@ class PolicyEvaluatorSecurityTest {
     }
 
     private fun invokeParseConfig(json: String): PolicyConfig {
-        val method = PolicyEvaluator::class.java.getDeclaredMethod(
-            "parseConfig",
-            String::class.java
-        )
-        method.isAccessible = true
-        return method.invoke(evaluator, json) as PolicyConfig
+        return PolicyEvaluator.parseConfigAny(json) ?: PolicyConfig(emptyList())
     }
 
     // ── JSON builders ─────────────────────────────────────────────────────────
@@ -214,31 +209,13 @@ class PolicyEvaluatorSecurityTest {
     private fun buildConfigJson(flushWindowMinutes: Int): String {
         return """
         {
+          "version": 1,
           "workflows": [
             {
               "id": "test-policy",
               "enabled": true,
-              "nodes": {
-                "trigger": [
-                  {
-                    "data": {
-                      "match": {
-                        "logical_operator": "and",
-                        "attributes": {
-                          "event.name": {"equals": "test.event"}
-                        }
-                      }
-                    }
-                  }
-                ],
-                "action": [
-                  {
-                    "data": {
-                      "flush_window_minutes": $flushWindowMinutes
-                    }
-                  }
-                ]
-              }
+              "trigger": {"any": [{"event": "test.event"}]},
+              "actions": [{"type": "flush_window", "minutes": $flushWindowMinutes}]
             }
           ]
         }
@@ -247,35 +224,9 @@ class PolicyEvaluatorSecurityTest {
 
     private fun buildMultiPolicyJson(count: Int): String {
         val policies = (1..count).joinToString(",\n") { i ->
-            """
-            {
-              "id": "policy-$i",
-              "enabled": true,
-              "nodes": {
-                "trigger": [
-                  {
-                    "data": {
-                      "match": {
-                        "logical_operator": "and",
-                        "attributes": {
-                          "event.name": {"equals": "event.$i"}
-                        }
-                      }
-                    }
-                  }
-                ],
-                "action": [
-                  {
-                    "data": {
-                      "flush_window_minutes": 2
-                    }
-                  }
-                ]
-              }
-            }
-            """
+            """{"id": "policy-$i", "enabled": true, "trigger": {"any": [{"event": "event.$i"}]}, "actions": [{"type": "flush_window", "minutes": 2}]}"""
         }
-        return """{"workflows": [$policies]}"""
+        return """{"version": 1, "workflows": [$policies]}"""
     }
 
     private fun createLogRecord(eventName: String): LogRecordData = object : LogRecordData {

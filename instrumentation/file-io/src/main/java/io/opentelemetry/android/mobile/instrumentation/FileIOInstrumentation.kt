@@ -141,15 +141,27 @@ internal class TracedInputStream(
     private var bytesRead: Long = 0
 
     override fun read(): Int {
-        val b = delegate.read()
-        if (b >= 0) bytesRead++
-        return b
+        return try {
+            val b = delegate.read()
+            if (b >= 0) bytesRead++
+            b
+        } catch (e: Exception) {
+            span.recordException(e)
+            span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.message ?: "read error")
+            throw e
+        }
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
-        val n = delegate.read(b, off, len)
-        if (n > 0) bytesRead += n
-        return n
+        return try {
+            val n = delegate.read(b, off, len)
+            if (n > 0) bytesRead += n
+            n
+        } catch (e: Exception) {
+            span.recordException(e)
+            span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.message ?: "read error")
+            throw e
+        }
     }
 
     override fun close() {
@@ -177,13 +189,25 @@ internal class TracedOutputStream(
     private var bytesWritten: Long = 0
 
     override fun write(b: Int) {
-        delegate.write(b)
-        bytesWritten++
+        try {
+            delegate.write(b)
+            bytesWritten++
+        } catch (e: Exception) {
+            span.recordException(e)
+            span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.message ?: "write error")
+            throw e
+        }
     }
 
     override fun write(b: ByteArray, off: Int, len: Int) {
-        delegate.write(b, off, len)
-        bytesWritten += len
+        try {
+            delegate.write(b, off, len)
+            bytesWritten += len
+        } catch (e: Exception) {
+            span.recordException(e)
+            span.setStatus(io.opentelemetry.api.trace.StatusCode.ERROR, e.message ?: "write error")
+            throw e
+        }
     }
 
     override fun flush() = delegate.flush()

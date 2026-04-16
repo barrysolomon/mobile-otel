@@ -20,10 +20,10 @@ import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
-import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
+import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.android.mobile.sampling.SamplerFactory
 import io.opentelemetry.android.mobile.sampling.DynamicSampler
@@ -93,7 +93,9 @@ class MobileLoggerProvider private constructor(
                 .build()
         )
 
-        // Create OTLP gRPC exporter with headers
+        // Create base log exporter (gRPC — note: this is wrapped by LoggingHttpExporter which does
+        // the actual HTTP export. The gRPC exporter here is the fallback delegate; in practice
+        // LoggingHttpExporter handles the export via OkHttp.)
         var baseLogExporter: LogRecordExporter = OtlpGrpcLogRecordExporter.builder()
             .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
@@ -118,9 +120,10 @@ class MobileLoggerProvider private constructor(
             maxRetries = config.maxExportRetries
         )
 
-        // Create OTLP metric exporter
-        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpGrpcMetricExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
+        // Create OTLP HTTP metric exporter
+        val metricEndpoint = config.collectorEndpoint.removeSuffix("/") + "/v1/metrics"
+        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpHttpMetricExporter.builder()
+            .setEndpoint(metricEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->
@@ -154,9 +157,10 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // Create OTLP trace exporter
-        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpGrpcSpanExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
+        // Create OTLP trace exporter (HTTP, not gRPC — Android lacks gRPC transport by default)
+        val traceEndpoint = config.collectorEndpoint.removeSuffix("/") + "/v1/traces"
+        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpHttpSpanExporter.builder()
+            .setEndpoint(traceEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->

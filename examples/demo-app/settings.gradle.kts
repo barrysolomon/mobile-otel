@@ -74,5 +74,17 @@ project(":instrumentation-debug-widget").projectDir = file("../../instrumentatio
 include(":instrumentation-amplify-datastore")
 project(":instrumentation-amplify-datastore").projectDir = file("../../instrumentation/amplify-datastore")
 
+include(":instrumentation-database")
+project(":instrumentation-database").projectDir = file("../../instrumentation/database")
+
+include(":instrumentation-file-io")
+project(":instrumentation-file-io").projectDir = file("../../instrumentation/file-io")
+
+include(":instrumentation-timber")
+project(":instrumentation-timber").projectDir = file("../../instrumentation/timber")
+
+include(":instrumentation-system-events")
+project(":instrumentation-system-events").projectDir = file("../../instrumentation/system-events")
+
 include(":upstream-demo-app")
 project(":upstream-demo-app").projectDir = file("../upstream-demo-app")

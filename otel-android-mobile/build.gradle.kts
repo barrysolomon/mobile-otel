@@ -76,6 +76,10 @@ dependencies {
     api(project(":instrumentation-wireframe"))
     api(project(":instrumentation-compose-click"))
     api(project(":instrumentation-screen-orientation"))
+    api(project(":instrumentation-database"))
+    api(project(":instrumentation-file-io"))
+    api(project(":instrumentation-timber"))
+    api(project(":instrumentation-system-events"))
 
     // OpenTelemetry SDK - Core dependencies
     api("io.opentelemetry:opentelemetry-api:1.58.0")

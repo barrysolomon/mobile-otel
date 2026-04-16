@@ -20,7 +20,7 @@ object SdkInitializer {
                 }
                 export {
                     endpoint = ExportConfig.grpcEndpoint
-                    mode = ExportMode.CONDITIONAL
+                    mode = ExportMode.CONTINUOUS
                     headers = ExportConfig.headers
                 }
                 instrumentations {

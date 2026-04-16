@@ -104,14 +104,14 @@ internal class OTelQueryCallback(
                 Attributes.of(
                     AttributeKey.stringKey("db.system"), "sqlite",
                     AttributeKey.stringKey("db.operation"), operation,
-                    AttributeKey.stringKey("db.statement"), truncateStatement(sqlQuery)
+                    AttributeKey.stringKey("db.statement"), truncateStatement(sqlQuery),
+                    AttributeKey.stringKey("db.timing_note"), "pre-execution callback, duration not measured"
                 )
             )
             .startSpan()
 
-        // The callback fires before execution — we start the span here.
-        // For timing, we'd need an after-callback which Room doesn't provide.
-        // The span captures the query metadata; duration will be minimal (just callback overhead).
+        // Room's QueryCallback fires before execution — no after-callback exists.
+        // The span captures query metadata; duration is callback overhead only.
         span.end()
     }
 

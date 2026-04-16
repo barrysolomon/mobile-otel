@@ -39,7 +39,7 @@
 | Debug widget | Live in-app overlay (buffer, export, health) | `enableDebug()` = verbose logcat | **Dash0** |
 | Device health metrics | OTel gauges (memory, battery, thermal, storage) | Session attributes only | **Dash0** (richer) |
 | Journey breadcrumbs | 50-entry circular buffer on crash/freeze | Not documented | **Dash0 only** |
-| **Total modules** | **19** | **~11** | |
+| **Total modules** | **19** (14 production + 5 incubating) | **~11** | |
 
 ### Architecture
 
@@ -96,7 +96,7 @@ Splunk deprecated their OTLP exporter path in Feb 2025, moving to a proprietary 
 
 ### 4. Deeper Signal Coverage
 
-19 modules vs ~11. The exclusive modules aren't niche — scroll tracking, Compose click identity, text input, and system events are essential for understanding mobile UX. Splunk's gaps mean blind spots in user journey reconstruction.
+19 modules vs ~11. The exclusive modules aren't niche — scroll tracking, Compose click identity, text input, database queries, and system events are essential for understanding mobile UX. Splunk's gaps mean blind spots in user journey reconstruction.
 
 ---
 

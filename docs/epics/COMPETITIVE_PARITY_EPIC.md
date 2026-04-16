@@ -49,9 +49,9 @@ The control plane (React UI + Go gateway) builds and starts, but the full loop �
 
 | ID | Item | Priority | Notes |
 |----|------|----------|-------|
-| CP-E2E-001 | **Contract test: v1 DSL roundtrip** — publish workflow from UI, capture gateway response, feed to SDK's `parseConfig()`, verify policy evaluates correctly | P0 | The single most important test we don't have |
-| CP-E2E-002 | **Contract test: v2 DSL roundtrip** — same as above with `?dsl_version=2`, update SDK to negotiate v2 | P0 | Required to use 29 node types |
-| CP-E2E-003 | **SDK v2 negotiation** — update `PolicyEvaluator.fetchConfig()` to request `?dsl_version=2` and parse FSM format | P0 | Currently SDK only speaks v1 |
+| CP-E2E-001 | ~~**Contract test: v1 DSL roundtrip**~~ | ✅ DONE | `PolicyEvaluatorV1CompilerTest` — 10 tests, parses exact graphToDSL.ts output (2026-04-14) |
+| CP-E2E-002 | ~~**Contract test: v2 DSL roundtrip**~~ | ✅ DONE | `PolicyEvaluatorV2ParseTest` — 15 tests, parses exact graphToDSLv2.ts FSM output (2026-04-14) |
+| CP-E2E-003 | ~~**SDK v2 negotiation**~~ | ✅ DONE | `fetchConfig()` requests `?dsl_version=2`, `parseConfigAny()` auto-detects v1/v2/legacy (2026-04-14) |
 | CP-E2E-004 | **UI → Gateway → SDK live test** — start gateway + UI locally, publish a crash-handler workflow, start demo app pointing at gateway, trigger crash, verify selective flush fires | P0 | The "it actually works" test |
 | CP-E2E-005 | **React component tests** — at minimum: WorkflowBuilder graph validity, graphToDSL output shape, graphToDSLv2 output shape | P1 | Prevent silent graph corruption |
 | CP-E2E-006 | **Config polling integration test** — SDK polls gateway on interval, receives updated policy, applies it to next event | P1 | Validates the "remote update without app release" claim |

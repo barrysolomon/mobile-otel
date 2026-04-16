@@ -237,6 +237,10 @@ examples/demo-app/android/src/main/assets/otel-config.json
 examples/demo-app-starter/android/src/debug/assets/otel-config.json
 examples/demo-app-starter/android/src/main/assets/otel-config.json
 examples/demo-app-starter/android/src/release/assets/otel-config.json
+# Upstream demo app config contains real credentials
+examples/upstream-demo-app/src/main/assets/otel-config.json
+examples/upstream-demo-app/src/debug/assets/otel-config.json
+examples/upstream-demo-app/src/release/assets/otel-config.json
 
 # Keep templates only
 !**/*.template

@@ -224,14 +224,22 @@ class PolicyEvaluator(
 
     /**
      * Extracts attribute value from log record.
+     * Tries all 4 AttributeKey types (string, long, double, boolean) to support
+     * numeric conditions from v2 matchers (SR-018).
      */
     private fun getAttributeValue(logRecord: LogRecordData, key: String): Any? {
+        // Try attributes first (all 4 types), then fall back to built-in fields
+        val fromAttrs = logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey(key))
+            ?: logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.longKey(key))
+            ?: logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.doubleKey(key))
+            ?: logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.booleanKey(key))
+        if (fromAttrs != null) return fromAttrs
+
+        // Built-in LogRecordData fields
         return when (key) {
-            "event.name" -> logRecord.body.asString()
-            else -> {
-                val attr = logRecord.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey(key))
-                attr?.toString()
-            }
+            "event.name", "body" -> logRecord.body.asString()
+            "severity" -> logRecord.severity.name
+            else -> null
         }
     }
 
@@ -396,11 +404,13 @@ class PolicyEvaluator(
 
     /**
      * Fetches policy configuration from the collector/gateway.
+     * Requests DSL v2 (state-machine format) by default, with automatic
+     * fallback to v1 or legacy format via [parseConfigAny].
      */
     private fun fetchConfig() {
         scope.launch {
             try {
-                val configUrl = "${collectorEndpoint.removeSuffix("/")}/config"
+                val configUrl = "${collectorEndpoint.removeSuffix("/")}/config?dsl_version=2"
                 val request = Request.Builder()
                     .url(configUrl)
                     .get()
@@ -410,9 +420,13 @@ class PolicyEvaluator(
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                     if (body != null) {
-                        val config = parseConfig(body)
-                        policyConfig.set(config)
-                        Log.i(TAG, "Fetched policy config: ${config.policies.size} policies")
+                        val config = parseConfigAny(body)
+                        if (config != null) {
+                            policyConfig.set(config)
+                            Log.i(TAG, "Fetched policy config: ${config.policies.size} policies")
+                        } else {
+                            Log.w(TAG, "Failed to parse config response")
+                        }
                     }
                 } else {
                     Log.w(TAG, "Failed to fetch config: ${response.code}")
@@ -423,127 +437,8 @@ class PolicyEvaluator(
         }
     }
 
-    /**
-     * Parses JSON configuration into PolicyConfig.
-     */
-    private fun parseConfig(json: String): PolicyConfig {
-        val jsonObj = JSONObject(json)
-        val workflowsArray = jsonObj.optJSONArray("workflows") ?: JSONArray()
-
-        if (workflowsArray.length() > MAX_POLICIES) {
-            Log.w(TAG, "Remote config has ${workflowsArray.length()} policies, " +
-                "truncating to $MAX_POLICIES")
-        }
-
-        val policies = mutableListOf<Policy>()
-        val policyLimit = minOf(workflowsArray.length(), MAX_POLICIES)
-
-        for (i in 0 until policyLimit) {
-            val workflowObj = workflowsArray.getJSONObject(i)
-
-            // Parse trigger node
-            val triggerNode = workflowObj.getJSONObject("nodes")
-                .getJSONArray("trigger")
-                .getJSONObject(0)
-
-            val matchObj = triggerNode.getJSONObject("data").getJSONObject("match")
-            val attributes = mutableMapOf<String, Condition>()
-
-            // Parse attribute conditions with count limit
-            val attrsObj = matchObj.optJSONObject("attributes")
-            var attrCount = 0
-            attrsObj?.keys()?.forEach { key ->
-                if (attrCount >= MAX_CONDITIONS_PER_POLICY) {
-                    Log.w(TAG, "Policy has too many conditions, truncating at $MAX_CONDITIONS_PER_POLICY")
-                    return@forEach
-                }
-                attrCount++
-                val condObj = attrsObj.getJSONObject(key)
-                attributes[key] = Condition(
-                    equals = condObj.optString("equals").takeIf { it.isNotEmpty() },
-                    notEquals = condObj.optString("notEquals").takeIf { it.isNotEmpty() },
-                    gt = condObj.optDouble("gt").takeIf { !it.isNaN() },
-                    lt = condObj.optDouble("lt").takeIf { !it.isNaN() },
-                    gte = condObj.optDouble("gte").takeIf { !it.isNaN() },
-                    lte = condObj.optDouble("lte").takeIf { !it.isNaN() },
-                    contains = condObj.optString("contains").takeIf { it.isNotEmpty() },
-                    regex = condObj.optString("regex").takeIf { it.isNotEmpty() }
-                )
-            }
-
-            // Parse geo conditions (new)
-            val geoMatch = matchObj.optJSONObject("geo")?.let { geoObj ->
-                GeoMatch(
-                    country = geoObj.optJSONArray("country")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    region = geoObj.optJSONArray("region")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    timezone = geoObj.optJSONArray("timezone")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    locale = geoObj.optJSONArray("locale")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    }
-                )
-            }
-
-            // Parse device conditions (new)
-            val deviceMatch = matchObj.optJSONObject("device")?.let { deviceObj ->
-                DeviceMatch(
-                    network = deviceObj.optJSONArray("network")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    battery = deviceObj.optJSONArray("battery")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    deviceClass = deviceObj.optJSONArray("deviceClass")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    buildChannel = deviceObj.optJSONArray("buildChannel")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    },
-                    osVersionMin = deviceObj.optInt("osVersionMin").takeIf { it > 0 },
-                    osVersionMax = deviceObj.optInt("osVersionMax").takeIf { it > 0 },
-                    appVersion = deviceObj.optJSONArray("appVersion")?.let { arr ->
-                        (0 until arr.length()).map { arr.getString(it) }
-                    }
-                )
-            }
-
-            // Parse action node
-            val actionNode = workflowObj.getJSONObject("nodes")
-                .getJSONArray("action")
-                .getJSONObject(0)
-
-            val rawFlushWindow = actionNode.getJSONObject("data")
-                .optInt("flush_window_minutes", 2)
-            val flushWindowMinutes = rawFlushWindow.coerceIn(MIN_FLUSH_WINDOW_MINUTES, MAX_FLUSH_WINDOW_MINUTES)
-            if (rawFlushWindow != flushWindowMinutes) {
-                Log.w(TAG, "flush_window_minutes $rawFlushWindow clamped to $flushWindowMinutes " +
-                    "(allowed range: $MIN_FLUSH_WINDOW_MINUTES-$MAX_FLUSH_WINDOW_MINUTES)")
-            }
-
-            policies.add(
-                Policy(
-                    id = workflowObj.getString("id"),
-                    enabled = workflowObj.optBoolean("enabled", true),
-                    match = Match(
-                        logicalOperator = matchObj.optString("logical_operator", "and"),
-                        attributes = attributes,
-                        geo = geoMatch,
-                        device = deviceMatch
-                    ),
-                    actions = Actions(
-                        flushWindowMinutes = flushWindowMinutes
-                    )
-                )
-            )
-        }
-
-        return PolicyConfig(policies)
-    }
+    // Legacy parseConfig (nodes.trigger/action format) removed 2026-04-14.
+    // Replaced by companion parseConfigV1Compiler/parseConfigV2/parseConfigAny.
 
     /**
      * Shuts down the evaluator and releases resources.
@@ -555,6 +450,8 @@ class PolicyEvaluator(
     }
 
     companion object {
+        private const val TAG_STATIC = "PolicyEvaluator"
+
         /** Maximum number of policies allowed from remote config. */
         internal const val MAX_POLICIES = 100
         /** Maximum number of attribute conditions per policy. */
@@ -567,6 +464,336 @@ class PolicyEvaluator(
         internal const val MIN_FLUSH_WINDOW_MINUTES = 1
         /** Maximum flush window in minutes (24 hours). */
         internal const val MAX_FLUSH_WINDOW_MINUTES = 1440
+
+        /**
+         * Auto-detect config version and parse accordingly.
+         * Supports: v2 (FSM), v1 compiler output (trigger/actions), legacy (nodes.trigger/action).
+         */
+        fun parseConfigAny(jsonString: String): PolicyConfig? {
+            return try {
+                val root = JSONObject(jsonString)
+                val version = root.optInt("version", 0)
+
+                when {
+                    version == 2 -> parseConfigV2(jsonString)
+                    else -> parseConfigV1Compiler(jsonString)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG_STATIC, "Failed to auto-detect config format", e)
+                null
+            }
+        }
+
+        /**
+         * Parse DSL v2 (state-machine format) into PolicyConfig.
+         * Maps v2 matcher types to attribute-based conditions that the existing
+         * evaluation engine understands.
+         */
+        fun parseConfigV2(jsonString: String): PolicyConfig? {
+            return try {
+                val root = JSONObject(jsonString)
+                val version = root.optInt("version", 1)
+                if (version != 2) return null
+
+                val workflowsArray = root.optJSONArray("workflows")
+                    ?: return PolicyConfig(emptyList())
+                val policies = mutableListOf<Policy>()
+
+                for (i in 0 until minOf(workflowsArray.length(), MAX_POLICIES)) {
+                    val workflow = workflowsArray.getJSONObject(i)
+                    val workflowId = workflow.optString("id", "workflow-$i")
+                    val enabled = workflow.optBoolean("enabled", true)
+                    val states = workflow.optJSONArray("states") ?: continue
+
+                    for (s in 0 until states.length()) {
+                        val state = states.getJSONObject(s)
+                        val stateId = state.optString("id", "state-$s")
+                        val matchers = state.optJSONArray("matchers") ?: continue
+                        val onMatch = state.optJSONObject("on_match") ?: continue
+                        val actions = onMatch.optJSONArray("actions") ?: continue
+
+                        val flushMinutes = extractFlushMinutesV2(actions)
+
+                        for (m in 0 until matchers.length()) {
+                            val matcher = matchers.getJSONObject(m)
+                            val match = matcherToMatch(matcher)
+                            if (match != null) {
+                                val policyId = if (matchers.length() == 1 && states.length() == 1)
+                                    workflowId
+                                else "$workflowId/$stateId/$m"
+                                policies.add(Policy(
+                                    id = policyId,
+                                    enabled = enabled,
+                                    match = match,
+                                    actions = Actions(flushWindowMinutes = flushMinutes)
+                                ))
+                            }
+                        }
+                    }
+                }
+
+                PolicyConfig(policies)
+            } catch (e: Exception) {
+                Log.e(TAG_STATIC, "Failed to parse v2 config", e)
+                null
+            }
+        }
+
+        /**
+         * Parse DSL v1 compiler output format:
+         * {version: 1, workflows: [{id, enabled, trigger: {any/all: [{event, where?}]}, actions: [{type, minutes}]}]}
+         */
+        fun parseConfigV1Compiler(jsonString: String): PolicyConfig? {
+            return try {
+                val root = JSONObject(jsonString)
+                val workflowsArray = root.optJSONArray("workflows")
+                    ?: return PolicyConfig(emptyList())
+                val policies = mutableListOf<Policy>()
+
+                for (i in 0 until minOf(workflowsArray.length(), MAX_POLICIES)) {
+                    val workflow = workflowsArray.getJSONObject(i)
+                    val id = workflow.optString("id", "workflow-$i")
+                    val enabled = workflow.optBoolean("enabled", true)
+                    val trigger = workflow.optJSONObject("trigger") ?: continue
+                    val actionsArray = workflow.optJSONArray("actions") ?: continue
+
+                    // Extract flush window from actions array
+                    var flushMinutes = 2
+                    for (a in 0 until actionsArray.length()) {
+                        val action = actionsArray.getJSONObject(a)
+                        if (action.optString("type") == "flush_window") {
+                            flushMinutes = action.optInt("minutes", 2)
+                                .coerceIn(MIN_FLUSH_WINDOW_MINUTES, MAX_FLUSH_WINDOW_MINUTES)
+                            break
+                        }
+                    }
+
+                    // Parse trigger conditions (any → or, all → and)
+                    val hasAll = trigger.has("all")
+                    val conditionsKey = if (hasAll) "all" else "any"
+                    val conditions = trigger.optJSONArray(conditionsKey) ?: continue
+
+                    for (c in 0 until conditions.length()) {
+                        val cond = conditions.getJSONObject(c)
+                        val eventName = cond.optString("event", "")
+                        val attributes = mutableMapOf<String, Condition>()
+
+                        if (eventName.isNotEmpty()) {
+                            attributes["event.name"] = Condition(equals = eventName)
+                        }
+
+                        // Parse where clauses into additional attribute conditions
+                        val where = cond.optJSONArray("where")
+                        if (where != null) {
+                            for (w in 0 until minOf(where.length(), MAX_CONDITIONS_PER_POLICY)) {
+                                val pred = where.getJSONObject(w)
+                                val attr = pred.optString("attr", "")
+                                val op = pred.optString("op", "==")
+                                val value = pred.opt("value")
+                                if (attr.isNotEmpty() && value != null) {
+                                    attributes[attr] = predicateToCondition(op, value)
+                                }
+                            }
+                        }
+
+                        if (attributes.isNotEmpty()) {
+                            val policyId = if (conditions.length() == 1) id else "$id/$c"
+                            policies.add(Policy(
+                                id = policyId,
+                                enabled = enabled,
+                                match = Match(logicalOperator = "and", attributes = attributes),
+                                actions = Actions(flushWindowMinutes = flushMinutes)
+                            ))
+                        }
+                    }
+                }
+
+                PolicyConfig(policies)
+            } catch (e: Exception) {
+                Log.e(TAG_STATIC, "Failed to parse v1 compiler config", e)
+                null
+            }
+        }
+
+        /**
+         * Map a v2 matcher type to the internal Match model.
+         * Translates typed matchers (crash, ui_freeze, etc.) into attribute conditions.
+         */
+        private fun matcherToMatch(matcher: JSONObject): Match? {
+            val type = matcher.optString("type", "")
+            val config = matcher.optJSONObject("config") ?: JSONObject()
+            val where = matcher.optJSONArray("where")
+
+            val attributes = mutableMapOf<String, Condition>()
+
+            when (type) {
+                "crash" -> attributes["event.name"] = Condition(equals = "app.crash")
+                "ui_freeze" -> {
+                    attributes["event.name"] = Condition(equals = "ui.freeze")
+                    val durationMs = config.optDouble("duration_ms", 0.0)
+                    if (durationMs > 0) attributes["duration_ms"] = Condition(gt = durationMs)
+                }
+                "event_match" -> {
+                    val eventName = config.optString("event_name", "")
+                    if (eventName.isNotEmpty()) attributes["event.name"] = Condition(equals = eventName)
+                }
+                "log_severity" -> {
+                    // Map min_severity to a numeric gte comparison for proper "at or above" semantics
+                    val minSeverity = config.optString("min_severity", "")
+                    if (minSeverity.isNotEmpty()) {
+                        val severityLevel = severityToLevel(minSeverity)
+                        if (severityLevel > 0) attributes["severity_number"] = Condition(gte = severityLevel.toDouble())
+                        else attributes["severity"] = Condition(equals = minSeverity)
+                    }
+                    val bodyContains = config.optString("body_contains", "")
+                    if (bodyContains.isNotEmpty()) attributes["body"] = Condition(contains = bodyContains)
+                }
+                "http_match" -> {
+                    attributes["event.name"] = Condition(equals = "http.error")
+                    val statusMin = config.optInt("status_min", 0)
+                    if (statusMin > 0) attributes["http.status_code"] = Condition(gte = statusMin.toDouble())
+                }
+                "exception_pattern" -> {
+                    attributes["event.name"] = Condition(equals = "app.crash")
+                    val exType = config.optString("exception_type", "")
+                    if (exType.isNotEmpty()) attributes["exception.type"] = Condition(contains = exType)
+                    val msgPattern = config.optString("message_pattern", "")
+                    if (msgPattern.isNotEmpty()) attributes["exception.message"] = Condition(regex = msgPattern)
+                }
+                "metric_threshold" -> {
+                    val metricName = config.optString("metric_name", "")
+                    if (metricName.isNotEmpty()) attributes["event.name"] = Condition(equals = metricName)
+                    val op = config.optString("operator", "gt")
+                    val threshold = config.optDouble("threshold", Double.NaN)
+                    if (!threshold.isNaN()) {
+                        attributes["value"] = when (op) {
+                            "gt" -> Condition(gt = threshold)
+                            "lt" -> Condition(lt = threshold)
+                            "gte" -> Condition(gte = threshold)
+                            "lte" -> Condition(lte = threshold)
+                            else -> Condition(gt = threshold)
+                        }
+                    }
+                }
+                "slow_operation" -> {
+                    val opName = config.optString("operation_name", "")
+                    if (opName.isNotEmpty()) attributes["event.name"] = Condition(equals = opName)
+                    val thresholdMs = config.optDouble("threshold_ms", 0.0)
+                    if (thresholdMs > 0) attributes["duration_ms"] = Condition(gt = thresholdMs)
+                }
+                "frame_drop" -> {
+                    attributes["event.name"] = Condition(equals = "ui.jank")
+                    val dropped = config.optDouble("dropped_frames", 0.0)
+                    if (dropped > 0) attributes["dropped_frames"] = Condition(gt = dropped)
+                }
+                "network_loss" -> attributes["event.name"] = Condition(equals = "network.loss")
+                "slow_request" -> {
+                    attributes["event.name"] = Condition(equals = "http.request")
+                    val thresholdMs = config.optDouble("threshold_ms", 0.0)
+                    if (thresholdMs > 0) attributes["duration_ms"] = Condition(gt = thresholdMs)
+                }
+                "low_memory" -> {
+                    attributes["event.name"] = Condition(equals = "device.low_memory")
+                    val availMb = config.optDouble("available_mb", 0.0)
+                    if (availMb > 0) attributes["available_mb"] = Condition(lt = availMb)
+                }
+                "battery_drain" -> {
+                    attributes["event.name"] = Condition(equals = "device.battery_drain")
+                    val rate = config.optDouble("drain_rate_perc_per_min", 0.0)
+                    if (rate > 0) attributes["drain_rate"] = Condition(gt = rate)
+                }
+                "thermal_throttle" -> attributes["event.name"] = Condition(equals = "device.thermal_throttle")
+                "storage_low" -> {
+                    attributes["event.name"] = Condition(equals = "device.storage_low")
+                    val availMb = config.optDouble("available_mb", 0.0)
+                    if (availMb > 0) attributes["available_mb"] = Condition(lt = availMb)
+                }
+                "predictive_risk" -> {
+                    attributes["event.name"] = Condition(equals = "prediction.high_risk_alert")
+                    val minScore = config.optDouble("min_score", 0.0)
+                    if (minScore > 0) attributes["risk_score"] = Condition(gte = minScore)
+                }
+                "anr" -> attributes["event.name"] = Condition(equals = "app.anr")
+                "app_lifecycle" -> {
+                    val event = config.optString("event", "")
+                    attributes["event.name"] = Condition(equals = if (event.isNotEmpty()) event else "app.lifecycle")
+                }
+                "resource_snapshot" -> {
+                    val metricName = config.optString("metric_name", "")
+                    if (metricName.isNotEmpty()) attributes["event.name"] = Condition(equals = metricName)
+                    else attributes["event.name"] = Condition(equals = "resource.snapshot")
+                }
+                "field_presence" -> {
+                    val field = config.optString("field", "")
+                    if (field.isNotEmpty()) attributes[field] = Condition(regex = ".+")
+                }
+                "field_absence" -> {
+                    // Field absence can't be expressed as a positive match — skip
+                    // The policy will rely on other matchers in the same state
+                    return null
+                }
+                "timeout" -> return null // State-machine transition, not a flush trigger
+                else -> {
+                    Log.w(TAG_STATIC, "Unknown v2 matcher type: $type, using as event name")
+                    attributes["event.name"] = Condition(equals = type)
+                }
+            }
+
+            // Apply where-clause predicates
+            if (where != null) {
+                for (w in 0 until minOf(where.length(), MAX_CONDITIONS_PER_POLICY)) {
+                    val predicate = where.getJSONObject(w)
+                    val attr = predicate.optString("attr", "")
+                    val op = predicate.optString("op", "==")
+                    val value = predicate.opt("value")
+                    if (attr.isNotEmpty() && value != null) {
+                        attributes[attr] = predicateToCondition(op, value)
+                    }
+                }
+            }
+
+            if (attributes.isEmpty()) return null
+
+            return Match(logicalOperator = "and", attributes = attributes)
+        }
+
+        /** Map OTel severity name to numeric level for gte comparison. */
+        private fun severityToLevel(name: String): Int = when (name.uppercase()) {
+            "TRACE" -> 1; "DEBUG" -> 5; "INFO" -> 9
+            "WARN" -> 13; "ERROR" -> 17; "FATAL" -> 21
+            else -> 0
+        }
+
+        /** Convert a where-clause predicate {op, value} into a Condition. */
+        private fun predicateToCondition(op: String, value: Any): Condition {
+            val numValue = (value as? Number)?.toDouble()
+            val strValue = value.toString()
+
+            return when (op) {
+                "==", "equals" -> Condition(equals = strValue)
+                "!=", "not_equals" -> Condition(notEquals = strValue)
+                ">", "gt" -> Condition(gt = numValue)
+                "<", "lt" -> Condition(lt = numValue)
+                ">=", "gte" -> Condition(gte = numValue)
+                "<=", "lte" -> Condition(lte = numValue)
+                "contains" -> Condition(contains = strValue)
+                "regex" -> Condition(regex = strValue)
+                else -> Condition(equals = strValue)
+            }
+        }
+
+        /** Extract flush_buffer minutes from v2 actions array. Default 2 min. */
+        private fun extractFlushMinutesV2(actions: JSONArray): Int {
+            for (a in 0 until actions.length()) {
+                val action = actions.getJSONObject(a)
+                if (action.optString("type") == "flush_buffer") {
+                    val actionConfig = action.optJSONObject("config") ?: continue
+                    val minutes = actionConfig.optInt("minutes", 2)
+                    return minutes.coerceIn(MIN_FLUSH_WINDOW_MINUTES, MAX_FLUSH_WINDOW_MINUTES)
+                }
+            }
+            return 2 // default
+        }
     }
 }
 
