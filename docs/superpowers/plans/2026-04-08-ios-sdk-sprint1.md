@@ -6,7 +6,9 @@
 
 **Architecture:** "Shared Core, Native Shell" — domain logic (buffer, policy, DSL) uses Swift actors with matching type names to Android. Platform integration (swizzling, UIKit hooks) is isolated in `Platform/`. Each instrumentation module is a separate SPM target.
 
-**Tech Stack:** Swift 5.9+, iOS 15+ (optimized for 16+), opentelemetry-swift 2.1.1+, swift-collections 1.1+, raw sqlite3 C API, XCTest.
+**Tech Stack:** Swift 5.9+, iOS 15+ (optimized for 16+), opentelemetry-swift 2.1.1+ + opentelemetry-swift-core 2.1.0+ (upstream split in 2.x), swift-collections 1.1+, raw sqlite3 C API, Swift Testing (`@Test`/`#expect`; XCTest also acceptable under Xcode but Command Line Tools ships only Swift Testing).
+
+**Build without Xcode:** Package targets `[.iOS(.v15), .macOS(.v13)]` so `swift build`/`swift test` work on macOS with Command Line Tools only. A `run-tests.sh` wrapper sets rpath for `Testing.framework`; plain `swift test` works once a full Xcode install is active.
 
 **Spec:** `docs/superpowers/specs/2026-04-08-ios-sdk-port-design.md`
 

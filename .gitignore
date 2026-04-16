@@ -247,3 +247,9 @@ examples/upstream-demo-app/src/release/assets/otel-config.json
 
 # Local collector test output
 scripts/test/collector/output/
+
+# Swift Package Manager build artifacts
+otel-ios-mobile/.build/
+**/.swiftpm/
+xcuserdata/
+DerivedData/

@@ -1,0 +1,27 @@
+import Foundation
+import OpenTelemetryApi
+import OpenTelemetrySdk
+
+/// Internal test helpers. Lives in the SDK module so test files can exercise
+/// the processor without importing Foundation directly (Swift Testing's
+/// `_Testing_Foundation` overlay is shipped incomplete in macOS Command Line
+/// Tools). See `BufferedEventTestSupport.swift` for precedent.
+extension MobileLogRecordProcessor {
+    /// Emits a synthetic log record through the real `onEmit` path. Returns
+    /// once the detached buffer-append task has completed so tests can
+    /// deterministically observe state afterwards.
+    func emitForTesting(body: String = "msg", severity: Severity? = .info) async {
+        let record = ReadableLogRecord(
+            resource: Resource(),
+            instrumentationScopeInfo: InstrumentationScopeInfo(name: "test"),
+            timestamp: Date(),
+            severity: severity,
+            body: .string(body),
+            attributes: [:]
+        )
+        onEmit(logRecord: record)
+        // Yield several times so the detached append task observed in
+        // `onEmit` has a chance to run before the caller reads the buffer.
+        for _ in 0..<10 { await Task.yield() }
+    }
+}
