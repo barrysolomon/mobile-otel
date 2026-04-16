@@ -10,6 +10,8 @@
 
 **Build without Xcode:** Package targets `[.iOS(.v15), .macOS(.v13)]` so `swift build`/`swift test` work on macOS with Command Line Tools only. A `run-tests.sh` wrapper sets rpath for `Testing.framework`; plain `swift test` works once a full Xcode install is active.
 
+**iOS 15 vs macOS 13 API drift:** `swift test` on macOS 13+ passes code that fails on iOS 15 because macOS 13 ships iOS-16-vintage APIs. Avoid these without `@available(iOS 16, *)` guards: `ContinuousClock`, `Duration` (`.milliseconds(_:)`), `Task.sleep(for:)`. Use pre-16 primitives: `Date` for time, `Task.sleep(nanoseconds:)` for sleep. Always run `xcodebuild test -scheme OTelMobile-Package -destination "platform=iOS Simulator,name=iPhone 17"` to validate on the real iOS 15 target before merging.
+
 **Spec:** `docs/superpowers/specs/2026-04-08-ios-sdk-port-design.md`
 
 **Key OTel Swift SDK imports:**

@@ -108,11 +108,12 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// Lives here (as opposed to the test target) so tests and demos can call
     /// it without `@testable import` or an explicit `Foundation` import.
     public static func waitForBufferedAppends(timeoutMs: UInt64) async throws {
-        let start = ContinuousClock().now
-        let budget = Duration.milliseconds(Int64(timeoutMs))
-        while ContinuousClock().now - start < budget {
+        // Uses Date + Task.sleep(nanoseconds:) so we stay iOS 15 compatible.
+        // ContinuousClock / Duration / Task.sleep(for:) require iOS 16+.
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
+        while Date() < deadline {
             await Task.yield()
-            try await Task.sleep(for: .milliseconds(10))
+            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
     }
 
