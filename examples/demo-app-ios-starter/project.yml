@@ -1,0 +1,31 @@
+name: StarterApp
+options:
+  bundleIdPrefix: com.dash0.mobile.demo
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  SWIFT_VERSION: "5.9"
+packages:
+  OTelMobile:
+    path: ../../otel-ios-mobile
+targets:
+  StarterApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: StarterApp
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: OTelMobile
+        product: OTelMobileSDK
+      - package: OTelMobile
+        product: OTelMobileCore
+    info:
+      path: StarterApp/Info.plist
+      properties:
+        CFBundleDisplayName: Dash0 Demo
+        UILaunchScreen:
+          UIColorName: systemBackgroundColor
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true

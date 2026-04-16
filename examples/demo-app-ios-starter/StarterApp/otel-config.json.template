@@ -1,0 +1,7 @@
+{
+  "service_name": "otel-ios-demo-starter",
+  "service_version": "0.1.0",
+  "endpoint": "https://ingress.YOUR-DASH0-DOMAIN:4318",
+  "auth_token": "YOUR_BEARER_TOKEN_HERE",
+  "dataset": "otel-mobile"
+}

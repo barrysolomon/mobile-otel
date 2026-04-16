@@ -33,6 +33,7 @@ let package = Package(
                 "OTelMobileCore",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
+                .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
                 .product(name: "DequeModule", package: "swift-collections"),
             ]
         ),

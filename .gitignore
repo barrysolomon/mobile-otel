@@ -253,3 +253,11 @@ otel-ios-mobile/.build/
 **/.swiftpm/
 xcuserdata/
 DerivedData/
+
+# iOS demo app credentials
+examples/demo-app-ios-starter/StarterApp/otel-config.json
+# XcodeGen-generated project
+examples/demo-app-ios-starter/StarterApp.xcodeproj/
+# Xcode cruft
+examples/demo-app-ios-starter/*.xcuserstate
+examples/demo-app-ios-starter/**/xcuserdata/

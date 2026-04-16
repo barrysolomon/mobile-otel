@@ -10,6 +10,10 @@ public struct MobileConfig: Sendable {
     public let privacyConfig: PrivacyConfig
     public let autoCaptureOptions: AutoCaptureOptions
     public let pollingIntervalSeconds: Int
+    /// Additional headers to merge onto OTLP/HTTP exports. Use for things like
+    /// `Dash0-Dataset` where the backend requires a header beyond bearer auth.
+    /// Matches the Android SDK's `headers: Map<String, String>` config.
+    public let extraHeaders: [String: String]
 
     public init(
         serviceName: String,
@@ -20,7 +24,8 @@ public struct MobileConfig: Sendable {
         bufferConfig: BufferConfig = .default,
         privacyConfig: PrivacyConfig = .default,
         autoCaptureOptions: AutoCaptureOptions = .all,
-        pollingIntervalSeconds: Int = 300
+        pollingIntervalSeconds: Int = 300,
+        extraHeaders: [String: String] = [:]
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -31,5 +36,6 @@ public struct MobileConfig: Sendable {
         self.privacyConfig = privacyConfig
         self.autoCaptureOptions = autoCaptureOptions
         self.pollingIntervalSeconds = pollingIntervalSeconds
+        self.extraHeaders = extraHeaders
     }
 }
