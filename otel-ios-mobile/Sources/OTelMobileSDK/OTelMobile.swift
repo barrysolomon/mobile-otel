@@ -40,6 +40,12 @@ public final class OTelMobile: @unchecked Sendable {
     /// when `meter` is nil the collector cannot be started.
     public let deviceStats: DeviceStatsCollector
 
+    /// Underlying trace/meter providers. Held so `forceFlush()` can drain
+    /// their batch processors / periodic readers on demand. Optional because
+    /// the test-overload `start(config:exporter:)` doesn't wire them.
+    private let tracerProvider: TracerProviderSdk?
+    private let meterProvider: MeterProviderSdk?
+
     private init(
         config: MobileConfig,
         processor: MobileLogRecordProcessor,
@@ -48,7 +54,9 @@ public final class OTelMobile: @unchecked Sendable {
         resource: Resource,
         tracer: Tracer?,
         meter: MeterSdk?,
-        deviceStats: DeviceStatsCollector
+        deviceStats: DeviceStatsCollector,
+        tracerProvider: TracerProviderSdk? = nil,
+        meterProvider: MeterProviderSdk? = nil
     ) {
         self.config = config
         self.processor = processor
@@ -58,6 +66,8 @@ public final class OTelMobile: @unchecked Sendable {
         self.tracer = tracer
         self.meter = meter
         self.deviceStats = deviceStats
+        self.tracerProvider = tracerProvider
+        self.meterProvider = meterProvider
     }
 
     /// Wires the SDK with a caller-supplied `BufferedEventExporter`.
@@ -216,7 +226,9 @@ public final class OTelMobile: @unchecked Sendable {
             resource: resource,
             tracer: tracer,
             meter: meter,
-            deviceStats: DeviceStatsCollector()
+            deviceStats: DeviceStatsCollector(),
+            tracerProvider: tracerProvider,
+            meterProvider: meterProvider
         )
     }
 
@@ -240,11 +252,19 @@ public final class OTelMobile: @unchecked Sendable {
         builder.emit()
     }
 
-    /// Synchronously flush all buffered events to the exporter.
-    /// Returns the buffer-level result (success or failure with reason).
+    /// Synchronously flush every pending signal: the internal log buffer,
+    /// the batch span processor, and the periodic metric reader. Returns the
+    /// log-buffer result (success or failure with reason). Trace and metric
+    /// flush errors are logged but not surfaced here — batch processors
+    /// retry on their own cadence regardless.
     @discardableResult
     public func forceFlush() -> BufferExportResult {
-        processor.forceFlushBuffered()
+        // Traces: synchronous call, no return value.
+        tracerProvider?.forceFlush()
+        // Metrics: fires the periodic reader's export path immediately.
+        _ = meterProvider?.forceFlush()
+        // Logs buffer: our dual-tier pipeline.
+        return processor.forceFlushBuffered()
     }
 
     /// Selective time-window flush: export events from the last `minutes`.
