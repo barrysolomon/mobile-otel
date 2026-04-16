@@ -86,4 +86,24 @@ struct OTLPExporterFactoryTests {
         )
         #expect(url.absoluteString == "http://localhost:4318/v1/logs")
     }
+
+    @Test("trace exporter constructs with a base endpoint")
+    func traceExporterConstructs() throws {
+        let exporter = try OTLPExporterFactory.makeHttpTraceExporter(
+            endpoint: "https://ingress.dash0.com:4318",
+            authToken: "secret"
+        )
+        _ = exporter
+        #expect(Bool(true))
+    }
+
+    @Test("metric exporter constructs with a base endpoint")
+    func metricExporterConstructs() throws {
+        let exporter = try OTLPExporterFactory.makeHttpMetricExporter(
+            endpoint: "https://ingress.dash0.com:4318",
+            authToken: "secret"
+        )
+        _ = exporter
+        #expect(Bool(true))
+    }
 }

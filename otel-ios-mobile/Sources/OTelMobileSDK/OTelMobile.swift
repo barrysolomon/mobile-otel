@@ -8,27 +8,65 @@ import OTelMobileCore
 /// Thin-slice implementation: no UIApplication lifecycle, no auto-instrumentation.
 /// Callers invoke `emit(body:severity:)` manually. The buffer → exporter
 /// pipeline is fully wired and exercised by the end-to-end smoke test.
+///
+/// As of this release the SDK wires all three OTel signals — logs, traces,
+/// and metrics — sharing a single `Resource` built by `ResourceBuilder`. The
+/// `tracer`, `meter` and `resource` properties expose the underlying
+/// OpenTelemetry handles so application code can create spans or record
+/// metrics directly through the public API.
 public final class OTelMobile: @unchecked Sendable {
     private let processor: MobileLogRecordProcessor
     private let logger: Logger
     public let config: MobileConfig
     public let sessionProvider: SessionProvider
 
+    /// Shared resource carried by every log, span, and metric emitted through
+    /// this SDK instance. Exposed so callers can inspect it (e.g. in tests,
+    /// debug UIs, or log enrichers).
+    public let resource: Resource
+
+    /// OpenTelemetry tracer for the `io.dash0.mobile` instrumentation scope.
+    /// Use this to create spans from application code. `nil` when the test
+    /// overload `start(config:exporter:)` is used — that path doesn't build a
+    /// TracerProvider.
+    public let tracer: Tracer?
+
+    /// OpenTelemetry meter for the `io.dash0.mobile` instrumentation scope.
+    /// Use this to record custom metrics. `nil` under the test overload.
+    public let meter: MeterSdk?
+
+    /// Device stats collector. Call `deviceStats.start(meter:)` to begin
+    /// recording device health gauges; `stop()` to pause. Always non-nil;
+    /// when `meter` is nil the collector cannot be started.
+    public let deviceStats: DeviceStatsCollector
+
     private init(
         config: MobileConfig,
         processor: MobileLogRecordProcessor,
         logger: Logger,
-        sessionProvider: SessionProvider
+        sessionProvider: SessionProvider,
+        resource: Resource,
+        tracer: Tracer?,
+        meter: MeterSdk?,
+        deviceStats: DeviceStatsCollector
     ) {
         self.config = config
         self.processor = processor
         self.logger = logger
         self.sessionProvider = sessionProvider
+        self.resource = resource
+        self.tracer = tracer
+        self.meter = meter
+        self.deviceStats = deviceStats
     }
 
     /// Wires the SDK with a caller-supplied `BufferedEventExporter`.
     /// Use this overload from tests, demos, and application code that already
     /// owns an exporter (e.g. an OTLP/gRPC adapter).
+    ///
+    /// Traces and metrics are NOT wired on this path — the exporter here is a
+    /// log/event adapter. Callers that need traces or metrics should use the
+    /// production `start(config:)` entry point.
     public static func start(
         config: MobileConfig,
         exporter: BufferedEventExporter
@@ -44,10 +82,10 @@ public final class OTelMobile: @unchecked Sendable {
 
         // Wire OTel-Swift's LoggerProvider through our processor so that
         // `logger.logRecordBuilder().emit()` lands in the buffer.
-        let resource = Resource(attributes: [
-            "service.name": AttributeValue.string(config.serviceName),
-            "service.version": AttributeValue.string(config.serviceVersion),
-        ])
+        let resource = ResourceBuilder.buildMobileResource(
+            serviceName: config.serviceName,
+            serviceVersion: config.serviceVersion
+        )
         let loggerProvider = LoggerProviderBuilder()
             .with(resource: resource)
             .with(processors: [processor])
@@ -58,17 +96,27 @@ public final class OTelMobile: @unchecked Sendable {
             config: config,
             processor: processor,
             logger: logger,
-            sessionProvider: sessionProvider
+            sessionProvider: sessionProvider,
+            resource: resource,
+            tracer: nil,
+            meter: nil,
+            deviceStats: DeviceStatsCollector()
         )
     }
 
-    /// Production wiring: builds OTel-Swift's OTLP/HTTP log exporter against
-    /// `config.endpoint` (with optional Bearer auth from `config.authToken`),
-    /// wraps it in a batch processor, and registers BOTH our buffer
-    /// processor AND the batch processor on the LoggerProvider. Each `emit`
-    /// is fanned out to both: the buffer processor captures for
-    /// selective-flush/replay semantics, and the batch processor streams to
-    /// the real collector.
+    /// Production wiring: builds OTel-Swift's OTLP/HTTP log, trace, and
+    /// metric exporters against `config.endpoint` (with optional Bearer auth
+    /// from `config.authToken`), assembles each exporter with an appropriate
+    /// batch/periodic reader, and registers everything against three
+    /// providers (Logger, Tracer, Meter) sharing a single `Resource`.
+    ///
+    /// - For logs, we register BOTH our buffer processor AND the OTLP batch
+    ///   processor on the LoggerProvider. Each `emit` is fanned out: the
+    ///   buffer captures for selective-flush/replay semantics, and the batch
+    ///   processor streams to the real collector.
+    /// - For traces, a single `BatchSpanProcessor` exports to OTLP.
+    /// - For metrics, a `PeriodicMetricReaderBuilder` is driven by the
+    ///   `MeterProvider` internals at a 10s cadence.
     ///
     /// The injectable-exporter overload `start(config:exporter:)` remains
     /// available for unit tests and bespoke transport adapters.
@@ -87,39 +135,88 @@ public final class OTelMobile: @unchecked Sendable {
             sessionProvider: sessionProvider
         )
 
-        let otlpExporter = try OTLPExporterFactory.makeHttpLogExporter(
+        // Build the OTLP exporters — one per signal. Each handles its own
+        // URL normalisation (`/v1/logs`, `/v1/traces`, `/v1/metrics`).
+        let otlpLogExporter = try OTLPExporterFactory.makeHttpLogExporter(
             endpoint: config.endpoint,
             authToken: config.authToken,
             extraHeaders: config.extraHeaders
         )
+        let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
+            endpoint: config.endpoint,
+            authToken: config.authToken,
+            extraHeaders: config.extraHeaders
+        )
+        let otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
+            endpoint: config.endpoint,
+            authToken: config.authToken,
+            extraHeaders: config.extraHeaders
+        )
+
         // Small schedule delay for demo visibility — production deployments
         // can tune this up; 2s gives crisp turnaround during live demos
         // without being so aggressive that we spam the collector.
-        let batchProcessor = BatchLogRecordProcessor(
-            logRecordExporter: otlpExporter,
+        let batchLogProcessor = BatchLogRecordProcessor(
+            logRecordExporter: otlpLogExporter,
             scheduleDelay: 2,
             exportTimeout: 30,
             maxQueueSize: 2048,
             maxExportBatchSize: 512
         )
+        let batchSpanProcessor = BatchSpanProcessor(
+            spanExporter: otlpTraceExporter,
+            scheduleDelay: 2,
+            exportTimeout: 30,
+            maxQueueSize: 2048,
+            maxExportBatchSize: 512
+        )
+        // Metrics are naturally periodic — a 10s cadence balances freshness
+        // and overhead for device health gauges.
+        let metricReader = PeriodicMetricReaderBuilder(exporter: otlpMetricExporter)
+            .setInterval(timeInterval: 10)
+            .build()
 
-        let resource = Resource(attributes: [
-            "service.name": AttributeValue.string(config.serviceName),
-            "service.version": AttributeValue.string(config.serviceVersion),
-        ])
+        let resource = ResourceBuilder.buildMobileResource(
+            serviceName: config.serviceName,
+            serviceVersion: config.serviceVersion
+        )
+
         // `with(processors:)` appends — both processors receive every
         // emitted log record.
         let loggerProvider = LoggerProviderBuilder()
             .with(resource: resource)
-            .with(processors: [bufferProcessor, batchProcessor])
+            .with(processors: [bufferProcessor, batchLogProcessor])
             .build()
         let logger = loggerProvider.get(instrumentationScopeName: "io.dash0.mobile")
+
+        let tracerProvider = TracerProviderBuilder()
+            .with(resource: resource)
+            .add(spanProcessor: batchSpanProcessor)
+            .build()
+        let tracer = tracerProvider.get(
+            instrumentationName: "io.dash0.mobile",
+            instrumentationVersion: ResourceBuilder.sdkVersion
+        )
+
+        // MeterProviderSdk.builder() returns a NoopMeterProviderBuilder which
+        // only transitions to the real MeterProviderBuilder once a metric
+        // reader is registered. See NoopMeterProviderBuilder.swift in
+        // opentelemetry-swift-core.
+        let meterProvider = MeterProviderSdk.builder()
+            .setResource(resource: resource)
+            .registerMetricReader(reader: metricReader)
+            .build()
+        let meter = meterProvider.get(name: "io.dash0.mobile")
 
         return OTelMobile(
             config: config,
             processor: bufferProcessor,
             logger: logger,
-            sessionProvider: sessionProvider
+            sessionProvider: sessionProvider,
+            resource: resource,
+            tracer: tracer,
+            meter: meter,
+            deviceStats: DeviceStatsCollector()
         )
     }
 
@@ -128,10 +225,19 @@ public final class OTelMobile: @unchecked Sendable {
     /// Emit a log event with an optional severity. Thin-slice convenience —
     /// real instrumentation modules will land in subsequent tasks.
     public func emit(body: String, severity: Severity = .info) {
-        logger.logRecordBuilder()
+        emit(body: body, severity: severity, attributes: [:])
+    }
+
+    /// Emit a log event with attributes attached. Use this when you want the
+    /// log record to carry structured metadata searchable in the backend.
+    public func emit(body: String, severity: Severity, attributes: [String: AttributeValue]) {
+        var builder = logger.logRecordBuilder()
             .setBody(AttributeValue.string(body))
             .setSeverity(severity)
-            .emit()
+        if !attributes.isEmpty {
+            builder = builder.setAttributes(attributes)
+        }
+        builder.emit()
     }
 
     /// Synchronously flush all buffered events to the exporter.

@@ -35,24 +35,9 @@ public enum OTLPExporterFactory {
         extraHeaders: [String: String] = [:]
     ) throws -> LogRecordExporter {
         let url = try buildLogsEndpointURL(from: endpoint)
-
-        var headerPairs: [(String, String)] = []
-        if let token = authToken, !token.isEmpty {
-            headerPairs.append(("Authorization", "Bearer \(token)"))
-        }
-        for (key, value) in extraHeaders {
-            headerPairs.append((key, value))
-        }
-
         // Use protobuf on the wire; OTel-Swift's `exportAsJson` default is
         // `true`, but the server cost savings from protobuf matter for mobile.
-        let otlpConfig = OtlpConfiguration(
-            timeout: OtlpConfiguration.DefaultTimeoutInterval,
-            compression: .gzip,
-            headers: headerPairs.isEmpty ? nil : headerPairs,
-            exportAsJson: false
-        )
-
+        let otlpConfig = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
         // We pass `envVarHeaders: nil` so that OTLP env-var headers don't
         // override the caller-supplied auth token. OTel-Swift's default is
         // `EnvVarHeaders.attributes`, which in a mobile process is usually
@@ -64,32 +49,95 @@ public enum OTLPExporterFactory {
         )
     }
 
+    /// Build an OTLP/HTTP trace exporter. Same semantics as
+    /// `makeHttpLogExporter`: appends `/v1/traces` if missing, bearer auth,
+    /// gzipped protobuf over the wire.
+    public static func makeHttpTraceExporter(
+        endpoint: String,
+        authToken: String?,
+        extraHeaders: [String: String] = [:]
+    ) throws -> OtlpHttpTraceExporter {
+        let url = try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/traces")
+        let otlpConfig = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
+        return OtlpHttpTraceExporter(
+            endpoint: url,
+            config: otlpConfig,
+            envVarHeaders: nil
+        )
+    }
+
+    /// Build an OTLP/HTTP metric exporter. Same semantics as
+    /// `makeHttpLogExporter`: appends `/v1/metrics` if missing, bearer auth,
+    /// gzipped protobuf over the wire.
+    public static func makeHttpMetricExporter(
+        endpoint: String,
+        authToken: String?,
+        extraHeaders: [String: String] = [:]
+    ) throws -> OtlpHttpMetricExporter {
+        let url = try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/metrics")
+        let otlpConfig = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
+        return OtlpHttpMetricExporter(
+            endpoint: url,
+            config: otlpConfig,
+            envVarHeaders: nil
+        )
+    }
+
     /// Derive the full logs-ingest URL from a user-supplied endpoint string.
     ///
     /// Visible-internal for tests; callers should use `makeHttpLogExporter`.
     static func buildLogsEndpointURL(from endpoint: String) throws -> URL {
+        try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/logs")
+    }
+
+    /// Generic endpoint-normalisation used by the log/trace/metric factories.
+    /// If the caller already supplied a URL ending in `signalPath`, it's kept
+    /// as-is; otherwise `signalPath` is appended (trailing-slash safe).
+    static func buildSignalEndpointURL(from endpoint: String, signalPath: String) throws -> URL {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let base = URL(string: trimmed) else {
             throw OTLPExporterFactoryError.invalidEndpoint(endpoint)
         }
 
-        // If caller already supplied the full /v1/logs URL, use it as-is.
-        if base.path.hasSuffix("/v1/logs") || base.path.hasSuffix("/v1/logs/") {
+        // If caller already supplied the full /v1/<signal> URL, use it as-is.
+        if base.path.hasSuffix(signalPath) || base.path.hasSuffix(signalPath + "/") {
             return base
         }
 
-        // Append /v1/logs, preserving scheme/host/port/query.
+        // Append /v1/<signal>, preserving scheme/host/port/query.
         guard var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw OTLPExporterFactoryError.invalidEndpoint(endpoint)
         }
         let basePath = comps.path.hasSuffix("/")
             ? String(comps.path.dropLast())
             : comps.path
-        comps.path = basePath + "/v1/logs"
+        comps.path = basePath + signalPath
 
         guard let finalURL = comps.url else {
             throw OTLPExporterFactoryError.invalidEndpoint(endpoint)
         }
         return finalURL
+    }
+
+    /// Build the shared OtlpConfiguration used by all three exporters. Auth
+    /// token goes on the `Authorization: Bearer` header; any caller-supplied
+    /// headers are merged (empty strings are filtered out upstream).
+    private static func buildOtlpConfig(
+        authToken: String?,
+        extraHeaders: [String: String]
+    ) -> OtlpConfiguration {
+        var headerPairs: [(String, String)] = []
+        if let token = authToken, !token.isEmpty {
+            headerPairs.append(("Authorization", "Bearer \(token)"))
+        }
+        for (key, value) in extraHeaders {
+            headerPairs.append((key, value))
+        }
+        return OtlpConfiguration(
+            timeout: OtlpConfiguration.DefaultTimeoutInterval,
+            compression: .gzip,
+            headers: headerPairs.isEmpty ? nil : headerPairs,
+            exportAsJson: false
+        )
     }
 }
