@@ -14,7 +14,17 @@
 #   2 = validation failure (some expected marker didn't appear)
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the real script path so invoking via the root-level
+# `./validate-ios-end-to-end.sh` symlink still anchors REPO_ROOT correctly.
+RESOLVED_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$RESOLVED_SOURCE" ]]; do
+    _linked="$(readlink "$RESOLVED_SOURCE")"
+    case "$_linked" in
+        /*) RESOLVED_SOURCE="$_linked" ;;
+        *)  RESOLVED_SOURCE="$(cd "$(dirname "$RESOLVED_SOURCE")" && pwd)/$_linked" ;;
+    esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$RESOLVED_SOURCE")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IOS_DEMO_ROOT="$REPO_ROOT/examples/demo-app-ios-starter"
 BUNDLE_ID="com.dash0.mobile.demo.StarterApp"

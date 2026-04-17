@@ -1,11 +1,66 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Generated: 2026-04-17
-iOS branch: iPhone
+Generated: 2026-04-17 (updated later same day)
+iOS branch: iPhone (26 commits ahead of main, 107 tests)
 Android SDK module: `otel-android-mobile/` + 20 instrumentation submodules
 iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
 
-## Summary
+## Current state (end of 2026-04-17 session)
+
+> This doc was originally generated when iOS was a thin-slice port. It has been
+> updated inline below to reflect the subsequent parity closure. The historical
+> "Summary" paragraph at the bottom is kept for context but no longer reflects
+> the current state.
+
+**What's defensibly at parity:**
+
+- All 6 iOS-applicable auto-instrumentation modules ship and auto-install:
+  Errors (+ NSException chain-through), Lifecycle, Network (URLProtocol),
+  Screen (SwiftUI ViewModifier default, UIKit swizzle opt-in), Freeze
+  (DispatchSourceTimer main-thread watchdog), Vitals (app.start + ui.jank +
+  memory warnings).
+- SwiftUI ViewModifiers: `.trackScreen(Name)`, `.trackTaps(target:)`,
+  `.trackScrolls(target:)`, `.trackTextInput(target:)`.
+- Dual-tier buffer: RAMEventBuffer (actor + Deque + size caps) + DiskLogBuffer
+  (sqlite3 actor + WAL + startup recovery). Crash-safe claim closed.
+- Full policy pipeline: DSL v2 parser (14 Android-parity tests) + PolicyEvaluator
+  runtime (17 tests) + ConfigPoller + wiring through MobileLogRecordProcessor.onEmit
+  with flushWindow on match. Five integration tests prove end-to-end firing.
+- SessionManager with UUID rotation + UserDefaults persistence (replaces the
+  earlier StaticSessionProvider which never rotated).
+- OTLP/HTTP exporter (auto-wired) + OTLP/gRPC factory (opt-in).
+- Resource attributes: os.type=darwin, os.name=iOS, os.version, device.manufacturer=Apple,
+  device.model.identifier, device.id, service.*, telemetry.sdk.* — matches
+  Android's resource shape line-for-line.
+- Safety: async-signal-safe signal handler, zero `fatalError`/`try!` in SDK
+  source (CI-enforced), buffer memory caps, NetworkInstrumentation thread-safety,
+  demo off-main-thread.
+- CI: .github/workflows/ios-tests.yml — host tests + iPhone 16 simulator +
+  both demo app builds + static safety audit.
+- Documentation: IOS_SDK_GUIDE, IOS_CONFIGURATION, HOW_TO_DEMO_IOS,
+  IOS_ANDROID_PARITY, SDK_SAFETY, IOS_CRASH_REPORTING (PLCrashReporter
+  integration guide), otel-ios-mobile/CLAUDE.md.
+- Dual-platform demo: scripts/demo/run-dual-platform-demo.sh boots Android
+  emulator + iPhone simulator concurrently, both in auto-emit mode.
+
+**What's explicitly not iOS-applicable** (Android-specific APIs, not gaps):
+
+- compose-click (Jetpack Compose), back-press, screen-orientation, timber,
+  database, file-io, amplify-datastore, system-events, debug-widget.
+
+**Honest remaining deferred work:**
+
+- Screenshot/Wireframe SwiftUI ViewModifiers — need privacy design (text-view
+  redaction, attribute size caps, consent) before shipping.
+- PLCrashReporter as optional SPM dep — documented as integration guide
+  rather than bundled dep (license/conflict/size concerns — customers with
+  Sentry/Firebase already have a crash reporter).
+- Android's 28 `validate-us0XX-*.sh` scenario scripts — only a single
+  end-to-end validation script exists on iOS so far (`validate-ios-end-to-end.sh`).
+
+---
+
+## Historical summary (when this doc was originally generated)
 
 The iOS SDK is a thin-slice port. Of the 20 Android instrumentation modules, only
 **5 ship functional iOS equivalents** (errors, lifecycle, network, screen, and a
