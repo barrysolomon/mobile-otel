@@ -383,9 +383,9 @@ The demo control center exports `DEVELOPER_DIR` itself when a full Xcode is dete
 1. Verify `endpoint` is reachable from the simulator. Simulators share the host's network, so `curl -v https://ingress.YOUR-DOMAIN.dash0.com:4318/v1/logs` from your Mac is a valid smoke test.
 2. Confirm `authToken` includes the `Bearer ` prefix and `extraHeaders["Dash0-Dataset"]` is set.
 3. Call `mobile.forceFlush()` explicitly — the batch processors run on a 2 s cadence by default, which can hide misconfiguration during a quick smoke test.
-4. Stream the app's Console output:
+4. Stream the app's Console output — replace `AstronomyShop` with the process name of your app:
    ```bash
-   xcrun simctl spawn booted log stream --predicate 'process == "StarterApp"' --level debug
+   xcrun simctl spawn booted log stream --predicate 'process == "AstronomyShop"' --level debug
    ```
 
 ### Signal handler not restoring between crashes

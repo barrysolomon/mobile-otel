@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Interactive iOS demo control center — the iOS equivalent of demo-control-center.sh.
-# Manages booting the iOS Simulator, building/installing the starter app, launching
+# Manages booting the iOS Simulator, building/installing AstronomyShop, launching
 # it, triggering telemetry actions, and tailing its console output.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DEMO_ROOT="$REPO_ROOT/examples/demo-app-ios-starter"
-BUNDLE_ID="com.dash0.mobile.demo.StarterApp"
-SCHEME="StarterApp"
+DEMO_ROOT="$REPO_ROOT/examples/upstream-demo-app-ios"
+BUNDLE_ID="com.dash0.mobile.demo.AstronomyShop"
+SCHEME="AstronomyShop"
 SIM_NAME="${IOS_SIM_NAME:-iPhone 17}"
 
 if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app ]]; then
@@ -28,7 +28,7 @@ Usage: $0 <command>
 
 Commands:
   boot                 Boot the '${SIM_NAME}' simulator
-  build                Build StarterApp
+  build                Build AstronomyShop
   install              Install the built app on the booted simulator
   launch               Launch the app
   terminate            Terminate the running app
@@ -59,7 +59,7 @@ boot_sim() {
 build_app() {
     echo "Building $SCHEME for iOS Simulator..."
     cd "$DEMO_ROOT"
-    if [[ ! -d StarterApp.xcodeproj ]]; then
+    if [[ ! -d "${SCHEME}.xcodeproj" ]]; then
         /opt/homebrew/bin/xcodegen generate
     fi
     xcodebuild -scheme "$SCHEME" \

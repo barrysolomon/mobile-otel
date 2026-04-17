@@ -18,12 +18,14 @@ struct AstronomyShopApp: App {
         if let cart = root.cart, !root.products.isEmpty {
             ProductListView(products: root.products)
                 .environmentObject(cart)
+                .environmentObject(root)
                 .onAppear {
                     root.logger?.logRecordBuilder()
                         .setBody(.string("app.home_appeared"))
                         .setSeverity(.info)
                         .setAttributes(["event.name": .string("app.home_appeared")])
                         .emit()
+                    root.startAutoDemoIfRequested()
                 }
         } else {
             VStack(spacing: 12) {
@@ -48,12 +50,19 @@ final class RootState: ObservableObject {
     @Published var cart: CartViewModel?
     @Published var status: String = "Starting..."
     let logger: Logger?
+    let telemetry: ShopTelemetry?
     private let mobile: OTelMobile?
+    private var autoDriver: AutoDemoDriver?
 
     init() {
         let boot = ShopBootstrap.start()
         self.mobile = boot.mobile
         self.logger = boot.mobile?.logger
+        self.telemetry = ShopTelemetry(
+            tracer: boot.mobile?.tracer,
+            logger: boot.mobile?.logger,
+            meter: boot.mobile?.meter
+        )
         self.status = boot.status
 
         // OTelMobile.start auto-installed Network/Lifecycle/Errors/Screen
@@ -61,12 +70,37 @@ final class RootState: ObservableObject {
         if let mobile = boot.mobile {
             let catalog = ProductCatalogClient(tracer: mobile.tracer)
             self.products = catalog.loadProducts()
-            self.cart = CartViewModel(tracer: mobile.tracer, logger: mobile.logger)
         } else {
             // SDK not started — still load catalog so the UI works offline.
             let catalog = ProductCatalogClient(tracer: nil)
             self.products = catalog.loadProducts()
-            self.cart = CartViewModel(tracer: nil, logger: nil)
         }
+        self.cart = CartViewModel(telemetry: telemetry)
+    }
+
+    /// Called from the root view's `onAppear`. When launched with env
+    /// `DASH0_AUTO_DEMO=1` (set via `SIMCTL_CHILD_DASH0_AUTO_DEMO=1` on the
+    /// simctl parent shell — simctl has no `--env` flag; extra tokens become
+    /// argv), run the full user journey on a loop: browse → add → checkout.
+    /// Drives deterministic signal for `validate-ios-end-to-end.sh` and
+    /// `run-dual-platform-demo.sh`.
+    func startAutoDemoIfRequested() {
+        guard autoDriver == nil else { return }
+        let envSet = ProcessInfo.processInfo.environment["DASH0_AUTO_DEMO"] == "1"
+        let argSet = CommandLine.arguments.contains("--auto-demo")
+        guard envSet || argSet else { return }
+        autoDriver = AutoDemoDriver(telemetry: telemetry, products: products)
+        autoDriver?.start()
+    }
+
+    /// Emit the browse telemetry for a product view. Used by
+    /// `ProductDetailView.onAppear` so user-driven browses produce the same
+    /// 3-span tree + histogram as the auto-demo.
+    func emitProductViewed(product: Product) {
+        telemetry?.emitProductView(product: product)
+    }
+
+    deinit {
+        autoDriver?.stop()
     }
 }

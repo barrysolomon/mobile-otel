@@ -248,13 +248,31 @@ public final class OTelMobile: @unchecked Sendable {
             instrumentationVersion: ResourceBuilder.sdkVersion
         )
 
-        // MeterProviderSdk.builder() returns a NoopMeterProviderBuilder which
-        // only transitions to the real MeterProviderBuilder once a metric
-        // reader is registered. See NoopMeterProviderBuilder.swift in
-        // opentelemetry-swift-core.
+        // `MeterProviderSdk.builder()` returns a `NoopMeterProviderBuilder`
+        // that only becomes a real `MeterProviderBuilder` after a metric
+        // reader is registered — see `NoopMeterProviderBuilder.swift`.
+        //
+        // The explicit catch-all `registerView(...)` is a workaround for an
+        // upstream bug: `ViewRegistry.findViews` only consults the explicit
+        // `registeredViews` list. The `instrumentDefaultRegisteredView`
+        // defaults it builds in `init` are never read. Without at least one
+        // registered view, `registerSynchronousMetricStorage` creates zero
+        // storages and every `counter.add()` / `histogram.record()` is
+        // silently dropped. A single catch-all view routes every instrument
+        // through default aggregation, restoring the expected behaviour.
+        //
+        // See: `Tests/.../MeterProviderViewRegistrationTests.swift` — if the
+        // `regression: no export without catch-all view` case starts failing,
+        // upstream has fixed it and this workaround can be removed.
         let meterProvider = MeterProviderSdk.builder()
             .setResource(resource: resource)
             .registerMetricReader(reader: metricReader)
+            .registerView(
+                selector: InstrumentSelector.builder()
+                    .setInstrument(name: ".*")
+                    .build(),
+                view: View.builder().build()
+            )
             .build()
         let meter = meterProvider.get(name: "io.dash0.mobile")
 
@@ -287,9 +305,10 @@ public final class OTelMobile: @unchecked Sendable {
         // scene setup. Deferring to the main queue's next tick lets the first
         // SwiftUI render complete first.
         let opts = config.autoCaptureOptions
+        let networkConfig = Self.makeNetworkConfig(endpoint: config.endpoint)
         DispatchQueue.main.async {
             if opts.contains(.network) {
-                NetworkInstrumentation.shared.install(tracer: tracer)
+                NetworkInstrumentation.shared.install(tracer: tracer, config: networkConfig)
             }
             if opts.contains(.lifecycle) {
                 LifecycleInstrumentation.shared.install(tracer: tracer, logger: logger)
@@ -392,5 +411,35 @@ public final class OTelMobile: @unchecked Sendable {
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
         await processor.flushWindow(minutes: minutes)
+    }
+
+    // MARK: - Internal helpers (testable)
+
+    /// Build the `NetworkConfig` used by auto-installed `NetworkInstrumentation`.
+    ///
+    /// Self-capture avoidance: `NetworkInstrumentation` intercepts every
+    /// URLSession request via `URLProtocol`, which would otherwise include the
+    /// SDK's own OTLP export calls. This helper adds the configured endpoint
+    /// host to `ignoredHosts` by default so exports don't generate spans that
+    /// then need to be exported themselves. Callers can still override by
+    /// calling `NetworkInstrumentation.shared.install(tracer:config:)` directly
+    /// after `start()` with their own `NetworkConfig`.
+    ///
+    /// Exposed at `internal` so `@testable import` can exercise the mapping
+    /// from endpoint string to `ignoredHosts`.
+    static func makeNetworkConfig(endpoint: String) -> NetworkConfig {
+        let base = NetworkConfig.default
+        guard let host = URL(string: endpoint)?.host?.lowercased() else {
+            return base
+        }
+        return NetworkConfig(
+            ignoredHosts: base.ignoredHosts.union([host]),
+            allowedHosts: base.allowedHosts,
+            stripQueryStrings: base.stripQueryStrings,
+            capturedResponseHeaders: base.capturedResponseHeaders,
+            capturedRequestHeaders: base.capturedRequestHeaders,
+            errorStatusThreshold: base.errorStatusThreshold,
+            propagateTraceContext: base.propagateTraceContext
+        )
     }
 }

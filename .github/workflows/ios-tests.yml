@@ -43,16 +43,6 @@ jobs:
       - name: Install xcodegen
         run: brew install --quiet xcodegen
 
-      - name: Build Starter demo app
-        working-directory: examples/demo-app-ios-starter
-        run: |
-          xcodegen generate
-          xcodebuild build \
-            -scheme StarterApp \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -derivedDataPath ./build \
-            | tail -20
-
       - name: Build Astronomy Shop demo app
         working-directory: examples/upstream-demo-app-ios
         run: |

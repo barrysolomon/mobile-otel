@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Dual-platform telemetry demo:
 #   - Boots an Android emulator AND an iPhone simulator
-#   - Builds + installs + launches the Starter demo on each
+#   - Builds + installs + launches the full demo on each (AstronomyShop on iOS,
+#     the Android demo-app on Android)
 #   - Puts each app into auto-emit mode so both stream logs / traces / metrics
 #     to Dash0 continuously, side by side, with identical service.* attributes
 #     (differing only in os.name: "Android" vs "iOS").
 #
 # What you should see in Dash0:
-#   - Filter on service.name="otel-mobile-demo" OR "otel-ios-demo-starter"
+#   - Filter on service.name="otel-mobile-demo" OR "otel-ios-astronomy-shop"
 #   - Group by os.name — the two platforms' event streams appear side-by-side
-#   - Each platform emits at ~2 Hz: info log -> span -> counter -> nested span
-#     -> warn log + histogram, repeating
+#   - iOS: ~12-span checkout traces, shop.cart.items_added counter,
+#     shop.checkout.duration_ms histogram, multi-severity logs
+#   - Android: ~2 Hz emission of info log / span / counter / nested span /
+#     warn log + histogram
 #
 # Exit clean with Ctrl+C. We kill both apps + optionally shut down the
 # emulator/simulator (see --keep-running).
@@ -21,9 +24,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 ANDROID_DEMO_ROOT="$REPO_ROOT/examples/demo-app"
-IOS_DEMO_ROOT="$REPO_ROOT/examples/demo-app-ios-starter"
+IOS_DEMO_ROOT="$REPO_ROOT/examples/upstream-demo-app-ios"
+IOS_SCHEME="AstronomyShop"
 ANDROID_PKG="io.opentelemetry.android.demo"
-IOS_BUNDLE="com.dash0.mobile.demo.StarterApp"
+IOS_BUNDLE="com.dash0.mobile.demo.AstronomyShop"
 IOS_SIM_NAME="${IOS_SIM_NAME:-iPhone 17}"
 ANDROID_AVD="${ANDROID_AVD:-Pixel_7}"
 
@@ -151,28 +155,26 @@ start_ios() {
     open -a Simulator 2>/dev/null || true
     ok "Simulator ready"
 
-    log "iOS: building + installing StarterApp"
-    if [[ ! -d "$IOS_DEMO_ROOT/StarterApp.xcodeproj" ]]; then
+    log "iOS: building + installing $IOS_SCHEME"
+    if [[ ! -d "$IOS_DEMO_ROOT/${IOS_SCHEME}.xcodeproj" ]]; then
         (cd "$IOS_DEMO_ROOT" && /opt/homebrew/bin/xcodegen generate >/dev/null)
     fi
     (cd "$IOS_DEMO_ROOT" && \
-        xcodebuild -scheme StarterApp \
+        xcodebuild -scheme "$IOS_SCHEME" \
             -destination "platform=iOS Simulator,name=$IOS_SIM_NAME" \
             -derivedDataPath ./build build >/tmp/dual-ios-build.log 2>&1)
     ok "iOS app built"
 
     xcrun simctl terminate booted "$IOS_BUNDLE" 2>/dev/null || true
-    xcrun simctl install booted "$IOS_DEMO_ROOT/build/Build/Products/Debug-iphonesimulator/StarterApp.app"
+    xcrun simctl install booted "$IOS_DEMO_ROOT/build/Build/Products/Debug-iphonesimulator/${IOS_SCHEME}.app"
     ok "iOS app installed"
 
-    log "iOS: launching with DASH0_AUTO_DEMO=1 (auto-emit loop)"
-    # Pass the env var so DemoModel.init kicks off its auto-demo loop.
-    # simctl launch supports `--env KEY=VAL` since iOS 14+.
-    xcrun simctl launch --console-pty booted "$IOS_BUNDLE" \
-        --env DASH0_AUTO_DEMO=1 > /tmp/dual-ios-console.log 2>&1 &
-    IOS_PID=$!
-    sleep 2
-    ok "iOS auto-demo loop started (PID $IOS_PID)"
+    log "iOS: launching with DASH0_AUTO_DEMO=1 (auto-driven user journey loop)"
+    # simctl has no --env flag; extra tokens become argv. To set a real env
+    # var on the launched app, prefix the command with SIMCTL_CHILD_<KEY>=<VAL>
+    # in the parent shell — simctl strips the prefix and forwards as env.
+    SIMCTL_CHILD_DASH0_AUTO_DEMO=1 xcrun simctl launch booted "$IOS_BUNDLE" > /tmp/dual-ios-console.log 2>&1
+    ok "iOS auto-demo journey started"
 }
 
 # ========================================================================
@@ -191,11 +193,20 @@ cat <<EOF
 Watch Dash0 — events should arrive from BOTH platforms concurrently.
 
 Filter hints:
-  Filter by:     service.name="otel-mobile-demo"  OR  service.name="otel-ios-demo-starter"
+  Filter by:     service.name="otel-mobile-demo"  OR  service.name="otel-ios-astronomy-shop"
   Separate by:   os.name  (values: "Android", "iOS")
   Per-platform:  os.name="iOS"  AND  service.version=...
 
-Signals being emitted (~2 Hz on iOS, ~500ms throttle on Android):
+iOS signals (journey loop: browse → add → checkout every ~12s):
+  Logs:    app.home_appeared, shop.view_product, cart.add_item (INFO),
+           cart.low_stock_warning (WARN), shop.product_missing (ERROR)
+  Traces:  shop.load_catalog (4-span tree), shop.view_product (3-span tree),
+           checkout (12-span deep tree: validate → inventory × N → totals
+           × 3 → charge × 2 → confirm × 2 → analytics)
+  Metrics: shop.cart.items_added counter, shop.checkout.duration_ms histogram,
+           shop.view_product.load_ms histogram
+
+Android signals (~500ms throttle):
   Logs:    app.start / user.tap / user.scroll / http.request / error.*
   Traces:  ui.tap spans, page.* spans, network.* spans, nested workflow
   Metrics: demo.button_press counter, demo.request_duration_ms histogram,

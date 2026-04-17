@@ -88,5 +88,5 @@ Active iOS development happens on the `iPhone` branch. Do NOT fast-forward to `m
 - `docs/IOS_ANDROID_PARITY.md` — feature-by-feature matrix
 - `docs/SDK_SAFETY.md` — defensive posture + tracked risks
 - `docs/IOS_CRASH_REPORTING.md` — PLCrashReporter integration guide
-- `examples/demo-app-ios-starter/README.md` — minimal starter app
-- `examples/upstream-demo-app-ios/README.md` — Astronomy Shop full demo
+- `examples/upstream-demo-app-ios/README.md` — Astronomy Shop — the canonical iOS demo (auto-demo loop, 14-span checkout, ShopTelemetry helper)
+- `examples/demo-app-ios-starter/README.md` — legacy minimal starter app; not in CI, not in validate scripts. Kept for reference but not the active demo path.

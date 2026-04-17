@@ -4,6 +4,7 @@ import ScreenInstrumentation
 struct ProductDetailView: View {
     let product: Product
     @EnvironmentObject var cart: CartViewModel
+    @EnvironmentObject var root: RootState
     @State private var quantity: Int = 1
     @State private var showAdded: Bool = false
 
@@ -61,6 +62,9 @@ struct ProductDetailView: View {
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
         .trackScreen("ProductDetail")
+        .onAppear {
+            root.emitProductViewed(product: product)
+        }
     }
 
     @ViewBuilder
