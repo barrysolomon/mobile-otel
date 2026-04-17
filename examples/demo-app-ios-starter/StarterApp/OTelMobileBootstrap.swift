@@ -1,6 +1,7 @@
 import Foundation
 import OTelMobileSDK
 import OTelMobileCore
+import NetworkInstrumentation
 
 /// Loads Dash0 credentials from a bundled `otel-config.json` (or falls back to
 /// the `.template`), then boots `OTelMobile` with the production OTLP/HTTP
@@ -81,6 +82,9 @@ enum OTelMobileBootstrap {
 
         do {
             let mobile = try OTelMobile.start(config: config)
+            if let tracer = mobile.tracer {
+                NetworkInstrumentation.shared.install(tracer: tracer)
+            }
             let status = "SDK started — endpoint=\(demo.endpoint) dataset=\(demo.dataset)"
             print("OK \(status)")
             return BootstrapResult(mobile: mobile, config: demo, status: status)

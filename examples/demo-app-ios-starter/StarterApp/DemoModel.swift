@@ -11,6 +11,7 @@ final class DemoModel: ObservableObject {
     @Published var logsEmitted: Int = 0
     @Published var spansEmitted: Int = 0
     @Published var metricsEmitted: Int = 0
+    @Published var networkCalls: Int = 0
     @Published var deviceStatsOn: Bool = false
     @Published var lastFlushResult: String = ""
 
@@ -166,6 +167,24 @@ final class DemoModel: ObservableObject {
         let value = Double.random(in: 50...500)
         requestHistogram?.record(value: value, attributes: ["endpoint": .string("/api/demo")])
         metricsEmitted += 1
+    }
+
+    // MARK: - Network (auto-instrumented via NetworkInstrumentation)
+
+    func fetchHttpbinJson() {
+        networkCalls += 1
+        Task.detached {
+            let url = URL(string: "https://httpbin.org/json")!
+            _ = try? await URLSession.shared.data(from: url)
+        }
+    }
+
+    func fetchHttpbin5xx() {
+        networkCalls += 1
+        Task.detached {
+            let url = URL(string: "https://httpbin.org/status/500")!
+            _ = try? await URLSession.shared.data(from: url)
+        }
     }
 
     // MARK: - Device stats

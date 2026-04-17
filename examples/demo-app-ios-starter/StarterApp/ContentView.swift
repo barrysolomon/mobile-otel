@@ -12,6 +12,7 @@ struct ContentView: View {
                 logsSection
                 tracesSection
                 metricsSection
+                networkSection
                 deviceStatsSection
                 countersSection
             }
@@ -88,6 +89,15 @@ struct ContentView: View {
         }
     }
 
+    private var networkSection: some View {
+        SectionCard(title: "Network (auto-instrumented)") {
+            HStack(spacing: 10) {
+                ActionButton("GET /json", color: .green) { model.fetchHttpbinJson() }
+                ActionButton("GET /status/500", color: .red) { model.fetchHttpbin5xx() }
+            }
+        }
+    }
+
     private var deviceStatsSection: some View {
         SectionCard(title: "Device Stats") {
             HStack(spacing: 12) {
@@ -116,6 +126,7 @@ struct ContentView: View {
                 Stat(label: "logs", value: model.logsEmitted)
                 Stat(label: "spans", value: model.spansEmitted)
                 Stat(label: "metrics", value: model.metricsEmitted)
+                Stat(label: "network", value: model.networkCalls)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

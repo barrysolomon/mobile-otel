@@ -39,13 +39,19 @@ let package = Package(
         ),
         .target(name: "LifecycleInstrumentation", dependencies: ["OTelMobileCore"]),
         .target(name: "ScreenInstrumentation", dependencies: ["OTelMobileCore"]),
-        .target(name: "NetworkInstrumentation", dependencies: ["OTelMobileCore"]),
+        .target(
+            name: "NetworkInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
         .target(name: "ErrorsInstrumentation", dependencies: ["OTelMobileCore"]),
         .target(name: "VitalsInstrumentation", dependencies: ["OTelMobileCore"]),
         .target(name: "FreezeInstrumentation", dependencies: ["OTelMobileCore"]),
         .testTarget(
             name: "OTelMobileSDKTests",
-            dependencies: ["OTelMobileSDK"]
+            dependencies: ["OTelMobileSDK", "NetworkInstrumentation"]
         ),
     ]
 )

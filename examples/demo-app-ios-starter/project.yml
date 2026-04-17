@@ -21,6 +21,8 @@ targets:
         product: OTelMobileSDK
       - package: OTelMobile
         product: OTelMobileCore
+      - package: OTelMobile
+        product: NetworkInstrumentation
     info:
       path: StarterApp/Info.plist
       properties:
