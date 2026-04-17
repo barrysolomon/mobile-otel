@@ -23,7 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import io.opentelemetry.android.demo.OtelDemoApplication
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import io.opentelemetry.android.demo.shop.ShopTelemetry
 import io.opentelemetry.android.demo.shop.clients.ProductCatalogClient
 import io.opentelemetry.android.demo.shop.ui.cart.CartScreen
 import io.opentelemetry.android.demo.shop.ui.cart.CartViewModel
@@ -33,8 +35,7 @@ import io.opentelemetry.android.demo.shop.ui.cart.InfoScreen
 import io.opentelemetry.android.demo.shop.ui.products.ProductDetails
 import io.opentelemetry.android.demo.shop.ui.products.ProductList
 import io.opentelemetry.android.demo.theme.DemoAppTheme
-import io.opentelemetry.api.common.AttributeKey.doubleKey
-import io.opentelemetry.api.common.AttributeKey.stringKey
+import kotlinx.coroutines.CoroutineScope
 
 class AstronomyShopActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,6 +54,10 @@ fun AstronomyShopScreen() {
     val astronomyShopNavController = rememberAstronomyShopNavController()
     val cartViewModel: CartViewModel = viewModel()
     val checkoutInfoViewModel: CheckoutInfoViewModel = viewModel()
+    val checkoutScope = rememberCoroutineScope()
+    // Emit the canonical `app.home_appeared` log the first time the shop
+    // composable renders. Mirrors iOS `RootState.onAppear`.
+    LaunchedEffect(Unit) { ShopTelemetry.emitAppHomeAppeared() }
 
     DemoAppTheme {
         Surface(
@@ -106,12 +111,12 @@ fun AstronomyShopScreen() {
                     }
                     composable(MainDestinations.CHECKOUT_INFO_ROUTE) {
                         InfoScreen(
-                            onPlaceOrderClick = {instrumentedPlaceOrder(
+                            onPlaceOrderClick = { instrumentedPlaceOrder(
                                 astronomyShopNavController = astronomyShopNavController,
                                 cartViewModel = cartViewModel,
-                                checkoutInfoViewModel = checkoutInfoViewModel
-                            )},
-                            upPress = {astronomyShopNavController.upPress()},
+                                scope = checkoutScope
+                            ) },
+                            upPress = { astronomyShopNavController.upPress() },
                             checkoutInfoViewModel = checkoutInfoViewModel
                         )
                     }
@@ -130,20 +135,27 @@ fun AstronomyShopScreen() {
 private fun instrumentedPlaceOrder(
     astronomyShopNavController: InstrumentedAstronomyShopNavController,
     cartViewModel: CartViewModel,
-    checkoutInfoViewModel: CheckoutInfoViewModel
-){
-    generateOrderPlacedEvent(cartViewModel, checkoutInfoViewModel)
-    astronomyShopNavController.navigateToCheckoutConfirmation()
-}
-
-private fun generateOrderPlacedEvent(
-    cartViewModel: CartViewModel,
-    checkoutInfoViewModel: CheckoutInfoViewModel
+    scope: CoroutineScope
 ) {
-    val eventBuilder = OtelDemoApplication.eventBuilder("otel.demo.app", "order.placed")
-    eventBuilder
-        .setAttribute(doubleKey("order.total.value"), cartViewModel.getTotalPrice())
-        .setAttribute(stringKey("buyer.state"), checkoutInfoViewModel.shippingInfo.state)
-        .emit()
+    // Emit the canonical 14-span checkout trace + histogram sample per the
+    // cross-platform contract in docs/design/shop-telemetry-contract.md.
+    // Replaces the legacy `order.placed` single-event emission.
+    val lines = cartViewModel.cartItems.value.map { item ->
+        ShopTelemetry.CheckoutLine(
+            productId = item.product.id,
+            productName = item.product.name,
+            quantity = item.quantity,
+            lineTotal = item.totalPrice()
+        )
+    }
+    val totalUsd = cartViewModel.getTotalPrice()
+    val itemCount = lines.sumOf { it.quantity }
+    ShopTelemetry.emitCheckout(
+        lines = lines,
+        totalUsd = totalUsd,
+        itemCount = itemCount,
+        scope = scope
+    )
+    astronomyShopNavController.navigateToCheckoutConfirmation()
 }
 

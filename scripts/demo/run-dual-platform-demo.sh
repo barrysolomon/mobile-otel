@@ -24,9 +24,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 ANDROID_DEMO_ROOT="$REPO_ROOT/examples/demo-app"
+# :upstream-demo-app is the Android Astronomy Shop module included under
+# demo-app. It implements the canonical cross-platform shop contract
+# (docs/design/shop-telemetry-contract.md) so a single Dash0 dashboard
+# can show bit-identical traces from Android + iOS side by side.
+ANDROID_GRADLE_TARGET=":upstream-demo-app:installDash0Debug"
+ANDROID_PKG="io.opentelemetry.android.demo.dash0"
+ANDROID_ACTIVITY=".MainActivity"
 IOS_DEMO_ROOT="$REPO_ROOT/examples/upstream-demo-app-ios"
 IOS_SCHEME="AstronomyShop"
-ANDROID_PKG="io.opentelemetry.android.demo"
 IOS_BUNDLE="com.dash0.mobile.demo.AstronomyShop"
 IOS_SIM_NAME="${IOS_SIM_NAME:-iPhone 17}"
 ANDROID_AVD="${ANDROID_AVD:-Pixel_7}"
@@ -119,16 +125,19 @@ start_android() {
     fi
     ANDROID_SERIAL=$(adb devices | awk '/emulator/{print $1; exit}')
 
-    log "Android: building + installing demo"
-    (cd "$ANDROID_DEMO_ROOT" && ./gradlew :android:installDebug -q)
+    log "Android: building + installing Astronomy Shop (:upstream-demo-app dash0 flavor)"
+    (cd "$ANDROID_DEMO_ROOT" && ./gradlew "$ANDROID_GRADLE_TARGET" -q)
     ok "APK installed"
 
-    log "Android: launching + triggering continuous monkey events"
-    adb -s "$ANDROID_SERIAL" shell am start -n "$ANDROID_PKG/.SchedulingActivity" >/dev/null
+    log "Android: launching Astronomy Shop + monkey auto-drive loop"
+    # MainActivity is the entry point; it navigates into AstronomyShopActivity.
+    adb -s "$ANDROID_SERIAL" shell am start -n "$ANDROID_PKG/$ANDROID_ACTIVITY" >/dev/null
     sleep 2
 
-    # Loop monkey events in background (equivalent of our auto-demo mode).
-    # Each iteration exercises the booking flow, scroll, and a tap cluster.
+    # Monkey produces deterministic tap/scroll events. Combined with the
+    # ShopTelemetry instrumentation wired into cart.add, checkout, and
+    # product-view onAppear, each cycle produces the canonical cross-
+    # platform shop signal (see docs/design/shop-telemetry-contract.md).
     (
         while true; do
             adb -s "$ANDROID_SERIAL" shell monkey -p "$ANDROID_PKG" \
@@ -193,9 +202,10 @@ cat <<EOF
 Watch Dash0 — events should arrive from BOTH platforms concurrently.
 
 Filter hints:
-  Filter by:     service.name="otel-mobile-demo"  OR  service.name="otel-ios-astronomy-shop"
-  Separate by:   os.name  (values: "Android", "iOS")
-  Per-platform:  os.name="iOS"  AND  service.version=...
+  Bracket both:  service.name =~ "otel-.*-astronomy-shop"
+  Filter one:    service.name = "otel-android-astronomy-shop"  OR  "otel-ios-astronomy-shop"
+  Separate by:   os.name  (values: "android", "iOS")
+  Shared type:   dash0.resource.type="mobile"  (both sides)
 
 iOS signals (journey loop: browse → add → checkout every ~12s):
   Logs:    app.home_appeared, shop.view_product, cart.add_item (INFO),

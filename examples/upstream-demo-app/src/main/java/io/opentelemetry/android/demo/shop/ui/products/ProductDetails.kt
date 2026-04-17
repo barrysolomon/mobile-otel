@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.opentelemetry.android.demo.shop.ShopTelemetry
 import io.opentelemetry.android.demo.shop.clients.ImageLoader
 import io.opentelemetry.android.demo.gothamFont
 import io.opentelemetry.android.demo.shop.model.Product
@@ -40,6 +41,10 @@ fun ProductDetails(
     val imageLoader = ImageLoader(context)
     val sourceProductImage = imageLoader.load(product.picture)
     var quantity by remember { mutableIntStateOf(1) }
+    // Canonical browse emission per the shared contract: fire on every
+    // product-detail render so the 3-span view-product tree + histogram
+    // sample land in Dash0 mirroring iOS `RootState.emitProductViewed`.
+    LaunchedEffect(product.id) { ShopTelemetry.emitProductView(product) }
 
     var slowRender by remember { mutableStateOf(false) }
 

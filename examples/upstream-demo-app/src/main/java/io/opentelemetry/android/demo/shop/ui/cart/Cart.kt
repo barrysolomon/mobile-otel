@@ -10,12 +10,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.opentelemetry.android.demo.OtelDemoApplication
+import io.opentelemetry.android.demo.shop.ShopTelemetry
 import io.opentelemetry.android.demo.shop.clients.ProductCatalogClient
 import io.opentelemetry.android.demo.shop.clients.RecommendationService
 import io.opentelemetry.android.demo.shop.ui.products.ProductCard
 import io.opentelemetry.android.demo.shop.ui.products.RecommendedSection
-import io.opentelemetry.api.common.AttributeKey.doubleKey
 import java.util.Locale
 
 @Composable
@@ -94,12 +93,9 @@ fun CartScreen(
 }
 
 private fun clearCart(cartViewModel: CartViewModel) {
-    generateEmptiedCartEvent(cartViewModel)
+    // Emit `cart.cleared` — the canonical name per the cross-platform
+    // contract (docs/design/shop-telemetry-contract.md). Replaces the
+    // legacy `cart.emptied` event, which iOS didn't mirror.
+    ShopTelemetry.emitCartClear()
     cartViewModel.clearCart()
-}
-
-private fun generateEmptiedCartEvent(cartViewModel: CartViewModel) {
-    val eventBuilder = OtelDemoApplication.eventBuilder("otel.demo.app", "cart.emptied")
-    eventBuilder.setAttribute(doubleKey("cart.total.value"), cartViewModel.getTotalPrice())
-        .emit()
 }

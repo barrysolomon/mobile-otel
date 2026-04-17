@@ -35,6 +35,13 @@ public enum ResourceBuilder {
             "telemetry.sdk.name": .string("io.dash0.mobile"),
             "telemetry.sdk.version": .string(sdkVersion),
             "telemetry.sdk.language": .string("swift"),
+            // Dash0 resource-type classifier. Without this, Dash0 reads
+            // `telemetry.sdk.language=swift` and surfaces iOS data under its
+            // Website / browser category. Setting the classifier explicitly
+            // routes the resource to the Mobile category in the Dash0 UI.
+            // Android does the same from its ResourceBuilder — this keeps
+            // both platforms side-by-side under one resource type.
+            "dash0.resource.type": .string("mobile"),
         ]
 
         // OS / device attributes — populated per-platform.

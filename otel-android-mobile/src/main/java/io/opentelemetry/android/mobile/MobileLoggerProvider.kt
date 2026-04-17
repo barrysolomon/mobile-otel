@@ -90,6 +90,11 @@ class MobileLoggerProvider private constructor(
                 .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
                 .put("device.model.name", android.os.Build.MODEL)
                 .put("device.manufacturer", android.os.Build.MANUFACTURER)
+                // Dash0 resource-type classifier. Without this, Dash0 routes
+                // by `telemetry.sdk.language` alone and can surface mobile
+                // data under the wrong UI category. Setting it explicitly
+                // keeps Android + iOS co-located under the Mobile view.
+                .put("dash0.resource.type", "mobile")
                 .build()
         )
 

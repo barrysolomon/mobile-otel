@@ -15,8 +15,13 @@ object SdkInitializer {
         try {
             val mobile = MobileOtel.initialize(app) {
                 service {
-                    name = "astronomy-shop"
-                    version = "1.0.0"
+                    // Mirrored from iOS `otel-ios-astronomy-shop`. The
+                    // `otel-<platform>-astronomy-shop` convention lets a
+                    // single Dash0 filter bracket both platforms:
+                    //   service.name =~ "otel-.*-astronomy-shop"
+                    // Details: docs/design/shop-telemetry-contract.md
+                    name = "otel-android-astronomy-shop"
+                    version = "0.1.0"
                 }
                 export {
                     endpoint = ExportConfig.grpcEndpoint

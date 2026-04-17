@@ -64,6 +64,18 @@ struct ResourceBuilderTests {
         #expect(resource.attributes["device.manufacturer"] == .string("Apple"))
     }
 
+    @Test("resource carries dash0.resource.type=mobile so Dash0 doesn't classify iOS as a website")
+    func dash0ResourceTypeIsMobile() {
+        let resource = ResourceBuilder.buildMobileResource(
+            serviceName: "svc",
+            serviceVersion: "1.0"
+        )
+        // Regression test for the "iOS telemetry surfaces under Website /
+        // browser in the Dash0 UI" bug. If this ever flips off, iOS data
+        // will silently disappear from the Mobile view in Dash0.
+        #expect(resource.attributes["dash0.resource.type"] == .string("mobile"))
+    }
+
     @Test("extra attributes override defaults")
     func mergesExtraAttributes() {
         let resource = ResourceBuilder.buildMobileResource(
