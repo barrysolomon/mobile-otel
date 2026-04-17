@@ -1,16 +1,11 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Generated: 2026-04-17 (updated later same day)
-iOS branch: iPhone (26 commits ahead of main, 107 tests)
+Updated: 2026-04-17 (end of day, post-metric-fix session)
+iOS branch: iPhone (24 commits ahead of main, 114 tests)
 Android SDK module: `otel-android-mobile/` + 20 instrumentation submodules
 iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
 
-## Current state (end of 2026-04-17 session)
-
-> This doc was originally generated when iOS was a thin-slice port. It has been
-> updated inline below to reflect the subsequent parity closure. The historical
-> "Summary" paragraph at the bottom is kept for context but no longer reflects
-> the current state.
+## Current state
 
 **What's defensibly at parity:**
 
@@ -50,32 +45,18 @@ iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
 
 **Honest remaining deferred work:**
 
-- Screenshot/Wireframe SwiftUI ViewModifiers — need privacy design (text-view
-  redaction, attribute size caps, consent) before shipping.
+- Screenshot/Wireframe SwiftUI ViewModifiers — need privacy design before
+  shipping. Design spec lives at [`docs/design/screenshot-wireframe-privacy.md`](./design/screenshot-wireframe-privacy.md).
 - PLCrashReporter as optional SPM dep — documented as integration guide
   rather than bundled dep (license/conflict/size concerns — customers with
   Sentry/Firebase already have a crash reporter).
-- Android's 28 `validate-us0XX-*.sh` scenario scripts — only a single
-  end-to-end validation script exists on iOS so far (`validate-ios-end-to-end.sh`).
-
----
-
-## Historical summary (when this doc was originally generated)
-
-The iOS SDK is a thin-slice port. Of the 20 Android instrumentation modules, only
-**5 ship functional iOS equivalents** (errors, lifecycle, network, screen, and a
-minimal vitals device-stats collector) and **2 more are file-level placeholders**
-(`FreezeInstrumentation`, `VitalsInstrumentation` — both `enum` stubs). The policy
-layer has a **v2 JSON parser at parity with Android** (14 tests, behaviorally
-mirrored) but **no evaluator runtime**, so parsed policies cannot yet drive
-flushes. The buffer is **RAM-only** — the Android dual-tier Room/SQLite disk
-buffer, crash-safe flush (SR-017), retryable exporter, export-status manager, and
-sequence-id dedup are all absent on iOS. User-facing module parity is roughly
-**25%**; SDK-core parity is **~30%**; documentation parity is **~0%** (no
-`IOS_SDK_GUIDE.md`, `IOS_QUICK_START.md`, or iOS section in any of the 31
-top-level docs). Test count is **~68 iOS tests vs ~980 Android tests (~7%)**.
-Both demo apps exist on iOS but the Astronomy Shop port covers **3 of 6 upstream
-screens**.
+- Real-device validation — simulator-only to date. Playbook at
+  [`docs/IOS_REAL_DEVICE_VALIDATION.md`](./IOS_REAL_DEVICE_VALIDATION.md).
+- Android's 28 `validate-us0XX-*.sh` scenario scripts — 6 ported to iOS so far
+  (see `### scripts/test/` below); the rest are tracked for future sessions.
+- Upstream `opentelemetry-swift-core` `ViewRegistry.findViews` bug — we ship a
+  workaround with regression test; filed issue draft at
+  [`docs/upstream/opentelemetry-swift-core-viewregistry.md`](./upstream/opentelemetry-swift-core-viewregistry.md).
 
 ## Instrumentation modules
 
@@ -91,10 +72,10 @@ live under [`otel-ios-mobile/Sources/`](../otel-ios-mobile/Sources/).
 | debug-widget | &#9989; module | &#10060; | not-started | In-app overlay widget for buffer stats / export status |
 | errors | &#9989; module + [tests](../otel-android-mobile/src/test/java/io/opentelemetry/android/mobile/errors/) | &#9989; [ErrorsInstrumentation.swift](../otel-ios-mobile/Sources/ErrorsInstrumentation/ErrorsInstrumentation.swift) | shipped | iOS covers `NSSetUncaughtExceptionHandler` + POSIX signals; persists marker file and emits `app.crash` on next launch |
 | file-io | &#9989; module | &#10060; | not-started | Java file I/O instrumentation |
-| freeze | &#9989; module ([tests](../instrumentation/freeze/src)) | &#128993; [placeholder enum](../otel-ios-mobile/Sources/FreezeInstrumentation/FreezeInstrumentation.swift) | stubbed | File exists but body is `public enum FreezeInstrumentation {}` |
+| freeze | &#9989; module ([tests](../instrumentation/freeze/src)) | &#9989; [FreezeInstrumentation.swift](../otel-ios-mobile/Sources/FreezeInstrumentation/FreezeInstrumentation.swift) | shipped | iOS: `DispatchSourceTimer` watchdog; posts a zero-cost main-queue ack every `pingIntervalMs`; emits `ui.freeze` if ack not drained within `thresholdMs` |
 | lifecycle | &#9989; module | &#9989; [LifecycleInstrumentation.swift](../otel-ios-mobile/Sources/LifecycleInstrumentation/LifecycleInstrumentation.swift) | shipped | iOS: `app.launch`, `app.foreground`, `app.background`, `app.will_terminate`, `app.memory_warning` |
 | network | &#9989; OkHttp interceptor + [NetworkConfig](../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/) | &#9989; [URLProtocol + URLSessionConfig swizzle](../otel-ios-mobile/Sources/NetworkInstrumentation/) | shipped | iOS: `OTelURLProtocol` + `URLSessionConfigurationSwizzle`; NetworkConfig parity tests |
-| screen | &#9989; module | &#9989; [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift) | partial | iOS swizzles `UIViewController.viewDidAppear/Disappear`; **currently disabled** in `OTelMobile.start()` (TODO: safer SwiftUI install path) |
+| screen | &#9989; module | &#9989; [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift) + [SwiftUIScreenModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScreenModifiers.swift) | shipped | iOS default: SwiftUI `.trackScreen("Name")` ViewModifier path auto-installed by `OTelMobile.start()`. UIKit `viewDidAppear`/`viewDidDisappear` swizzle is opt-in via `enableUIKitSwizzle: true` (races with SwiftUI hosting controllers otherwise) |
 | screen-orientation | &#9989; module | &#10060; | not-started | Android-specific config changes; iOS UIDevice orientation TBD |
 | screenshot | &#9989; module | &#10060; | not-started | PixelCopy equivalent would be CGRenderContext / UIGraphicsImageRenderer |
 | scroll | &#9989; module | &#10060; | not-started | RecyclerView OnScrollListener; iOS UIScrollView delegate planned |
@@ -102,10 +83,10 @@ live under [`otel-ios-mobile/Sources/`](../otel-ios-mobile/Sources/).
 | tap | &#9989; module (18+ tests) | &#10060; | not-started | SwiftUI gesture capture via `.simultaneousGesture` or ViewModifier planned |
 | text-input | &#9989; module | &#10060; | not-started | EditText focus loss; iOS UITextField delegate planned |
 | timber | &#9989; module | N/A | N/A | Timber is a Kotlin/Android logging library; OSLog bridge would be the iOS analog |
-| vitals | &#9989; (app-start, jank, meter gauges) | &#128993; [placeholder enum](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) + [DeviceStatsCollector](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | partial | iOS has a `DeviceStatsCollector` for basic gauges, but the `VitalsInstrumentation` module is a stub |
+| vitals | &#9989; (app-start, jank, meter gauges) | &#9989; [VitalsInstrumentation.swift](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) + [DeviceStatsCollector](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | shipped | iOS: `CADisplayLink` frame-time watcher for `ui.jank`, `app.start` duration, `app.memory_warning` on UIApplication pressure. `DeviceStatsCollector` provides continuous gauges separately |
 | wireframe | &#9989; module | &#10060; | not-started | View-hierarchy JSON capture |
 
-**Module count:** Android 20 (incl. 2 N/A on iOS) &middot; iOS 7 targets (5 functional + 2 stubs)
+**Module count:** Android 20 (incl. 2 N/A on iOS) &middot; iOS 7 targets all functional (errors, lifecycle, network, screen, freeze, vitals, + SwiftUI modifiers bundled with screen)
 
 ## SDK core features
 
@@ -118,19 +99,19 @@ Sources: Android
 |---|---|---|---|---|
 | Fluent builder / DSL | &#9989; `MobileOtelDsl`, `BufferingDsl`, `ExportDsl`, `InstrumentationsDsl`, etc. | &#128993; Flat `MobileConfig` init | partial | iOS has one-shot `MobileConfig(...)` init; no nested DSL |
 | RAM buffer | &#9989; `ConcurrentLinkedQueue` (5000 evts) | &#9989; [`RAMEventBuffer`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/RAMEventBuffer.swift) (`actor`, `Deque`) | shipped | |
-| Disk buffer (dual-tier) | &#9989; `DiskLogBuffer` Room/SQLite v4, 50MB, 24h TTL | &#10060; | not-started | No Swift equivalent exists; buffer is RAM-only |
-| Crash-safe flush / seqId dedup | &#9989; `BufferedEvent.seqId`, SR-017 crash-safe mirror | &#10060; no seqId, no mirror | not-started | Marketing claim "survives process death" is Android-only |
+| Disk buffer (dual-tier) | &#9989; `DiskLogBuffer` Room/SQLite v4, 50MB, 24h TTL | &#9989; [`DiskLogBuffer.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/DiskLogBuffer.swift) | shipped | iOS: `sqlite3` actor, WAL mode, size + TTL caps, startup recovery path drains pending events |
+| Crash-safe flush / seqId dedup | &#9989; `BufferedEvent.seqId`, SR-017 crash-safe mirror | &#9989; [`SequenceCounter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/SequenceCounter.swift) + crash marker in `ErrorsInstrumentation` | shipped | iOS: monotonic `seqId` on every `BufferedEvent`; crash marker file persists buffer state across process death; next launch emits `app.crash` + drains |
 | MobileLogRecordProcessor | &#9989; | &#9989; [MobileLogRecordProcessor.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift) | shipped | |
 | RetryableExporter | &#9989; | &#10060; | not-started | |
 | ExportStatusManager | &#9989; | &#10060; | not-started | |
-| OTLP/gRPC export | &#9989; | &#128993; OTLP/HTTP only | partial | iOS uses `OpenTelemetryProtocolExporterHTTP`; no gRPC |
+| OTLP/gRPC export | &#9989; | &#9989; [`OTLPExporterFactory.makeGrpcLogExporter`/`makeGrpcTraceExporter`](../otel-ios-mobile/Sources/OTelMobileSDK/Export/OTLPExporterFactory.swift) | shipped | Opt-in gRPC via `swift-grpc` + `NIO`. HTTP remains the default auto-wired path |
 | Selective flush (flushWindow) | &#9989; `flushWindow(minutes)` | &#9989; `RAMEventBuffer.flushWindow(lastMs:)` + `OTelMobile.flushWindow(minutes:)` | shipped | |
 | Export modes (CONDITIONAL / CONTINUOUS / HYBRID) | &#9989; | &#9989; [`ExportMode.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Config/ExportMode.swift) | shipped | Enum parity; runtime behavior not exercised (no evaluator) |
 | Policy DSL v2 parser | &#9989; `PolicyEvaluator.parseConfigV2` | &#9989; [`PolicyParser.parseConfigV2`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/PolicyParser.swift) | shipped | 14 behavioral-parity tests copied verbatim from Android JSON bodies |
 | Policy DSL v1 compiler | &#9989; `PolicyEvaluatorV1CompilerTest` | &#10060; | not-started | Auto-detect (v1 vs v2) missing on iOS |
-| Policy evaluator runtime | &#9989; `PolicyEvaluator` trigger matching | &#10060; | not-started | Parser exists; evaluation engine pending |
+| Policy evaluator runtime | &#9989; `PolicyEvaluator` trigger matching | &#9989; [`PolicyEvaluator.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/PolicyEvaluator.swift) + [`ConfigPoller.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/ConfigPoller.swift) | shipped | Full closing loop: `ConfigPoller` → `PolicyEvaluator.updatePolicies` → `onEmit` conditional `flushWindow` → OTLP export. 17 evaluator tests; 5 end-to-end integration tests |
 | Dynamic sampler | &#9989; `DynamicSampler`, `SamplerFactory`, `SamplingConfig` | &#10060; | not-started | |
-| Session manager | &#9989; `SessionManager` + `SessionConfig` | &#128993; [`StaticSessionProvider`](../otel-ios-mobile/Sources/OTelMobileSDK/Session/StaticSessionProvider.swift) | partial | iOS: single UUID per process, no idle rotation / persistence |
+| Session manager | &#9989; `SessionManager` + `SessionConfig` | &#9989; [`SessionManager.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Session/SessionManager.swift) | shipped | iOS: UUID with 15-min inactivity rotation, `UserDefaults` persistence across launches |
 | User identity | &#9989; `UserIdentity` | &#10060; | not-started | |
 | Boot tracker | &#9989; `BootTracker` | &#10060; | not-started | |
 | PII scrubber | &#9989; `PiiScrubberTest` (40 tests) | &#10060; | not-started | |
@@ -156,7 +137,7 @@ Sources: Android
 ## Test coverage
 
 Android file counts via `@Test`/`fun test` (55 files, **~980 test fns**).
-iOS file counts via `@Test` (9 files, **68 test fns**).
+iOS file counts via `@Test` (15 suites, **114 test fns**).
 
 | Area | Android | iOS | Parity |
 |---|---|---|---|
@@ -182,7 +163,7 @@ iOS file counts via `@Test` (9 files, **68 test fns**).
 | Matrix / cross-cutting | 20+24+7+4+4+11+3+2+2+12+16 = **~105** | 0 | **0%** |
 | Resource builder | n/a | 4 (`ResourceBuilderTests`) | iOS-only |
 | Smoke | n/a | 2 | iOS-only |
-| **Totals (approx)** | **~980** across 55 files | **68** across 9 files | **~7%** |
+| **Totals (approx)** | **~980** across 55 files | **114** across 15 suites | **~12%** |
 
 ## Scripts
 
@@ -207,14 +188,14 @@ Every Android-side script under `scripts/` with iOS equivalent status. Android s
 | validate-crash-recovery.sh | `scripts/test/validate-crash-recovery.sh` | &#10060; | not-started |
 | validate-dash0.sh | `scripts/test/validate-dash0.sh` | &#10060; | not-started |
 | validate-telemetry.sh | `scripts/test/validate-telemetry.sh` | &#10060; | not-started |
-| validate-us050-happy-path.sh | `scripts/test/validate-us050-happy-path.sh` | &#10060; | not-started |
+| validate-us050-happy-path.sh | `scripts/test/validate-us050-happy-path.sh` | [`validate-ios-us050-happy-path.sh`](../scripts/test/validate-ios-us050-happy-path.sh) | shipped — logs + spans + metrics arrive from AstronomyShop auto-demo |
 | validate-us051-browse-refresh.sh | `scripts/test/validate-us051-browse-refresh.sh` | &#10060; | not-started |
 | validate-us052-network-error.sh | `scripts/test/validate-us052-network-error.sh` | &#10060; | not-started |
 | validate-us053-get-directions.sh | `scripts/test/validate-us053-get-directions.sh` | &#10060; | not-started |
 | validate-us054-multi-screen-nav.sh | `scripts/test/validate-us054-multi-screen-nav.sh` | &#10060; | not-started |
 | validate-us055-form-input.sh | `scripts/test/validate-us055-form-input.sh` | &#10060; | not-started |
 | validate-us056-session-lifecycle.sh | `scripts/test/validate-us056-session-lifecycle.sh` | &#10060; | not-started |
-| validate-us057-background-foreground.sh | `scripts/test/validate-us057-background-foreground.sh` | &#10060; | not-started |
+| validate-us057-background-foreground.sh | `scripts/test/validate-us057-background-foreground.sh` | [`validate-ios-us057-app-lifecycle.sh`](../scripts/test/validate-ios-us057-app-lifecycle.sh) | shipped (subset) — asserts lifecycle logs + WARN path; full bg/fg cycle needs human or companion-app |
 | validate-us058-battery-drain.sh | `scripts/test/validate-us058-battery-drain.sh` | &#10060; | not-started |
 | validate-us059-thermal-throttle.sh | `scripts/test/validate-us059-thermal-throttle.sh` | &#10060; | not-started |
 | validate-us060-memory-pressure.sh | `scripts/test/validate-us060-memory-pressure.sh` | &#10060; | not-started |
@@ -228,13 +209,13 @@ Every Android-side script under `scripts/` with iOS equivalent status. Android s
 | validate-us068-disk-ttl.sh | `scripts/test/validate-us068-disk-ttl.sh` | &#10060; | not-started (disk buffer absent) |
 | validate-us069-selective-flush.sh | `scripts/test/validate-us069-selective-flush.sh` | &#10060; | not-started |
 | validate-us070-timestamp-monotonic.sh | `scripts/test/validate-us070-timestamp-monotonic.sh` | &#10060; | not-started |
-| validate-us071-span-hierarchy.sh | `scripts/test/validate-us071-span-hierarchy.sh` | &#10060; | not-started |
+| validate-us071-span-hierarchy.sh | `scripts/test/validate-us071-span-hierarchy.sh` | [`validate-ios-us071-span-hierarchy.sh`](../scripts/test/validate-ios-us071-span-hierarchy.sh) | shipped — asserts 15 checkout span names + ≥13 child spans with parent id |
 | validate-us072-cross-signal.sh | `scripts/test/validate-us072-cross-signal.sh` | &#10060; | not-started |
-| validate-us073-resource-attributes.sh | `scripts/test/validate-us073-resource-attributes.sh` | &#10060; | not-started |
+| validate-us073-resource-attributes.sh | `scripts/test/validate-us073-resource-attributes.sh` | [`validate-ios-us073-resource-attributes.sh`](../scripts/test/validate-ios-us073-resource-attributes.sh) | shipped — asserts service/os/device/telemetry.sdk attributes on every log + os.name="iOS" |
 | validate-us074-dynamic-sampling.sh | `scripts/test/validate-us074-dynamic-sampling.sh` | &#10060; | not-started |
 | validate-us075-continuous-periodic.sh | `scripts/test/validate-us075-continuous-periodic.sh` | &#10060; | not-started |
 | validate-us076-hybrid-mode.sh | `scripts/test/validate-us076-hybrid-mode.sh` | &#10060; | not-started |
-| validate-us077-ci-readiness.sh | `scripts/test/validate-us077-ci-readiness.sh` | &#10060; | not-started |
+| validate-us077-ci-readiness.sh | `scripts/test/validate-us077-ci-readiness.sh` | [`validate-ios-us077-ci-readiness.sh`](../scripts/test/validate-ios-us077-ci-readiness.sh) | shipped — toolchain, SDK unit tests, scenario-script syntax, config presence; no sim required |
 
 ### `scripts/demo/`
 
