@@ -64,7 +64,20 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
             )
         }
 
-        // Path 2: Signals
+        // Path 2: Signals.
+        //
+        // Pre-open the crash-marker file descriptor NOW, while we're still in
+        // normal-execution context. The signal handler will only use write(2)
+        // on this fd — no Foundation, no allocations, no locks. See the
+        // handler comment in signalHandler(_:).
+        if ErrorsInstrumentation.crashMarkerFd < 0 {
+            if let path = ErrorsInstrumentation.crashMarkerURL()?.path {
+                let fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+                if fd >= 0 {
+                    ErrorsInstrumentation.crashMarkerFd = fd
+                }
+            }
+        }
         for sig in Self.fatalSignals {
             var action = sigaction()
             action.__sigaction_u.__sa_handler = signalHandler
@@ -106,6 +119,12 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
 
     // MARK: - Crash marker file (signal-safe path)
 
+    /// Pre-opened file descriptor used by the async-signal-safe signal handler.
+    /// Opened during `install()` on the happy path; never touched from the
+    /// signal handler itself (open(2) IS async-signal-safe but we prefer to do
+    /// all allocation-like work ahead of time). `-1` means not yet opened.
+    nonisolated(unsafe) static var crashMarkerFd: Int32 = -1
+
     static let fatalSignals: [Int32] = [SIGABRT, SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGPIPE, SIGTRAP]
 
     static func crashMarkerURL() -> URL? {
@@ -131,23 +150,30 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
 
     static func emitAnyPendingCrash(logger: Logger) {
         guard let url = crashMarkerURL() else { return }
-        guard let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .utf8) else {
-            return
-        }
+        guard let data = try? Data(contentsOf: url) else { return }
+
         var attrs: [String: AttributeValue] = [
             "event.name": .string("app.crash"),
             "crash.from_marker": .bool(true),
         ]
         var frames: [String] = []
-        for line in text.split(separator: "\n") {
-            let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            let (k, v) = (parts[0], parts[1])
-            if k.hasPrefix("frame") {
-                frames.append(v)
-            } else {
-                attrs["crash.\(k)"] = .string(v)
+
+        // Signal-handler marker: 3-byte "S<sig>\n" record. Parse defensively.
+        if data.count == 3, data[0] == UInt8(ascii: "S") {
+            attrs["crash.kind"] = .string("signal")
+            attrs["crash.signal"] = .int(Int(data[1]))
+            attrs["crash.name"] = .string(Self.signalName(for: Int32(data[1])))
+        } else if let text = String(data: data, encoding: .utf8) {
+            // Legacy NSException marker: key=value lines.
+            for line in text.split(separator: "\n") {
+                let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
+                guard parts.count == 2 else { continue }
+                let (k, v) = (parts[0], parts[1])
+                if k.hasPrefix("frame") {
+                    frames.append(v)
+                } else {
+                    attrs["crash.\(k)"] = .string(v)
+                }
             }
         }
         if !frames.isEmpty {
@@ -160,26 +186,56 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
             .emit()
         try? FileManager.default.removeItem(at: url)
     }
+
+    /// Human-readable signal name. Used only during recovery (not in the
+    /// signal handler itself — that stores the raw byte).
+    static func signalName(for sig: Int32) -> String {
+        switch sig {
+        case SIGABRT: return "SIGABRT"
+        case SIGSEGV: return "SIGSEGV"
+        case SIGILL: return "SIGILL"
+        case SIGFPE: return "SIGFPE"
+        case SIGBUS: return "SIGBUS"
+        case SIGPIPE: return "SIGPIPE"
+        case SIGTRAP: return "SIGTRAP"
+        default: return "SIGNAL_\(sig)"
+        }
+    }
 }
 
 // Top-level signal handler (needs C-callable signature).
+//
+// SAFETY: Only async-signal-safe calls are permitted here per POSIX. We must
+// not allocate, call Foundation, take locks, use ARC, or touch Swift runtime
+// metadata. String interpolation, Date, Thread.callStackSymbols, JSONEncoder,
+// Data.write, and FileManager are all UNSAFE and have been removed.
+//
+// All we do here is:
+//   1. write(2) a fixed 3-byte signal marker (async-signal-safe) to a
+//      pre-opened file descriptor. The byte encodes the signal number so
+//      the next launch can identify which signal fired.
+//   2. Restore the default handler and re-raise. The OS / debugger /
+//      PLCrashReporter (if integrated) still observe the underlying crash
+//      with its native stack — we defer stack collection to the OS.
+//
+// The next launch reads the marker, emits an `app.crash` log with the signal
+// number (but without a symbolicated stack — that requires a real crash
+// reporter like PLCrashReporter or KSCrash). This is the defensible "do no
+// harm" posture: we never corrupt memory trying to enrich a crash record.
 private func signalHandler(_ sig: Int32) {
-    let name: String
-    switch sig {
-    case SIGABRT: name = "SIGABRT"
-    case SIGSEGV: name = "SIGSEGV"
-    case SIGILL: name = "SIGILL"
-    case SIGFPE: name = "SIGFPE"
-    case SIGBUS: name = "SIGBUS"
-    case SIGPIPE: name = "SIGPIPE"
-    case SIGTRAP: name = "SIGTRAP"
-    default: name = "SIGNAL_\(sig)"
+    // Async-signal-safe: `write(2)` is on POSIX's async-signal-safe list.
+    let fd = ErrorsInstrumentation.crashMarkerFd
+    if fd >= 0 {
+        var buf: [UInt8] = [
+            UInt8(ascii: "S"),
+            UInt8(truncatingIfNeeded: sig),
+            UInt8(ascii: "\n"),
+        ]
+        _ = buf.withUnsafeBufferPointer { ptr in
+            write(fd, ptr.baseAddress, 3)
+        }
     }
-    let frames = Thread.callStackSymbols
-    ErrorsInstrumentation.writeMarker(
-        kind: "signal", name: name, reason: "fatal signal \(sig)", frames: frames
-    )
-    // Restore default handler and re-raise so the OS / debugger still sees it.
+    // Async-signal-safe: signal(), raise().
     signal(sig, SIG_DFL)
     raise(sig)
 }

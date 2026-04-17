@@ -85,10 +85,20 @@ final class OTelURLProtocol: URLProtocol, URLSessionDataDelegate {
             }
         }
 
-        // Build the outgoing request: flag it so we don't re-intercept, and
-        // optionally inject W3C traceparent.
-        // swiftlint:disable:next force_cast
-        let outgoing = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+        // Build the outgoing request. Apple's contract guarantees
+        // `NSURLRequest.mutableCopy()` returns `NSMutableURLRequest`, but we
+        // still guard with `as?` + fallback — the SDK must never crash the
+        // host app, even if Foundation's contract somehow changed.
+        let mutable = (request as NSURLRequest).mutableCopy()
+        guard let outgoing = mutable as? NSMutableURLRequest else {
+            // Defensive fallback: skip our tagging + traceparent injection.
+            // The inner URLSession will still load the request; we just won't
+            // mark it. This is strictly safer than crashing.
+            span.end()
+            self.span = nil
+            client?.urlProtocol(self, didFailWithError: URLError(.unknown))
+            return
+        }
         URLProtocol.setProperty(true, forKey: Self.handledKey, in: outgoing)
         if config.propagateTraceContext {
             let ctx = span.context

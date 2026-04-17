@@ -88,65 +88,66 @@ final class DemoModel: ObservableObject {
 
     // MARK: - Traces
 
+    // NOTE: span "work" happens on a background Task. Never block the main
+    // actor with Thread.sleep — that's exactly the kind of thing that makes
+    // customers blame the SDK for UI jank.
+
     func emitSimpleSpan() {
         guard let tracer = mobile?.tracer else { return }
-        let span = tracer.spanBuilder(spanName: "user.action").startSpan()
-        span.setAttribute(key: "ui.action", value: "simple_span_button")
-        span.setAttribute(key: "action.index", value: spansEmitted + 1)
-        // Simulate 50ms of work
-        Thread.sleep(forTimeInterval: 0.05)
-        span.end()
+        let index = spansEmitted + 1
         spansEmitted += 1
+        Task.detached {
+            let span = tracer.spanBuilder(spanName: "user.action").startSpan()
+            span.setAttribute(key: "ui.action", value: "simple_span_button")
+            span.setAttribute(key: "action.index", value: index)
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms off main
+            span.end()
+        }
     }
 
     func emitNestedSpan() {
         guard let tracer = mobile?.tracer else { return }
-
-        let parent = tracer.spanBuilder(spanName: "ui.workflow.checkout").startSpan()
-        parent.setAttribute(key: "workflow.step", value: "checkout")
-        parent.setAttribute(key: "user.id", value: "demo-user-42")
-
-        // Child 1: fetch cart (80ms)
-        let fetch = tracer.spanBuilder(spanName: "network.fetch_cart")
-            .setParent(parent)
-            .startSpan()
-        fetch.setAttribute(key: "http.method", value: "GET")
-        fetch.setAttribute(key: "http.route", value: "/api/cart")
-        Thread.sleep(forTimeInterval: 0.08)
-        fetch.end()
-
-        // Child 2: render cart (30ms)
-        let render = tracer.spanBuilder(spanName: "ui.render_cart")
-            .setParent(parent)
-            .startSpan()
-        render.setAttribute(key: "render.items", value: 3)
-        Thread.sleep(forTimeInterval: 0.03)
-        render.end()
-
-        // Child 3: analytics (20ms)
-        let analytics = tracer.spanBuilder(spanName: "analytics.report_view")
-            .setParent(parent)
-            .startSpan()
-        analytics.setAttribute(key: "analytics.provider", value: "dash0")
-        Thread.sleep(forTimeInterval: 0.02)
-        analytics.end()
-
-        parent.end()
-
         spansEmitted += 4
+        Task.detached {
+            let parent = tracer.spanBuilder(spanName: "ui.workflow.checkout").startSpan()
+            parent.setAttribute(key: "workflow.step", value: "checkout")
+            parent.setAttribute(key: "user.id", value: "demo-user-42")
+
+            let fetch = tracer.spanBuilder(spanName: "network.fetch_cart")
+                .setParent(parent).startSpan()
+            fetch.setAttribute(key: "http.method", value: "GET")
+            fetch.setAttribute(key: "http.route", value: "/api/cart")
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            fetch.end()
+
+            let render = tracer.spanBuilder(spanName: "ui.render_cart")
+                .setParent(parent).startSpan()
+            render.setAttribute(key: "render.items", value: 3)
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            render.end()
+
+            let analytics = tracer.spanBuilder(spanName: "analytics.report_view")
+                .setParent(parent).startSpan()
+            analytics.setAttribute(key: "analytics.provider", value: "dash0")
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            analytics.end()
+
+            parent.end()
+        }
     }
 
     func emitErrorSpan() {
         guard let tracer = mobile?.tracer else { return }
-
-        let span = tracer.spanBuilder(spanName: "checkout.payment").startSpan()
-        span.setAttribute(key: "payment.method", value: "card")
-        span.setAttribute(key: "payment.amount", value: 99.99)
-        span.setAttribute(key: "payment.currency", value: "USD")
-        Thread.sleep(forTimeInterval: 0.1)
-        span.status = .error(description: "card declined")
-        span.end()
         spansEmitted += 1
+        Task.detached {
+            let span = tracer.spanBuilder(spanName: "checkout.payment").startSpan()
+            span.setAttribute(key: "payment.method", value: "card")
+            span.setAttribute(key: "payment.amount", value: 99.99)
+            span.setAttribute(key: "payment.currency", value: "USD")
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            span.status = .error(description: "card declined")
+            span.end()
+        }
     }
 
     // MARK: - Metrics

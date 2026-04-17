@@ -3,18 +3,43 @@ import OTelMobileCore
 import OpenTelemetryApi
 import OpenTelemetrySdk
 
-/// Processes emitted log records by buffering them in RAM and flushing to an
-/// injected exporter on forceFlush or selective window flush.
+/// Processes emitted log records by buffering them in RAM and flushing via
+/// an upstream OTel `LogRecordExporter` (OTLP/HTTP, OTLP/gRPC, etc.).
 ///
-/// Thin-slice implementation — disk spill and real OTLP protobuf serialization
-/// will be added in a later task. This version JSON-encodes a minimal projection
-/// of each `ReadableLogRecord` into `BufferedEvent.eventData`.
+/// This processor is 100% OTel-native — it holds the upstream
+/// `ReadableLogRecord` directly (no custom JSON encoding) and drains buffered
+/// records through `LogRecordExporter.export(logRecords:)`. The architecture
+/// mirrors the Android SDK's `MobileLogRecordProcessor` which holds a
+/// `LogRecordExporter` and emits `LogRecordData` instances unchanged.
+///
+/// A legacy `BufferedEventExporter` overload is retained for tests that want
+/// to observe buffer contents without a real OTLP exporter. The OTel path is
+/// preferred for production wiring.
 public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Sendable {
     private let buffer: RAMEventBuffer
-    private let exporter: BufferedEventExporter
+    private let legacyExporter: BufferedEventExporter?
+    private let otelExporter: LogRecordExporter?
     private let sequenceCounter: SequenceCounter
     private let sessionProvider: SessionProvider
 
+    /// Production constructor: drains buffered records through an upstream OTel
+    /// `LogRecordExporter` on forceFlush/selective-flush.
+    public init(
+        buffer: RAMEventBuffer,
+        otelExporter: LogRecordExporter,
+        sessionProvider: SessionProvider,
+        sequenceCounter: SequenceCounter = SequenceCounter()
+    ) {
+        self.buffer = buffer
+        self.legacyExporter = nil
+        self.otelExporter = otelExporter
+        self.sequenceCounter = sequenceCounter
+        self.sessionProvider = sessionProvider
+    }
+
+    /// Test-only constructor: delivers `[BufferedEvent]` batches to an
+    /// inspector that doesn't need to implement the full OTel exporter
+    /// contract. Use `init(buffer:otelExporter:...)` in production.
     public init(
         buffer: RAMEventBuffer,
         exporter: BufferedEventExporter,
@@ -22,7 +47,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sequenceCounter: SequenceCounter = SequenceCounter()
     ) {
         self.buffer = buffer
-        self.exporter = exporter
+        self.legacyExporter = exporter
+        self.otelExporter = nil
         self.sequenceCounter = sequenceCounter
         self.sessionProvider = sessionProvider
     }
@@ -42,12 +68,13 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
 
     public func forceFlush(explicitTimeout: TimeInterval? = nil) -> ExportResult {
         let semaphore = DispatchSemaphore(value: 0)
-        var bridged: ExportResult = .success
-        Task.detached { [buffer, exporter] in
-            let events = await buffer.flush()
+        final class Box: @unchecked Sendable { var value: ExportResult = .success }
+        let box = Box()
+        Task.detached { [weak self] in
+            guard let self = self else { semaphore.signal(); return }
+            let events = await self.buffer.flush()
             if !events.isEmpty {
-                let result = await exporter.export(events)
-                bridged = Self.bridge(result)
+                box.value = await self.exportThroughConfiguredSink(events: events)
             }
             semaphore.signal()
         }
@@ -56,7 +83,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         } else {
             semaphore.wait()
         }
-        return bridged
+        return box.value
     }
 
     public func shutdown(explicitTimeout: TimeInterval? = nil) -> ExportResult {
@@ -65,37 +92,63 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
 
     // MARK: - Selective flush
 
-    /// Export the last `minutes` of buffered events.
+    /// Export the last `minutes` of buffered events via the configured OTel
+    /// or legacy exporter.
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
         let events = await buffer.flushWindow(lastMs: minutes * 60 * 1000)
         if events.isEmpty { return .success }
-        return await exporter.export(events)
+        return await exportBuffered(events: events)
     }
 
     // MARK: - Buffer-level flush (public API surface)
 
-    /// Synchronously flush buffered events to the exporter and return the
-    /// buffer-level result. The existing `forceFlush(explicitTimeout:)`
-    /// conforms to OTel-Swift's `LogRecordProcessor` protocol and therefore
-    /// returns the protocol-bridged `ExportResult`. This variant preserves the
-    /// richer `BufferExportResult` (including failure reason) for callers that
-    /// want it — notably `OTelMobile.forceFlush()`.
+    /// Synchronously flush buffered events through the configured exporter and
+    /// return the richer `BufferExportResult`. Used by `OTelMobile.forceFlush()`.
     @discardableResult
     public func forceFlushBuffered() -> BufferExportResult {
         let semaphore = DispatchSemaphore(value: 0)
-        // Wrap in a reference box so the detached task can write the result.
         final class Box: @unchecked Sendable { var value: BufferExportResult = .success }
         let box = Box()
-        Task.detached { [buffer, exporter] in
-            let events = await buffer.flush()
+        Task.detached { [weak self] in
+            guard let self = self else { semaphore.signal(); return }
+            let events = await self.buffer.flush()
             if !events.isEmpty {
-                box.value = await exporter.export(events)
+                box.value = await self.exportBuffered(events: events)
             }
             semaphore.signal()
         }
         semaphore.wait()
         return box.value
+    }
+
+    // MARK: - Internal export routing
+
+    /// Routes a batch of buffered events through the configured sink — OTel
+    /// `LogRecordExporter` in production, `BufferedEventExporter` in tests.
+    private func exportBuffered(events: [BufferedEvent]) async -> BufferExportResult {
+        if let otelExporter = otelExporter {
+            // OTel-native path: preserve the upstream ReadableLogRecord and
+            // hand it to the OTel exporter directly. No custom encoding.
+            let records = events.compactMap { $0.record }
+            guard !records.isEmpty else { return .success }
+            let result = otelExporter.export(logRecords: records, explicitTimeout: nil)
+            switch result {
+            case .success: return .success
+            case .failure: return .failure(reason: "OTel exporter failure")
+            }
+        }
+        if let legacy = legacyExporter {
+            return await legacy.export(events)
+        }
+        return .success
+    }
+
+    private func exportThroughConfiguredSink(events: [BufferedEvent]) async -> ExportResult {
+        switch await exportBuffered(events: events) {
+        case .success: return .success
+        case .failure: return .failure
+        }
     }
 
     // MARK: - Test / integration helpers
@@ -135,46 +188,18 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
 
     // MARK: - Helpers
 
+    /// Build a BufferedEvent that holds the upstream OTel `ReadableLogRecord`
+    /// directly. No custom JSON encoding — the OTel exporter at flush time
+    /// produces the wire format (OTLP/protobuf, OTLP/JSON, etc.).
     private func makeEvent(from logRecord: ReadableLogRecord) -> BufferedEvent {
         let seqId = sequenceCounter.next()
         let sessionId = sessionProvider.sessionId
         let timestampMs = UInt64(logRecord.timestamp.timeIntervalSince1970 * 1000)
-        let data = Self.encode(logRecord)
         return BufferedEvent(
             sequenceId: seqId,
             timestampMs: timestampMs,
             sessionId: sessionId,
-            eventData: data
+            record: logRecord
         )
-    }
-
-    /// Thin-slice encoding: JSON with a minimal projection. Task 10+ will
-    /// switch to OTLP protobuf via the real `LogRecordExporter`.
-    private static func encode(_ logRecord: ReadableLogRecord) -> Data {
-        struct Payload: Swift.Encodable {
-            let body: String
-            let severity: Int
-            let timestampMs: UInt64
-        }
-        let severity = logRecord.severity?.rawValue ?? 0
-        let bodyString: String
-        if let body = logRecord.body {
-            bodyString = "\(body)"
-        } else {
-            bodyString = ""
-        }
-        let payload = Payload(
-            body: bodyString,
-            severity: severity,
-            timestampMs: UInt64(logRecord.timestamp.timeIntervalSince1970 * 1000)
-        )
-        return (try? JSONEncoder().encode(payload)) ?? Data()
-    }
-
-    private static func bridge(_ result: BufferExportResult) -> ExportResult {
-        switch result {
-        case .success: return .success
-        case .failure: return .failure
-        }
     }
 }

@@ -139,19 +139,8 @@ public final class OTelMobile: @unchecked Sendable {
     /// The injectable-exporter overload `start(config:exporter:)` remains
     /// available for unit tests and bespoke transport adapters.
     public static func start(config: MobileConfig) throws -> OTelMobile {
-        // `CapturingExporter` plays the role of the buffer's terminal sink.
-        // Selective flush / forceFlush() drains buffered events to it so
-        // they remain inspectable; real-time export happens via the
-        // separate BatchLogRecordProcessor below.
-        let bufferSink = CapturingExporter()
         let sessionProvider = StaticSessionProvider()
         let buffer = RAMEventBuffer(capacity: config.bufferConfig.ramEvents)
-
-        let bufferProcessor = MobileLogRecordProcessor(
-            buffer: buffer,
-            exporter: bufferSink,
-            sessionProvider: sessionProvider
-        )
 
         // Build the OTLP exporters — one per signal. Each handles its own
         // URL normalisation (`/v1/logs`, `/v1/traces`, `/v1/metrics`).
@@ -159,6 +148,15 @@ public final class OTelMobile: @unchecked Sendable {
             endpoint: config.endpoint,
             authToken: config.authToken,
             extraHeaders: config.extraHeaders
+        )
+
+        // OTel-native buffer pipeline: selective / force flush drains
+        // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
+        // the batch processor uses. No custom JSON encoding.
+        let bufferProcessor = MobileLogRecordProcessor(
+            buffer: buffer,
+            otelExporter: otlpLogExporter,
+            sessionProvider: sessionProvider
         )
         let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
             endpoint: config.endpoint,
