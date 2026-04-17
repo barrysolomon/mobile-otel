@@ -58,6 +58,22 @@ public final class OTelMobile: @unchecked Sendable {
     /// evaluator and call `poller.start()`.
     public let policyEvaluator: PolicyEvaluator
 
+    /// Lazily refreshed live-device context (battery / network / locale /
+    /// thermal / device class). Used by the policy evaluator to match
+    /// geo/device DSL conditions, and by callers that want to tag their own
+    /// events with a consistent device profile.
+    public let contextSnapshotProvider: ContextSnapshotProvider
+
+    /// Predictive-export orchestrator. Nil when `config.enablePredictiveExport`
+    /// is false.
+    public let predictiveExportPolicy: PredictiveExportPolicy?
+
+    /// Applies incoming `FleetAlert` payloads to local actions (flush,
+    /// sampling override, screenshot). Always non-nil; the SDK does not
+    /// listen for inbound alerts on its own — the host app (or a future
+    /// config poller) feeds them via `fleetAlertHandler.handle(alert)`.
+    public let fleetAlertHandler: FleetAlertHandler
+
     /// Underlying trace/meter providers. Held so `forceFlush()` can drain
     /// their batch processors / periodic readers on demand. Optional because
     /// the test-overload `start(config:exporter:)` doesn't wire them.
@@ -74,6 +90,9 @@ public final class OTelMobile: @unchecked Sendable {
         meter: MeterSdk?,
         deviceStats: DeviceStatsCollector,
         policyEvaluator: PolicyEvaluator,
+        contextSnapshotProvider: ContextSnapshotProvider,
+        predictiveExportPolicy: PredictiveExportPolicy?,
+        fleetAlertHandler: FleetAlertHandler,
         tracerProvider: TracerProviderSdk? = nil,
         meterProvider: MeterProviderSdk? = nil
     ) {
@@ -86,6 +105,9 @@ public final class OTelMobile: @unchecked Sendable {
         self.meter = meter
         self.deviceStats = deviceStats
         self.policyEvaluator = policyEvaluator
+        self.contextSnapshotProvider = contextSnapshotProvider
+        self.predictiveExportPolicy = predictiveExportPolicy
+        self.fleetAlertHandler = fleetAlertHandler
         self.tracerProvider = tracerProvider
         self.meterProvider = meterProvider
     }
@@ -131,7 +153,10 @@ public final class OTelMobile: @unchecked Sendable {
             tracer: nil,
             meter: nil,
             deviceStats: DeviceStatsCollector(),
-            policyEvaluator: PolicyEvaluator()
+            policyEvaluator: PolicyEvaluator(),
+            contextSnapshotProvider: ContextSnapshotProvider(),
+            predictiveExportPolicy: nil,
+            fleetAlertHandler: FleetAlertHandler(flushWindow: { _ in })
         )
     }
 
@@ -276,6 +301,31 @@ public final class OTelMobile: @unchecked Sendable {
             .build()
         let meter = meterProvider.get(name: "io.dash0.mobile")
 
+        // A shared `flushWindow` closure used by both PredictiveExportPolicy
+        // and FleetAlertHandler. Wraps the async processor call in a
+        // detached Task so callers (which live on a DispatchQueue, not an
+        // actor) can fire-and-forget.
+        let flushWindowClosure: @Sendable (UInt64) -> Void = { [bufferProcessor] minutes in
+            Task.detached {
+                _ = await bufferProcessor.flushWindow(minutes: minutes)
+            }
+        }
+
+        let contextSnapshotProvider = ContextSnapshotProvider()
+        let fleetAlertHandler = FleetAlertHandler(flushWindow: flushWindowClosure)
+        let predictivePolicy: PredictiveExportPolicy?
+        if config.enablePredictiveExport {
+            predictivePolicy = PredictiveExportPolicy(
+                config: .init(
+                    intervalSeconds: config.predictiveExportIntervalSeconds
+                ),
+                logger: logger,
+                flushWindow: flushWindowClosure
+            )
+        } else {
+            predictivePolicy = nil
+        }
+
         let instance = OTelMobile(
             config: config,
             processor: bufferProcessor,
@@ -286,6 +336,9 @@ public final class OTelMobile: @unchecked Sendable {
             meter: meter,
             deviceStats: DeviceStatsCollector(),
             policyEvaluator: policyEvaluator,
+            contextSnapshotProvider: contextSnapshotProvider,
+            predictiveExportPolicy: predictivePolicy,
+            fleetAlertHandler: fleetAlertHandler,
             tracerProvider: tracerProvider,
             meterProvider: meterProvider
         )
@@ -322,6 +375,21 @@ public final class OTelMobile: @unchecked Sendable {
             if opts.contains(.vitals) {
                 VitalsInstrumentation.shared.install(logger: logger)
             }
+            if opts.contains(.deviceStats) {
+                // Auto-start the continuous gauge loop. Before today this
+                // required customers to call `mobile.deviceStats.start(meter:)`
+                // themselves — easy to miss, so the default demo emitted zero
+                // health telemetry. Opt out by dropping `.deviceStats` from
+                // `autoCaptureOptions`.
+                instance.deviceStats.start(
+                    meter: meter,
+                    intervalSeconds: config.deviceStatsIntervalSeconds
+                )
+            }
+            // Kick off the predictive-export cycle if configured. Off by
+            // default because it emits a DEBUG log every interval even
+            // when the app is idle.
+            instance.predictiveExportPolicy?.start()
             // Config polling: when enabled, construct a ConfigPoller and
             // start it. Any failure is logged via the poller itself; we
             // never want a bad gateway URL to crash startup.

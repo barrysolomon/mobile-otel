@@ -1,7 +1,7 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Updated: 2026-04-17 (end of day, post-metric-fix session)
-iOS branch: iPhone (24 commits ahead of main, 114 tests)
+Updated: 2026-04-17 (post-health-predictive-fleet session)
+iOS branch: iPhone (25+ commits ahead of main, 134 tests)
 Android SDK module: `otel-android-mobile/` + 20 instrumentation submodules
 iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
 
@@ -115,14 +115,18 @@ Sources: Android
 | User identity | &#9989; `UserIdentity` | &#10060; | not-started | |
 | Boot tracker | &#9989; `BootTracker` | &#10060; | not-started | |
 | PII scrubber | &#9989; `PiiScrubberTest` (40 tests) | &#10060; | not-started | |
+| Context snapshot provider | &#9989; `ContextSnapshotProvider` | &#9989; [`ContextSnapshotProvider.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/ContextSnapshotProvider.swift) | shipped | iOS: `NWPathMonitor` (network), `UIDevice` (battery state + device class), `Locale`/`TimeZone`, `ProcessInfo` (OS version). 10s TTL cache |
+| Device health monitor | &#9989; `DeviceHealthMonitor` | &#9989; [`DeviceHealthMonitor.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/DeviceHealthMonitor.swift) | shipped | iOS: `mach_task_basic_info` for memory, `UIDevice` for battery, `ProcessInfo.thermalState` (4 levels vs Android's 7), one-step history for drain-rate deltas |
+| On-device predictor | &#9989; `OnDevicePredictor` | &#9989; [`OnDevicePredictor.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/OnDevicePredictor.swift) | shipped | Rule-based: crash / network-loss / perf-degradation / battery-drain risks, clamped 0..1, 20-snapshot history + network-event deque, 8-test regression suite |
+| Predictive export policy | &#9989; `PredictiveExportPolicy` | &#9989; [`PredictiveExportPolicy.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/PredictiveExportPolicy.swift) | shipped | `DispatchSourceTimer` on utility queue; emits `prediction.cycle` DEBUG + `prediction.high_risk_alert` WARN; triggers `flushWindow` on threshold crossings. Opt-in via `MobileConfig.enablePredictiveExport` |
 | Privacy config | &#9989; `PrivacyConfig`, `PrivacyMode`, `PrivacyUtils` | &#128993; [`PrivacyConfig.swift`](../otel-ios-mobile/Sources/OTelMobileCore/PrivacyConfig.swift) | partial | Struct exists; no privacy-presets / redaction pipeline |
 | Resource builder | &#9989; | &#9989; [`ResourceBuilder.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) | shipped | |
 | EnrichingLogRecordExporter | &#9989; | &#10060; | not-started | |
 | Auto-capture options | &#9989; `AutoCaptureOptions` + session/recovery/flush trackers | &#128993; [`AutoCaptureOptions.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Config/AutoCaptureOptions.swift) | partial | Option set only; wires network/lifecycle/errors; no recovery/session tracker |
-| Fleet alerts | &#9989; `FleetAlert`, `FleetAlertHandler`, `FleetAlertDeduplicator` | &#10060; | not-started | |
+| Fleet alerts | &#9989; `FleetAlert`, `FleetAlertHandler`, `FleetAlertDeduplicator` | &#9989; [`FleetAlert.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Fleet/FleetAlert.swift) + [`FleetAlertHandler.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Fleet/FleetAlertHandler.swift) + [`FleetAlertDeduplicator.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Fleet/FleetAlertDeduplicator.swift) | shipped | `UserDefaults`-backed dedup (replaces SharedPreferences), rolling 1h rate-limit window (max 5 alerts), privacy gates, 9-test regression suite. Host app feeds alerts via `mobile.fleetAlertHandler.handle(alert)` |
 | Log tailing | &#9989; `LogTailBuffer`, `LogTailingConfig` | &#10060; | not-started | |
-| Predictive export | &#9989; `OnDevicePredictor`, `PredictiveExportPolicy`, `DeviceHealthMonitor` | &#10060; | not-started | |
-| Device metrics collector | &#9989; `DeviceMetricsCollector` | &#128993; [`DeviceStatsCollector`](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | partial | iOS collector exists but not wired to auto-start |
+| Predictive export | &#9989; `OnDevicePredictor`, `PredictiveExportPolicy`, `DeviceHealthMonitor` | &#9989; see Context/Health/Predictor/Policy rows above | shipped | Full predictive stack ported: DeviceHealthMonitor + OnDevicePredictor + PredictiveExportPolicy, opt-in via `MobileConfig.enablePredictiveExport` |
+| Device metrics collector | &#9989; `DeviceMetricsCollector` | &#9989; [`DeviceStatsCollector`](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | shipped | Auto-started when `AutoCaptureOptions.deviceStats` is enabled (default, 15s cadence). Emits memory / battery / thermal / storage gauges |
 | Jank detector | &#9989; | &#10060; | not-started | iOS CADisplayLink-based analog TBD |
 | App-start instrumentation | &#9989; `AppStartInstrumentation` | &#10060; | not-started | |
 | Coroutine / async error capture | &#9989; | &#10060; | not-started | Swift concurrency unhandled-error capture TBD |
@@ -163,7 +167,7 @@ iOS file counts via `@Test` (15 suites, **114 test fns**).
 | Matrix / cross-cutting | 20+24+7+4+4+11+3+2+2+12+16 = **~105** | 0 | **0%** |
 | Resource builder | n/a | 4 (`ResourceBuilderTests`) | iOS-only |
 | Smoke | n/a | 2 | iOS-only |
-| **Totals (approx)** | **~980** across 55 files | **114** across 15 suites | **~12%** |
+| **Totals (approx)** | **~980** across 55 files | **134** across 18 suites | **~14%** |
 
 ## Scripts
 

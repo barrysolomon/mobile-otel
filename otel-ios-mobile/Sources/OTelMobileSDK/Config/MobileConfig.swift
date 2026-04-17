@@ -20,6 +20,21 @@ public struct MobileConfig: Sendable {
     /// `PolicyEvaluator`. Default false.
     public let enablePolicyPolling: Bool
 
+    /// Sampling cadence for the device-stats gauge loop when
+    /// `AutoCaptureOptions.deviceStats` is enabled. Default 15 seconds —
+    /// low enough to see trends, high enough to avoid metric storm.
+    public let deviceStatsIntervalSeconds: UInt64
+
+    /// When true, `OTelMobile.start(config:)` constructs and starts a
+    /// `PredictiveExportPolicy`. Off by default because predictive export
+    /// adds a periodic prediction cycle that emits DEBUG/WARN logs even
+    /// when the app is otherwise idle.
+    public let enablePredictiveExport: Bool
+
+    /// How often the predictive-export cycle runs when
+    /// `enablePredictiveExport` is true.
+    public let predictiveExportIntervalSeconds: UInt64
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -31,7 +46,10 @@ public struct MobileConfig: Sendable {
         autoCaptureOptions: AutoCaptureOptions = .all,
         pollingIntervalSeconds: Int = 300,
         extraHeaders: [String: String] = [:],
-        enablePolicyPolling: Bool = false
+        enablePolicyPolling: Bool = false,
+        deviceStatsIntervalSeconds: UInt64 = 15,
+        enablePredictiveExport: Bool = false,
+        predictiveExportIntervalSeconds: UInt64 = 30
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -44,5 +62,8 @@ public struct MobileConfig: Sendable {
         self.pollingIntervalSeconds = pollingIntervalSeconds
         self.extraHeaders = extraHeaders
         self.enablePolicyPolling = enablePolicyPolling
+        self.deviceStatsIntervalSeconds = deviceStatsIntervalSeconds
+        self.enablePredictiveExport = enablePredictiveExport
+        self.predictiveExportIntervalSeconds = predictiveExportIntervalSeconds
     }
 }

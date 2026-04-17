@@ -6,94 +6,107 @@ import UIKit
 #endif
 
 /// Periodically records device health metrics (memory, battery, thermal,
-/// storage) as OpenTelemetry gauges. Driven by the application — call
-/// `start(meter:intervalSeconds:)` to begin emitting, `stop()` to pause.
-/// Starting multiple times is idempotent.
+/// storage) as OpenTelemetry gauges.
 ///
-/// The collector is deliberately conservative: any single reading failure is
-/// swallowed so the loop keeps running. Memory snapshots are taken from the
-/// current process (`mach_task_basic_info`); storage and battery reads touch
-/// OS APIs that may not be available in every simulator configuration.
+/// Driven by a `DispatchSourceTimer` on a dedicated utility queue rather
+/// than `Task.detached { while !Task.isCancelled { ... } }` — the latter
+/// pattern silently doesn't execute in SwiftUI-hosted iOS apps under some
+/// actor-isolation conditions we saw on the `iPhone` branch. A GCD timer
+/// is independent of actor scheduling and always fires.
 ///
-/// Because `Meter` in OpenTelemetry-Swift carries associated types it cannot
-/// be used behind `any Meter`. We accept the concrete SDK type `MeterSdk`
-/// which is what `MeterProviderSdk.get(name:)` returns.
+/// Any single reading failure is swallowed so the loop keeps running.
+/// Memory snapshots are taken from the current process
+/// (`mach_task_basic_info`); storage and battery reads touch OS APIs that
+/// may not be available in every simulator configuration.
 public final class DeviceStatsCollector: @unchecked Sendable {
     private let lock = NSLock()
-    private var task: Task<Void, Never>?
-    private var isRunning = false
+    private let queue = DispatchQueue(
+        label: "io.dash0.mobile.DeviceStatsCollector", qos: .utility
+    )
+    private var timer: DispatchSourceTimer?
+    // Gauge instruments are held as `var` because OTel-Swift's gauge
+    // protocol declares `mutating func record`.
+    private var memoryUsedGauge: DoubleGauge?
+    private var memoryAvailGauge: DoubleGauge?
+    private var batteryGauge: DoubleGauge?
+    private var thermalGauge: LongGauge?
+    private var storageGauge: DoubleGauge?
 
     public init() {}
 
-    /// Whether the collector loop is currently running.
+    /// Whether the timer loop is currently scheduled.
     public var running: Bool {
         lock.lock(); defer { lock.unlock() }
-        return isRunning
+        return timer != nil
     }
 
     /// Start the periodic collection loop. No-op if already running.
-    /// `intervalSeconds` is the gap between samples. Gauge instruments are
-    /// built once up-front and reused across iterations.
-    @MainActor
+    /// Gauge instruments are built once up-front and reused across ticks.
     public func start(meter: MeterSdk, intervalSeconds: UInt64 = 5) {
         lock.lock()
-        guard !isRunning else { lock.unlock(); return }
-        isRunning = true
-        lock.unlock()
+        guard timer == nil else { lock.unlock(); return }
 
-        // Enable battery monitoring so UIDevice.batteryLevel returns a real
-        // value (it reports -1 when monitoring is disabled).
-        #if canImport(UIKit)
-        UIDevice.current.isBatteryMonitoringEnabled = true
+        // Build each gauge once; ignore rebuild requests on subsequent
+        // start() calls (no-op branch above).
+        memoryUsedGauge = meter.gaugeBuilder(name: "device.memory.used_mb").build()
+        memoryAvailGauge = meter.gaugeBuilder(name: "device.memory.available_mb").build()
+        batteryGauge = meter.gaugeBuilder(name: "device.battery.level").build()
+        thermalGauge = meter.gaugeBuilder(name: "device.thermal.state").ofLongs().build()
+        storageGauge = meter.gaugeBuilder(name: "device.storage.available_mb").build()
+
+        #if canImport(UIKit) && !os(watchOS)
+        DispatchQueue.main.async {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+        }
         #endif
 
-        // Build each gauge instrument once; OTel-Swift's gauge API is a
-        // builder that returns a concrete DoubleGauge (or LongGauge via
-        // ofLongs()).
-        let memoryGauge = meter.gaugeBuilder(name: "device.memory.used_mb").build()
-        let memoryAvailGauge = meter.gaugeBuilder(name: "device.memory.available_mb").build()
-        let batteryGauge = meter.gaugeBuilder(name: "device.battery.level").build()
-        let thermalGauge = meter.gaugeBuilder(name: "device.thermal.state").ofLongs().build()
-        let storageGauge = meter.gaugeBuilder(name: "device.storage.available_mb").build()
-
-        let intervalNanos = intervalSeconds * 1_000_000_000
-        task = Task.detached { [weak self] in
-            while !Task.isCancelled {
-                guard let self = self else { return }
-                guard self.running else { return }
-
-                if let memUsed = Self.memoryUsedMb() {
-                    memoryGauge.record(value: memUsed)
-                }
-                if let memAvailMb = Self.memoryAvailableMb() {
-                    memoryAvailGauge.record(value: memAvailMb)
-                }
-                #if canImport(UIKit)
-                let level = await MainActor.run { UIDevice.current.batteryLevel }
-                if level >= 0 {
-                    batteryGauge.record(value: Double(level))
-                }
-                #endif
-                let thermalState = ProcessInfo.processInfo.thermalState.rawValue
-                thermalGauge.record(value: thermalState)
-
-                if let storageMb = Self.storageAvailableMb() {
-                    storageGauge.record(value: storageMb)
-                }
-
-                try? await Task.sleep(nanoseconds: intervalNanos)
-            }
-        }
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        let interval = DispatchTimeInterval.seconds(Int(intervalSeconds))
+        // Fire the first sample slightly after the start call so gauges
+        // populate quickly without racing the caller's frame render.
+        t.schedule(deadline: .now() + .milliseconds(500), repeating: interval)
+        t.setEventHandler { [weak self] in self?.tick() }
+        t.resume()
+        timer = t
+        lock.unlock()
     }
 
-    /// Stop the periodic collection loop. The already-built gauge instruments
-    /// on the MeterProvider continue to exist; this just halts new samples.
+    /// Stop the periodic collection loop. Already-built gauge instruments
+    /// remain registered on the MeterProvider; this just halts new samples.
     public func stop() {
         lock.lock()
-        isRunning = false
-        task?.cancel()
-        task = nil
+        timer?.cancel()
+        timer = nil
         lock.unlock()
+    }
+
+    // MARK: - Tick
+
+    private func tick() {
+        lock.lock()
+        var memoryUsed = memoryUsedGauge
+        var memoryAvail = memoryAvailGauge
+        var battery = batteryGauge
+        var thermal = thermalGauge
+        var storage = storageGauge
+        lock.unlock()
+
+        if let mem = Self.memoryUsedMb() { memoryUsed?.record(value: mem) }
+        if let avail = Self.memoryAvailableMb() { memoryAvail?.record(value: avail) }
+
+        #if canImport(UIKit) && !os(watchOS)
+        let level = Self.batteryLevel()
+        if level >= 0 { battery?.record(value: Double(level)) }
+        #endif
+
+        thermal?.record(value: ProcessInfo.processInfo.thermalState.rawValue)
+
+        if let st = Self.storageAvailableMb() { storage?.record(value: st) }
+
+        // Writeback not required — the optional gauge types are reference
+        // types under the hood, so .record() mutations don't need to be
+        // stored back into self.
+        _ = memoryUsed; _ = memoryAvail; _ = battery; _ = thermal; _ = storage
     }
 
     // MARK: - Sampling helpers
@@ -133,4 +146,11 @@ public final class DeviceStatsCollector: @unchecked Sendable {
         else { return nil }
         return Double(bytes) / (1024 * 1024)
     }
+
+    #if canImport(UIKit) && !os(watchOS)
+    private static func batteryLevel() -> Float {
+        if Thread.isMainThread { return UIDevice.current.batteryLevel }
+        return DispatchQueue.main.sync { UIDevice.current.batteryLevel }
+    }
+    #endif
 }

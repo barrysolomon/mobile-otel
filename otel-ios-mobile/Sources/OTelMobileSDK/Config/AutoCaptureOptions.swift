@@ -13,7 +13,11 @@ public struct AutoCaptureOptions: OptionSet, Sendable {
     public static let textInput = AutoCaptureOptions(rawValue: 1 << 8)
     public static let screenshot = AutoCaptureOptions(rawValue: 1 << 9)
     public static let wireframe = AutoCaptureOptions(rawValue: 1 << 10)
+    /// Start the `DeviceStatsCollector` gauge loop (memory / battery / thermal
+    /// / storage) at SDK init time. Default cadence 15 s — see
+    /// `MobileConfig.deviceStatsIntervalSeconds`.
+    public static let deviceStats = AutoCaptureOptions(rawValue: 1 << 11)
 
-    public static let all: AutoCaptureOptions = [.tap, .scroll, .lifecycle, .screen, .network, .errors, .freeze, .vitals, .textInput, .screenshot, .wireframe]
+    public static let all: AutoCaptureOptions = [.tap, .scroll, .lifecycle, .screen, .network, .errors, .freeze, .vitals, .textInput, .screenshot, .wireframe, .deviceStats]
     public static let none: AutoCaptureOptions = []
 }
