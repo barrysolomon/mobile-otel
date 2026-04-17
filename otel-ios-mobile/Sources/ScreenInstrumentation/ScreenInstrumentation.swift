@@ -102,6 +102,21 @@ public final class ScreenInstrumentation: @unchecked Sendable {
     /// recognizer introspection — this keeps us 100% SwiftUI-safe and
     /// privacy-preserving (no view-tree walking, no text extraction).
     internal func handleSwiftUITap(target: String) {
+        emitUIEvent(eventName: "ui.tap", target: target, spanName: "ui.tap")
+    }
+
+    /// Called from `.trackScrolls(target:)`. Caller throttles; we just emit.
+    internal func handleSwiftUIScroll(target: String) {
+        emitUIEvent(eventName: "ui.scroll", target: target, spanName: "ui.scroll")
+    }
+
+    /// Called from `.trackTextInput(target:)` on focus gain. Privacy-safe:
+    /// only the target identifier is recorded, never the typed text.
+    internal func handleSwiftUITextInput(target: String) {
+        emitUIEvent(eventName: "ui.text_input", target: target, spanName: "ui.text_input")
+    }
+
+    private func emitUIEvent(eventName: String, target: String, spanName: String) {
         lock.lock()
         let enabled = installed
         let logger = self.logger
@@ -110,20 +125,19 @@ public final class ScreenInstrumentation: @unchecked Sendable {
         guard enabled else { return }
 
         logger?.logRecordBuilder()
-            .setBody(.string("ui.tap"))
+            .setBody(.string(eventName))
             .setSeverity(.info)
             .setAttributes([
-                "event.name": .string("ui.tap"),
+                "event.name": .string(eventName),
                 "ui.target": .string(target),
             ])
             .emit()
 
         if let tracer = tracer {
-            let span = tracer.spanBuilder(spanName: "ui.tap")
+            let span = tracer.spanBuilder(spanName: spanName)
                 .setSpanKind(spanKind: .internal)
                 .startSpan()
             span.setAttribute(key: "ui.target", value: target)
-            // Zero-duration span — tap is an instant event.
             span.end()
         }
     }

@@ -144,7 +144,10 @@ public final class OTelMobile: @unchecked Sendable {
         config: MobileConfig,
         diskBuffer: DiskLogBuffer? = nil
     ) throws -> OTelMobile {
-        let sessionProvider = StaticSessionProvider()
+        // SessionManager with UUID rotation on inactivity timeout and
+        // UserDefaults persistence. Replaces the earlier StaticSessionProvider
+        // (which minted a fresh UUID per-launch and never rotated).
+        let sessionProvider = SessionManager()
         let buffer = RAMEventBuffer(capacity: config.bufferConfig.ramEvents)
 
         // Build the OTLP exporters — one per signal. Each handles its own
