@@ -33,6 +33,16 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// RAM-only implementation.
     private let diskBuffer: DiskLogBuffer?
 
+    /// Optional policy evaluator. When non-nil, every `onEmit` runs the event's
+    /// attributes through `evaluator.evaluate(...)`. A matching policy triggers
+    /// a selective `flushWindow(minutes:)` for that window — this is the
+    /// mechanism that turns DSL v2 rules (from a gateway or code) into real
+    /// export behaviour.
+    ///
+    /// Backward compatible: when `nil`, policies are not consulted — the
+    /// processor behaves exactly like the earlier no-policy implementation.
+    private let policyEvaluator: PolicyEvaluator?
+
     /// Production constructor: drains buffered records through an upstream OTel
     /// `LogRecordExporter` on forceFlush/selective-flush.
     public init(
@@ -40,7 +50,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         otelExporter: LogRecordExporter,
         sessionProvider: SessionProvider,
         sequenceCounter: SequenceCounter = SequenceCounter(),
-        diskBuffer: DiskLogBuffer? = nil
+        diskBuffer: DiskLogBuffer? = nil,
+        policyEvaluator: PolicyEvaluator? = nil
     ) {
         self.buffer = buffer
         self.legacyExporter = nil
@@ -48,6 +59,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sequenceCounter = sequenceCounter
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
+        self.policyEvaluator = policyEvaluator
     }
 
     /// Test-only constructor: delivers `[BufferedEvent]` batches to an
@@ -58,7 +70,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         exporter: BufferedEventExporter,
         sessionProvider: SessionProvider,
         sequenceCounter: SequenceCounter = SequenceCounter(),
-        diskBuffer: DiskLogBuffer? = nil
+        diskBuffer: DiskLogBuffer? = nil,
+        policyEvaluator: PolicyEvaluator? = nil
     ) {
         self.buffer = buffer
         self.legacyExporter = exporter
@@ -66,6 +79,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sequenceCounter = sequenceCounter
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
+        self.policyEvaluator = policyEvaluator
     }
 
     // MARK: - LogRecordProcessor
@@ -80,11 +94,64 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         // If a disk buffer is configured, any event evicted from the RAM
         // buffer (capacity or size-budget eviction) is spilled to disk so we
         // preserve it across process death.
-        Task.detached { [buffer, diskBuffer] in
+        //
+        // If a policy evaluator is configured, the event's attributes are
+        // run through it and a matching policy schedules a selective flush.
+        // Both branches run concurrently off `onEmit`'s synchronous thread —
+        // evaluation cost never blocks the emit path.
+        Task.detached { [buffer, diskBuffer, policyEvaluator, weak self] in
             let evicted = await buffer.append(event)
             if let evicted = evicted, let diskBuffer = diskBuffer {
                 await diskBuffer.insert(evicted)
             }
+            if let evaluator = policyEvaluator, let self = self {
+                let attrs = Self.attributesForEval(logRecord)
+                if let match = await evaluator.evaluate(attributes: attrs) {
+                    _ = await self.flushWindow(minutes: UInt64(match.flushWindowMinutes))
+                }
+            }
+        }
+    }
+
+    // MARK: - Policy attribute projection
+
+    /// Flatten a `ReadableLogRecord` down to `[String: String]` for policy
+    /// evaluation. Matches Android's `getAttributeValue(...)` fallback chain
+    /// shape: body becomes `event.name`, severity becomes `severity_number`,
+    /// and each attribute is stringified regardless of its typed variant so
+    /// DSL operators (equals/contains/regex/gt/gte) can consume it.
+    static func attributesForEval(_ record: ReadableLogRecord) -> [String: String] {
+        var out: [String: String] = [:]
+        if let body = record.body {
+            out["event.name"] = Self.stringify(body)
+        }
+        if let sev = record.severity {
+            out["severity_number"] = String(sev.rawValue)
+            out["severity"] = "\(sev)"
+        }
+        for (k, v) in record.attributes {
+            out[k] = Self.stringify(v)
+        }
+        return out
+    }
+
+    /// String projection of every `AttributeValue` case the DSL can reason
+    /// about. Arrays join with commas (DSL contains/regex handle that fine).
+    /// `@unknown default` covers any future case additions so the SDK keeps
+    /// working even when opentelemetry-swift adds new variants.
+    static func stringify(_ value: AttributeValue) -> String {
+        switch value {
+        case .string(let s):       return s
+        case .bool(let b):         return String(b)
+        case .int(let i):          return String(i)
+        case .double(let d):       return String(d)
+        case .stringArray(let a):  return a.joined(separator: ",")
+        case .boolArray(let a):    return a.map { String($0) }.joined(separator: ",")
+        case .intArray(let a):     return a.map { String($0) }.joined(separator: ",")
+        case .doubleArray(let a):  return a.map { String($0) }.joined(separator: ",")
+        case .array:               return ""
+        case .set:                 return ""
+        @unknown default:          return ""
         }
     }
 
