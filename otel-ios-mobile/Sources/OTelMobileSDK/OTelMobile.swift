@@ -50,6 +50,14 @@ public final class OTelMobile: @unchecked Sendable {
     /// when `meter` is nil the collector cannot be started.
     public let deviceStats: DeviceStatsCollector
 
+    /// Policy evaluator holding the currently-active DSL v2 policies.
+    /// Consumers call `policyEvaluator.evaluate(attributes:)` to check an
+    /// event against the policy set. Always non-nil; starts empty.
+    ///
+    /// To feed policies from a gateway, construct a `ConfigPoller` with this
+    /// evaluator and call `poller.start()`.
+    public let policyEvaluator: PolicyEvaluator
+
     /// Underlying trace/meter providers. Held so `forceFlush()` can drain
     /// their batch processors / periodic readers on demand. Optional because
     /// the test-overload `start(config:exporter:)` doesn't wire them.
@@ -65,6 +73,7 @@ public final class OTelMobile: @unchecked Sendable {
         tracer: Tracer?,
         meter: MeterSdk?,
         deviceStats: DeviceStatsCollector,
+        policyEvaluator: PolicyEvaluator,
         tracerProvider: TracerProviderSdk? = nil,
         meterProvider: MeterProviderSdk? = nil
     ) {
@@ -76,6 +85,7 @@ public final class OTelMobile: @unchecked Sendable {
         self.tracer = tracer
         self.meter = meter
         self.deviceStats = deviceStats
+        self.policyEvaluator = policyEvaluator
         self.tracerProvider = tracerProvider
         self.meterProvider = meterProvider
     }
@@ -120,7 +130,8 @@ public final class OTelMobile: @unchecked Sendable {
             resource: resource,
             tracer: nil,
             meter: nil,
-            deviceStats: DeviceStatsCollector()
+            deviceStats: DeviceStatsCollector(),
+            policyEvaluator: PolicyEvaluator()
         )
     }
 
@@ -247,6 +258,7 @@ public final class OTelMobile: @unchecked Sendable {
             tracer: tracer,
             meter: meter,
             deviceStats: DeviceStatsCollector(),
+            policyEvaluator: PolicyEvaluator(),
             tracerProvider: tracerProvider,
             meterProvider: meterProvider
         )
