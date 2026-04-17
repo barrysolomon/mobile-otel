@@ -2,6 +2,11 @@ import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import OTelMobileCore
+import NetworkInstrumentation
+import LifecycleInstrumentation
+import ErrorsInstrumentation
+// ScreenInstrumentation import kept for future re-enable — see TODO in start(config:).
+import ScreenInstrumentation
 
 /// Public entry point for the Dash0 Mobile Observability iOS SDK.
 ///
@@ -16,7 +21,10 @@ import OTelMobileCore
 /// metrics directly through the public API.
 public final class OTelMobile: @unchecked Sendable {
     private let processor: MobileLogRecordProcessor
-    private let logger: Logger
+    /// OpenTelemetry logger for the `io.dash0.mobile` instrumentation scope.
+    /// Exposed so instrumentation modules (lifecycle, errors, etc.) and
+    /// application code can emit log records directly.
+    public let logger: Logger
     public let config: MobileConfig
     public let sessionProvider: SessionProvider
 
@@ -218,7 +226,7 @@ public final class OTelMobile: @unchecked Sendable {
             .build()
         let meter = meterProvider.get(name: "io.dash0.mobile")
 
-        return OTelMobile(
+        let instance = OTelMobile(
             config: config,
             processor: bufferProcessor,
             logger: logger,
@@ -230,6 +238,43 @@ public final class OTelMobile: @unchecked Sendable {
             tracerProvider: tracerProvider,
             meterProvider: meterProvider
         )
+
+        // Auto-install instrumentation modules based on config.autoCaptureOptions.
+        // Matches the Android SDK's "all-on-by-default" UX: one OTelMobile.start
+        // call wires logs + traces + metrics + network + lifecycle + errors without
+        // any further setup from app code. Opt out by tailoring
+        // `autoCaptureOptions` in MobileConfig.
+        //
+        // IMPORTANT: these installs must happen AFTER the SwiftUI scene has
+        // initialized its own UIWindow and URL-loading machinery. Doing them
+        // synchronously during OTelMobile.start() (which callers invoke from
+        // App.init / @StateObject closures) leaves SwiftUI stuck on the launch
+        // screen — URLSessionConfiguration.protocolClasses swizzle + signal
+        // handlers + NSException handler setup collectively race with UIKit's
+        // scene setup. Deferring to the main queue's next tick lets the first
+        // SwiftUI render complete first.
+        let opts = config.autoCaptureOptions
+        DispatchQueue.main.async {
+            if opts.contains(.network) {
+                NetworkInstrumentation.shared.install(tracer: tracer)
+            }
+            if opts.contains(.lifecycle) {
+                LifecycleInstrumentation.shared.install(tracer: tracer, logger: logger)
+            }
+            if opts.contains(.errors) {
+                ErrorsInstrumentation.shared.install(logger: logger)
+            }
+            // TODO: ScreenInstrumentation's UIViewController swizzle needs a
+            // safer install path (SwiftUI's UIHostingController hierarchy is
+            // sensitive to viewDidAppear/Disappear swizzles). Re-enable once we
+            // use a ViewModifier-based SwiftUI integration + optional UIKit
+            // swizzle gated by opt-in.
+            // if opts.contains(.screen) {
+            //     ScreenInstrumentation.shared.install(tracer: tracer, logger: logger)
+            // }
+        }
+
+        return instance
     }
 
     // MARK: - Public API

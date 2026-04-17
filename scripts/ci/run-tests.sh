@@ -42,16 +42,31 @@ handle_error() {
 # Parse command line arguments
 RUN_ANDROID=true
 RUN_GO=true
+RUN_IOS=false            # iOS off by default — opt-in. Requires Xcode.
 RUN_INTEGRATION=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --android-only)
             RUN_GO=false
+            RUN_IOS=false
             shift
             ;;
         --go-only)
             RUN_ANDROID=false
+            RUN_IOS=false
+            shift
+            ;;
+        --ios|--ios-only)
+            RUN_ANDROID=false
+            RUN_GO=false
+            RUN_IOS=true
+            shift
+            ;;
+        --all)
+            RUN_ANDROID=true
+            RUN_GO=true
+            RUN_IOS=true
             shift
             ;;
         --integration)
@@ -64,6 +79,8 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --android-only    Run only Android tests"
             echo "  --go-only         Run only Go tests"
+            echo "  --ios, --ios-only Run only iOS tests (requires Xcode)"
+            echo "  --all             Run Android + Go + iOS (requires Xcode)"
             echo "  --integration     Include integration tests (requires emulator)"
             echo "  --help            Show this help message"
             exit 0
@@ -122,6 +139,38 @@ if [ "$RUN_GO" = true ]; then
     fi
 
     cd "$REPO_ROOT"
+fi
+
+# iOS Unit Tests (opt-in — requires Xcode + iOS simulator runtime)
+if [ "$RUN_IOS" = true ]; then
+    print_section "Running iOS Unit Tests"
+
+    if [ ! -d "$REPO_ROOT/otel-ios-mobile" ]; then
+        echo -e "${YELLOW}⚠ otel-ios-mobile directory missing, skipping${NC}"
+    else
+        cd "$REPO_ROOT/otel-ios-mobile"
+        if ./run-tests.sh; then
+            echo -e "${GREEN}✓ iOS unit tests (host) passed${NC}"
+        else
+            handle_error "iOS unit tests"
+        fi
+
+        if [ "$RUN_INTEGRATION" = true ]; then
+            if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app ]; then
+                export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+            fi
+            echo -e "${YELLOW}Running iOS Simulator tests (iPhone 17)...${NC}"
+            if xcodebuild test \
+                -scheme OTelMobile-Package \
+                -destination "platform=iOS Simulator,name=iPhone 17" \
+                2>&1 | tail -20 | grep -q "TEST SUCCEEDED"; then
+                echo -e "${GREEN}✓ iOS simulator tests passed${NC}"
+            else
+                handle_error "iOS simulator tests"
+            fi
+        fi
+        cd "$REPO_ROOT"
+    fi
 fi
 
 # Android Integration Tests (optional)

@@ -13,6 +13,7 @@ struct ContentView: View {
                 tracesSection
                 metricsSection
                 networkSection
+                errorsSection
                 deviceStatsSection
                 countersSection
             }
@@ -94,6 +95,15 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 ActionButton("GET /json", color: .green) { model.fetchHttpbinJson() }
                 ActionButton("GET /status/500", color: .red) { model.fetchHttpbin5xx() }
+            }
+        }
+    }
+
+    private var errorsSection: some View {
+        SectionCard(title: "Errors (auto-captured)") {
+            HStack(spacing: 10) {
+                ActionButton("Recorded Error", color: .orange) { model.recordCaughtError() }
+                ActionButton("Crash Now", color: .red) { model.crashNow() }
             }
         }
     }

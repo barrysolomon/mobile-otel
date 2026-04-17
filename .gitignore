@@ -256,8 +256,13 @@ DerivedData/
 
 # iOS demo app credentials
 examples/demo-app-ios-starter/StarterApp/otel-config.json
-# XcodeGen-generated project
+examples/upstream-demo-app-ios/AstronomyShop/otel-config.json
+# XcodeGen-generated projects
 examples/demo-app-ios-starter/StarterApp.xcodeproj/
+examples/upstream-demo-app-ios/AstronomyShop.xcodeproj/
 # Xcode cruft
 examples/demo-app-ios-starter/*.xcuserstate
 examples/demo-app-ios-starter/**/xcuserdata/
+examples/upstream-demo-app-ios/*.xcuserstate
+examples/upstream-demo-app-ios/**/xcuserdata/
+examples/upstream-demo-app-ios/build/

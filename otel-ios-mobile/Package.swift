@@ -31,14 +31,30 @@ let package = Package(
             name: "OTelMobileSDK",
             dependencies: [
                 "OTelMobileCore",
+                "NetworkInstrumentation",
+                "LifecycleInstrumentation",
+                "ErrorsInstrumentation",
+                "ScreenInstrumentation",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
                 .product(name: "DequeModule", package: "swift-collections"),
             ]
         ),
-        .target(name: "LifecycleInstrumentation", dependencies: ["OTelMobileCore"]),
-        .target(name: "ScreenInstrumentation", dependencies: ["OTelMobileCore"]),
+        .target(
+            name: "LifecycleInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
+        .target(
+            name: "ScreenInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
         .target(
             name: "NetworkInstrumentation",
             dependencies: [
@@ -46,7 +62,13 @@ let package = Package(
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ]
         ),
-        .target(name: "ErrorsInstrumentation", dependencies: ["OTelMobileCore"]),
+        .target(
+            name: "ErrorsInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
         .target(name: "VitalsInstrumentation", dependencies: ["OTelMobileCore"]),
         .target(name: "FreezeInstrumentation", dependencies: ["OTelMobileCore"]),
         .testTarget(

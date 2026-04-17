@@ -3,6 +3,7 @@ import OpenTelemetryApi
 import OpenTelemetrySdk
 import OTelMobileSDK
 import OTelMobileCore
+import ErrorsInstrumentation
 
 @MainActor
 final class DemoModel: ObservableObject {
@@ -167,6 +168,22 @@ final class DemoModel: ObservableObject {
         let value = Double.random(in: 50...500)
         requestHistogram?.record(value: value, attributes: ["endpoint": .string("/api/demo")])
         metricsEmitted += 1
+    }
+
+    // MARK: - Errors (auto-instrumented via ErrorsInstrumentation)
+
+    func recordCaughtError() {
+        struct DemoError: Error { let code: Int }
+        let err = DemoError(code: 42)
+        ErrorsInstrumentation.shared.recordError(err, attributes: [
+            "demo.source": .string("caught_error_button"),
+        ])
+    }
+
+    /// Intentionally crashes the process. Relaunching the app emits `app.crash`
+    /// with the saved stack via the crash-marker recovery path.
+    func crashNow() {
+        fatalError("Demo: user tapped Crash Now")
     }
 
     // MARK: - Network (auto-instrumented via NetworkInstrumentation)

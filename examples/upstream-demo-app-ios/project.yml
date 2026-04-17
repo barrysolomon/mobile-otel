@@ -1,19 +1,19 @@
-name: StarterApp
+name: AstronomyShop
 options:
   bundleIdPrefix: com.dash0.mobile.demo
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
 settings:
   SWIFT_VERSION: "5.9"
 packages:
   OTelMobile:
     path: ../../otel-ios-mobile
 targets:
-  StarterApp:
+  AstronomyShop:
     type: application
     platform: iOS
     sources:
-      - path: StarterApp
+      - path: AstronomyShop
         excludes:
           - "Info.plist"
     dependencies:
@@ -28,10 +28,10 @@ targets:
       - package: OTelMobile
         product: ErrorsInstrumentation
     info:
-      path: StarterApp/Info.plist
+      path: AstronomyShop/Info.plist
       properties:
-        CFBundleDisplayName: Dash0 Demo
+        CFBundleDisplayName: Astronomy Shop
         UILaunchScreen:
           UIColorName: systemBackgroundColor
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: true
+          UIApplicationSupportsMultipleScenes: false
