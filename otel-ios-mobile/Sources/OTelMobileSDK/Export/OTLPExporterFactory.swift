@@ -2,12 +2,48 @@ import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryProtocolExporterCommon
 import OpenTelemetryProtocolExporterHttp
+#if canImport(GRPC)
+import GRPC
+import NIO
+import OpenTelemetryProtocolExporterGrpc
+#endif
 
 /// Errors produced when building OTLP exporters from `MobileConfig` values.
 public enum OTLPExporterFactoryError: Error, Equatable {
     /// The `endpoint` string failed to parse into a `URL`.
     case invalidEndpoint(String)
 }
+
+#if canImport(GRPC)
+/// Wraps an OTLP/gRPC exporter together with the `EventLoopGroup` that owns
+/// its channel. Keep the bundle alive for the lifetime of the exporter;
+/// call `shutdown()` on app teardown.
+public final class GrpcExporterBundle<ExporterT>: @unchecked Sendable {
+    public let exporter: ExporterT
+    private let group: EventLoopGroup
+    private var shutdownCalled = false
+    private let lock = NSLock()
+
+    init(exporter: ExporterT, group: EventLoopGroup) {
+        self.exporter = exporter
+        self.group = group
+    }
+
+    public func shutdown() {
+        lock.lock(); defer { lock.unlock() }
+        guard !shutdownCalled else { return }
+        shutdownCalled = true
+        try? group.syncShutdownGracefully()
+    }
+
+    deinit {
+        if !shutdownCalled {
+            // Best-effort cleanup; deinit must not throw.
+            try? group.syncShutdownGracefully()
+        }
+    }
+}
+#endif
 
 /// Factory that builds OTel-Swift OTLP/HTTP exporters from our config.
 ///
@@ -118,6 +154,74 @@ public enum OTLPExporterFactory {
         }
         return finalURL
     }
+
+#if canImport(GRPC)
+
+    // MARK: - OTLP/gRPC factories (opt-in)
+
+    /// Build an OTLP/gRPC log exporter. Most customers use OTLP/HTTP via
+    /// `makeHttpLogExporter`; use this when you need gRPC (enterprise
+    /// collector deployments, lower overhead on high-volume pipelines).
+    ///
+    /// The returned `GrpcExporterBundle<LogRecordExporter>` owns an
+    /// `EventLoopGroup` — keep the bundle alive as long as the exporter is
+    /// in use. On app shutdown, call `bundle.shutdown()` to release resources.
+    ///
+    /// Endpoint format: `https://host:4317` (gRPC standard port). TLS is
+    /// selected automatically based on scheme.
+    public static func makeGrpcLogExporter(
+        endpoint: String,
+        authToken: String?,
+        extraHeaders: [String: String] = [:]
+    ) throws -> GrpcExporterBundle<OtlpLogExporter> {
+        let channelInfo = try makeGrpcChannel(endpoint: endpoint)
+        let config = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
+        let exporter = OtlpLogExporter(
+            channel: channelInfo.channel,
+            config: config,
+            envVarHeaders: nil
+        )
+        return GrpcExporterBundle(exporter: exporter, group: channelInfo.group)
+    }
+
+    /// Build an OTLP/gRPC trace exporter. See `makeGrpcLogExporter` for details.
+    public static func makeGrpcTraceExporter(
+        endpoint: String,
+        authToken: String?,
+        extraHeaders: [String: String] = [:]
+    ) throws -> GrpcExporterBundle<OtlpTraceExporter> {
+        let channelInfo = try makeGrpcChannel(endpoint: endpoint)
+        let config = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
+        let exporter = OtlpTraceExporter(
+            channel: channelInfo.channel,
+            config: config,
+            envVarHeaders: nil
+        )
+        return GrpcExporterBundle(exporter: exporter, group: channelInfo.group)
+    }
+
+    /// Parse an endpoint string like `https://host:port` and open a
+    /// platform-appropriate gRPC channel. Scheme selects TLS on/off.
+    private static func makeGrpcChannel(endpoint: String) throws -> (channel: GRPCChannel, group: EventLoopGroup) {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed),
+              let host = url.host else {
+            throw OTLPExporterFactoryError.invalidEndpoint(endpoint)
+        }
+        let port = url.port ?? (url.scheme?.lowercased() == "https" ? 4317 : 4317)
+        let useTLS = (url.scheme?.lowercased() ?? "https") == "https"
+
+        // Single-thread event loop is plenty for a mobile exporter — the SDK
+        // batches small payloads, not high-throughput streaming.
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let builder: ClientConnection.Builder = useTLS
+            ? ClientConnection.usingPlatformAppropriateTLS(for: group)
+            : ClientConnection.insecure(group: group)
+        let channel = builder.connect(host: host, port: port)
+        return (channel, group)
+    }
+
+#endif
 
     /// Build the shared OtlpConfiguration used by all three exporters. Auth
     /// token goes on the `Authorization: Bearer` header; any caller-supplied
