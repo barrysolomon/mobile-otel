@@ -1,0 +1,1 @@
+scripts/test/validate-ios-end-to-end.sh
