@@ -1,4 +1,5 @@
 import SwiftUI
+import ScreenInstrumentation
 
 struct ProductDetailView: View {
     let product: Product
@@ -59,6 +60,7 @@ struct ProductDetailView: View {
         }
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
+        .trackScreen("ProductDetail")
     }
 
     @ViewBuilder

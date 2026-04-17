@@ -1,4 +1,5 @@
 import SwiftUI
+import ScreenInstrumentation
 
 struct ProductListView: View {
     let products: [Product]
@@ -26,6 +27,7 @@ struct ProductListView: View {
                 }
             }
             .navigationTitle("Astronomy Shop")
+            .trackScreen("ProductList")
             .navigationDestination(for: Product.self) { product in
                 ProductDetailView(product: product)
                     .environmentObject(cart)

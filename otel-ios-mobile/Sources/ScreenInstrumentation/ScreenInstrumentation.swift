@@ -25,14 +25,23 @@ public final class ScreenInstrumentation: @unchecked Sendable {
 
     private init() {}
 
-    public func install(tracer: Tracer, logger: Logger) {
+    /// Install screen instrumentation. By default, only the SAFE SwiftUI
+    /// bridge is enabled — apps attach `.trackScreen("Name")` to SwiftUI
+    /// views and we emit through the shared singleton. The UIKit
+    /// `UIViewController.viewDidAppear` swizzle path remains opt-in via
+    /// `enableUIKitSwizzle: true` because it can race with SwiftUI's
+    /// `UIHostingController` lifecycle and has left apps on a blank launch
+    /// screen in testing.
+    public func install(tracer: Tracer, logger: Logger, enableUIKitSwizzle: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         self.tracer = tracer
         self.logger = logger
         guard !installed else { return }
         installed = true
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
-        ScreenSwizzle.installOnce()
+        if enableUIKitSwizzle {
+            ScreenSwizzle.installOnce()
+        }
         #endif
     }
 
@@ -74,6 +83,49 @@ public final class ScreenInstrumentation: @unchecked Sendable {
         lock.unlock()
         guard enabled else { return }
         ScreenSpanRegistry.shared.endSpan(for: screenName)
+    }
+
+    // MARK: - SwiftUI bridge (no swizzling — safe to call even before install)
+
+    /// Called from the `.trackScreen("Name")` ViewModifier. Always emits —
+    /// the SwiftUI opt-in path works whether or not UIKit swizzling is active.
+    internal func handleSwiftUIScreenAppear(name: String) {
+        handleViewDidAppear(screenName: name)
+    }
+
+    internal func handleSwiftUIScreenDisappear(name: String) {
+        handleViewDidDisappear(screenName: name)
+    }
+
+    /// Called from the `.trackTaps(target:)` ViewModifier. Emits a `ui.tap`
+    /// log + span. Target is the caller-supplied identifier, not a gesture
+    /// recognizer introspection — this keeps us 100% SwiftUI-safe and
+    /// privacy-preserving (no view-tree walking, no text extraction).
+    internal func handleSwiftUITap(target: String) {
+        lock.lock()
+        let enabled = installed
+        let logger = self.logger
+        let tracer = self.tracer
+        lock.unlock()
+        guard enabled else { return }
+
+        logger?.logRecordBuilder()
+            .setBody(.string("ui.tap"))
+            .setSeverity(.info)
+            .setAttributes([
+                "event.name": .string("ui.tap"),
+                "ui.target": .string(target),
+            ])
+            .emit()
+
+        if let tracer = tracer {
+            let span = tracer.spanBuilder(spanName: "ui.tap")
+                .setSpanKind(spanKind: .internal)
+                .startSpan()
+            span.setAttribute(key: "ui.target", value: target)
+            // Zero-duration span — tap is an instant event.
+            span.end()
+        }
     }
 }
 

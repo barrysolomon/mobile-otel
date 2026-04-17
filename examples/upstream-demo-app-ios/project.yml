@@ -27,6 +27,12 @@ targets:
         product: LifecycleInstrumentation
       - package: OTelMobile
         product: ErrorsInstrumentation
+      - package: OTelMobile
+        product: ScreenInstrumentation
+      - package: OTelMobile
+        product: FreezeInstrumentation
+      - package: OTelMobile
+        product: VitalsInstrumentation
     info:
       path: AstronomyShop/Info.plist
       properties:

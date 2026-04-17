@@ -1,4 +1,5 @@
 import SwiftUI
+import ScreenInstrumentation
 
 struct CartView: View {
     @EnvironmentObject var cart: CartViewModel
@@ -74,6 +75,7 @@ struct CartView: View {
             }
         }
         .navigationTitle("Cart")
+        .trackScreen("Cart")
         .alert(
             lastCheckoutSucceeded ? "Order placed!" : "Checkout failed",
             isPresented: $showConfirmation

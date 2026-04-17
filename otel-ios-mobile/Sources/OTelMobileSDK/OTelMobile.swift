@@ -302,14 +302,13 @@ public final class OTelMobile: @unchecked Sendable {
                     _ = await bufferProcessor.recoverFromDisk()
                 }
             }
-            // TODO: ScreenInstrumentation's UIViewController swizzle needs a
-            // safer install path (SwiftUI's UIHostingController hierarchy is
-            // sensitive to viewDidAppear/Disappear swizzles). Re-enable once we
-            // use a ViewModifier-based SwiftUI integration + optional UIKit
-            // swizzle gated by opt-in.
-            // if opts.contains(.screen) {
-            //     ScreenInstrumentation.shared.install(tracer: tracer, logger: logger)
-            // }
+            if opts.contains(.screen) {
+                // SAFE SwiftUI-bridge path: enables `.trackScreen("Name")` and
+                // `.trackTaps(target:)` ViewModifiers. The UIKit swizzle (which
+                // races with SwiftUI hosting controller lifecycle) stays
+                // OPT-IN via `enableUIKitSwizzle: true` for pure-UIKit apps.
+                ScreenInstrumentation.shared.install(tracer: tracer, logger: logger)
+            }
         }
 
         return instance
