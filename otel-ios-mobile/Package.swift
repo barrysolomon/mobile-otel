@@ -35,6 +35,8 @@ let package = Package(
                 "LifecycleInstrumentation",
                 "ErrorsInstrumentation",
                 "ScreenInstrumentation",
+                "FreezeInstrumentation",
+                "VitalsInstrumentation",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
@@ -69,8 +71,20 @@ let package = Package(
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ]
         ),
-        .target(name: "VitalsInstrumentation", dependencies: ["OTelMobileCore"]),
-        .target(name: "FreezeInstrumentation", dependencies: ["OTelMobileCore"]),
+        .target(
+            name: "VitalsInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
+        .target(
+            name: "FreezeInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
         .testTarget(
             name: "OTelMobileSDKTests",
             dependencies: ["OTelMobileSDK", "NetworkInstrumentation"]

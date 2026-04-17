@@ -41,6 +41,16 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     private var installed = false
     private var logger: Logger?
 
+    /// Previous NSException handler installed before us. Stored as the C
+    /// function-pointer type (`@convention(c)`) so we can both call it at
+    /// crash time AND hand it back to `NSSetUncaughtExceptionHandler` on
+    /// uninstall. Swift closures can't round-trip through the C ABI.
+    ///
+    /// We MUST call it after writing our marker so apps running Sentry,
+    /// Firebase Crashlytics, PLCrashReporter, Bugsnag, etc. still get their
+    /// crash report.
+    nonisolated(unsafe) static var previousExceptionHandler: (@convention(c) (NSException) -> Void)?
+
     private init() {}
 
     public func install(logger: Logger) {
@@ -54,15 +64,12 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
         guard !installed else { return }
         installed = true
 
-        // Path 1: NSException
-        NSSetUncaughtExceptionHandler { exception in
-            ErrorsInstrumentation.writeMarker(
-                kind: "exception",
-                name: exception.name.rawValue,
-                reason: exception.reason ?? "",
-                frames: exception.callStackSymbols
-            )
-        }
+        // Path 1: NSException — chain through the previously installed
+        // handler so we don't clobber Sentry / Firebase Crashlytics /
+        // PLCrashReporter / Bugsnag. Whoever was there before us still gets
+        // their crash report AFTER we write our marker.
+        ErrorsInstrumentation.previousExceptionHandler = NSGetUncaughtExceptionHandler()
+        NSSetUncaughtExceptionHandler(uncaughtExceptionTrampoline)
 
         // Path 2: Signals.
         //
@@ -90,7 +97,11 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     public func uninstall() {
         lock.lock(); defer { lock.unlock() }
         installed = false
-        NSSetUncaughtExceptionHandler(nil)
+        // Restore the previously-installed NSException handler so apps that
+        // had Sentry/Firebase/PLCrashReporter installed before us still have
+        // them after we uninstall. If there was no previous handler, passing
+        // nil is correct.
+        NSSetUncaughtExceptionHandler(ErrorsInstrumentation.previousExceptionHandler)
         for sig in Self.fatalSignals {
             signal(sig, SIG_DFL)
         }
@@ -203,6 +214,24 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     }
 }
 
+// Top-level NSException trampoline (needs C-callable signature).
+// Writes our marker first so even if the chained handler crashes or exits,
+// we've persisted our info for next-launch recovery. Then re-delegates to
+// whatever handler was installed before us (Sentry / Firebase / etc.).
+private let uncaughtExceptionTrampoline: @convention(c) (NSException) -> Void = { exception in
+    ErrorsInstrumentation.writeMarker(
+        kind: "exception",
+        name: exception.name.rawValue,
+        reason: exception.reason ?? "",
+        frames: exception.callStackSymbols
+    )
+    // Call previous handler if any. Must be unwrapped locally — the closure
+    // captures the static at call time.
+    if let prev = ErrorsInstrumentation.previousExceptionHandler {
+        prev(exception)
+    }
+}
+
 // Top-level signal handler (needs C-callable signature).
 //
 // SAFETY: Only async-signal-safe calls are permitted here per POSIX. We must
@@ -226,7 +255,7 @@ private func signalHandler(_ sig: Int32) {
     // Async-signal-safe: `write(2)` is on POSIX's async-signal-safe list.
     let fd = ErrorsInstrumentation.crashMarkerFd
     if fd >= 0 {
-        var buf: [UInt8] = [
+        let buf: [UInt8] = [
             UInt8(ascii: "S"),
             UInt8(truncatingIfNeeded: sig),
             UInt8(ascii: "\n"),

@@ -7,6 +7,8 @@ import LifecycleInstrumentation
 import ErrorsInstrumentation
 // ScreenInstrumentation import kept for future re-enable — see TODO in start(config:).
 import ScreenInstrumentation
+import FreezeInstrumentation
+import VitalsInstrumentation
 
 /// Public entry point for the Dash0 Mobile Observability iOS SDK.
 ///
@@ -138,7 +140,10 @@ public final class OTelMobile: @unchecked Sendable {
     ///
     /// The injectable-exporter overload `start(config:exporter:)` remains
     /// available for unit tests and bespoke transport adapters.
-    public static func start(config: MobileConfig) throws -> OTelMobile {
+    public static func start(
+        config: MobileConfig,
+        diskBuffer: DiskLogBuffer? = nil
+    ) throws -> OTelMobile {
         let sessionProvider = StaticSessionProvider()
         let buffer = RAMEventBuffer(capacity: config.bufferConfig.ramEvents)
 
@@ -153,10 +158,16 @@ public final class OTelMobile: @unchecked Sendable {
         // OTel-native buffer pipeline: selective / force flush drains
         // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
         // the batch processor uses. No custom JSON encoding.
+        //
+        // When a `diskBuffer` is supplied, RAM-evicted events are spilled to
+        // disk and drained back out on `forceFlushBuffered()` / start-time
+        // recovery (see below). Passing `nil` preserves the RAM-only
+        // behaviour from earlier releases.
         let bufferProcessor = MobileLogRecordProcessor(
             buffer: buffer,
             otelExporter: otlpLogExporter,
-            sessionProvider: sessionProvider
+            sessionProvider: sessionProvider,
+            diskBuffer: diskBuffer
         )
         let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
             endpoint: config.endpoint,
@@ -261,6 +272,35 @@ public final class OTelMobile: @unchecked Sendable {
             }
             if opts.contains(.errors) {
                 ErrorsInstrumentation.shared.install(logger: logger)
+            }
+            if opts.contains(.freeze) {
+                FreezeInstrumentation.shared.install(logger: logger)
+            }
+            if opts.contains(.vitals) {
+                VitalsInstrumentation.shared.install(logger: logger)
+            }
+            // Crash-safety recovery: if the disk buffer holds events from a
+            // previous process, emit a marker log with the backlog size then
+            // drain them through the exporter. Non-blocking — runs on a
+            // detached Task so the first SwiftUI render is not delayed.
+            if diskBuffer != nil {
+                Task.detached { [bufferProcessor, logger] in
+                    guard let stats = await bufferProcessor.diskStats(), stats.count > 0 else {
+                        return
+                    }
+                    // Marker event — surfaces in backend as a recovery
+                    // breadcrumb so operators can see that the SDK resumed
+                    // from a prior process.
+                    logger.logRecordBuilder()
+                        .setBody(AttributeValue.string("app.recovery_start"))
+                        .setSeverity(.info)
+                        .setAttributes([
+                            "dash0.recovery.event_count": AttributeValue.int(stats.count),
+                            "dash0.recovery.bytes_pending": AttributeValue.int(stats.bytes)
+                        ])
+                        .emit()
+                    _ = await bufferProcessor.recoverFromDisk()
+                }
             }
             // TODO: ScreenInstrumentation's UIViewController swizzle needs a
             // safer install path (SwiftUI's UIHostingController hierarchy is

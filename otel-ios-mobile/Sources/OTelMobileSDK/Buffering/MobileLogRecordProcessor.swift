@@ -22,19 +22,32 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     private let sequenceCounter: SequenceCounter
     private let sessionProvider: SessionProvider
 
+    /// Optional disk buffer. When non-nil:
+    /// - RAM evictions are spilled here (survives process death).
+    /// - `forceFlushBuffered()` / `flushWindow(minutes:)` drain RAM first, then
+    ///   any disk-resident events, deduplicating by `sequenceId`.
+    /// - After a successful export we `deleteUpTo(sequenceId:)` to clear the
+    ///   drained window.
+    ///
+    /// Backward compatible: when `nil`, the processor behaves exactly as the
+    /// RAM-only implementation.
+    private let diskBuffer: DiskLogBuffer?
+
     /// Production constructor: drains buffered records through an upstream OTel
     /// `LogRecordExporter` on forceFlush/selective-flush.
     public init(
         buffer: RAMEventBuffer,
         otelExporter: LogRecordExporter,
         sessionProvider: SessionProvider,
-        sequenceCounter: SequenceCounter = SequenceCounter()
+        sequenceCounter: SequenceCounter = SequenceCounter(),
+        diskBuffer: DiskLogBuffer? = nil
     ) {
         self.buffer = buffer
         self.legacyExporter = nil
         self.otelExporter = otelExporter
         self.sequenceCounter = sequenceCounter
         self.sessionProvider = sessionProvider
+        self.diskBuffer = diskBuffer
     }
 
     /// Test-only constructor: delivers `[BufferedEvent]` batches to an
@@ -44,13 +57,15 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         buffer: RAMEventBuffer,
         exporter: BufferedEventExporter,
         sessionProvider: SessionProvider,
-        sequenceCounter: SequenceCounter = SequenceCounter()
+        sequenceCounter: SequenceCounter = SequenceCounter(),
+        diskBuffer: DiskLogBuffer? = nil
     ) {
         self.buffer = buffer
         self.legacyExporter = exporter
         self.otelExporter = nil
         self.sequenceCounter = sequenceCounter
         self.sessionProvider = sessionProvider
+        self.diskBuffer = diskBuffer
     }
 
     // MARK: - LogRecordProcessor
@@ -61,8 +76,15 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         // contract; the actor append completes asynchronously. Tests that need
         // to observe the buffer after `onEmit` should `await` on a peek/flush
         // after giving the detached task a chance to run.
-        Task.detached { [buffer] in
-            _ = await buffer.append(event)
+        //
+        // If a disk buffer is configured, any event evicted from the RAM
+        // buffer (capacity or size-budget eviction) is spilled to disk so we
+        // preserve it across process death.
+        Task.detached { [buffer, diskBuffer] in
+            let evicted = await buffer.append(event)
+            if let evicted = evicted, let diskBuffer = diskBuffer {
+                await diskBuffer.insert(evicted)
+            }
         }
     }
 
@@ -93,12 +115,20 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     // MARK: - Selective flush
 
     /// Export the last `minutes` of buffered events via the configured OTel
-    /// or legacy exporter.
+    /// or legacy exporter. When a `diskBuffer` is configured, also drains the
+    /// matching window from disk (dedup-by-seqId against the RAM events).
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
-        let events = await buffer.flushWindow(lastMs: minutes * 60 * 1000)
-        if events.isEmpty { return .success }
-        return await exportBuffered(events: events)
+        let windowMs = minutes * 60 * 1000
+        let ramEvents = await buffer.flushWindow(lastMs: windowMs)
+        let combined = await combineWithDisk(ramEvents: ramEvents, windowMs: windowMs)
+        if combined.isEmpty { return .success }
+        let result = await exportBuffered(events: combined)
+        if case .success = result, let disk = diskBuffer,
+           let maxSeq = combined.map({ $0.sequenceId }).max() {
+            await disk.deleteUpTo(sequenceId: maxSeq)
+        }
+        return result
     }
 
     // MARK: - Buffer-level flush (public API surface)
@@ -112,14 +142,76 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         let box = Box()
         Task.detached { [weak self] in
             guard let self = self else { semaphore.signal(); return }
-            let events = await self.buffer.flush()
-            if !events.isEmpty {
-                box.value = await self.exportBuffered(events: events)
+            let ramEvents = await self.buffer.flush()
+            let combined = await self.combineWithDisk(ramEvents: ramEvents, windowMs: nil)
+            if !combined.isEmpty {
+                box.value = await self.exportBuffered(events: combined)
+                if case .success = box.value, let disk = self.diskBuffer,
+                   let maxSeq = combined.map({ $0.sequenceId }).max() {
+                    await disk.deleteUpTo(sequenceId: maxSeq)
+                }
             }
             semaphore.signal()
         }
         semaphore.wait()
         return box.value
+    }
+
+    /// Drains the disk buffer (full or windowed) and merges with the provided
+    /// RAM events, deduplicating by `sequenceId`. RAM events take priority —
+    /// they are the authoritative copy when a crash-mirror was written to
+    /// disk and then the RAM event was still alive at flush time.
+    private func combineWithDisk(
+        ramEvents: [BufferedEvent],
+        windowMs: UInt64?
+    ) async -> [BufferedEvent] {
+        guard let disk = diskBuffer else { return ramEvents }
+        let diskEvents: [BufferedEvent]
+        if let windowMs = windowMs {
+            diskEvents = await disk.fetchWindow(lastMs: windowMs)
+        } else {
+            diskEvents = await disk.fetchAll()
+        }
+        if diskEvents.isEmpty { return ramEvents }
+        // Dedup: start with RAM (wins), layer in disk events whose seqId is
+        // not already present.
+        var seen = Set<UInt64>()
+        var combined: [BufferedEvent] = []
+        combined.reserveCapacity(ramEvents.count + diskEvents.count)
+        for event in ramEvents {
+            if seen.insert(event.sequenceId).inserted {
+                combined.append(event)
+            }
+        }
+        for event in diskEvents where seen.insert(event.sequenceId).inserted {
+            combined.append(event)
+        }
+        return combined
+    }
+
+    /// Recovery path called by `OTelMobile.start(config:)` on app launch when
+    /// the disk buffer already holds events from a previous process. Drains
+    /// disk contents through the exporter and on success clears them. Runs
+    /// on a detached task; never blocks startup.
+    public func recoverFromDisk() async -> BufferExportResult {
+        guard let disk = diskBuffer else { return .success }
+        let events = await disk.fetchAll(limit: 10_000)
+        guard !events.isEmpty else { return .success }
+        let result = await exportBuffered(events: events)
+        if case .success = result, let maxSeq = events.map({ $0.sequenceId }).max() {
+            await disk.deleteUpTo(sequenceId: maxSeq)
+        }
+        return result
+    }
+
+    /// Returns a snapshot of disk-buffer stats (row count, total bytes).
+    /// `nil` when no disk buffer is configured. Used by recovery emission
+    /// so startup can report the size of the pending backlog.
+    public func diskStats() async -> (count: Int, bytes: Int)? {
+        guard let disk = diskBuffer else { return nil }
+        let count = await disk.rowCount()
+        let bytes = await disk.totalSizeBytes()
+        return (count, bytes)
     }
 
     // MARK: - Internal export routing
