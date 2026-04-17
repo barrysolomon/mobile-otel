@@ -169,6 +169,14 @@ public final class OTelMobile: @unchecked Sendable {
             extraHeaders: config.extraHeaders
         )
 
+        // Policy evaluator is created once and shared between the processor
+        // (which consults it on every onEmit) and the OTelMobile instance
+        // (which exposes it publicly so a ConfigPoller — or app code — can
+        // push policy updates). Starts with an empty policy list; remains
+        // empty unless `enablePolicyPolling` is true OR app code calls
+        // `mobile.policyEvaluator.updatePolicies(...)` directly.
+        let policyEvaluator = PolicyEvaluator()
+
         // OTel-native buffer pipeline: selective / force flush drains
         // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
         // the batch processor uses. No custom JSON encoding.
@@ -181,7 +189,8 @@ public final class OTelMobile: @unchecked Sendable {
             buffer: buffer,
             otelExporter: otlpLogExporter,
             sessionProvider: sessionProvider,
-            diskBuffer: diskBuffer
+            diskBuffer: diskBuffer,
+            policyEvaluator: policyEvaluator
         )
         let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
             endpoint: config.endpoint,
@@ -258,7 +267,7 @@ public final class OTelMobile: @unchecked Sendable {
             tracer: tracer,
             meter: meter,
             deviceStats: DeviceStatsCollector(),
-            policyEvaluator: PolicyEvaluator(),
+            policyEvaluator: policyEvaluator,
             tracerProvider: tracerProvider,
             meterProvider: meterProvider
         )
