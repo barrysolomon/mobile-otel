@@ -1,0 +1,1 @@
+scripts/demo/run-dual-platform-demo.sh

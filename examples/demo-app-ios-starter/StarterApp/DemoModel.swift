@@ -30,6 +30,48 @@ final class DemoModel: ObservableObject {
             self.status = result.mobile != nil
                 ? "SDK ready — interact below to generate telemetry"
                 : result.status
+
+            // Dual-platform auto-demo mode: when launched with env
+            // DASH0_AUTO_DEMO=1 (or with launch arg --auto-demo), the app
+            // rotates through Log / Trace / Metric emission every few seconds
+            // so a companion script can run Android + iOS side-by-side and
+            // emit continuously without needing UI automation. Opt-in ONLY.
+            if ProcessInfo.processInfo.environment["DASH0_AUTO_DEMO"] == "1"
+                || CommandLine.arguments.contains("--auto-demo") {
+                self.startAutoDemo()
+            }
+        }
+    }
+
+    // MARK: - Auto demo loop (for parallel Android+iOS scripts)
+
+    @MainActor
+    private func startAutoDemo() {
+        guard mobile != nil else {
+            status = "auto-demo: SDK not started, aborting"
+            return
+        }
+        status = "auto-demo: emitting continuously (logs + traces + metrics)"
+        Task.detached { [weak self] in
+            var i = 0
+            while !Task.isCancelled {
+                guard let self = self else { return }
+                let step = i % 5
+                await MainActor.run {
+                    switch step {
+                    case 0: self.emitInfoLog()
+                    case 1: self.emitSimpleSpan()
+                    case 2: self.incrementCounter()
+                    case 3: self.emitNestedSpan()
+                    case 4: self.emitWarnLog(); self.recordHistogram()
+                    default: break
+                    }
+                }
+                i += 1
+                // ~2 Hz emission — enough to see activity in Dash0
+                // without spamming. Aligns with Android demo's 500ms cadence.
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
         }
     }
 
