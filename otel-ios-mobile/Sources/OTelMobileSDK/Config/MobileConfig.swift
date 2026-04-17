@@ -15,6 +15,11 @@ public struct MobileConfig: Sendable {
     /// Matches the Android SDK's `headers: Map<String, String>` config.
     public let extraHeaders: [String: String]
 
+    /// If true, `OTelMobile.start(config:)` constructs a `ConfigPoller`
+    /// against `<endpoint>/config?dsl_version=2` and feeds it to the
+    /// `PolicyEvaluator`. Default false.
+    public let enablePolicyPolling: Bool
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -25,7 +30,8 @@ public struct MobileConfig: Sendable {
         privacyConfig: PrivacyConfig = .default,
         autoCaptureOptions: AutoCaptureOptions = .all,
         pollingIntervalSeconds: Int = 300,
-        extraHeaders: [String: String] = [:]
+        extraHeaders: [String: String] = [:],
+        enablePolicyPolling: Bool = false
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -37,5 +43,6 @@ public struct MobileConfig: Sendable {
         self.autoCaptureOptions = autoCaptureOptions
         self.pollingIntervalSeconds = pollingIntervalSeconds
         self.extraHeaders = extraHeaders
+        self.enablePolicyPolling = enablePolicyPolling
     }
 }

@@ -294,6 +294,21 @@ public final class OTelMobile: @unchecked Sendable {
             if opts.contains(.vitals) {
                 VitalsInstrumentation.shared.install(logger: logger)
             }
+            // Config polling: when enabled, construct a ConfigPoller and
+            // start it. Any failure is logged via the poller itself; we
+            // never want a bad gateway URL to crash startup.
+            if config.enablePolicyPolling {
+                if let poller = try? ConfigPoller(
+                    gatewayEndpoint: config.endpoint,
+                    authToken: config.authToken,
+                    extraHeaders: config.extraHeaders,
+                    pollingIntervalSeconds: TimeInterval(config.pollingIntervalSeconds),
+                    evaluator: instance.policyEvaluator,
+                    logger: logger
+                ) {
+                    poller.start()
+                }
+            }
             // Crash-safety recovery: if the disk buffer holds events from a
             // previous process, emit a marker log with the backlog size then
             // drain them through the exporter. Non-blocking — runs on a
