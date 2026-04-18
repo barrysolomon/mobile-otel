@@ -8,11 +8,35 @@ import Foundation
 /// Mirrors the pattern used by `BufferedEventTestSupport` and
 /// `MobileLogRecordProcessorTestSupport`.
 public extension NetworkInstrumentation {
-    /// Scrub helper: builds a URL from the string and applies the same
-    /// query-stripping that `OTelURLProtocol` uses when populating `url.full`.
+    /// Scrub helper: builds a URL from the string and applies the same scrub
+    /// pipeline that `OTelURLProtocol` uses when populating `url.full`. The
+    /// `stripQuery` arg maps onto `NetworkConfig.stripQueryStrings`; the new
+    /// `PiiScrubber` route is exercised via `NetworkConfig.default`
+    /// (`scrubUrls = true`).
     static func scrubForTesting(urlString: String, stripQuery: Bool) -> String {
         guard let url = URL(string: urlString) else { return urlString }
-        return OTelURLProtocol.scrubUrlString(url, stripQuery: stripQuery)
+        let config = NetworkConfig(
+            stripQueryStrings: stripQuery,
+            scrubUrls: false
+        )
+        return OTelURLProtocol.scrubUrlString(url, config: config)
+    }
+
+    /// Same as `scrubForTesting(urlString:stripQuery:)` but routes through
+    /// `PiiScrubber.scrubUrl` (`scrubUrls = true`). Lets tests pin the
+    /// PII-scrub semantics independently of the legacy strip-only path.
+    static func scrubForTesting(
+        urlString: String,
+        stripQuery: Bool,
+        scrubPathSegments: Bool
+    ) -> String {
+        guard let url = URL(string: urlString) else { return urlString }
+        let config = NetworkConfig(
+            stripQueryStrings: stripQuery,
+            scrubUrls: true,
+            scrubPathSegments: scrubPathSegments
+        )
+        return OTelURLProtocol.scrubUrlString(url, config: config)
     }
 
     /// Replicates the host-filter check that `OTelURLProtocol.canInit` applies.

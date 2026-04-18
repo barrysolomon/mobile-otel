@@ -32,6 +32,18 @@ public struct NetworkConfig: Sendable {
     /// Default false — enable once backend is ready to correlate.
     public let propagateTraceContext: Bool
 
+    /// Route the captured `url.full` through `PiiScrubber.scrubUrl` so emails,
+    /// auth tokens, and other sensitive query-param values are tokenized
+    /// (`[REDACTED]`) and UUID/numeric path segments collapse to
+    /// `{uuid}` / `{id}`. When false, the URL is captured verbatim subject
+    /// only to `stripQueryStrings`. Mirrors Android's `scrubUrls` flag.
+    public let scrubUrls: Bool
+
+    /// When `scrubUrls == true`, controls whether UUID + numeric IDs in the
+    /// URL path are collapsed to placeholders. No effect when `scrubUrls`
+    /// is false.
+    public let scrubPathSegments: Bool
+
     public static let `default` = NetworkConfig(
         ignoredHosts: [],
         allowedHosts: [],
@@ -39,7 +51,9 @@ public struct NetworkConfig: Sendable {
         capturedResponseHeaders: ["content-type"],
         capturedRequestHeaders: [],
         errorStatusThreshold: 500,
-        propagateTraceContext: false
+        propagateTraceContext: false,
+        scrubUrls: true,
+        scrubPathSegments: true
     )
 
     public init(
@@ -49,7 +63,9 @@ public struct NetworkConfig: Sendable {
         capturedResponseHeaders: Set<String> = ["content-type"],
         capturedRequestHeaders: Set<String> = [],
         errorStatusThreshold: Int = 500,
-        propagateTraceContext: Bool = false
+        propagateTraceContext: Bool = false,
+        scrubUrls: Bool = true,
+        scrubPathSegments: Bool = true
     ) {
         self.ignoredHosts = Set(ignoredHosts.map { $0.lowercased() })
         self.allowedHosts = Set(allowedHosts.map { $0.lowercased() })
@@ -58,5 +74,7 @@ public struct NetworkConfig: Sendable {
         self.capturedRequestHeaders = Set(capturedRequestHeaders.map { $0.lowercased() })
         self.errorStatusThreshold = errorStatusThreshold
         self.propagateTraceContext = propagateTraceContext
+        self.scrubUrls = scrubUrls
+        self.scrubPathSegments = scrubPathSegments
     }
 }

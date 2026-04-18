@@ -102,8 +102,8 @@ Sources: Android
 | Disk buffer (dual-tier) | &#9989; `DiskLogBuffer` Room/SQLite v4, 50MB, 24h TTL | &#9989; [`DiskLogBuffer.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/DiskLogBuffer.swift) | shipped | iOS: `sqlite3` actor, WAL mode, size + TTL caps, startup recovery path drains pending events |
 | Crash-safe flush / seqId dedup | &#9989; `BufferedEvent.seqId`, SR-017 crash-safe mirror | &#9989; [`SequenceCounter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/SequenceCounter.swift) + crash marker in `ErrorsInstrumentation` | shipped | iOS: monotonic `seqId` on every `BufferedEvent`; crash marker file persists buffer state across process death; next launch emits `app.crash` + drains |
 | MobileLogRecordProcessor | &#9989; | &#9989; [MobileLogRecordProcessor.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift) | shipped | |
-| RetryableExporter | &#9989; | &#10060; | not-started | |
-| ExportStatusManager | &#9989; | &#10060; | not-started | |
+| RetryableExporter | &#9989; | &#9989; [`RetryableExporter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Export/RetryableExporter.swift) | shipped | iOS: wraps `LogRecordExporter`, exponential backoff (1s→60s, 3 retries), publishes via `ExportStatusManager`. Auth-error detection deferred (OTel-Swift's `ExportResult` is binary success/failure, no error type) |
+| ExportStatusManager | &#9989; | &#9989; [`ExportStatus.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Export/ExportStatus.swift) | shipped | Per-instance + `.shared` singleton; snapshot-then-iterate fan-out; 4 status variants (`success`/`failed`/`authError`/`retrying`) with Android-equivalent payloads |
 | OTLP/gRPC export | &#9989; | &#9989; [`OTLPExporterFactory.makeGrpcLogExporter`/`makeGrpcTraceExporter`](../otel-ios-mobile/Sources/OTelMobileSDK/Export/OTLPExporterFactory.swift) | shipped | Opt-in gRPC via `swift-grpc` + `NIO`. HTTP remains the default auto-wired path |
 | Selective flush (flushWindow) | &#9989; `flushWindow(minutes)` | &#9989; `RAMEventBuffer.flushWindow(lastMs:)` + `OTelMobile.flushWindow(minutes:)` | shipped | |
 | Export modes (CONDITIONAL / CONTINUOUS / HYBRID) | &#9989; | &#9989; [`ExportMode.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Config/ExportMode.swift) | shipped | Enum parity; runtime behavior not exercised (no evaluator) |
@@ -113,13 +113,13 @@ Sources: Android
 | Dynamic sampler | &#9989; `DynamicSampler`, `SamplerFactory`, `SamplingConfig` | &#10060; | not-started | |
 | Session manager | &#9989; `SessionManager` + `SessionConfig` | &#9989; [`SessionManager.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Session/SessionManager.swift) | shipped | iOS: UUID with 15-min inactivity rotation, `UserDefaults` persistence across launches |
 | User identity | &#9989; `UserIdentity` | &#10060; | not-started | |
-| Boot tracker | &#9989; `BootTracker` | &#10060; | not-started | |
-| PII scrubber | &#9989; `PiiScrubberTest` (40 tests) | &#10060; | not-started | |
+| Boot tracker | &#9989; `BootTracker` (reads `/proc/sys/kernel/random/boot_id`) | &#9989; [`BootTracker.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Identity/BootTracker.swift) | shipped | iOS: `sysctlbyname("kern.boottime", ...)` → hex-encoded `<sec>-<usec>`. Falls back to per-process UUID on sysctl failure. 4 tests |
+| PII scrubber | &#9989; `PiiScrubberTest` (40 tests) | &#9989; [`PiiScrubber.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Privacy/PiiScrubber.swift) (40 tests, `PiiScrubberTests`) | shipped | 8 public methods (`scrubUrl`, `scrubDeepLink`, `scrubExceptionMessage`, `scrubStackTrace`, `scrubText`, `containsPii`, `isValidAttributeKey`, `scrubAttributes`); same `[EMAIL]` / `[PHONE]` / `[CREDIT_CARD]` / `[SSN]` / `{app-container}/` / `{uuid}` / `{id}` / `[REDACTED]` tokens. Wired into `ErrorsInstrumentation` (recordError + crash-recovery read path) and `NetworkInstrumentation` (`url.full`) |
 | Context snapshot provider | &#9989; `ContextSnapshotProvider` | &#9989; [`ContextSnapshotProvider.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/ContextSnapshotProvider.swift) | shipped | iOS: `NWPathMonitor` (network), `UIDevice` (battery state + device class), `Locale`/`TimeZone`, `ProcessInfo` (OS version). 10s TTL cache |
 | Device health monitor | &#9989; `DeviceHealthMonitor` | &#9989; [`DeviceHealthMonitor.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/DeviceHealthMonitor.swift) | shipped | iOS: `mach_task_basic_info` for memory, `UIDevice` for battery, `ProcessInfo.thermalState` (4 levels vs Android's 7), one-step history for drain-rate deltas |
 | On-device predictor | &#9989; `OnDevicePredictor` | &#9989; [`OnDevicePredictor.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/OnDevicePredictor.swift) | shipped | Rule-based: crash / network-loss / perf-degradation / battery-drain risks, clamped 0..1, 20-snapshot history + network-event deque, 8-test regression suite |
 | Predictive export policy | &#9989; `PredictiveExportPolicy` | &#9989; [`PredictiveExportPolicy.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Predictive/PredictiveExportPolicy.swift) | shipped | `DispatchSourceTimer` on utility queue; emits `prediction.cycle` DEBUG + `prediction.high_risk_alert` WARN; triggers `flushWindow` on threshold crossings. Opt-in via `MobileConfig.enablePredictiveExport` |
-| Privacy config | &#9989; `PrivacyConfig`, `PrivacyMode`, `PrivacyUtils` | &#128993; [`PrivacyConfig.swift`](../otel-ios-mobile/Sources/OTelMobileCore/PrivacyConfig.swift) | partial | Struct exists; no privacy-presets / redaction pipeline |
+| Privacy config | &#9989; `PrivacyConfig`, `PrivacyMode`, `PrivacyUtils` | &#128993; [`PrivacyConfig.swift`](../otel-ios-mobile/Sources/OTelMobileCore/PrivacyConfig.swift) + [`PiiScrubber.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Privacy/PiiScrubber.swift) | partial | `PrivacyConfig` struct + `PiiScrubber` redaction pipeline shipped (Phase 1.1). `PrivacyMode` presets still missing |
 | Resource builder | &#9989; | &#9989; [`ResourceBuilder.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) | shipped | |
 | EnrichingLogRecordExporter | &#9989; | &#10060; | not-started | |
 | Auto-capture options | &#9989; `AutoCaptureOptions` + session/recovery/flush trackers | &#128993; [`AutoCaptureOptions.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Config/AutoCaptureOptions.swift) | partial | Option set only; wires network/lifecycle/errors; no recovery/session tracker |
@@ -151,12 +151,12 @@ iOS file counts via `@Test` (15 suites, **114 test fns**).
 | Policy evaluator runtime | 29 + 38 (condition) + 35 (geo) + 14 (security) = **116** | 0 | **0%** |
 | Buffer (RAM) | 17 (`BufferSystemComprehensive`) + 18 (`BufferCrashPath`) + 26 (`DiskLogBuffer`) + 28 (`MobileLogRecordProcessor`) = **89** | 5 (`RAMEventBuffer`) + 4 (`MobileLogRecordProcessor`) = **9** | **~10%** |
 | Export modes | 18 + 19 (user-journey) + 7 (equivalence) = **44** | 10 (`OTLPExporterFactory`) | **23%** |
-| Retryable exporter | 7 | 0 | **0%** |
+| Retryable exporter | 7 | 7 (`RetryableExporterTests`) + 7 (`ExportStatusManagerTests`) = **14** | **200%** (overshoots Android because the iOS port covers the manager + exporter in separate suites) |
 | Config (MobileConfig) | 18 + 24 (security) + 6 (customizers) + 9 (DSL) = **57** | 5 (`MobileConfig`) | **9%** |
 | Autocapture / Recovery / SessionTracker | 41 + 24 + 16 + 30 + 20 = **131** | 0 | **0%** |
 | Network | 33 + 25 + 8 = **66** | 9 (`NetworkConfig`) | **14%** |
 | Session | 19 + 7 = **26** | 0 | **0%** |
-| PII / privacy | 40 (`PiiScrubberTest`) + 20 (`PrivacyUtilsTest`) = **60** | 0 | **0%** |
+| PII / privacy | 40 (`PiiScrubberTest`) + 20 (`PrivacyUtilsTest`) = **60** | 40 (`PiiScrubberTests`) + 4 (`NetworkConfigTests` PII-routed wiring) + 1 (`CrashRecoveryTests` scrub-on-recovery) = **45** | **75%** |
 | Errors | 36 + 29 = **65** | 0 | **0%** |
 | Vitals / jank | 8 | 0 | **0%** |
 | Sampling | 30 + 17 = **47** | 0 | **0%** |
@@ -323,17 +323,33 @@ files reference iOS.
    has no iOS twin. Customers landing from a Dash0 website link have nothing to
    read.
 
+## Phase 1 progress (2026-04-18)
+
+The first GA-runup phase closes three SDK foundation gaps:
+
+- **Phase 1.1 — PII scrubbing pipeline**: `PiiScrubber` ported from
+  Android with all 40 behavioural-parity tests + 4 wiring tests
+  (`ErrorsInstrumentation` recovery path + `NetworkInstrumentation`
+  `url.full`).
+- **Phase 1.2 — Retryable exporter + status surfacing**:
+  `RetryableExporter` (LogRecordExporter decorator, exponential backoff,
+  3 retries) + `ExportStatusManager` (per-instance + `.shared`,
+  4-variant status enum). 14 tests. Wired into `OTelMobile.start`.
+- **Phase 1.3 — Boot tracker (partial)**: `BootTracker` shipped (4
+  tests). `DynamicSampler` + `EnrichingLogRecordExporter` deferred to a
+  follow-up session — the Android `EnrichingLogRecordExporter` depends
+  on a Dash0-proprietary `ContextSnapshotProvider` (geo + per-batch
+  policy match attribution) that has no iOS analog yet.
+
+Net: iOS unit-test count grew from 178 to 201 (+13%), with the new
+suites concentrated in the highest-leverage areas (PII redaction,
+export reliability).
+
 ## Secondary gaps
 
 - **Session rotation**: iOS `StaticSessionProvider` never rotates; Android has
   idle + app-lifecycle rotation and persistence.
-- **Retry/backoff**: no `RetryableExporter` on iOS &mdash; OTLP/HTTP failures
-  follow the SDK batch processor defaults, no dedicated retry layer.
-- **Export-status surfacing**: no iOS `ExportStatusManager` &mdash; debug widget
-  can't render iOS status today.
 - **Sampling**: no `DynamicSampler` or `SamplerFactory` on iOS.
-- **PII scrubbing**: `PrivacyConfig` carries fields but there is no scrubbing
-  pipeline; Android has 40 tests covering regex scrubbing.
 - **Fleet alerting**: absent on iOS.
 - **Predictive telemetry (OTEP)**: absent on iOS.
 - **Log tailing**: absent on iOS.

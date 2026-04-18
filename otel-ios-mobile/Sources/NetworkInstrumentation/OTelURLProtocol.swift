@@ -1,5 +1,6 @@
 import Foundation
 import OpenTelemetryApi
+import OTelMobileCore
 
 /// `URLProtocol` subclass that intercepts every `URLSession` HTTP request passing
 /// through a session whose `URLSessionConfiguration.protocolClasses` includes it,
@@ -70,7 +71,7 @@ final class OTelURLProtocol: URLProtocol, URLSessionDataDelegate {
             if let scheme = url.scheme { span.setAttribute(key: "url.scheme", value: scheme) }
             if let host = url.host { span.setAttribute(key: "server.address", value: host) }
             if let port = url.port { span.setAttribute(key: "server.port", value: port) }
-            span.setAttribute(key: "url.full", value: Self.scrubUrlString(url, stripQuery: config.stripQueryStrings))
+            span.setAttribute(key: "url.full", value: Self.scrubUrlString(url, config: config))
             span.setAttribute(key: "url.path", value: url.path)
         }
 
@@ -175,11 +176,25 @@ final class OTelURLProtocol: URLProtocol, URLSessionDataDelegate {
 
     // MARK: - Helpers
 
-    /// Scrubs the query string from a URL if `stripQuery` is true. Returns the
-    /// full string representation otherwise. Exposed to tests via
-    /// `NetworkInstrumentationTestSupport`.
-    static func scrubUrlString(_ url: URL, stripQuery: Bool) -> String {
-        guard stripQuery else { return url.absoluteString }
+    /// Scrubs a captured URL using the supplied config:
+    /// 1. When `config.scrubUrls` is true, delegates to `PiiScrubber.scrubUrl`
+    ///    so sensitive query-param values become `[REDACTED]` and UUID/numeric
+    ///    path segments become `{uuid}` / `{id}` (latter gated by
+    ///    `config.scrubPathSegments`). `stripQueryStrings` chooses between
+    ///    "drop the whole query" (true) and "redact only sensitive keys"
+    ///    (false).
+    /// 2. When `config.scrubUrls` is false, falls back to the legacy behavior
+    ///    of stripping the query string when `stripQueryStrings` is true,
+    ///    leaving the URL untouched otherwise.
+    static func scrubUrlString(_ url: URL, config: NetworkConfig) -> String {
+        if config.scrubUrls {
+            return PiiScrubber.scrubUrl(
+                url.absoluteString,
+                allowQueryParams: !config.stripQueryStrings,
+                scrubPathSegments: config.scrubPathSegments
+            )
+        }
+        guard config.stripQueryStrings else { return url.absoluteString }
         var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
         comps?.query = nil
         return comps?.url?.absoluteString ?? url.absoluteString

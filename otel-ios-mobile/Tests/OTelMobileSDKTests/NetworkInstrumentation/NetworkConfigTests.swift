@@ -52,6 +52,39 @@ struct NetworkConfigTests {
         #expect(result == "https://api.example.com/users?token=secret")
     }
 
+    // MARK: - PiiScrubber-routed wiring (scrubUrls = true)
+
+    @Test("default has scrubUrls + scrubPathSegments enabled")
+    func defaultEnablesPiiScrub() {
+        #expect(NetworkConfig.default.scrubUrls == true)
+        #expect(NetworkConfig.default.scrubPathSegments == true)
+    }
+
+    @Test("PiiScrubber path collapses UUID + numeric segments")
+    func scrubViaPiiScrubberCollapsesPath() {
+        let result = NetworkInstrumentation.scrubForTesting(
+            urlString: "https://api.example.com/users/12345/orders/550e8400-e29b-41d4-a716-446655440000",
+            stripQuery: true,
+            scrubPathSegments: true
+        )
+        #expect(result.contains("{id}"))
+        #expect(result.contains("{uuid}"))
+        #expect(!result.contains("12345"))
+        #expect(!result.contains("550e8400"))
+    }
+
+    @Test("PiiScrubber path redacts sensitive query keys when query allowed")
+    func scrubViaPiiScrubberRedactsSensitiveQueryKey() {
+        let result = NetworkInstrumentation.scrubForTesting(
+            urlString: "https://api.example.com/users?page=2&token=secret",
+            stripQuery: false,
+            scrubPathSegments: false
+        )
+        #expect(result.contains("page=2"))
+        #expect(result.contains("[REDACTED]"))
+        #expect(!result.contains("secret"))
+    }
+
     @Test("hostPassesFilter allowlist blocks non-allowed hosts")
     func allowlistBlocks() {
         let config = NetworkConfig(allowedHosts: ["dash0.com"])

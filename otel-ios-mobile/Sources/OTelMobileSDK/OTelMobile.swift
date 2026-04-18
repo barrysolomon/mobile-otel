@@ -188,11 +188,18 @@ public final class OTelMobile: @unchecked Sendable {
 
         // Build the OTLP exporters — one per signal. Each handles its own
         // URL normalisation (`/v1/logs`, `/v1/traces`, `/v1/metrics`).
-        let otlpLogExporter = try OTLPExporterFactory.makeHttpLogExporter(
+        let baseLogExporter = try OTLPExporterFactory.makeHttpLogExporter(
             endpoint: config.endpoint,
             authToken: config.authToken,
             extraHeaders: config.extraHeaders
         )
+        // Decorate with RetryableExporter so transient failures get
+        // exponential-backoff retries (3 attempts, 1s → 60s ceiling) and
+        // every transition publishes through `ExportStatusManager`.
+        // Mirrors Android: only the log exporter is wrapped — span and
+        // metric retry behaviour stays delegated to the upstream batch
+        // processors.
+        let otlpLogExporter = RetryableExporter(delegate: baseLogExporter)
 
         // Policy evaluator is created once and shared between the processor
         // (which consults it on every onEmit) and the OTelMobile instance

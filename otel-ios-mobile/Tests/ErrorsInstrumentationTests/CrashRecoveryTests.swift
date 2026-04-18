@@ -8,7 +8,13 @@ import OpenTelemetrySdk
 /// `validate-us063-crash-flush.sh`. Runs entirely in-process — no real
 /// crash needed — by injecting a known marker payload, calling
 /// `emitAnyPendingCrash`, and asserting the captured log shape.
-@Suite("CrashRecovery")
+/// `.serialized` because every test in this suite writes to and reads
+/// from the on-disk crash marker file
+/// (`~/Library/Caches/io.dash0.mobile.crash-marker`) — a process-wide
+/// singleton. Without serialization Swift Testing's parallel execution
+/// would race writes against reads and tests would observe each other's
+/// markers.
+@Suite("CrashRecovery", .serialized)
 struct CrashRecoveryTests {
     @Test("NSException-style marker round-trips through emitAnyPendingCrash")
     func nsExceptionMarker() throws {
@@ -75,6 +81,50 @@ struct CrashRecoveryTests {
         let logger = makeLogger(processor: cap)
         ErrorsInstrumentation.emitAnyPendingCrash(logger: logger)
         #expect(cap.records.isEmpty, "expected no logs, got \(cap.records.count)")
+    }
+
+    @Test("recovery scrubs PII from reason + iOS container path from frames")
+    func recoveryRedactsPii() throws {
+        // Belt-and-braces between tests — the marker file is a process-wide
+        // singleton and a prior test could have left one behind.
+        ErrorsInstrumentation.removeMarkerForTesting()
+
+        let cap = LogCapture()
+        let logger = makeLogger(processor: cap)
+
+        // Reason embeds an email; one frame embeds the iOS app-container
+        // UUID path. Both must be redacted on the read path so the
+        // emitted `app.crash` log never carries raw PII to Dash0.
+        ErrorsInstrumentation.writeMarker(
+            kind: "NSException",
+            name: "NSInvalidArgumentException",
+            reason: "validation failed for alice@example.com",
+            frames: [
+                "0  Astro 0x1 -[Foo bar]",
+                "1  Astro 0x2 /var/mobile/Containers/Data/Application/ABC12345-DEAD-BEEF-CAFE-123456789012/Frameworks/X",
+            ]
+        )
+
+        ErrorsInstrumentation.emitAnyPendingCrash(logger: logger)
+
+        let records = cap.records
+        #expect(records.count == 1)
+        guard let crash = records.first else { return }
+
+        if case let .string(reason)? = crash.attributes["crash.reason"] {
+            #expect(reason.contains("[EMAIL]"))
+            #expect(!reason.contains("alice@example.com"))
+        } else {
+            Issue.record("crash.reason missing or wrong type")
+        }
+
+        if case let .string(stack)? = crash.attributes["exception.stacktrace"] {
+            #expect(stack.contains("{app-container}/"))
+            #expect(!stack.contains("ABC12345"))
+            #expect(stack.contains("[Foo bar]"))
+        } else {
+            Issue.record("exception.stacktrace missing or wrong type")
+        }
     }
 
     @Test("signal-handler 3-byte marker decodes signal kind + number")

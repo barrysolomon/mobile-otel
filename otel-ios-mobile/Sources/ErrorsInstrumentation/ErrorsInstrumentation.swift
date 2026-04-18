@@ -119,7 +119,11 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
         guard let logger = logger else { return }
         var attrs = attributes
         attrs["error.type"] = .string(String(describing: type(of: error)))
-        attrs["error.message"] = .string(error.localizedDescription)
+        // Always scrub the message — `localizedDescription` is the most likely
+        // place for an email / phone / token to leak through (e.g.
+        // "could not authenticate alice@example.com"). Match Android's
+        // default-on stack-trace scrubbing posture.
+        attrs["error.message"] = .string(PiiScrubber.scrubExceptionMessage(error.localizedDescription))
         attrs["event.name"] = .string("app.error")
         logger.logRecordBuilder()
             .setBody(AttributeValue.string("app.error"))
@@ -182,13 +186,23 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
                 let (k, v) = (parts[0], parts[1])
                 if k.hasPrefix("frame") {
                     frames.append(v)
+                } else if k == "reason" || k == "name" {
+                    // The exception reason is the highest-PII-risk field —
+                    // NSException.reason often interpolates user input
+                    // ("validation failed for email alice@example.com").
+                    // Scrub on the read path (next-launch context) where
+                    // NSRegularExpression is safe to call.
+                    attrs["crash.\(k)"] = .string(PiiScrubber.scrubExceptionMessage(v))
                 } else {
                     attrs["crash.\(k)"] = .string(v)
                 }
             }
         }
         if !frames.isEmpty {
-            attrs["exception.stacktrace"] = .string(frames.joined(separator: "\n"))
+            // `scrubStackTrace` strips the iOS app-container UUID
+            // (`/var/mobile/Containers/Data/Application/<UUID>/...`) from
+            // every frame and caps depth at 50 (mirrors Android default).
+            attrs["exception.stacktrace"] = .string(PiiScrubber.scrubStackTrace(frames))
         }
         logger.logRecordBuilder()
             .setBody(AttributeValue.string("app.crash"))
