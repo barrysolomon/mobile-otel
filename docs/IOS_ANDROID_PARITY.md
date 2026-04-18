@@ -1,7 +1,7 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Updated: 2026-04-17 (post-health-predictive-fleet session)
-iOS branch: iPhone (25+ commits ahead of main, 134 tests)
+Updated: 2026-04-17 (post-UI-driven-XCUITest session)
+iOS branch: iPhone (28+ commits ahead of main, 139 tests)
 Android SDK module: `otel-android-mobile/` + 20 instrumentation submodules
 iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
 
@@ -167,7 +167,7 @@ iOS file counts via `@Test` (15 suites, **114 test fns**).
 | Matrix / cross-cutting | 20+24+7+4+4+11+3+2+2+12+16 = **~105** | 0 | **0%** |
 | Resource builder | n/a | 4 (`ResourceBuilderTests`) | iOS-only |
 | Smoke | n/a | 2 | iOS-only |
-| **Totals (approx)** | **~980** across 55 files | **134** across 18 suites | **~14%** |
+| **Totals (approx)** | **~980** across 55 files | **139** across 19 suites | **~14%** |
 
 ## Scripts
 
@@ -205,7 +205,7 @@ Every Android-side script under `scripts/` with iOS equivalent status. Android s
 | validate-us060-memory-pressure.sh | `scripts/test/validate-us060-memory-pressure.sh` | &#10060; | not-started |
 | validate-us061-combined-stress.sh | `scripts/test/validate-us061-combined-stress.sh` | &#10060; | not-started |
 | validate-us062-network-loss.sh | `scripts/test/validate-us062-network-loss.sh` | &#10060; | not-started |
-| validate-us063-crash-flush.sh | `scripts/test/validate-us063-crash-flush.sh` | &#10060; | not-started |
+| validate-us063-crash-flush.sh | `scripts/test/validate-us063-crash-flush.sh` | [`validate-ios-us063-crash-flush.sh`](../scripts/test/validate-ios-us063-crash-flush.sh) | shipped — kills app with SIGSEGV via simctl, relaunches, asserts app.crash log + pre-crash buffer drain |
 | validate-us064-http-error-flush.sh | `scripts/test/validate-us064-http-error-flush.sh` | &#10060; | not-started |
 | validate-us065-freeze-flush.sh | `scripts/test/validate-us065-freeze-flush.sh` | &#10060; | not-started |
 | validate-us066-no-false-flush.sh | `scripts/test/validate-us066-no-false-flush.sh` | &#10060; | not-started |

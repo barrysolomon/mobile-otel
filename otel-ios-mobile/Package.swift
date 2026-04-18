@@ -89,5 +89,12 @@ let package = Package(
             name: "OTelMobileSDKTests",
             dependencies: ["OTelMobileSDK", "NetworkInstrumentation"]
         ),
+        .testTarget(
+            name: "ErrorsInstrumentationTests",
+            dependencies: [
+                "ErrorsInstrumentation",
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            ]
+        ),
     ]
 )

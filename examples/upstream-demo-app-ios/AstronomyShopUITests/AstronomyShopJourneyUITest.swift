@@ -99,18 +99,17 @@ final class AstronomyShopJourneyUITest: XCTestCase {
         popNavigation(app)
     }
 
-    /// Find the first product row. We first try `cells`, then `buttons`
-    /// (iOS 18+ path), then fall back to any descendant. Each individual
-    /// query has its own snapshot — if one is slow, the next is still
-    /// cheap.
+    /// Find a product row. SwiftUI surfaces `NavigationLink` rows inside
+    /// `List` as `Button` elements at the leaf — the wrapping `Cell` has
+    /// no identifier, only the inner `Button` carries `product.row.<id>`.
+    /// On iOS 26 simulator we observed: `Cell → Other → ... → Button`
+    /// where the Button has the identifier and is the hittable leaf.
+    /// The query returns the *first* matching row — there are N products
+    /// so `element(matching:)` (which assumes uniqueness) would assert.
     private func firstProductRow(in app: XCUIApplication) -> XCUIElement {
-        let cell = app.cells.element(matching: NSPredicate(format: "identifier BEGINSWITH %@", "product.row."))
-        if cell.exists { return cell }
-        let button = app.buttons.element(matching: NSPredicate(format: "identifier BEGINSWITH %@", "product.row."))
-        if button.exists { return button }
-        return app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "product.row."))
-            .firstMatch
+        app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "product.row.")
+        ).firstMatch
     }
 
     /// NavigationStack's back button is the first nav-bar button. This

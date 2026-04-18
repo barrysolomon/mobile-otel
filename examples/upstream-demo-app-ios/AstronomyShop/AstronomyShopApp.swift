@@ -10,11 +10,10 @@ struct AstronomyShopApp: App {
     var body: some Scene {
         WindowGroup {
             rootView
-                // Explicit root-level accessibility identifier. Without
-                // this, iOS 26 simulator's XCUITest occasionally returns
-                // an empty accessibility tree for SwiftUI-only apps even
-                // after the UI has rendered. A top-level identifier
-                // forces the accessibility graph to materialise.
+                // Explicit root-level accessibility identifier so
+                // XCUITest's snapshot has at least one materialised
+                // identifier to anchor on. Required for the
+                // AstronomyShopUITests journey driver.
                 .accessibilityIdentifier("app.root")
         }
     }
@@ -31,7 +30,6 @@ struct AstronomyShopApp: App {
                         .setSeverity(.info)
                         .setAttributes(["event.name": .string("app.home_appeared")])
                         .emit()
-                    root.startAutoDemoIfRequested()
                 }
         } else {
             VStack(spacing: 12) {
@@ -58,7 +56,6 @@ final class RootState: ObservableObject {
     let logger: Logger?
     let telemetry: ShopTelemetry?
     private let mobile: OTelMobile?
-    private var autoDriver: AutoDemoDriver?
 
     init() {
         let boot = ShopBootstrap.start()
@@ -84,29 +81,10 @@ final class RootState: ObservableObject {
         self.cart = CartViewModel(telemetry: telemetry)
     }
 
-    /// Called from the root view's `onAppear`. When launched with env
-    /// `DASH0_AUTO_DEMO=1` (set via `SIMCTL_CHILD_DASH0_AUTO_DEMO=1` on the
-    /// simctl parent shell — simctl has no `--env` flag; extra tokens become
-    /// argv), run the full user journey on a loop: browse → add → checkout.
-    /// Drives deterministic signal for `validate-ios-end-to-end.sh` and
-    /// `run-dual-platform-demo.sh`.
-    func startAutoDemoIfRequested() {
-        guard autoDriver == nil else { return }
-        let envSet = ProcessInfo.processInfo.environment["DASH0_AUTO_DEMO"] == "1"
-        let argSet = CommandLine.arguments.contains("--auto-demo")
-        guard envSet || argSet else { return }
-        autoDriver = AutoDemoDriver(telemetry: telemetry, products: products)
-        autoDriver?.start()
-    }
-
     /// Emit the browse telemetry for a product view. Used by
-    /// `ProductDetailView.onAppear` so user-driven browses produce the same
-    /// 3-span tree + histogram as the auto-demo.
+    /// `ProductDetailView.onAppear` so every product-detail render
+    /// produces the canonical 3-span tree + histogram.
     func emitProductViewed(product: Product) {
         telemetry?.emitProductView(product: product)
-    }
-
-    deinit {
-        autoDriver?.stop()
     }
 }

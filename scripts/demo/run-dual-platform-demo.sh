@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Dual-platform telemetry demo:
 #   - Boots an Android emulator AND an iPhone simulator
-#   - Builds + installs + launches the full demo on each (AstronomyShop on iOS,
-#     the Android demo-app on Android)
-#   - Puts each app into auto-emit mode so both stream logs / traces / metrics
-#     to Dash0 continuously, side by side, with identical service.* attributes
-#     (differing only in os.name: "Android" vs "iOS").
+#   - Builds + installs + launches the full demo on each (AstronomyShop on
+#     iOS via XCUITest, Android :upstream-demo-app driven by `monkey`)
+#   - Both platforms run UI-driven: every emission originates from a
+#     real synthetic touch event, not from a Timer that bypasses the UI.
+#     iOS uses XCUIApplication taps on SwiftUI buttons; Android uses
+#     `monkey` on Compose views. Telemetry flows through the same
+#     CartViewModel / ShopTelemetry path either way.
 #
 # What you should see in Dash0:
-#   - Filter on service.name="otel-mobile-demo" OR "otel-ios-astronomy-shop"
+#   - Filter on service.name =~ "otel-.*-astronomy-shop" + dash0.resource.type="mobile"
 #   - Group by os.name — the two platforms' event streams appear side-by-side
-#   - iOS: ~12-span checkout traces, shop.cart.items_added counter,
-#     shop.checkout.duration_ms histogram, multi-severity logs
-#   - Android: ~2 Hz emission of info log / span / counter / nested span /
-#     warn log + histogram
+#   - iOS: 14-span checkout traces from XCUITest journey loop
+#   - Android: matching 14-span checkout traces from monkey-driven flows
 #
 # Exit clean with Ctrl+C. We kill both apps + optionally shut down the
 # emulator/simulator (see --keep-running).
@@ -164,26 +164,29 @@ start_ios() {
     open -a Simulator 2>/dev/null || true
     ok "Simulator ready"
 
-    log "iOS: building + installing $IOS_SCHEME"
-    if [[ ! -d "$IOS_DEMO_ROOT/${IOS_SCHEME}.xcodeproj" ]]; then
-        (cd "$IOS_DEMO_ROOT" && /opt/homebrew/bin/xcodegen generate >/dev/null)
-    fi
-    (cd "$IOS_DEMO_ROOT" && \
-        xcodebuild -scheme "$IOS_SCHEME" \
-            -destination "platform=iOS Simulator,name=$IOS_SIM_NAME" \
-            -derivedDataPath ./build build >/tmp/dual-ios-build.log 2>&1)
-    ok "iOS app built"
+    log "iOS: regenerating xcodeproj (xcodegen)"
+    (cd "$IOS_DEMO_ROOT" && /opt/homebrew/bin/xcodegen generate >/dev/null)
+    ok "Project generated"
 
-    xcrun simctl terminate booted "$IOS_BUNDLE" 2>/dev/null || true
-    xcrun simctl install booted "$IOS_DEMO_ROOT/build/Build/Products/Debug-iphonesimulator/${IOS_SCHEME}.app"
-    ok "iOS app installed"
-
-    log "iOS: launching with DASH0_AUTO_DEMO=1 (auto-driven user journey loop)"
-    # simctl has no --env flag; extra tokens become argv. To set a real env
-    # var on the launched app, prefix the command with SIMCTL_CHILD_<KEY>=<VAL>
-    # in the parent shell — simctl strips the prefix and forwards as env.
-    SIMCTL_CHILD_DASH0_AUTO_DEMO=1 xcrun simctl launch booted "$IOS_BUNDLE" > /tmp/dual-ios-console.log 2>&1
-    ok "iOS auto-demo journey started"
+    # iOS side runs the AstronomyShopUITests journey loop in the
+    # background — XCUIApplication taps real SwiftUI buttons in a loop
+    # for the duration of the demo. This matches Android's `monkey`
+    # semantics on the iOS side: every emission originates from a
+    # synthetic touch event, not from a Timer that bypasses the UI.
+    local journey_seconds=${DURATION_SECONDS:-3600}
+    if [[ "$journey_seconds" -le 0 ]]; then journey_seconds=3600; fi
+    log "iOS: launching XCUITest journey (${journey_seconds}s budget) in background"
+    (
+        JOURNEY_DURATION_SECONDS="$journey_seconds" \
+            xcodebuild test \
+                -scheme AstronomyShopUITests \
+                -destination "platform=iOS Simulator,name=$IOS_SIM_NAME" \
+                -derivedDataPath "$IOS_DEMO_ROOT/build" \
+                -only-testing:AstronomyShopUITests/AstronomyShopJourneyUITest/testJourneyLoop \
+                > /tmp/dual-ios-uitest.log 2>&1
+    ) &
+    IOS_PID=$!
+    ok "iOS XCUITest journey started (PID $IOS_PID, log /tmp/dual-ios-uitest.log)"
 }
 
 # ========================================================================
@@ -207,11 +210,11 @@ Filter hints:
   Separate by:   os.name  (values: "android", "iOS")
   Shared type:   dash0.resource.type="mobile"  (both sides)
 
-iOS signals (journey loop: browse → add → checkout every ~12s):
+iOS signals (XCUITest journey on real SwiftUI buttons):
   Logs:    app.home_appeared, shop.view_product, cart.add_item (INFO),
-           cart.low_stock_warning (WARN), shop.product_missing (ERROR)
+           cart.cleared (INFO), cart.large_quantity_warning (WARN)
   Traces:  shop.load_catalog (4-span tree), shop.view_product (3-span tree),
-           checkout (12-span deep tree: validate → inventory × N → totals
+           checkout (14-span deep tree: validate → inventory × N → totals
            × 3 → charge × 2 → confirm × 2 → analytics)
   Metrics: shop.cart.items_added counter, shop.checkout.duration_ms histogram,
            shop.view_product.load_ms histogram

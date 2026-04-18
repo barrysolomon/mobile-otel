@@ -37,18 +37,18 @@ enum ShopBootstrap {
             return BootResult(mobile: nil, config: demo,
                               status: "otel-config has placeholders — fill in Dash0 creds")
         }
-        // Under XCUITest, the test runner talks to the app over localhost.
-        // Our NetworkInstrumentation's `URLProtocol` swizzle intercepts
-        // every `URLSession` request, including XCTest's accessibility
-        // bridge, which causes the test snapshot queries to return an
-        // empty tree. Detect the test mode (launch arg set by the
-        // AstronomyShopUITests target) and drop the network
-        // auto-capture so the bridge is untouched. All other
-        // instrumentation stays on.
+        // Under XCUITest, every SDK auto-install is a potential interferer
+        // with XCTest's XPC-based accessibility bridge: NetworkInstrumentation's
+        // `URLProtocol` swizzle intercepts URLSession, VitalsInstrumentation's
+        // `CADisplayLink` fires on main, signal handlers from ErrorsInstrumentation
+        // can race with the XCTest process. Disable every auto-capture module
+        // while UI-driven tests are running; only enable whatever the test
+        // explicitly opts back in via additional launch args. The telemetry
+        // we care about for cross-platform parity flows through ShopTelemetry
+        // (cart, checkout, product-view) which is wired into the user-code
+        // path, not auto-instrumentation.
         let underUITest = CommandLine.arguments.contains("-DASH0_UI_TEST")
-        let autoCapture: AutoCaptureOptions = underUITest
-            ? [.lifecycle, .screen, .errors, .freeze, .vitals, .deviceStats]
-            : .all
+        let autoCapture: AutoCaptureOptions = underUITest ? .none : .all
 
         let config = MobileConfig(
             serviceName: demo.serviceName,
