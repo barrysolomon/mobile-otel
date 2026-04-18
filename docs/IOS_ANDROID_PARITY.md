@@ -128,7 +128,7 @@ Sources: Android
 | Predictive export | &#9989; `OnDevicePredictor`, `PredictiveExportPolicy`, `DeviceHealthMonitor` | &#9989; see Context/Health/Predictor/Policy rows above | shipped | Full predictive stack ported: DeviceHealthMonitor + OnDevicePredictor + PredictiveExportPolicy, opt-in via `MobileConfig.enablePredictiveExport` |
 | Device metrics collector | &#9989; `DeviceMetricsCollector` | &#9989; [`DeviceStatsCollector`](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | shipped | Auto-started when `AutoCaptureOptions.deviceStats` is enabled (default, 15s cadence). Emits memory / battery / thermal / storage gauges |
 | Jank detector | &#9989; | &#10060; | not-started | iOS CADisplayLink-based analog TBD |
-| App-start instrumentation | &#9989; `AppStartInstrumentation` | &#10060; | not-started | |
+| App-start instrumentation | &#9989; `AppStartInstrumentation` | &#9989; [`AppStartInstrumentation.swift`](../otel-ios-mobile/Sources/VitalsInstrumentation/AppStartInstrumentation.swift) | shipped | iOS port: emits `app.startup` (DynamicSampler high-priority), `app.start.cold`, `app.start.warm` spans with Android-parity `mobile.app.start.*` attributes. Process-start time read via `sysctl(KERN_PROC_PID)` — same accuracy guarantee as Android's `Process.getStartElapsedRealtime()`. Warm-start tracked via `UIApplication.didEnterBackgroundNotification` / `didBecomeActiveNotification`. 7 tests |
 | Coroutine / async error capture | &#9989; | &#10060; | not-started | Swift concurrency unhandled-error capture TBD |
 | Traces provider | &#9989; | &#9989; `TracerProviderSdk` in `OTelMobile.start(config:)` | shipped | |
 | Metrics provider (periodic reader) | &#9989; | &#9989; `PeriodicMetricReaderBuilder` (10s cadence) | shipped | |
@@ -345,9 +345,27 @@ The first GA-runup phase closes three SDK foundation gaps:
   on a Dash0-proprietary `ContextSnapshotProvider` (geo + per-batch
   policy match attribution) that has no iOS analog yet.
 
-Net: iOS unit-test count grew from 178 to 228 (+28%), with the new
-suites concentrated in the highest-leverage areas (PII redaction,
-export reliability, sampling controls).
+## Phase 2 progress (2026-04-18)
+
+UI / lifecycle instrumentation parity. Most Android UI modules are
+either already on iOS (tap, scroll, text-input via SwiftUI
+ViewModifiers in ScreenInstrumentation) or non-portable (back-press,
+compose-click — Android-only). The biggest remaining gap was app-start
+span emission.
+
+- **Phase 2.1 — App start instrumentation (7 tests)**:
+  `AppStartInstrumentation` ships as a span emitter (Android parity).
+  Emits `app.startup` (the name `DynamicSampler` boosts to high-
+  priority — closes a dead code path from Phase 1.3b),
+  `app.start.cold`, `app.start.warm` with Android-equivalent
+  `mobile.app.start.*` attributes. Process-start time read via
+  `sysctl(KERN_PROC_PID)`, same accuracy as Android's
+  `Process.getStartElapsedRealtime()`. Wired into `OTelMobile.start`
+  under the `.vitals` capability flag.
+
+Net: iOS unit-test count grew from 178 to 235 (+32%), with new suites
+concentrated in PII redaction, export reliability, sampling, and app-
+start tracing.
 
 ## Secondary gaps
 

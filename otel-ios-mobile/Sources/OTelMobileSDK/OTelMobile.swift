@@ -386,6 +386,14 @@ public final class OTelMobile: @unchecked Sendable {
             }
             if opts.contains(.vitals) {
                 VitalsInstrumentation.shared.install(logger: logger)
+                // AppStartInstrumentation rides under the .vitals
+                // capability — same conceptual area, but emits SPANS
+                // (cold/warm/startup) so the trace timeline carries
+                // launch context. The `app.startup` span name is
+                // intentionally what `DynamicSampler` boosts to
+                // high-priority — keeps startup spans in the sampled
+                // set even at low baseline rates.
+                AppStartInstrumentation.shared.install(tracer: tracer)
             }
             if opts.contains(.deviceStats) {
                 // Auto-start the continuous gauge loop. Before today this
