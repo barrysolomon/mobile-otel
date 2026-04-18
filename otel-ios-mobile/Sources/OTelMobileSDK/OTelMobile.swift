@@ -271,8 +271,13 @@ public final class OTelMobile: @unchecked Sendable {
             .build()
         let logger = loggerProvider.get(instrumentationScopeName: "io.dash0.mobile")
 
+        // Build the sampler from MobileConfig. Default is dynamic (10%
+        // baseline / 100% for page.* + app.startup) so trace waterfalls
+        // stay intact at low rates. Override via `MobileConfig.samplingConfig`.
+        let sampler = SamplerFactory.createSampler(config.samplingConfig)
         let tracerProvider = TracerProviderBuilder()
             .with(resource: resource)
+            .with(sampler: sampler)
             .add(spanProcessor: batchSpanProcessor)
             .build()
         let tracer = tracerProvider.get(

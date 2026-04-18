@@ -35,6 +35,14 @@ public struct MobileConfig: Sendable {
     /// `enablePredictiveExport` is true.
     public let predictiveExportIntervalSeconds: UInt64
 
+    /// Sampling configuration for the trace pipeline. Defaults to a
+    /// `SamplingConfig.dynamic(0.1, 1.0)` — 10% baseline for high-volume
+    /// spans, 100% for `page.*` and `app.startup` (so the trace
+    /// waterfall stays intact for every screen). Override with
+    /// `SamplingConfig.alwaysOn()` for development or
+    /// `.production(rate:)` for fixed-rate trace-id sampling.
+    public let samplingConfig: SamplingConfig
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -49,7 +57,8 @@ public struct MobileConfig: Sendable {
         enablePolicyPolling: Bool = false,
         deviceStatsIntervalSeconds: UInt64 = 15,
         enablePredictiveExport: Bool = false,
-        predictiveExportIntervalSeconds: UInt64 = 30
+        predictiveExportIntervalSeconds: UInt64 = 30,
+        samplingConfig: SamplingConfig = .dynamic(normalRate: 0.1, highPriorityRate: 1.0)
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -65,5 +74,6 @@ public struct MobileConfig: Sendable {
         self.deviceStatsIntervalSeconds = deviceStatsIntervalSeconds
         self.enablePredictiveExport = enablePredictiveExport
         self.predictiveExportIntervalSeconds = predictiveExportIntervalSeconds
+        self.samplingConfig = samplingConfig
     }
 }

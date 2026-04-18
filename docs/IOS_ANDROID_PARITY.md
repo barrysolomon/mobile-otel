@@ -110,7 +110,7 @@ Sources: Android
 | Policy DSL v2 parser | &#9989; `PolicyEvaluator.parseConfigV2` | &#9989; [`PolicyParser.parseConfigV2`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/PolicyParser.swift) | shipped | 14 behavioral-parity tests copied verbatim from Android JSON bodies |
 | Policy DSL v1 compiler | &#9989; `PolicyEvaluatorV1CompilerTest` | &#10060; | not-started | Auto-detect (v1 vs v2) missing on iOS |
 | Policy evaluator runtime | &#9989; `PolicyEvaluator` trigger matching | &#9989; [`PolicyEvaluator.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/PolicyEvaluator.swift) + [`ConfigPoller.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/ConfigPoller.swift) | shipped | Full closing loop: `ConfigPoller` → `PolicyEvaluator.updatePolicies` → `onEmit` conditional `flushWindow` → OTLP export. 17 evaluator tests; 5 end-to-end integration tests |
-| Dynamic sampler | &#9989; `DynamicSampler`, `SamplerFactory`, `SamplingConfig` | &#10060; | not-started | |
+| Dynamic sampler | &#9989; `DynamicSampler`, `SamplerFactory`, `SamplingConfig` | &#9989; [`DynamicSampler.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Sampling/DynamicSampler.swift) + [`SamplerFactory.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Sampling/SamplerFactory.swift) + [`SamplingConfig.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Sampling/SamplingConfig.swift) | shipped | iOS port: `Sampler` conformance, `traceId.idLo`-keyed decisions (no hex parse), runtime `setSamplingRate(_:durationMinutes:)`, `page.*` + `app.startup` always sampled at high-priority rate. Wired into `OTelMobile.start` via new `MobileConfig.samplingConfig` (default `.dynamic(0.1, 1.0)`). 27 tests |
 | Session manager | &#9989; `SessionManager` + `SessionConfig` | &#9989; [`SessionManager.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Session/SessionManager.swift) | shipped | iOS: UUID with 15-min inactivity rotation, `UserDefaults` persistence across launches |
 | User identity | &#9989; `UserIdentity` | &#10060; | not-started | |
 | Boot tracker | &#9989; `BootTracker` (reads `/proc/sys/kernel/random/boot_id`) | &#9989; [`BootTracker.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Identity/BootTracker.swift) | shipped | iOS: `sysctlbyname("kern.boottime", ...)` → hex-encoded `<sec>-<usec>`. Falls back to per-process UUID on sysctl failure. 4 tests |
@@ -159,7 +159,7 @@ iOS file counts via `@Test` (15 suites, **114 test fns**).
 | PII / privacy | 40 (`PiiScrubberTest`) + 20 (`PrivacyUtilsTest`) = **60** | 40 (`PiiScrubberTests`) + 4 (`NetworkConfigTests` PII-routed wiring) + 1 (`CrashRecoveryTests` scrub-on-recovery) = **45** | **75%** |
 | Errors | 36 + 29 = **65** | 0 | **0%** |
 | Vitals / jank | 8 | 0 | **0%** |
-| Sampling | 30 + 17 = **47** | 0 | **0%** |
+| Sampling | 30 + 17 = **47** | 8 (`SamplingConfigTests`) + 13 (`DynamicSamplerTests`) + 6 (`SamplerFactoryTests`) = **27** | **57%** |
 | Fleet alerts | 12 | 0 | **0%** |
 | Log tailing | 22 | 0 | **0%** |
 | Device metrics | 27 | 0 | **0%** |
@@ -335,15 +335,19 @@ The first GA-runup phase closes three SDK foundation gaps:
   `RetryableExporter` (LogRecordExporter decorator, exponential backoff,
   3 retries) + `ExportStatusManager` (per-instance + `.shared`,
   4-variant status enum). 14 tests. Wired into `OTelMobile.start`.
-- **Phase 1.3 — Boot tracker (partial)**: `BootTracker` shipped (4
-  tests). `DynamicSampler` + `EnrichingLogRecordExporter` deferred to a
-  follow-up session — the Android `EnrichingLogRecordExporter` depends
+- **Phase 1.3 — Boot tracker + dynamic sampler (31 tests)**:
+  `BootTracker` (`sysctl kern.boottime` → hex string, 4 tests),
+  `SamplingConfig` (8 tests), `DynamicSampler` (13 tests, runtime
+  rate adjustment + `page.*` / `app.startup` always-sampled),
+  `SamplerFactory` (6 tests). Wired into `OTelMobile.start` via new
+  `MobileConfig.samplingConfig` (default `.dynamic(0.1, 1.0)`).
+  `EnrichingLogRecordExporter` deferred — the Android version depends
   on a Dash0-proprietary `ContextSnapshotProvider` (geo + per-batch
   policy match attribution) that has no iOS analog yet.
 
-Net: iOS unit-test count grew from 178 to 201 (+13%), with the new
+Net: iOS unit-test count grew from 178 to 228 (+28%), with the new
 suites concentrated in the highest-leverage areas (PII redaction,
-export reliability).
+export reliability, sampling controls).
 
 ## Secondary gaps
 
