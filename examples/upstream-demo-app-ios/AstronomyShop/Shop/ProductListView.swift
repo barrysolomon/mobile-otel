@@ -25,6 +25,10 @@ struct ProductListView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                // Stable per-product id so the XCUITest can tap a specific
+                // product deterministically. "product.row" prefix + product.id
+                // matches the contract in AstronomyShopUITests.
+                .accessibilityIdentifier("product.row.\(product.id)")
             }
             .navigationTitle("Astronomy Shop")
             .trackScreen("ProductList")
@@ -49,6 +53,7 @@ struct ProductListView: View {
                             }
                         }
                 }
+                .accessibilityIdentifier("nav.cart")
             }
         }
     }

@@ -41,3 +41,20 @@ targets:
           UIColorName: systemBackgroundColor
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+  AstronomyShopUITests:
+    # UI test target that drives the Astronomy Shop via XCUIApplication —
+    # synthetic taps on real SwiftUI buttons. This is the canonical way
+    # to drive the app for validation + dual-platform demos. Matches
+    # Android's `monkey` in spirit (real UI-injected touch events,
+    # telemetry flows through the natural code path).
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AstronomyShopUITests
+    settings:
+      # No Info.plist under source control for this test target; let Xcode
+      # synthesise one at build time. Matches Apple's modern-project default.
+      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: com.dash0.mobile.demo.AstronomyShopUITests
+    dependencies:
+      - target: AstronomyShop

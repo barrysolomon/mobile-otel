@@ -66,10 +66,12 @@ struct CartView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(checkoutRunning || cart.lines.isEmpty)
+                    .accessibilityIdentifier("cart.checkout")
 
                     Button("Clear cart") { cart.clear() }
                         .foregroundColor(.red)
                         .disabled(cart.lines.isEmpty)
+                        .accessibilityIdentifier("cart.clear")
                 }
                 .padding()
             }

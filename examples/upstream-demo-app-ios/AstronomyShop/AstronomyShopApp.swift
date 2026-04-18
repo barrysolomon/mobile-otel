@@ -10,6 +10,12 @@ struct AstronomyShopApp: App {
     var body: some Scene {
         WindowGroup {
             rootView
+                // Explicit root-level accessibility identifier. Without
+                // this, iOS 26 simulator's XCUITest occasionally returns
+                // an empty accessibility tree for SwiftUI-only apps even
+                // after the UI has rendered. A top-level identifier
+                // forces the accessibility graph to materialise.
+                .accessibilityIdentifier("app.root")
         }
     }
 

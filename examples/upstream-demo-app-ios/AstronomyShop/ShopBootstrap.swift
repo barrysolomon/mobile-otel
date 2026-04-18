@@ -37,11 +37,25 @@ enum ShopBootstrap {
             return BootResult(mobile: nil, config: demo,
                               status: "otel-config has placeholders — fill in Dash0 creds")
         }
+        // Under XCUITest, the test runner talks to the app over localhost.
+        // Our NetworkInstrumentation's `URLProtocol` swizzle intercepts
+        // every `URLSession` request, including XCTest's accessibility
+        // bridge, which causes the test snapshot queries to return an
+        // empty tree. Detect the test mode (launch arg set by the
+        // AstronomyShopUITests target) and drop the network
+        // auto-capture so the bridge is untouched. All other
+        // instrumentation stays on.
+        let underUITest = CommandLine.arguments.contains("-DASH0_UI_TEST")
+        let autoCapture: AutoCaptureOptions = underUITest
+            ? [.lifecycle, .screen, .errors, .freeze, .vitals, .deviceStats]
+            : .all
+
         let config = MobileConfig(
             serviceName: demo.serviceName,
             serviceVersion: demo.serviceVersion,
             endpoint: demo.endpoint,
             authToken: demo.authToken,
+            autoCaptureOptions: autoCapture,
             extraHeaders: ["Dash0-Dataset": demo.dataset]
         )
         do {

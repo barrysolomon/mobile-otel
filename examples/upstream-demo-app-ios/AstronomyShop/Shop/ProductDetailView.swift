@@ -56,6 +56,7 @@ struct ProductDetailView: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("product.add_to_cart")
             }
             .padding()
         }
