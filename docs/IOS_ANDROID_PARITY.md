@@ -155,9 +155,9 @@ iOS file counts via `@Test` (15 suites, **114 test fns**).
 | Config (MobileConfig) | 18 + 24 (security) + 6 (customizers) + 9 (DSL) = **57** | 5 (`MobileConfig`) | **9%** |
 | Autocapture / Recovery / SessionTracker | 41 + 24 + 16 + 30 + 20 = **131** | 0 | **0%** |
 | Network | 33 + 25 + 8 = **66** | 9 (`NetworkConfig`) | **14%** |
-| Session | 19 + 7 = **26** | 0 | **0%** |
+| Session | 19 + 7 = **26** | 12 (`SessionManagerTests`) | **46%** |
 | PII / privacy | 40 (`PiiScrubberTest`) + 20 (`PrivacyUtilsTest`) = **60** | 40 (`PiiScrubberTests`) + 4 (`NetworkConfigTests` PII-routed wiring) + 1 (`CrashRecoveryTests` scrub-on-recovery) = **45** | **75%** |
-| Errors | 36 + 29 = **65** | 0 | **0%** |
+| Errors | 36 + 29 = **65** | 14 (`ErrorsInstrumentationTests`) + 5 (`CrashRecoveryTests`) = **19** | **29%** |
 | Vitals / jank | 8 | 0 | **0%** |
 | Sampling | 30 + 17 = **47** | 8 (`SamplingConfigTests`) + 13 (`DynamicSamplerTests`) + 6 (`SamplerFactoryTests`) = **27** | **57%** |
 | Fleet alerts | 12 | 0 | **0%** |
@@ -363,9 +363,30 @@ span emission.
   `Process.getStartElapsedRealtime()`. Wired into `OTelMobile.start`
   under the `.vitals` capability flag.
 
-Net: iOS unit-test count grew from 178 to 235 (+32%), with new suites
-concentrated in PII redaction, export reliability, sampling, and app-
-start tracing.
+## Phase 3 progress (2026-04-18)
+
+Test backfill in the highest-leverage areas where iOS coverage was
+near zero. No new SDK code; pure regression coverage of paths that
+already shipped.
+
+- **Phase 3.1 — Errors backfill (+14 tests)**:
+  `ErrorsInstrumentationTests` covers `recordError` (severity, type,
+  PII-scrubbed message, custom-attr passthrough, no-logger no-op),
+  install idempotency + pending-marker scan on install, `signalName`
+  mnemonic mapping for the full POSIX fatal set, `crashMarkerURL`
+  contract, and recovery edge cases (empty file, malformed lines).
+  Errors coverage 5 → 19 tests (8% → 29% of Android).
+- **Phase 3.2 — Session backfill (+12 tests)**:
+  `SessionManagerTests` covers fresh mint, stable-within-window read,
+  `rotateSession`, `UserDefaults` persistence round-trip, mint-on-
+  inactivity-timeout, resume-within-window, snapshot accuracy, touch-
+  to-extend semantics, default 15-min timeout matching Android, and
+  defensive UUID-shape rotation. Session coverage 0 → 12 tests
+  (0% → 46% of Android).
+
+Net: iOS unit-test count grew from 178 to 261 (+47%), with new suites
+concentrated in PII redaction, export reliability, sampling, app-start
+tracing, errors recovery, and session lifecycle.
 
 ## Secondary gaps
 
