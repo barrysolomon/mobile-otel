@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to otel-config.json (gitignored) and fill in real Dash0 credentials. Endpoint, authToken, and dataset come from Dash0 Org Settings → OpenTelemetry Setup → SDKs. backendUrl points to the demo-backend at examples/demo-backend/ — keep http://localhost:3001 unless you've moved it.",
+  "serviceName": "otel-ios-schedulr",
+  "endpoint": "https://YOUR-DASH0-INGEST-HOST.dash0.com",
+  "authToken": "auth_REPLACE_ME",
+  "dataset": "otel-mobile",
+  "backendUrl": "http://localhost:3001"
+}

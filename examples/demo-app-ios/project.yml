@@ -1,0 +1,66 @@
+name: Schedulr
+options:
+  bundleIdPrefix: com.dash0.mobile.demo
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  SWIFT_VERSION: "5.9"
+packages:
+  OTelMobile:
+    path: ../../otel-ios-mobile
+targets:
+  Schedulr:
+    type: application
+    platform: iOS
+    sources:
+      - path: Schedulr
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: OTelMobile
+        product: OTelMobileSDK
+      - package: OTelMobile
+        product: OTelMobileCore
+      - package: OTelMobile
+        product: NetworkInstrumentation
+      - package: OTelMobile
+        product: LifecycleInstrumentation
+      - package: OTelMobile
+        product: ErrorsInstrumentation
+      - package: OTelMobile
+        product: ScreenInstrumentation
+      - package: OTelMobile
+        product: FreezeInstrumentation
+      - package: OTelMobile
+        product: VitalsInstrumentation
+    info:
+      path: Schedulr/Info.plist
+      properties:
+        CFBundleDisplayName: Schedulr
+        UILaunchScreen:
+          UIColorName: systemBackgroundColor
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Allow plaintext HTTP to localhost / loopback for the demo backend.
+        # iOS App Transport Security blocks non-HTTPS by default. The
+        # demo-backend at examples/demo-backend/ runs on http://localhost:3001.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: true
+  SchedulrUITests:
+    # XCUITest target — drives the Schedulr SwiftUI app via real
+    # synthetic UITouch events for end-to-end demo / validation runs.
+    # Mirrors AstronomyShopUITests in shape; the validate-ios-demo-app.sh
+    # script invokes this target's testJourneyLoop.
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SchedulrUITests
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: com.dash0.mobile.demo.SchedulrUITests
+    dependencies:
+      - target: Schedulr
