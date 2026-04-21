@@ -10,21 +10,18 @@ import Dash0Mobile
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-  var window: UIWindow?
-
   var reactNativeDelegate: ReactNativeDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  // Stashed for SceneDelegate to hand off to the real windowScene-bound window.
+  var initialLaunchOptions: [UIApplication.LaunchOptionsKey: Any]?
 
   func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     // Register the Dash0Mobile native-module sink BEFORE React starts.
-    // RN instantiates NativeModules lazily on first JS access, so as long
-    // as we install before `factory.startReactNative` this is safe.
-    // OTelMobileCallSink lives in this app target (see
-    // `OTelMobileCallSink.swift` in the project navigator). It depends on
-    // `OTelMobileSDK`, which is attached to this project via SwiftPM.
+    // RN instantiates NativeModules lazily on first JS access, so installing
+    // here (before any scene connects and drives JS execution) is safe.
     NSLog("[Dash0Mobile AppDelegate] installSink { OTelMobileCallSink() }")
     Dash0MobileModule.installSink { OTelMobileCallSink() }
 
@@ -34,16 +31,58 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
+    initialLaunchOptions = launchOptions
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    return true
+  }
 
+  // MARK: - UIScene lifecycle
+  // iOS 26 Simulator strictly requires scene-based lifecycle; without a
+  // declared `UIApplicationSceneManifest` the window never paints (JS runs
+  // fine but nothing renders — "no scenes" fault in the log).
+
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    config.delegateClass = SceneDelegate.self
+    return config
+  }
+}
+
+@objc(SceneDelegate)
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    NSLog("[Dash0Mobile SceneDelegate] willConnectTo fired")
+    guard let windowScene = scene as? UIWindowScene else {
+      NSLog("[Dash0Mobile SceneDelegate] scene is not UIWindowScene")
+      return
+    }
+    guard
+      let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+      let factory = appDelegate.reactNativeFactory
+    else {
+      NSLog("[Dash0Mobile SceneDelegate] reactNativeFactory missing — AppDelegate didn't run?")
+      return
+    }
+
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+
+    NSLog("[Dash0Mobile SceneDelegate] startReactNative(window=\(window))")
     factory.startReactNative(
       withModuleName: "AstronomyShopRN",
       in: window,
-      launchOptions: launchOptions
+      launchOptions: appDelegate.initialLaunchOptions
     )
-
-    return true
   }
 }
 
