@@ -56,7 +56,8 @@ enum ShopBootstrap {
             endpoint: demo.endpoint,
             authToken: demo.authToken,
             autoCaptureOptions: autoCapture,
-            extraHeaders: ["Dash0-Dataset": demo.dataset]
+            extraHeaders: ["Dash0-Dataset": demo.dataset],
+            samplingConfig: .alwaysOn()
         )
         do {
             let mobile = try OTelMobile.start(config: config)

@@ -30,6 +30,7 @@ struct AstronomyShopApp: App {
                         .setSeverity(.info)
                         .setAttributes(["event.name": .string("app.home_appeared")])
                         .emit()
+                    RootState.pokeBackend()
                 }
         } else {
             VStack(spacing: 12) {
@@ -79,6 +80,21 @@ final class RootState: ObservableObject {
             self.products = catalog.loadProducts()
         }
         self.cart = CartViewModel(telemetry: telemetry)
+    }
+
+    /// Fires a single unconditional GET so the SDK's URLSession auto-capture
+    /// has something to record on every launch. Called from `onAppear` of
+    /// the home view so NetworkInstrumentation (installed via
+    /// DispatchQueue.main.async in OTelMobile.start) is guaranteed up by
+    /// the time this runs. Response is ignored — the point is the outbound
+    /// HTTP, which the URLProtocol swizzle turns into a `GET …` span
+    /// with http.request.method, url.full, etc.
+    static func pokeBackend() {
+        guard let url = URL(string: "https://httpbin.org/get?src=ios-astronomy-shop") else { return }
+        let session = URLSession(configuration: .default)
+        session.dataTask(with: url) { _, _, _ in
+            session.finishTasksAndInvalidate()
+        }.resume()
     }
 
     /// Emit the browse telemetry for a product view. Used by

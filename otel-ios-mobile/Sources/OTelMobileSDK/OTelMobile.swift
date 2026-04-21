@@ -373,10 +373,17 @@ public final class OTelMobile: @unchecked Sendable {
         // SwiftUI render complete first.
         let opts = config.autoCaptureOptions
         let networkConfig = Self.makeNetworkConfig(endpoint: config.endpoint)
+        // Install NetworkInstrumentation SYNCHRONOUSLY — it's just an
+        // Obj-C runtime swizzle + URLProtocol.registerClass, no UIKit
+        // touches, no signal handlers. Deferring it via
+        // DispatchQueue.main.async meant any URLSession request the app
+        // fired before the first main-queue tick — including anything in
+        // App.init, .onAppear, or synchronous bootstrap — completed
+        // through a non-swizzled URLSession and was silently uncaptured.
+        if opts.contains(.network) {
+            NetworkInstrumentation.shared.install(tracer: tracer, config: networkConfig)
+        }
         DispatchQueue.main.async {
-            if opts.contains(.network) {
-                NetworkInstrumentation.shared.install(tracer: tracer, config: networkConfig)
-            }
             if opts.contains(.lifecycle) {
                 LifecycleInstrumentation.shared.install(tracer: tracer, logger: logger)
             }
