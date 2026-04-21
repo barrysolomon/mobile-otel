@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react-native",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["jest", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@dash0/mobile-react-native": ["../../../packages/react-native/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "__tests__/**/*", "__mocks__/**/*", "index.js"],
+  "exclude": ["node_modules"]
+}

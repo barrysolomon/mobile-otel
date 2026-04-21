@@ -113,6 +113,14 @@ data class MobileConfig(
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
     val headers: Map<String, String>? = null,
+    /**
+     * Extra resource attributes merged into the SDK's built-in resource.
+     * Use this to add vendor- or framework-specific identifiers such as
+     * `telemetry.distro.name` / `telemetry.distro.version` when wrapping
+     * this SDK in a higher-level distribution (e.g. the React Native
+     * bridge). Null entries and blank keys are ignored.
+     */
+    val extraResourceAttributes: Map<String, String>? = null,
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
     val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),

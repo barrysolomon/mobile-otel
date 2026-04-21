@@ -20,10 +20,10 @@ import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
-import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
-import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.android.mobile.sampling.SamplerFactory
 import io.opentelemetry.android.mobile.sampling.DynamicSampler
@@ -95,6 +95,15 @@ class MobileLoggerProvider private constructor(
                 // data under the wrong UI category. Setting it explicitly
                 // keeps Android + iOS co-located under the Mobile view.
                 .put("dash0.resource.type", "mobile")
+                .apply {
+                    // Fold in caller-provided attributes (e.g. React Native
+                    // bridge sets telemetry.distro.name/version). Built-ins
+                    // above are NOT overridable — intentional, so apps can't
+                    // accidentally mis-label their platform/OS.
+                    config.extraResourceAttributes?.forEach { (key, value) ->
+                        if (key.isNotBlank()) put(key, value)
+                    }
+                }
                 .build()
         )
 
@@ -125,10 +134,13 @@ class MobileLoggerProvider private constructor(
             maxRetries = config.maxExportRetries
         )
 
-        // Create OTLP HTTP metric exporter
-        val metricEndpoint = config.collectorEndpoint.removeSuffix("/") + "/v1/metrics"
-        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpHttpMetricExporter.builder()
-            .setEndpoint(metricEndpoint)
+        // OTLP/gRPC metric exporter. Unified with logs + traces on the same
+        // transport so a single `collectorEndpoint` (pointing at a gRPC port,
+        // typically :4317) is sufficient. The prior HTTP exporter required a
+        // separate port (:4318) that the single-endpoint API didn't expose,
+        // silently producing HTTP-415s when the user's endpoint was :4317.
+        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpGrpcMetricExporter.builder()
+            .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->
@@ -162,10 +174,9 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // Create OTLP trace exporter (HTTP, not gRPC — Android lacks gRPC transport by default)
-        val traceEndpoint = config.collectorEndpoint.removeSuffix("/") + "/v1/traces"
-        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpHttpSpanExporter.builder()
-            .setEndpoint(traceEndpoint)
+        // OTLP/gRPC span exporter — same transport as logs and metrics.
+        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpGrpcSpanExporter.builder()
+            .setEndpoint(config.collectorEndpoint)
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->

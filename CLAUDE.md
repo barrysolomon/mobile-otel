@@ -34,6 +34,32 @@ cd examples/demo-app
 
 Note: The SDK library (`otel-android-mobile/`) does not have its own `gradlew`. Build it through `examples/demo-app/` which includes it as a project dependency via `settings.gradle.kts`.
 
+### React Native SDK (`packages/react-native/` + `examples/upstream-demo-app-rn/`)
+```bash
+cd packages/react-native
+npm install                                         # first time only
+npm test                                            # Jest (bridge contract + auto-instr)
+npx tsc --noEmit                                    # typecheck
+```
+
+```bash
+# Orchestrated end-to-end (package + demo, Jest mode — no simulator)
+./scripts/test/validate-rn-end-to-end.sh --mode=jest
+# → 70 package tests + 13 demo tests
+
+# Via run-tests.sh
+./scripts/ci/run-tests.sh --rn                      # RN only
+./scripts/ci/run-tests.sh --all                     # Android + Go + iOS + RN
+```
+
+The RN bridge is **native-first** — all buffering, policy eval, and OTLP export happens in the existing Android + iOS SDKs (`otel-android-mobile/` + `otel-ios-mobile/`). The JS layer is a thin marshaller with 50 ms batching. See [docs/REACT_NATIVE_SDK_GUIDE.md](docs/REACT_NATIVE_SDK_GUIDE.md) and [docs/RN_ANDROID_IOS_PARITY.md](docs/RN_ANDROID_IOS_PARITY.md).
+
+**Gotcha:** the RN package has a `file:` dep from the demo app. Both Jest and tsc need their own mapping (`moduleNameMapper` in `package.json` + `paths` in `tsconfig.json`). Do not reach for Lerna / npm workspaces here — the current shim keeps the package usable by both the demo AND a real npm consumer.
+
+**Auto-instrumentation default-on:** fetch/XHR spans, JS error + unhandled rejection logs, AppState fg/bg. Opt out with `Dash0Mobile.start({ autoCapture: { network: false, errors: false, lifecycle: false } })`.
+
+**Opt-in helpers:** `installReactNavigationInstrumentation(navRef)` for screen tracking, `withTapTelemetry('target', handler)` for tap events, `otel.trace.getTracer(...)` for OTel-API compat so third-party JS libs flow through our bridge.
+
 ### Go Collector Processor (`collector-processor/mobilepolicyprocessor/`)
 ```bash
 cd collector-processor/mobilepolicyprocessor

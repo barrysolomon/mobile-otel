@@ -43,6 +43,13 @@ public struct MobileConfig: Sendable {
     /// `.production(rate:)` for fixed-rate trace-id sampling.
     public let samplingConfig: SamplingConfig
 
+    /// Extra resource attributes merged into the SDK's built-in resource.
+    /// Use this for vendor/framework identifiers — the React Native bridge
+    /// populates `telemetry.distro.name` / `telemetry.distro.version` here
+    /// so Dash0 can distinguish RN-originated telemetry. Mirrors Android's
+    /// `MobileConfig.extraResourceAttributes`.
+    public let extraResourceAttributes: [String: String]
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -58,7 +65,8 @@ public struct MobileConfig: Sendable {
         deviceStatsIntervalSeconds: UInt64 = 15,
         enablePredictiveExport: Bool = false,
         predictiveExportIntervalSeconds: UInt64 = 30,
-        samplingConfig: SamplingConfig = .dynamic(normalRate: 0.1, highPriorityRate: 1.0)
+        samplingConfig: SamplingConfig = .dynamic(normalRate: 0.1, highPriorityRate: 1.0),
+        extraResourceAttributes: [String: String] = [:]
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -75,5 +83,6 @@ public struct MobileConfig: Sendable {
         self.enablePredictiveExport = enablePredictiveExport
         self.predictiveExportIntervalSeconds = predictiveExportIntervalSeconds
         self.samplingConfig = samplingConfig
+        self.extraResourceAttributes = extraResourceAttributes
     }
 }

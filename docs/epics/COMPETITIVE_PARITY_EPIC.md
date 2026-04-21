@@ -216,7 +216,7 @@ Each module is opt-in, auto-discovered via SPI, and requires zero code changes f
 
 | ID | Item | Priority | Notes |
 |----|------|----------|-------|
-| CP-050 | React Native bridge — JS → native SDK bridge for RN apps | P2 | Datadog has full RN SDK |
+| CP-050 | React Native bridge — JS → native SDK bridge for RN apps | **P1 (promoted 2026-04-20, Innovapptive-gated)** | **Epic: [REACT_NATIVE_EPIC.md](REACT_NATIVE_EPIC.md) — Phase 19a planning/scaffolding in progress** |
 | CP-051 | Flutter plugin — Dart → native SDK bridge | P2 | Neither competitor has official Flutter RUM |
 | CP-052 | Kotlin Multiplatform — shared SDK code for Android + iOS | P2 | Datadog supports KMP |
 

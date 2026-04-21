@@ -13,6 +13,47 @@ subprojects {
         version.set("1.3.1")
         android.set(true)
     }
+
+    // Auto-apply Maven publishing to every library module in this build so
+    // external consumers (like the RN demo) can pull a full dependency tree
+    // from mavenLocal. Without this, sub-module deps publish as
+    // groupId=<rootProject.name> with version=unspecified — unresolvable.
+    val isCore = path == ":otel-android-mobile-core"
+    val isInstrumentation = path.startsWith(":instrumentation-")
+
+    if (isCore || isInstrumentation) {
+        apply(plugin = "maven-publish")
+
+        // Android library modules need singleVariant("release") to emit an
+        // AAR when `from(components["release"])` is used. Without this, only
+        // a POM publishes — silently — and consumers can't find the classes.
+        afterEvaluate {
+            extensions.findByType<com.android.build.api.dsl.LibraryExtension>()?.apply {
+                publishing {
+                    singleVariant("release") {}
+                }
+            }
+        }
+
+        afterEvaluate {
+            extensions.configure<PublishingExtension> {
+                publications {
+                    register<MavenPublication>("release") {
+                        groupId = "io.opentelemetry.android"
+                        artifactId = if (isCore) {
+                            "mobile-core"
+                        } else {
+                            "mobile-instrumentation-${path.removePrefix(":instrumentation-")}"
+                        }
+                        version = "0.1.0-alpha"
+                        afterEvaluate {
+                            from(components.findByName("release"))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 tasks.register("clean", Delete::class) {

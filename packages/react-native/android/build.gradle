@@ -1,0 +1,68 @@
+// @dash0/mobile-react-native — Android native module build.
+//
+// When consumed via RN autolinking, the host app's buildscript owns AGP + the
+// Kotlin plugin versions. We apply the plugins here but let the host provide
+// them — hardcoding classpath versions here forced an old AGP/Kotlin combo
+// that conflicted with host-provided stdlib.
+
+// Default matches RN 0.85's Kotlin (2.1.20). Older RN consumers can override
+// via -PDash0Mobile_kotlinVersion.
+ext.kotlin_version = project.findProperty('Dash0Mobile_kotlinVersion') ?: '2.1.20'
+ext.safeExtGet = { prop, fallback ->
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'com.dash0.mobile.reactnative'
+    compileSdk safeExtGet('compileSdkVersion', 34)
+
+    defaultConfig {
+        minSdk safeExtGet('minSdkVersion', 26)
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    testOptions {
+        targetSdk safeExtGet('targetSdkVersion', 34)
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+
+    lint {
+        targetSdk safeExtGet('targetSdkVersion', 34)
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation "com.facebook.react:react-android:+"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+
+    // Depend on the existing native Android SDK. Must be `implementation`
+    // (not `compileOnly`) so Kotlin can resolve transitive config classes
+    // (TextInputConfig, BreadcrumbConfig, VitalsConfig, etc.) referenced
+    // through MobileConfig's constructor signature.
+    implementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
+    implementation 'io.opentelemetry:opentelemetry-api:1.58.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.12.0'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
+    testImplementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
+    testImplementation 'io.opentelemetry:opentelemetry-api:1.58.0'
+}

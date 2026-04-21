@@ -14,7 +14,11 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "OTel Mobile Demo"
+// Must be a valid Maven groupId segment (no spaces). Prior value was
+// "OTel Mobile Demo" which caused published POMs to emit bogus
+// groupId="OTel Mobile Demo" for sub-module deps whose own publishing
+// block is missing — making the SDK unconsumable as a Maven artifact.
+rootProject.name = "otel-mobile-demo"
 
 include(":android")
 include(":otel-android-mobile")

@@ -1,0 +1,33 @@
+buildscript {
+    ext {
+        buildToolsVersion = "36.0.0"
+        // Bumped from 24 to 26 — otel-android-mobile SDK requires API 26+.
+        minSdkVersion = 26
+        compileSdkVersion = 36
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.1.20"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// The otel-android-mobile SDK compiles with Kotlin 2.2.x metadata. RN 0.85
+// ships Kotlin 2.1.20. Binary metadata format is stable across the 2.x line
+// in practice — the flag silences the compiler's version check.
+allprojects {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        compilerOptions {
+            freeCompilerArgs.add("-Xskip-metadata-version-check")
+        }
+    }
+}

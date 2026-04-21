@@ -250,6 +250,7 @@ scripts/test/collector/output/
 
 # Swift Package Manager build artifacts
 otel-ios-mobile/.build/
+packages/react-native/.build/
 **/.swiftpm/
 xcuserdata/
 DerivedData/
@@ -257,6 +258,9 @@ DerivedData/
 # iOS demo app credentials
 examples/demo-app-ios-starter/StarterApp/otel-config.json
 examples/upstream-demo-app-ios/AstronomyShop/otel-config.json
+
+# React Native demo app credentials
+examples/upstream-demo-app-rn/AstronomyShopRN/otel-config.json
 # XcodeGen-generated projects
 examples/demo-app-ios-starter/StarterApp.xcodeproj/
 examples/upstream-demo-app-ios/AstronomyShop.xcodeproj/

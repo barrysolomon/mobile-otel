@@ -305,10 +305,13 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [ ] NDK crash handler (SIGSEGV/SIGABRT/SIGBUS)
 - [ ] Native symbol upload + server-side symbolication
 
-### Phase 19 — Cross-Platform Framework Support (P2)
+### Phase 19 — Cross-Platform Framework Support
 
-- [ ] React Native bridge (JS → native SDK)
-- [ ] Flutter plugin (Dart → native SDK) — **whitespace opportunity**
+- [ ] **React Native bridge (JS → native SDK)** — **P1 (Innovapptive-gated)**; epic: [docs/epics/REACT_NATIVE_EPIC.md](docs/epics/REACT_NATIVE_EPIC.md); scaffold + failing-first tests landed 2026-04-20 under `packages/react-native/` and `examples/upstream-demo-app-rn/`
+- [ ] Flutter plugin (Dart → native SDK) — P2, **whitespace opportunity**
+- [ ] Realm instrumentation for RN (Innovapptive follow-up; depends on RN bridge)
+- [ ] Amplify DataStore for RN (Innovapptive follow-up; depends on RN bridge)
+- [ ] Expo config plugin (RN follow-up)
 
 ### Phase 20 — Network Depth (P1)
 

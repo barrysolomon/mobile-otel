@@ -1,0 +1,18 @@
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'AstronomyShopRN'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+
+// @dash0/mobile-react-native pulls io.opentelemetry.android:mobile from
+// mavenLocal. Publish with `./gradlew publishToMavenLocal` from
+// examples/demo-app before building the RN demo.
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        mavenLocal()
+        google()
+        mavenCentral()
+    }
+}

@@ -1,0 +1,44 @@
+name: React Native Tests
+
+on:
+  push:
+    branches: [ main, iPhone ]
+    paths:
+      - 'packages/react-native/**'
+      - 'examples/upstream-demo-app-rn/**'
+      - 'scripts/test/validate-rn-end-to-end.sh'
+      - '.github/workflows/rn-tests.yml'
+  pull_request:
+    branches: [ main, iPhone ]
+    paths:
+      - 'packages/react-native/**'
+      - 'examples/upstream-demo-app-rn/**'
+      - 'scripts/test/validate-rn-end-to-end.sh'
+      - '.github/workflows/rn-tests.yml'
+
+jobs:
+  rn-unit-tests:
+    name: RN Bridge + Demo (Jest + typecheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install RN package deps
+        working-directory: packages/react-native
+        run: npm install --no-audit --no-fund
+
+      - name: Install AstronomyShopRN demo deps
+        working-directory: examples/upstream-demo-app-rn/AstronomyShopRN
+        run: npm install --no-audit --no-fund
+
+      - name: Run RN validation (jest + typecheck)
+        run: |
+          chmod +x scripts/test/validate-rn-end-to-end.sh
+          ./scripts/test/validate-rn-end-to-end.sh --mode=jest

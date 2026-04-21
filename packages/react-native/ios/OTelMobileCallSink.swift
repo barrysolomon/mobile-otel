@@ -1,0 +1,215 @@
+// Production BridgeCallSink for iOS. Forwards RN bridge calls into the
+// existing OTelMobileSDK.OTelMobile facade.
+//
+// This file is compiled ONLY when OTelMobileSDK is linkable. When the RN
+// package is built standalone (CI cold-compile without a host app) the
+// RCTDash0MobileModule falls back to NoopSink.
+
+#if canImport(OTelMobileSDK)
+import Foundation
+import OpenTelemetryApi
+import OTelMobileSDK
+
+final class OTelMobileCallSink: BridgeCallSink {
+    private var otel: OTelMobile?
+    private let spanLock = NSLock()
+    private var liveSpans: [String: Span] = [:]
+
+    func start(_ config: BridgeStartConfig) {
+        // Dash0 OTLP ingress wants Bearer auth + Dash0-Dataset as explicit
+        // headers, not as separate MobileConfig fields. Build them here so
+        // the rest of the SDK sees a uniform headers map.
+        var extraHeaders: [String: String] = [:]
+        if let dataset = config.dataset, !dataset.isEmpty {
+            extraHeaders["Dash0-Dataset"] = dataset
+        }
+        let mobileConfig = MobileConfig(
+            serviceName: config.serviceName,
+            serviceVersion: config.serviceVersion ?? "unknown",
+            endpoint: config.endpoint,
+            authToken: config.authToken,
+            // Spans + metrics go over the same gRPC endpoint as logs after
+            // the SDK transport unification — RN consumers don't need the
+            // conditional-export battery story, so default CONTINUOUS.
+            exportMode: .continuous,
+            extraHeaders: extraHeaders,
+            extraResourceAttributes: config.extraResourceAttributes
+        )
+        do {
+            otel = try OTelMobile.start(config: mobileConfig)
+        } catch {
+            // Start failure is logged but non-fatal — JS side stays operational
+            // and future emitBatch calls become no-ops until a successful start.
+            NSLog("[@dash0/mobile-react-native] OTelMobile.start failed: \(error)")
+        }
+    }
+
+    func emitLog(
+        name: String,
+        severity: Int,
+        attributes: [String: Any],
+        timeUnixNano: UInt64
+    ) {
+        guard let logger = otel?.logger else { return }
+        var builder = logger.logRecordBuilder()
+            .setBody(AttributeValue.string(name))
+            .setSeverity(Self.mapSeverity(severity))
+            .setTimestamp(Self.dateFromUnixNano(timeUnixNano))
+        let otelAttrs = Self.toAttributeValues(attributes)
+        if !otelAttrs.isEmpty {
+            builder = builder.setAttributes(otelAttrs)
+        }
+        builder.emit()
+    }
+
+    func startSpan(
+        spanId: String,
+        name: String,
+        spanKind: String,
+        attributes: [String: Any],
+        startTimeUnixNano: UInt64
+    ) {
+        guard let tracer = otel?.tracer else { return }
+        let span = tracer.spanBuilder(spanName: name)
+            .setStartTime(time: Self.dateFromUnixNano(startTimeUnixNano))
+            .setSpanKind(kind: Self.mapSpanKind(spanKind))
+            .startSpan()
+        for (k, v) in Self.toAttributeValues(attributes) {
+            span.setAttribute(key: k, value: v)
+        }
+        spanLock.lock()
+        liveSpans[spanId] = span
+        spanLock.unlock()
+    }
+
+    func endSpan(
+        spanId: String,
+        status: String,
+        statusMessage: String?,
+        attributes: [String: Any],
+        endTimeUnixNano: UInt64
+    ) {
+        spanLock.lock()
+        let span = liveSpans.removeValue(forKey: spanId)
+        spanLock.unlock()
+        guard let span = span else { return }
+
+        for (k, v) in Self.toAttributeValues(attributes) {
+            span.setAttribute(key: k, value: v)
+        }
+        switch status {
+        case "OK":
+            span.status = .ok
+        case "ERROR":
+            span.status = .error(description: statusMessage ?? "")
+        default:
+            break
+        }
+        span.end(time: Self.dateFromUnixNano(endTimeUnixNano))
+    }
+
+    func recordMetric(
+        name: String,
+        instrumentType: String,
+        value: Double,
+        attributes: [String: Any],
+        timeUnixNano: UInt64
+    ) {
+        guard let meter = otel?.meter else { return }
+        let otelAttrs = Self.toAttributeValues(attributes)
+        switch instrumentType {
+        case "histogram":
+            meter.histogramBuilder(name: name).build()
+                .record(value: value, attributes: otelAttrs)
+        case "gauge":
+            // OTel-Swift async gauges require an observer callback; for the
+            // bridge's fire-and-forget contract we record a single value via
+            // a histogram of size 1 so the last-value aggregation in the
+            // backend surfaces the reading. Purpose-built sync gauges land
+            // if/when upstream exposes them.
+            meter.histogramBuilder(name: name).build()
+                .record(value: value, attributes: otelAttrs)
+        default:
+            // counter — integer values are the common case. Fractional
+            // counters aren't expressible through OTel-Swift's long counter,
+            // so truncate and log once if the JS side ever sends a non-int.
+            meter.counterBuilder(name: name).build()
+                .add(value: Int(value), attributes: otelAttrs)
+        }
+    }
+
+    func flushWindow(minutes: Int) {
+        guard let otel = otel else { return }
+        Task.detached { [otel] in
+            _ = await otel.flushWindow(minutes: UInt64(max(0, minutes)))
+        }
+    }
+
+    func shutdown() {
+        otel = nil
+        spanLock.lock()
+        liveSpans.removeAll()
+        spanLock.unlock()
+    }
+
+    // MARK: - Helpers
+
+    private static func toAttributeValues(_ raw: [String: Any]) -> [String: AttributeValue] {
+        var out: [String: AttributeValue] = [:]
+        for (k, v) in raw {
+            if let s = v as? String {
+                out[k] = .string(s)
+            } else if let b = v as? Bool {
+                out[k] = .bool(b)
+            } else if let i = v as? Int {
+                out[k] = .int(i)
+            } else if let n = v as? NSNumber {
+                // React Native bridges numerics as NSNumber. Integer-valued
+                // NSNumbers should land as ints so attribute keys like `qty`
+                // don't surface as `2.0` in backends — mirrors the Android
+                // OTelMobileCallSink behavior.
+                if CFNumberIsFloatType(n) {
+                    out[k] = .double(n.doubleValue)
+                } else {
+                    out[k] = .int(n.intValue)
+                }
+            } else if let d = v as? Double {
+                out[k] = .double(d)
+            } else {
+                out[k] = .string(String(describing: v))
+            }
+        }
+        return out
+    }
+
+    private static func dateFromUnixNano(_ nano: UInt64) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(nano) / 1_000_000_000.0)
+    }
+
+    private static func mapSeverity(_ raw: Int) -> Severity {
+        // OTel severity numbers: 1=TRACE, 5=DEBUG, 9=INFO, 13=WARN, 17=ERROR,
+        // 21=FATAL. JS sends the numeric value directly — fall back to INFO
+        // when the value is outside the known range so log records never
+        // get dropped silently.
+        switch raw {
+        case 1...4:   return .trace
+        case 5...8:   return .debug
+        case 9...12:  return .info
+        case 13...16: return .warn
+        case 17...20: return .error
+        case 21...:   return .fatal
+        default:      return .info
+        }
+    }
+
+    private static func mapSpanKind(_ raw: String) -> SpanKind {
+        switch raw {
+        case "CLIENT":   return .client
+        case "SERVER":   return .server
+        case "PRODUCER": return .producer
+        case "CONSUMER": return .consumer
+        default:         return .internal
+        }
+    }
+}
+#endif

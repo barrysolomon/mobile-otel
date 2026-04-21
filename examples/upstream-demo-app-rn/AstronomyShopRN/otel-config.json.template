@@ -1,0 +1,7 @@
+{
+  "serviceName": "otel-rn-astronomy-shop",
+  "serviceVersion": "0.1.0-alpha",
+  "endpoint": "YOUR_DASH0_INGRESS_ENDPOINT",
+  "authToken": "YOUR_DASH0_AUTH_TOKEN",
+  "dataset": "otel-mobile"
+}

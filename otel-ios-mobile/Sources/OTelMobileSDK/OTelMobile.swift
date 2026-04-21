@@ -136,7 +136,8 @@ public final class OTelMobile: @unchecked Sendable {
         // `logger.logRecordBuilder().emit()` lands in the buffer.
         let resource = ResourceBuilder.buildMobileResource(
             serviceName: config.serviceName,
-            serviceVersion: config.serviceVersion
+            serviceVersion: config.serviceVersion,
+            extraAttributes: config.extraResourceAttributes
         )
         let loggerProvider = LoggerProviderBuilder()
             .with(resource: resource)
@@ -260,7 +261,8 @@ public final class OTelMobile: @unchecked Sendable {
 
         let resource = ResourceBuilder.buildMobileResource(
             serviceName: config.serviceName,
-            serviceVersion: config.serviceVersion
+            serviceVersion: config.serviceVersion,
+            extraAttributes: config.extraResourceAttributes
         )
 
         // `with(processors:)` appends — both processors receive every

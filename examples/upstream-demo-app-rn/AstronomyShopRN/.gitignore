@@ -1,0 +1,13 @@
+node_modules/
+ios/build/
+ios/Pods/
+ios/DerivedData/
+android/build/
+android/.gradle/
+android/app/build/
+android/app/release/
+android/local.properties
+.idea/
+.vscode/
+*.log
+otel-config.json

@@ -43,6 +43,7 @@ handle_error() {
 RUN_ANDROID=true
 RUN_GO=true
 RUN_IOS=false            # iOS off by default — opt-in. Requires Xcode.
+RUN_RN=false             # RN off by default — opt-in. Requires Node/npm.
 RUN_INTEGRATION=false
 
 while [[ $# -gt 0 ]]; do
@@ -50,23 +51,34 @@ while [[ $# -gt 0 ]]; do
         --android-only)
             RUN_GO=false
             RUN_IOS=false
+            RUN_RN=false
             shift
             ;;
         --go-only)
             RUN_ANDROID=false
             RUN_IOS=false
+            RUN_RN=false
             shift
             ;;
         --ios|--ios-only)
             RUN_ANDROID=false
             RUN_GO=false
             RUN_IOS=true
+            RUN_RN=false
+            shift
+            ;;
+        --rn|--rn-only)
+            RUN_ANDROID=false
+            RUN_GO=false
+            RUN_IOS=false
+            RUN_RN=true
             shift
             ;;
         --all)
             RUN_ANDROID=true
             RUN_GO=true
             RUN_IOS=true
+            RUN_RN=true
             shift
             ;;
         --integration)
@@ -80,7 +92,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --android-only    Run only Android tests"
             echo "  --go-only         Run only Go tests"
             echo "  --ios, --ios-only Run only iOS tests (requires Xcode)"
-            echo "  --all             Run Android + Go + iOS (requires Xcode)"
+            echo "  --rn, --rn-only   Run only React Native tests (Jest + typecheck)"
+            echo "  --all             Run Android + Go + iOS + RN (requires Xcode + Node)"
             echo "  --integration     Include integration tests (requires emulator)"
             echo "  --help            Show this help message"
             exit 0
@@ -173,6 +186,21 @@ if [ "$RUN_IOS" = true ]; then
     fi
 fi
 
+# React Native Unit Tests (opt-in — requires Node.js + npm)
+if [ "$RUN_RN" = true ]; then
+    print_section "Running React Native Tests (Jest + typecheck)"
+
+    if [ ! -d "$REPO_ROOT/packages/react-native" ]; then
+        echo -e "${YELLOW}⚠ packages/react-native missing, skipping${NC}"
+    else
+        if "$REPO_ROOT/scripts/test/validate-rn-end-to-end.sh" --mode=jest; then
+            echo -e "${GREEN}✓ RN bridge + demo Jest/typecheck passed${NC}"
+        else
+            handle_error "React Native tests"
+        fi
+    fi
+fi
+
 # Android Integration Tests (optional)
 if [ "$RUN_INTEGRATION" = true ] && [ "$RUN_ANDROID" = true ]; then
     print_section "Running Android Integration Tests"
@@ -206,6 +234,7 @@ if [ $FAILURES -eq 0 ]; then
     echo "Test reports:"
     [ "$RUN_ANDROID" = true ] && echo "  - Android: otel-android-mobile/build/reports/tests/testDebugUnitTest/index.html"
     [ "$RUN_GO" = true ] && echo "  - Go:      collector-processor/mobilepolicyprocessor/coverage.html"
+    [ "$RUN_RN" = true ] && echo "  - RN:      packages/react-native (jest output inline above)"
     echo ""
     exit 0
 else
