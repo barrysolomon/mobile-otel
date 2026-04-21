@@ -60,6 +60,29 @@ class Dash0MobileModuleTest {
     }
 
     @Test
+    fun start_forwards_nativeAutoCapture_tokens() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+            "nativeAutoCapture", JavaOnlyArray.of("vitals", "deviceStats"),
+        )
+        val promise = RecordingPromise()
+        module.start(cfg, promise)
+        assertEquals(listOf("vitals", "deviceStats"), sink.starts[0].nativeAutoCapture)
+    }
+
+    @Test
+    fun start_defaults_nativeAutoCapture_to_empty_when_absent() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+        )
+        val promise = RecordingPromise()
+        module.start(cfg, promise)
+        assertTrue(sink.starts[0].nativeAutoCapture.isEmpty())
+    }
+
+    @Test
     fun start_rejects_when_serviceName_missing() {
         val cfg = JavaOnlyMap.of("endpoint", "e")
         val promise = RecordingPromise()
@@ -206,7 +229,7 @@ class Dash0MobileModuleTest {
 // ─── test doubles ────────────────────────────────────────────────────────
 
 private data class LogCall(val name: String, val severity: Int, val attributes: Map<String, Any?>, val timeUnixNano: Long)
-private data class SpanStartCall(val spanId: String, val name: String, val spanKind: String, val attributes: Map<String, Any?>, val startTimeUnixNano: Long)
+private data class SpanStartCall(val spanId: String, val parentSpanId: String?, val name: String, val spanKind: String, val attributes: Map<String, Any?>, val startTimeUnixNano: Long)
 private data class SpanEndCall(val spanId: String, val status: String, val statusMessage: String?, val attributes: Map<String, Any?>, val endTimeUnixNano: Long)
 private data class MetricCall(val name: String, val instrumentType: String, val value: Double, val attributes: Map<String, Any?>, val timeUnixNano: Long)
 
@@ -223,8 +246,8 @@ private class RecordingSink : BridgeCallSink {
     override fun emitLog(name: String, severity: Int, attributes: Map<String, Any?>, timeUnixNano: Long) {
         logs += LogCall(name, severity, attributes, timeUnixNano)
     }
-    override fun startSpan(spanId: String, name: String, spanKind: String, attributes: Map<String, Any?>, startTimeUnixNano: Long) {
-        spanStarts += SpanStartCall(spanId, name, spanKind, attributes, startTimeUnixNano)
+    override fun startSpan(spanId: String, parentSpanId: String?, name: String, spanKind: String, attributes: Map<String, Any?>, startTimeUnixNano: Long) {
+        spanStarts += SpanStartCall(spanId, parentSpanId, name, spanKind, attributes, startTimeUnixNano)
     }
     override fun endSpan(spanId: String, status: String, statusMessage: String?, attributes: Map<String, Any?>, endTimeUnixNano: Long) {
         spanEnds += SpanEndCall(spanId, status, statusMessage, attributes, endTimeUnixNano)

@@ -28,13 +28,15 @@ public final class Dash0MobileBridgeDispatcher {
         }
         let extras: [String: String] = (config["extraResourceAttributes"] as? [String: Any])?
             .compactMapValues { $0 as? String } ?? [:]
+        let nativeAutoCapture = (config["nativeAutoCapture"] as? [Any])?.compactMap { $0 as? String } ?? []
         sink.start(BridgeStartConfig(
             serviceName: serviceName,
             serviceVersion: config["serviceVersion"] as? String,
             endpoint: endpoint,
             authToken: config["authToken"] as? String,
             dataset: config["dataset"] as? String,
-            extraResourceAttributes: extras
+            extraResourceAttributes: extras,
+            nativeAutoCapture: nativeAutoCapture
         ))
     }
 
@@ -71,6 +73,7 @@ public final class Dash0MobileBridgeDispatcher {
             else { return }
             sink.startSpan(
                 spanId: spanId,
+                parentSpanId: p["parentSpanId"] as? String,
                 name: name,
                 spanKind: (p["spanKind"] as? String) ?? "INTERNAL",
                 attributes: attrs,

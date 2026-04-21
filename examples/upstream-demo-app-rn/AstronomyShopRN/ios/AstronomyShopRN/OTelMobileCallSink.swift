@@ -34,7 +34,26 @@ public final class OTelMobileCallSink: BridgeCallSink {
             // the SDK transport unification — RN consumers don't need the
             // conditional-export battery story, so default CONTINUOUS.
             exportMode: .continuous,
+            // Translate the bridge's string tokens into AutoCaptureOptions.
+            // Default (empty array) = .none so the iOS SDK installs no
+            // UI/network/error instrumentation — RN apps get those signals
+            // from JS-side shims (fetch + XHR, ErrorUtils, unhandledRejection,
+            // withTapTelemetry). Enabling the native iOS suite on top of RN's
+            // new-arch JS event loop collides with it (URLProtocol swizzle
+            // and NSException/signal handlers leave the touch responder
+            // alive but dormant — surface paints, taps dead). Apps who want
+            // a specific native signal can opt in per capability from JS.
+            autoCaptureOptions: Self.parseAutoCaptureOptions(config.nativeAutoCapture),
             extraHeaders: extraHeaders,
+            // Demo default: keep every span. The SDK's default is a 10%
+            // dynamic sampler that only boosts `page.*` + `app.startup` to
+            // 100% — great for production battery life, but in a demo you
+            // emit a 3-span product-view tree or a 14-span checkout tree
+            // and end up seeing 1-2 spans in Dash0, with parents missing
+            // and waterfalls broken. Apps that want production sampling
+            // can override by threading `samplingConfig` through the bridge
+            // (future enhancement).
+            samplingConfig: .alwaysOn(),
             extraResourceAttributes: config.extraResourceAttributes
         )
         do {
@@ -66,16 +85,29 @@ public final class OTelMobileCallSink: BridgeCallSink {
 
     public func startSpan(
         spanId: String,
+        parentSpanId: String?,
         name: String,
         spanKind: String,
         attributes: [String: Any],
         startTimeUnixNano: UInt64
     ) {
         guard let tracer = otel?.tracer else { return }
-        let span = tracer.spanBuilder(spanName: name)
+        var builder = tracer.spanBuilder(spanName: name)
             .setStartTime(time: Self.dateFromUnixNano(startTimeUnixNano))
             .setSpanKind(spanKind: Self.mapSpanKind(spanKind))
-            .startSpan()
+        // When the JS caller identifies a parent, wire it to the OTel-Swift
+        // spanBuilder so the native tracer shares trace id + sets parent
+        // span id on the child — Dash0's UI can then render a real
+        // waterfall. Without this, every span becomes its own trace root.
+        if let parentSpanId {
+            spanLock.lock()
+            let parent = liveSpans[parentSpanId]
+            spanLock.unlock()
+            if let parent {
+                builder = builder.setParent(parent)
+            }
+        }
+        let span = builder.startSpan()
         for (k, v) in Self.toAttributeValues(attributes) {
             span.setAttribute(key: k, value: v)
         }
@@ -155,6 +187,31 @@ public final class OTelMobileCallSink: BridgeCallSink {
     }
 
     // MARK: - Helpers
+
+    /// Translate JS-side capability tokens into an `AutoCaptureOptions`.
+    /// Unknown tokens are silently dropped for forward compatibility (apps
+    /// targeting newer SDKs than the host build can use).
+    private static func parseAutoCaptureOptions(_ tokens: [String]) -> AutoCaptureOptions {
+        var opts: AutoCaptureOptions = []
+        for token in tokens {
+            switch token {
+            case "tap":         opts.insert(.tap)
+            case "scroll":      opts.insert(.scroll)
+            case "textInput":   opts.insert(.textInput)
+            case "lifecycle":   opts.insert(.lifecycle)
+            case "screen":      opts.insert(.screen)
+            case "network":     opts.insert(.network)
+            case "errors":      opts.insert(.errors)
+            case "freeze":      opts.insert(.freeze)
+            case "vitals":      opts.insert(.vitals)
+            case "screenshot":  opts.insert(.screenshot)
+            case "wireframe":   opts.insert(.wireframe)
+            case "deviceStats": opts.insert(.deviceStats)
+            default: continue
+            }
+        }
+        return opts
+    }
 
     private static func toAttributeValues(_ raw: [String: Any]) -> [String: AttributeValue] {
         var out: [String: AttributeValue] = [:]

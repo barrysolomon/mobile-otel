@@ -96,7 +96,7 @@ public final class NoopSink: BridgeCallSink {
     public init() {}
     public func start(_ config: BridgeStartConfig) {}
     public func emitLog(name: String, severity: Int, attributes: [String: Any], timeUnixNano: UInt64) {}
-    public func startSpan(spanId: String, name: String, spanKind: String, attributes: [String: Any], startTimeUnixNano: UInt64) {}
+    public func startSpan(spanId: String, parentSpanId: String?, name: String, spanKind: String, attributes: [String: Any], startTimeUnixNano: UInt64) {}
     public func endSpan(spanId: String, status: String, statusMessage: String?, attributes: [String: Any], endTimeUnixNano: UInt64) {}
     public func recordMetric(name: String, instrumentType: String, value: Double, attributes: [String: Any], timeUnixNano: UInt64) {}
     public func flushWindow(minutes: Int) {}

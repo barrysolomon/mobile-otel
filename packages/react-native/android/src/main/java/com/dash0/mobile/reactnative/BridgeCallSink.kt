@@ -11,7 +11,7 @@ package com.dash0.mobile.reactnative
 interface BridgeCallSink {
     fun start(config: StartConfig)
     fun emitLog(name: String, severity: Int, attributes: Map<String, Any?>, timeUnixNano: Long)
-    fun startSpan(spanId: String, name: String, spanKind: String, attributes: Map<String, Any?>, startTimeUnixNano: Long)
+    fun startSpan(spanId: String, parentSpanId: String?, name: String, spanKind: String, attributes: Map<String, Any?>, startTimeUnixNano: Long)
     fun endSpan(spanId: String, status: String, statusMessage: String?, attributes: Map<String, Any?>, endTimeUnixNano: Long)
     fun recordMetric(name: String, instrumentType: String, value: Double, attributes: Map<String, Any?>, timeUnixNano: Long)
     fun flushWindow(minutes: Int)
@@ -30,4 +30,19 @@ data class StartConfig(
      * default; apps can add their own keys through `Dash0Mobile.start`.
      */
     val extraResourceAttributes: Map<String, String>? = null,
+    /**
+     * Native-only auto-capture capability tokens the JS caller explicitly
+     * opted into. Default empty = no native auto-capture (RN apps get
+     * network/errors/lifecycle coverage from the JS-side shims).
+     *
+     * Supported tokens: "network", "errors", "lifecycle", "tap", "scroll",
+     * "textInput", "screen", "freeze", "vitals", "deviceStats".
+     *
+     * Today the Android MobileConfig's auto-capture is driven separately by
+     * the host app's `OTelMobileBuilder` — these tokens are accepted here
+     * for cross-platform bridge parity but not yet consumed. When the
+     * Android SDK gains a unified `autoCaptureOptions` on MobileConfig, the
+     * sink will translate them the same way the iOS sink does today.
+     */
+    val nativeAutoCapture: List<String> = emptyList(),
 )

@@ -44,6 +44,10 @@ class Dash0MobileModule internal constructor(
                     extraResourceAttributes = config
                         .getMapOrNull("extraResourceAttributes")
                         ?.toStringMap(),
+                    nativeAutoCapture = config
+                        .getArrayOrNull("nativeAutoCapture")
+                        ?.toStringList()
+                        ?: emptyList(),
                 ),
             )
             promise.resolve(null)
@@ -97,6 +101,7 @@ class Dash0MobileModule internal constructor(
             )
             "spanStart" -> sink.startSpan(
                 spanId = p.getString("spanId") ?: return,
+                parentSpanId = p.getStringOrNull("parentSpanId"),
                 name = p.getString("name") ?: return,
                 spanKind = p.getString("spanKind") ?: "INTERNAL",
                 attributes = attrs,
@@ -132,6 +137,19 @@ private fun ReadableMap.getStringOrNull(key: String): String? =
 
 private fun ReadableMap.getMapOrNull(key: String): ReadableMap? =
     if (hasKey(key) && !isNull(key)) getMap(key) else null
+
+private fun ReadableMap.getArrayOrNull(key: String): ReadableArray? =
+    if (hasKey(key) && !isNull(key)) getArray(key) else null
+
+private fun ReadableArray.toStringList(): List<String> {
+    val out = ArrayList<String>(size())
+    for (i in 0 until size()) {
+        if (getType(i) == ReadableType.String) {
+            getString(i)?.let { out.add(it) }
+        }
+    }
+    return out
+}
 
 private fun ReadableMap.getStringAsLong(key: String): Long =
     getStringOrNull(key)?.toLongOrNull() ?: 0L

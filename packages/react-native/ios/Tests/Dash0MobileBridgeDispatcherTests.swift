@@ -33,6 +33,30 @@ struct Dash0MobileBridgeDispatcherTests {
     }
 
     @Test
+    func start_forwards_nativeAutoCapture_tokens() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+            "nativeAutoCapture": ["vitals", "deviceStats"],
+        ])
+        #expect(sink.starts.count == 1)
+        #expect(sink.starts[0].nativeAutoCapture == ["vitals", "deviceStats"])
+    }
+
+    @Test
+    func start_defaults_nativeAutoCapture_to_empty_when_absent() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+        ])
+        #expect(sink.starts[0].nativeAutoCapture == [])
+    }
+
+    @Test
     func start_throws_when_serviceName_missing() {
         let sink = RecordingSink()
         let d = Dash0MobileBridgeDispatcher(sink: sink)
@@ -165,7 +189,7 @@ struct Dash0MobileBridgeDispatcherTests {
 // ─── test double ──────────────────────────────────────────────────────────
 
 private struct LogCall { let name: String; let severity: Int; let attributes: [String: Any]; let timeUnixNano: UInt64 }
-private struct SpanStartCall { let spanId: String; let name: String; let spanKind: String; let attributes: [String: Any]; let startTimeUnixNano: UInt64 }
+private struct SpanStartCall { let spanId: String; let parentSpanId: String?; let name: String; let spanKind: String; let attributes: [String: Any]; let startTimeUnixNano: UInt64 }
 private struct SpanEndCall { let spanId: String; let status: String; let statusMessage: String?; let attributes: [String: Any]; let endTimeUnixNano: UInt64 }
 private struct MetricCall { let name: String; let instrumentType: String; let value: Double; let attributes: [String: Any]; let timeUnixNano: UInt64 }
 
@@ -182,8 +206,8 @@ private final class RecordingSink: BridgeCallSink {
     func emitLog(name: String, severity: Int, attributes: [String: Any], timeUnixNano: UInt64) {
         logs.append(LogCall(name: name, severity: severity, attributes: attributes, timeUnixNano: timeUnixNano))
     }
-    func startSpan(spanId: String, name: String, spanKind: String, attributes: [String: Any], startTimeUnixNano: UInt64) {
-        spanStarts.append(SpanStartCall(spanId: spanId, name: name, spanKind: spanKind, attributes: attributes, startTimeUnixNano: startTimeUnixNano))
+    func startSpan(spanId: String, parentSpanId: String?, name: String, spanKind: String, attributes: [String: Any], startTimeUnixNano: UInt64) {
+        spanStarts.append(SpanStartCall(spanId: spanId, parentSpanId: parentSpanId, name: name, spanKind: spanKind, attributes: attributes, startTimeUnixNano: startTimeUnixNano))
     }
     func endSpan(spanId: String, status: String, statusMessage: String?, attributes: [String: Any], endTimeUnixNano: UInt64) {
         spanEnds.append(SpanEndCall(spanId: spanId, status: status, statusMessage: statusMessage, attributes: attributes, endTimeUnixNano: endTimeUnixNano))

@@ -34,11 +34,36 @@ export interface StartConfig {
     diskBytes?: number;
   };
   enablePolicyPolling?: boolean;
+  /**
+   * Toggles for JS-side auto-instrumentation (fetch/XHR spans, JS error +
+   * unhandled rejection logs, AppState foreground/background). Defaults to
+   * all-on. RN bridge uses the same flags to decide which native iOS/Android
+   * auto-capture suites to enable via `nativeAutoCapture`, so e.g.
+   * `autoCapture: { network: true }` enables the iOS `URLProtocol` swizzle
+   * in addition to the JS fetch/XHR wrappers. The default is OFF on the
+   * native side for RN — RN host apps typically don't want the native iOS
+   * URLProtocol swizzle or NSException handlers because they collide with
+   * RN's new-arch JS event loop (touch responder goes dormant).
+   */
   autoCapture?: {
     network?: boolean;
     errors?: boolean;
     lifecycle?: boolean;
     appState?: boolean;
+    /** Native iOS/Android-only capability — captures UI taps via swizzle/recognizer. Off by default on RN. */
+    tap?: boolean;
+    /** Native-only — scroll spans. Off by default on RN. */
+    scroll?: boolean;
+    /** Native-only — text input spans. Off by default on RN. */
+    textInput?: boolean;
+    /** Native-only — SwiftUI/Fragment screen tracking. Off by default on RN (use react-navigation helper instead). */
+    screen?: boolean;
+    /** Native-only — main-thread freeze detection. Off by default on RN. */
+    freeze?: boolean;
+    /** Native-only — app.start + jank + memory gauges. Off by default on RN. */
+    vitals?: boolean;
+    /** Native-only — periodic device health gauges (battery/thermal/network). Off by default on RN. */
+    deviceStats?: boolean;
   };
   /**
    * Extra resource attributes merged into the native SDK's resource. Used by

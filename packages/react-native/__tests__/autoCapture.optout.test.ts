@@ -162,4 +162,53 @@ describe('autoCapture opt-outs', () => {
     expect(globalThis.fetch).toBe(beforeFetch);
     expect(eu.setGlobalHandler).toHaveBeenCalledTimes(1);
   });
+
+  describe('nativeAutoCapture bridge payload', () => {
+    function makeCapturingNative(): NativeDash0MobileModule & { lastStartConfig: unknown } {
+      const self = {
+        lastStartConfig: undefined as unknown,
+        async start(cfg: unknown) {
+          self.lastStartConfig = cfg;
+        },
+        async emitBatch() {},
+        async flushWindow() {},
+        async shutdown() {},
+      };
+      return self;
+    }
+
+    it('defaults to empty array when autoCapture is absent (native suite OFF by default on RN)', async () => {
+      const native = makeCapturingNative();
+      __setNativeForTesting(native);
+      await Dash0Mobile.start({
+        serviceName: 'rn-test',
+        endpoint: 'https://collector.example.com:4317',
+      });
+      expect((native.lastStartConfig as { nativeAutoCapture: string[] }).nativeAutoCapture).toEqual([]);
+    });
+
+    it('opt-in flags propagate to nativeAutoCapture tokens', async () => {
+      const native = makeCapturingNative();
+      __setNativeForTesting(native);
+      await Dash0Mobile.start({
+        serviceName: 'rn-test',
+        endpoint: 'https://collector.example.com:4317',
+        autoCapture: { vitals: true, deviceStats: true, network: true },
+      });
+      const tokens = (native.lastStartConfig as { nativeAutoCapture: string[] }).nativeAutoCapture;
+      expect(tokens).toEqual(expect.arrayContaining(['vitals', 'deviceStats', 'network']));
+      expect(tokens).toHaveLength(3);
+    });
+
+    it('explicit `false` does NOT appear in nativeAutoCapture tokens', async () => {
+      const native = makeCapturingNative();
+      __setNativeForTesting(native);
+      await Dash0Mobile.start({
+        serviceName: 'rn-test',
+        endpoint: 'https://collector.example.com:4317',
+        autoCapture: { vitals: true, network: false },
+      });
+      expect((native.lastStartConfig as { nativeAutoCapture: string[] }).nativeAutoCapture).toEqual(['vitals']);
+    });
+  });
 });

@@ -69,16 +69,24 @@ internal class OTelMobileCallSink(
 
     override fun startSpan(
         spanId: String,
+        parentSpanId: String?,
         name: String,
         spanKind: String,
         attributes: Map<String, Any?>,
         startTimeUnixNano: Long,
     ) {
-        val span = OTelMobile.getTracer(SCOPE)
+        val parent = if (parentSpanId != null) synchronized(liveSpans) { liveSpans[parentSpanId] } else null
+        val builder = OTelMobile.getTracer(SCOPE)
             .spanBuilder(name)
             .setSpanKind(spanKindOf(spanKind))
             .setAllAttributes(attributes.toOtelAttributes())
-            .startSpan()
+        // Propagate parent context so Dash0 renders the waterfall instead
+        // of 14 orphan spans per checkout. `setParent` with an active span
+        // is Context.current()-free and works regardless of thread.
+        if (parent != null) {
+            builder.setParent(io.opentelemetry.context.Context.current().with(parent))
+        }
+        val span = builder.startSpan()
         synchronized(liveSpans) { liveSpans[spanId] = span }
     }
 

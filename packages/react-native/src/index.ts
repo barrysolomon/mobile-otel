@@ -46,6 +46,18 @@ let bridge: NativeBridge | null = null;
 let started = false;
 let autoInstrUninstallers: Array<() => void> = [];
 
+// Ambient parent-span stack. Each `startSpan` pushes the new spanId; each
+// `.end()` pops. Children emitted while an outer span is live pick up the
+// top of the stack as their `parentSpanId`, so Dash0 renders proper
+// waterfalls without callers threading parent handles manually.
+//
+// Limitation: a single global stack is only correct for strictly-nested
+// (LIFO) span work — sufficient for `Dash0Mobile.span('x', async () => { ... })`
+// and sequential `startSpan/.end()` pairs. Concurrent async span trees would
+// need AsyncLocalStorage / Hermes async-hooks; RN doesn't expose those
+// cleanly, so we accept the limitation and document it on the public API.
+const spanStack: string[] = [];
+
 function nowUnixNano(): string {
   // Date.now() is ms; multiply to nanoseconds. JS numbers lose precision past
   // 2^53, but UNIX nanos in 2026 fit well under that — keep as string for the
@@ -106,7 +118,14 @@ export const Dash0Mobile = {
     // Inject RN distribution attributes as OTel-spec resource attributes.
     // Caller-provided extras win (lets apps override for testing/tagging).
     const rnVersion = resolveReactNativeVersion();
-    const mergedConfig: StartConfig = {
+    // Translate the `autoCapture` flags into a native-capability token list the
+    // bridge (iOS/Android) can use to build `AutoCaptureOptions`. Native
+    // default is OFF for everything — callers must explicitly set a flag to
+    // `true` to enable the native suite on that capability. This avoids the
+    // iOS URLProtocol / NSException / signal-handler swizzles by default,
+    // which collide with RN's new-arch JS event loop.
+    const nativeAutoCapture = buildNativeAutoCaptureTokens(config.autoCapture);
+    const mergedConfig: StartConfig & { nativeAutoCapture: string[] } = {
       ...config,
       extraResourceAttributes: {
         'telemetry.distro.name': DISTRO_NAME,
@@ -114,6 +133,7 @@ export const Dash0Mobile = {
         ...(rnVersion ? { 'app.framework': 'react-native', 'app.framework.version': rnVersion } : {}),
         ...(config.extraResourceAttributes ?? {}),
       },
+      nativeAutoCapture,
     };
 
     await native.start(mergedConfig);
@@ -147,9 +167,12 @@ export const Dash0Mobile = {
   },
 
   startSpan(name: string, attributes: Attributes = {}, spanKind: SpanKind = 'INTERNAL'): SpanHandle {
+    const spanId = randomSpanId();
+    const parentSpanId = spanStack.length > 0 ? spanStack[spanStack.length - 1] : undefined;
     const startPayload: SpanStartPayload = {
       kind: 'spanStart',
-      spanId: randomSpanId(),
+      spanId,
+      parentSpanId,
       name,
       spanKind,
       attributes: { ...attributes },
@@ -161,6 +184,7 @@ export const Dash0Mobile = {
       status: 'UNSET',
       ended: false,
     };
+    spanStack.push(spanId);
 
     if (started && bridge) {
       bridge.emit(startPayload);
@@ -177,10 +201,16 @@ export const Dash0Mobile = {
       end() {
         if (active.ended) return;
         active.ended = true;
+        // Pop this spanId off the stack. Tolerate out-of-order ends by
+        // scanning from the top — the common case is LIFO, but mis-ordered
+        // ends (e.g. a long-lived outer span that ends after an inner
+        // one that was itself popped correctly) shouldn't corrupt the stack.
+        const idx = spanStack.lastIndexOf(spanId);
+        if (idx >= 0) spanStack.splice(idx, 1);
         if (!started || !bridge) return;
         bridge.emit({
           kind: 'spanEnd',
-          spanId: startPayload.spanId,
+          spanId,
           status: active.status === 'UNSET' ? 'OK' : active.status,
           statusMessage: active.statusMessage,
           attributes: active.attrs,
@@ -256,6 +286,31 @@ function hostFromEndpoint(endpoint: string): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
+// Map JS autoCapture flags onto native-capability tokens the bridge
+// translates to AutoCaptureOptions. Defaults are all-OFF: callers must
+// explicitly set `true` to enable a native suite.
+type AutoCaptureFlag = keyof NonNullable<StartConfig['autoCapture']>;
+const NATIVE_AUTO_CAPTURE_FLAGS: ReadonlyArray<[AutoCaptureFlag, string]> = [
+  ['network', 'network'],
+  ['errors', 'errors'],
+  ['lifecycle', 'lifecycle'],
+  ['tap', 'tap'],
+  ['scroll', 'scroll'],
+  ['textInput', 'textInput'],
+  ['screen', 'screen'],
+  ['freeze', 'freeze'],
+  ['vitals', 'vitals'],
+  ['deviceStats', 'deviceStats'],
+];
+function buildNativeAutoCaptureTokens(ac: StartConfig['autoCapture']): string[] {
+  if (!ac) return [];
+  const out: string[] = [];
+  for (const [flag, token] of NATIVE_AUTO_CAPTURE_FLAGS) {
+    if (ac[flag] === true) out.push(token);
+  }
+  return out;
+}
+
 // ─── test hooks ──────────────────────────────────────────────────────────────
 // These are intentionally exported but prefixed __ to signal "not for app use."
 // Native-module tests inject a mock here; a CI lint rule should ban callers
@@ -269,4 +324,5 @@ export function __resetForTesting(): void {
   injectedNative = null;
   bridge = null;
   started = false;
+  spanStack.length = 0;
 }

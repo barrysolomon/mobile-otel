@@ -161,6 +161,63 @@ describe('Dash0Mobile public API', () => {
       expect(ends[0].status).toBe('OK');
     });
 
+    it('nested startSpan() sets parentSpanId from the ambient stack so waterfalls render in Dash0', async () => {
+      const { emitBatch } = installMock();
+      await Dash0Mobile.start({ serviceName: 's', endpoint: 'e' });
+      const outer = Dash0Mobile.startSpan('checkout');
+      const inner = Dash0Mobile.startSpan('validate_cart');
+      const grand = Dash0Mobile.startSpan('validate_cart.item');
+      grand.end();
+      inner.end();
+      outer.end();
+      await flush();
+
+      const starts = emitBatch.mock.calls
+        .flatMap(([b]) => b)
+        .filter((p): p is SpanStartPayload => p.kind === 'spanStart');
+      const byName = Object.fromEntries(starts.map(s => [s.name, s]));
+      expect(byName['checkout'].parentSpanId).toBeUndefined();
+      expect(byName['validate_cart'].parentSpanId).toBe(byName['checkout'].spanId);
+      expect(byName['validate_cart.item'].parentSpanId).toBe(byName['validate_cart'].spanId);
+    });
+
+    it('sibling spans after an inner span ends pick up the outer as parent, not the sibling', async () => {
+      const { emitBatch } = installMock();
+      await Dash0Mobile.start({ serviceName: 's', endpoint: 'e' });
+      const outer = Dash0Mobile.startSpan('checkout');
+      const first = Dash0Mobile.startSpan('validate_cart');
+      first.end();
+      const second = Dash0Mobile.startSpan('inventory_check');
+      second.end();
+      outer.end();
+      await flush();
+
+      const starts = emitBatch.mock.calls
+        .flatMap(([b]) => b)
+        .filter((p): p is SpanStartPayload => p.kind === 'spanStart');
+      const byName = Object.fromEntries(starts.map(s => [s.name, s]));
+      // Both children must share the outer as parent — not the prior sibling.
+      expect(byName['validate_cart'].parentSpanId).toBe(byName['checkout'].spanId);
+      expect(byName['inventory_check'].parentSpanId).toBe(byName['checkout'].spanId);
+    });
+
+    it('after all spans end, a fresh startSpan has no parent (stack fully unwound)', async () => {
+      const { emitBatch } = installMock();
+      await Dash0Mobile.start({ serviceName: 's', endpoint: 'e' });
+      const a = Dash0Mobile.startSpan('a');
+      a.end();
+      const b = Dash0Mobile.startSpan('b');
+      b.end();
+      await flush();
+
+      const starts = emitBatch.mock.calls
+        .flatMap(([b]) => b)
+        .filter((p): p is SpanStartPayload => p.kind === 'spanStart');
+      expect(starts).toHaveLength(2);
+      expect(starts[0].parentSpanId).toBeUndefined();
+      expect(starts[1].parentSpanId).toBeUndefined();
+    });
+
     it('span() sets ERROR status when the callback throws', async () => {
       const { emitBatch } = installMock();
       await Dash0Mobile.start({ serviceName: 's', endpoint: 'e' });
