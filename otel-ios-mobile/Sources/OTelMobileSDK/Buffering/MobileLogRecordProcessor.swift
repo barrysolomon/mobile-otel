@@ -164,6 +164,19 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             let events = await self.buffer.flush()
             if !events.isEmpty {
                 box.value = await self.exportThroughConfiguredSink(events: events)
+                // Failure-persistence contract (mirrors forceFlushBuffered).
+                // If export failed and a disk buffer is configured, persist
+                // the RAM-drained events so they survive process death and
+                // get re-exported on the next successful launch's
+                // recoverFromDisk. Without this, a failed forceFlush drops
+                // the events entirely (buffer.flush already emptied RAM).
+                if case .failure = box.value, let disk = self.diskBuffer {
+                    let diskEvents = await disk.fetchAll()
+                    let onDisk = Set(diskEvents.map { $0.sequenceId })
+                    for event in events where !onDisk.contains(event.sequenceId) {
+                        await disk.insert(event)
+                    }
+                }
             }
             semaphore.signal()
         }
@@ -202,6 +215,15 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
 
     /// Synchronously flush buffered events through the configured exporter and
     /// return the richer `BufferExportResult`. Used by `OTelMobile.forceFlush()`.
+    ///
+    /// Failure-persistence contract: if export fails AND a disk buffer is
+    /// configured, every RAM event that was flushed gets persisted to disk
+    /// before returning. Without this, `buffer.flush()` has already emptied
+    /// the RAM buffer — so a failed export would silently drop the events.
+    /// This is the offline-survives-reconnect promise: flush-on-offline must
+    /// leave telemetry recoverable on the next successful export attempt,
+    /// either in the same process (via the RAM/disk dedupe path on the next
+    /// forceFlush) or in a future process (via start-time recovery).
     @discardableResult
     public func forceFlushBuffered() -> BufferExportResult {
         let semaphore = DispatchSemaphore(value: 0)
@@ -216,6 +238,17 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
                 if case .success = box.value, let disk = self.diskBuffer,
                    let maxSeq = combined.map({ $0.sequenceId }).max() {
                     await disk.deleteUpTo(sequenceId: maxSeq)
+                } else if case .failure = box.value, let disk = self.diskBuffer {
+                    // Export failed. `buffer.flush()` above already emptied
+                    // the RAM buffer, so these events only survive if we
+                    // persist them now. Dedup-by-seqId: events already on
+                    // disk are harmless to skip; we only insert the
+                    // RAM-originated ones so we don't double up.
+                    let diskEvents = await disk.fetchAll()
+                    let onDisk = Set(diskEvents.map { $0.sequenceId })
+                    for event in combined where !onDisk.contains(event.sequenceId) {
+                        await disk.insert(event)
+                    }
                 }
             }
             semaphore.signal()

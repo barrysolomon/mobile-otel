@@ -80,6 +80,19 @@ final class RootState: ObservableObject {
             self.products = catalog.loadProducts()
         }
         self.cart = CartViewModel(telemetry: telemetry)
+
+        // Test hook: if launched with -DASH0_CRASH_NOW, schedule a fatal
+        // crash ~1.5s after boot. Gives the SDK time to fully install
+        // (NetworkInstrumentation is now synchronous; Errors remains
+        // deferred via main.async) before we dereference nil. The signal
+        // handler writes a marker to the cache dir; next launch's
+        // ErrorsInstrumentation.install emits `app.crash`.
+        if CommandLine.arguments.contains("-DASH0_CRASH_NOW") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                let arr: [Int] = []
+                _ = arr[42]  // triggers EXC_BREAKPOINT / SIGTRAP
+            }
+        }
     }
 
     /// Fires a single unconditional GET so the SDK's URLSession auto-capture

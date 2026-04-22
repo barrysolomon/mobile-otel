@@ -59,10 +59,27 @@ enum ShopBootstrap {
             extraHeaders: ["Dash0-Dataset": demo.dataset],
             samplingConfig: .alwaysOn()
         )
+        // Initialise the disk buffer synchronously via a semaphore.
+        // Required because @StateObject / RootState.init is sync, and
+        // the demo wants crash-safety + offline-drain parity with Android.
+        // 2s timeout — if sqlite init takes longer than that something is
+        // badly wrong and we fall back to RAM-only.
+        let diskBuffer: DiskLogBuffer? = {
+            let sem = DispatchSemaphore(value: 0)
+            nonisolated(unsafe) var result: DiskLogBuffer? = nil
+            Task {
+                result = try? await DiskLogBuffer()
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 2.0)
+            return result
+        }()
+
         do {
-            let mobile = try OTelMobile.start(config: config)
+            let mobile = try OTelMobile.start(config: config, diskBuffer: diskBuffer)
+            let diskSuffix = diskBuffer == nil ? " (no disk buffer)" : " (disk buffer active)"
             return BootResult(mobile: mobile, config: demo,
-                              status: "SDK started → \(demo.dataset) on \(demo.endpoint)")
+                              status: "SDK started → \(demo.dataset) on \(demo.endpoint)\(diskSuffix)")
         } catch {
             return BootResult(mobile: nil, config: demo,
                               status: "SDK start failed: \(error)")

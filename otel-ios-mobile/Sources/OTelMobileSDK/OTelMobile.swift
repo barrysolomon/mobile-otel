@@ -9,6 +9,9 @@ import ErrorsInstrumentation
 import ScreenInstrumentation
 import FreezeInstrumentation
 import VitalsInstrumentation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Public entry point for the Dash0 Mobile Observability iOS SDK.
 ///
@@ -79,6 +82,11 @@ public final class OTelMobile: @unchecked Sendable {
     /// the test-overload `start(config:exporter:)` doesn't wire them.
     private let tracerProvider: TracerProviderSdk?
     private let meterProvider: MeterProviderSdk?
+
+    /// NotificationCenter observers registered by `start(config:)` so we
+    /// can auto-`forceFlush()` on backgrounding/termination. Held on the
+    /// instance so they live as long as the SDK does.
+    fileprivate var autoFlushObservers: [NSObjectProtocol] = []
 
     private init(
         config: MobileConfig,
@@ -189,8 +197,17 @@ public final class OTelMobile: @unchecked Sendable {
 
         // Build the OTLP exporters — one per signal. Each handles its own
         // URL normalisation (`/v1/logs`, `/v1/traces`, `/v1/metrics`).
-        let baseLogExporter = try OTLPExporterFactory.makeHttpLogExporter(
-            endpoint: config.endpoint,
+        //
+        // Logs use SynchronousLogRecordExporter — a wrapper that
+        // constructs an `OtlpHttpLogExporter` with a blocking
+        // `HTTPClient`, so `export(...)` returns the REAL send result
+        // instead of the upstream always-`.success` that breaks every
+        // downstream retry/persist decorator. See the class doc for why.
+        let logsEndpointURL = try OTLPExporterFactory.buildLogsEndpointURL(
+            from: config.endpoint
+        )
+        let baseLogExporter = SynchronousLogRecordExporter(
+            endpoint: logsEndpointURL,
             authToken: config.authToken,
             extraHeaders: config.extraHeaders
         )
@@ -464,6 +481,31 @@ public final class OTelMobile: @unchecked Sendable {
                 // OPT-IN via `enableUIKitSwizzle: true` for pure-UIKit apps.
                 ScreenInstrumentation.shared.install(tracer: tracer, logger: logger)
             }
+
+            // Auto-forceFlush on backgrounding. Without this, a customer app
+            // that goes offline (airplane mode, lost Wi-Fi, etc.), then
+            // backgrounds, then terminates before reconnecting, loses every
+            // log that was still in RAM — `forceFlushBuffered` only
+            // persists on-failure when it's actually invoked. Wiring the
+            // flush to the OS lifecycle edge means the no-loss promise
+            // doesn't require any customer code. UIApplication + UIScene
+            // observers mirror the pattern used by LifecycleInstrumentation
+            // so scene-based SwiftUI apps get coverage too.
+            #if canImport(UIKit) && (os(iOS) || os(tvOS))
+            let nc = NotificationCenter.default
+            instance.autoFlushObservers.append(nc.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil, queue: nil
+            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            instance.autoFlushObservers.append(nc.addObserver(
+                forName: UIScene.didEnterBackgroundNotification,
+                object: nil, queue: nil
+            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            instance.autoFlushObservers.append(nc.addObserver(
+                forName: UIApplication.willTerminateNotification,
+                object: nil, queue: nil
+            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            #endif
         }
 
         return instance
