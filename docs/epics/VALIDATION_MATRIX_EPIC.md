@@ -174,6 +174,8 @@ Captured 2026-04-21 during iOS native four-gate validation sweep.
 
 Each demo app gets a runbook with the same structure so outputs compare cleanly.
 
+**Runbooks live under [`docs/matchy-matchy/`](../matchy-matchy/README.md)** — one file per platform, all keyed to the four gates for cross-platform diff-ability.
+
 ### Template (per-platform)
 
 ```
@@ -428,7 +430,7 @@ SCALE_READINESS_EPIC.md.
 - [x] iOS native — all four gates green, three SDK fix commits
 - [x] This epic drafted with session findings frozen in writing
 - [x] RN iOS — four gates run; 2 green (Gates 2 + 3), 2 red (Gates 1 + 4) with documented root causes
-- [ ] Write `docs/matchy-matchy/` one runbook per demo app
+- [x] Write `docs/matchy-matchy/` one runbook per demo app — landed as [`docs/matchy-matchy/`](../matchy-matchy/README.md): [`ios-native.md`](../matchy-matchy/ios-native.md) 🟢, [`rn-ios.md`](../matchy-matchy/rn-ios.md) 🟢🟢🔴🔴, [`android-native.md`](../matchy-matchy/android-native.md) 🟡 TODO, [`rn-android.md`](../matchy-matchy/rn-android.md) 🟡 TODO
 
 ### Follow-ups surfaced by RN iOS validation (2026-04-22)
 
