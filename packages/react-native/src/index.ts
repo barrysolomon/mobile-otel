@@ -15,6 +15,7 @@ import { installUnhandledRejectionInstrumentation } from './instrumentation/unha
 import { installAppStateInstrumentation } from './instrumentation/appstate';
 import type {
   Attributes,
+  BridgePayload,
   NativeDash0MobileModule,
   SeverityNumber,
   SpanKind,
@@ -166,13 +167,26 @@ export const Dash0Mobile = {
 
   log(name: string, attributes: Attributes = {}, severity: SeverityNumber = 9): void {
     if (!started || !bridge) return;
-    bridge.emit({
+    const payload: BridgePayload = {
       kind: 'log',
       name,
       severity,
       attributes,
       timeUnixNano: nowUnixNano(),
-    });
+    };
+    // FATAL-severity logs bypass the 50ms debounce via `emitSync`, which
+    // calls `native.emitBatch` without any `await`. The payload crosses
+    // the RN bridge in the current stack frame — critical on crash paths
+    // because any microtask boundary (including the `await` inside
+    // `flush()`) loses the race against the handler's continuation into
+    // RN's fatal reporter. Once the payload is on the native side, the
+    // iOS SDK's willTerminate auto-forceFlush (commit 1a69c7e) persists
+    // it to disk and attempts OTLP export before process exit.
+    if (severity >= 21) {
+      bridge.emitSync(payload);
+    } else {
+      bridge.emit(payload);
+    }
   },
 
   startSpan(name: string, attributes: Attributes = {}, spanKind: SpanKind = 'INTERNAL'): SpanHandle {
