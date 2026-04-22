@@ -143,7 +143,16 @@ export const Dash0Mobile = {
     if (auto.network !== false) {
       const collectorHost = hostFromEndpoint(config.endpoint);
       const ignoredHosts = collectorHost ? [collectorHost] : [];
-      autoInstrUninstallers.push(installFetchInstrumentation({ ignoredHosts }));
+      // On React Native, `fetch` is implemented on top of XHR, so every
+      // fetch() call also fires the XHR instrumentation — installing both
+      // produces two spans per request. XHR is the authoritative layer
+      // because it also captures direct XHR callers (axios, Apollo HTTP
+      // link, legacy code) that don't go through fetch. In non-RN JS
+      // environments (future web/SSR use) fetch is native and independent
+      // of XHR, so both shims are needed.
+      if (!isReactNative()) {
+        autoInstrUninstallers.push(installFetchInstrumentation({ ignoredHosts }));
+      }
       autoInstrUninstallers.push(installXhrInstrumentation({ ignoredHosts }));
     }
     if (auto.errors !== false) {
@@ -284,6 +293,16 @@ const ENDPOINT_HOST_RE = /^[a-z][a-z0-9+.-]*:\/\/([^/:?#]+)/i;
 function hostFromEndpoint(endpoint: string): string | null {
   const match = ENDPOINT_HOST_RE.exec(endpoint);
   return match ? match[1].toLowerCase() : null;
+}
+
+// React Native sets `navigator.product === 'ReactNative'` — the standard
+// public signal for code that wants to differ by JS environment. This is
+// the same check used by Sentry, Datadog, and RN itself internally. Jest
+// / Node / SSR won't match, so test and non-RN environments still
+// exercise both network shims.
+function isReactNative(): boolean {
+  const nav = (globalThis as unknown as { navigator?: { product?: string } }).navigator;
+  return nav?.product === 'ReactNative';
 }
 
 // Map JS autoCapture flags onto native-capability tokens the bridge
