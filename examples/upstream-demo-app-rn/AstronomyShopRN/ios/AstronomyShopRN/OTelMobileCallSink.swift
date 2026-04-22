@@ -71,8 +71,8 @@ public final class OTelMobileCallSink: BridgeCallSink {
         attributes: [String: Any],
         timeUnixNano: UInt64
     ) {
-        guard let logger = otel?.logger else { return }
-        var builder = logger.logRecordBuilder()
+        guard let instance = otel else { return }
+        var builder = instance.logger.logRecordBuilder()
             .setBody(AttributeValue.string(name))
             .setSeverity(Self.mapSeverity(severity))
             .setTimestamp(Self.dateFromUnixNano(timeUnixNano))
@@ -81,6 +81,23 @@ public final class OTelMobileCallSink: BridgeCallSink {
             builder = builder.setAttributes(otelAttrs)
         }
         builder.emit()
+
+        // FATAL-severity logs (21 in OTel semconv) are the crash path. The
+        // RN ErrorUtils handler emits these from JS moments before the
+        // process dies, and the JS-side bridge already bypasses the 50ms
+        // debounce via `emitSync`. But the payload still sits in
+        // `MobileLogRecordProcessor`'s RAM buffer waiting for the next
+        // batch export; the `willTerminate` observer (commit 1a69c7e)
+        // does not fire reliably on RN-JS-throw-induced termination
+        // (RN's fatal reporter terminates via abort()/exit() and skips
+        // UIApplication lifecycle teardown). Eagerly call `forceFlush`
+        // here so the RAM buffer drains to disk synchronously — the
+        // SynchronousLogRecordExporter wrapper + MobileLogRecordProcessor's
+        // fail-persist path guarantee the event is recoverable on next
+        // launch even if the network call is unreachable or too slow.
+        if severity >= 21 {
+            _ = instance.forceFlush()
+        }
     }
 
     public func startSpan(
