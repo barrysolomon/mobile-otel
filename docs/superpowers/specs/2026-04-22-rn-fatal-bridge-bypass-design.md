@@ -1,9 +1,67 @@
 # RN Bridge FATAL-Severity Bypass
 
-**Status:** Draft — ready for review
+**Status:** Shipped — Gate 3 device-verified green
 **Date:** 2026-04-22
 **Owner:** Barry Solomon
-**Scope:** `packages/react-native/` — JS bridge layer only
+**Scope:** `packages/react-native/` (JS bridge) + `examples/upstream-demo-app-rn/AstronomyShopRN/ios/` (native sink)
+**Commits:** `4399e7a` (JS emitSync) + `0eed784` (native eager forceFlush)
+
+---
+
+## Implementation notes (post-device-validation)
+
+The spec as originally written proposed a JS-side-only fix using
+`void bridge.flush()` and relying on the iOS-native willTerminate
+auto-flush (commit `1a69c7e`) to close windows B+C. Device
+validation proved this insufficient. Both Risk 1 and Risk 2 from
+the original risk section materialized:
+
+**Risk 2 materialized (v1 attempt):** `bridge.flush()` is an `async`
+function whose `await this.drain()` places `native.emitBatch` on
+the microtask queue. The JS handler's synchronous continuation
+(→ `previous(error, isFatal)` → RN fatal reporter → `exit()`) wins
+the race. The payload never crosses the bridge.
+
+**Resolution**: added `NativeBridge.emitSync(payload)` that
+synchronously builds a batch and calls `native.emitBatch(batch)`
+with no `await` anywhere. Per the RN bridge contract, argument
+marshaling is synchronous; the payload reaches native during the
+call itself. `.catch(() => {})` prevents unhandled-rejection
+warnings.
+
+**Risk 1 materialized (v2 attempt):** Once the payload reached
+native, it sat in `MobileLogRecordProcessor`'s RAM buffer waiting
+for the batch-processor's next cycle. The `willTerminate`
+auto-forceFlush DID NOT fire. Confirmed: RN's fatal reporter calls
+`abort()` or `_exit()` and skips UIApplication lifecycle teardown,
+so no `UIApplicationWillTerminateNotification` is ever posted.
+
+**Resolution**: added an eager `forceFlush` call in
+`OTelMobileCallSink.emitLog` when severity ≥ 21. This lives in
+the demo app's sink (not the bridge pod) because
+`OTelMobileCallSink` is the extension point where RN apps opt
+into specific native SDK behavior — apps that want the FATAL-flush
+guarantee adopt this pattern. A future generalization (adding a
+severity-aware flush hook to `BridgeCallSink` protocol so the
+dispatcher can invoke it on every consumer) is tracked as a
+follow-up.
+
+The combined JS+native fix:
+
+1. JS `Dash0Mobile.log()` routes severity ≥ 21 through `emitSync`
+   (no microtask boundary; bridge hop happens synchronously).
+2. Native `OTelMobileCallSink.emitLog` calls `instance.forceFlush()`
+   synchronously on severity ≥ 21 (drains RAM buffer through
+   `SynchronousLogRecordExporter` with fail-to-disk persist from
+   `1a69c7e`).
+
+Device-verified: on-device crash log lands in Dash0 with the exact
+crash-tap timestamp, `body=app.error`, `severityNumber=21`, full
+exception semantic conventions.
+
+---
+
+## Original design (kept for reference)
 
 ---
 

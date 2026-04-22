@@ -98,7 +98,7 @@ exists in code but not backend-validated this session. Red = gap.
 | Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
 | RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🔴 **bridge loses FATAL log** between `bridge.emit` and 50ms debounced drain when JS throw kills process; native `willTerminate` auto-flush only drains what already crossed the bridge | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
+| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -224,15 +224,18 @@ Needs this session's 4-gate template applied. Service name:
 `otel-android-astronomy-shop`. Existing `HOW_TO_DEMO.md` covers a
 different (broader) runbook; reconcile.
 
-### RN iOS (AstronomyShopRN) — 1 of 4 gates green
+### RN iOS (AstronomyShopRN) — 2 of 4 gates green
 
 **Validated 2026-04-22.** Service name: `otel-rn-astronomy-shop`.
-Result summary: **Gate 2 🟢, Gates 1 / 3 / 4 🔴** with documented root
-causes. RN iOS is the hardest platform to pass the four-gate bar
-because its architecture inverts several iOS-native assumptions:
-native auto-capture defaults to OFF, lifecycle emission is disabled
-in the demo app, and primary telemetry flows as spans (not logs) so
-the offline-drain fixes from `1a69c7e` don't cover it.
+Result summary: **Gates 2 + 3 🟢, Gates 1 / 4 🔴** with documented
+root causes. RN iOS is the hardest platform to pass the four-gate
+bar because its architecture inverts several iOS-native
+assumptions: native auto-capture defaults to OFF, lifecycle
+emission is disabled in the demo app, and primary telemetry flows
+as spans (not logs) so the offline-drain fixes from `1a69c7e`
+don't cover it. Gate 3 (crash) took two iterations beyond the
+initial design — see Gate 3 section for the v1→v2→v3 correction
+chain.
 
 Pre-flight (same for each gate run):
 
@@ -298,38 +301,66 @@ span-level filters until we understand why attribute-based filtering
 doesn't index RN-origin spans.
 ```
 
-**Gate 3 — Crash 🔴**
+**Gate 3 — Crash 🟢**
 
 ```
 Trigger: tap the red "Trigger Crash (Gate 3)" button added to
 ProductListScreen. onPress fires a setTimeout(() => { throw new Error('Dash0 RN iOS Gate 3 test crash'); }, 0)
 so the throw escapes React's commit phase and reaches RN's
-ErrorUtils global handler, which our instrumentation/errors.ts has
+ErrorUtils global handler, which instrumentation/errors.ts has
 chained into.
 
-Expected flow: errors.ts emits Dash0Mobile.log('app.error',
-  { exception.type, exception.message, exception.stacktrace },
-  SEVERITY_FATAL=21) → bridge.emit(queue) → 50ms debounced drain →
-native.emitBatch → emitLog → native logger → OTLP.
+Flow post-fix:
+  1. errors.ts emits Dash0Mobile.log('app.error', attrs, 21)
+  2. Dash0Mobile.log sees severity ≥ 21 and routes through
+     bridge.emitSync(payload) — NOT the debounced bridge.emit.
+     emitSync calls native.emitBatch([...queue, payload]).catch(...)
+     with no `await` anywhere; per the RN bridge contract,
+     argument marshaling is synchronous, so the payload crosses
+     the bridge on the current stack frame before the handler
+     returns. Commit 4399e7a.
+  3. Native OTelMobileCallSink.emitLog receives the payload via
+     the dispatcher, builds the log record, then — on severity
+     ≥ 21 — calls instance.forceFlush() synchronously. forceFlush
+     drains the RAM buffer through SynchronousLogRecordExporter,
+     and on export failure persists to disk via the fail-persist
+     path from commit 1a69c7e. Commit 0eed784.
+  4. Log lands in Dash0 with the original timestamp and full
+     OTel exception.* semconv.
 
-Actual: process dies between `bridge.emit` (queued to a JS array)
-and the scheduled 50ms drain timer. The native `willTerminate`
-auto-forceFlush from commit 1a69c7e only drains what already crossed
-the bridge — JS-queue-side payloads are lost.
+Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop" --from now-5m
+Result (2026-04-22):
+  body:                  app.error
+  severityNumber:        21 (FATAL)
+  scope.name:            io.dash0.mobile
+  timestamp:             1776873856 (= crash tap to the second)
+  exception.type:        Error
+  exception.message:     Dash0 RN iOS Gate 3 test crash
+  exception.stacktrace:  Error: Dash0 RN iOS Gate 3 test crash
+                         at anonymous (...RN JS bundle...)
 
-Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop and event.name is app.error" --from now-5m
-Expected: 1 FATAL record with crash.from_marker=true. Actual: 0.
+Why two separate fixes were needed:
 
-Naming drift to record: errors.ts emits `app.error`, not `app.crash`
-like iOS native's CrashInstrumentation. A future cross-platform Gate
-3 filter needs both event names OR an alias.
+  - Window A (JS queue → native): closed by emitSync. Initial
+    attempt using `void bridge.flush()` failed because
+    bridge.flush is async and `await this.drain()` placed
+    native.emitBatch on the microtask queue; the JS handler's
+    synchronous continuation into RN's fatal reporter won the
+    race. emitSync avoids any microtask boundary.
 
-Remediation sketch:
-  1. When bridge.emit receives a payload with severity ≥ FATAL,
-     bypass debounce and call native.emitBatch synchronously.
-  2. On the native side, treat FATAL log emissions as a hint to
-     mark-and-re-emit on next launch (marker pattern already used
-     by iOS native's CrashInstrumentation).
+  - Windows B+C (native RAM → OTLP/disk): closed by eager
+    forceFlush in OTelMobileCallSink. Initial attempt relied on
+    the willTerminate auto-forceFlush from commit 1a69c7e, but
+    that notification never fires on JS-throw-induced RN
+    termination — RN's fatal reporter calls abort()/exit() and
+    skips UIApplication lifecycle teardown. forceFlush on the
+    hot path is the reliable alternative.
+
+Naming drift to record: errors.ts emits `app.error`, not
+`app.crash` like iOS native's CrashInstrumentation. A future
+cross-platform Gate 3 filter needs both event names OR an alias.
+Not a blocker — the RN JS path is inherently distinct from the
+native signal-handler path, and both names are meaningful.
 ```
 
 **Gate 4 — Offline 🔴**
@@ -396,12 +427,12 @@ SCALE_READINESS_EPIC.md.
 ### This session
 - [x] iOS native — all four gates green, three SDK fix commits
 - [x] This epic drafted with session findings frozen in writing
-- [x] RN iOS — four gates run; 1 green (Gate 2), 3 red with documented root causes
+- [x] RN iOS — four gates run; 2 green (Gates 2 + 3), 2 red (Gates 1 + 4) with documented root causes
 - [ ] Write `docs/matchy-matchy/` one runbook per demo app
 
 ### Follow-ups surfaced by RN iOS validation (2026-04-22)
 
-- [ ] Gate 3 fix: make RN bridge bypass 50ms debounce for FATAL severity; consider native-side marker pattern for JS crashes
+- [x] Gate 3 fix: JS-side bypass for FATAL via new `NativeBridge.emitSync` (`4399e7a`) + native-side eager `forceFlush` on FATAL in `OTelMobileCallSink.emitLog` (`0eed784`). willTerminate auto-flush was unreliable because RN's fatal reporter skips UIApplication teardown. Device-verified — `app.error` FATAL log lands in Dash0 at exact crash-tap timestamp with full exception semconv
 - [ ] Gate 4 fix: extend disk-persist-on-failure from logs to spans (BatchSpanProcessor needs a custom exporter wrapper); add recoverFromDisk for spans at OTelMobile.start()
 - [x] Gate 2 polish: deduplicate fetch+XHR double-instrumentation — landed in `ba558c2` (detect RN via `navigator.product`, skip fetch shim; XHR is authoritative since RN fetch is XHR-backed)
 - [ ] Gate 1 unblock: investigate whether AppState-under-RN-new-arch init-order has stabilized upstream since the `autoCapture: { lifecycle: false }` workaround was added
