@@ -98,7 +98,7 @@ exists in code but not backend-validated this session. Red = gap.
 | Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
 | RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🟡 waterfalls landing per 2026-04-21 session, needs four-gate re-run post-SDK-fixes | 🟡 | 🔴 untested | 🔴 untested |
+| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET spans w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. **But double-instruments** (fetch + XHR shims both fire) | 🔴 **bridge loses FATAL log** between `bridge.emit` and 50ms debounced drain when JS throw kills process; native `willTerminate` auto-flush only drains what already crossed the bridge | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -224,11 +224,154 @@ Needs this session's 4-gate template applied. Service name:
 `otel-android-astronomy-shop`. Existing `HOW_TO_DEMO.md` covers a
 different (broader) runbook; reconcile.
 
-### RN iOS (AstronomyShopRN) — 🟡 in progress next
+### RN iOS (AstronomyShopRN) — 1 of 4 gates green
 
-Service name: `otel-rn-astronomy-shop`. To be validated next in this
-session. RN's test of Gate 4 will need to exercise BOTH the JS-side
-OTel shim AND the native bridge's buffer.
+**Validated 2026-04-22.** Service name: `otel-rn-astronomy-shop`.
+Result summary: **Gate 2 🟢, Gates 1 / 3 / 4 🔴** with documented root
+causes. RN iOS is the hardest platform to pass the four-gate bar
+because its architecture inverts several iOS-native assumptions:
+native auto-capture defaults to OFF, lifecycle emission is disabled
+in the demo app, and primary telemetry flows as spans (not logs) so
+the offline-drain fixes from `1a69c7e` don't cover it.
+
+Pre-flight (same for each gate run):
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+# Boot iPhone 17 simulator (UDID may differ locally)
+SIM=65F2CFA7-B5AA-4C37-8A39-A9235CA4FBFE
+dash0 config profiles activate mobile-test
+# xcode.env.local must point NODE_BINARY at Node 18.17+ that has Array.prototype.toReversed
+# (Node 25 works; system Node 18.17.0 does not).
+```
+
+**Gate 1 — Lifecycle 🔴** (architectural gap, not a bug)
+
+```
+AstronomyShopRN/src/App.tsx:38 disables autoCapture.lifecycle with a
+comment about RN 0.85 new-arch + AppState init-order race.
+ios/AstronomyShopRN/OTelMobileCallSink.swift:38-46 defaults native
+autoCaptureOptions to .none because the iOS URLProtocol swizzle and
+NSException/signal handlers collide with RN's JS event loop.
+
+Result: neither JS-side installAppStateInstrumentation nor the native
+iOS LifecycleInstrumentation emit app.foreground / app.background.
+
+Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop and event.name is app.foreground" --from now-5m
+Expected: ≥3. Actual: 0.
+
+Remediation: either fix RN's AppState init race so the JS shim is
+reliable, or add an opt-in flag for native `lifecycle` capability that
+is known-safe with the RN new-arch event loop.
+```
+
+**Gate 2 — Network 🟢**
+
+```
+AstronomyShopRN/src/screens/ProductListScreen.tsx fires a delayed
+(2s post-mount) fetch('https://httpbin.org/get') — delay is required
+because `Dash0Mobile.start()` installs the fetch shim inside an async
+`useEffect`, so a synchronous fetch on the same mount races the
+installer.
+
+Query: dash0 -X spans query --filter "service.name is otel-rn-astronomy-shop" --from now-30m
+Expected: ≥1 span with name=GET, kind=3 (CLIENT), attributes
+  http.request.method=GET, http.response.status_code=200,
+  server.address=httpbin.org, url.full=https://httpbin.org/get,
+  scope=io.dash0.mobile
+Actual: 2 spans (one from fetch shim, one from XHR shim) — same
+traceId, same attributes. Both carry the kind + method + url.
+
+Platform gotcha: RN's `fetch` is implemented on top of XHR, so both
+JS-side shims intercept the same request. Results in doubled http
+spans in Dash0. Either: (a) make the fetch shim detect that XHR
+instrumentation is active and skip, or (b) make XHR skip when the
+calling chain was entered via fetch (harder).
+
+Dash0 filter-DSL gotcha: `http.request.method is GET` returns 0
+results even though the attribute is present. Use name-based or
+span-level filters until we understand why attribute-based filtering
+doesn't index RN-origin spans.
+```
+
+**Gate 3 — Crash 🔴**
+
+```
+Trigger: tap the red "Trigger Crash (Gate 3)" button added to
+ProductListScreen. onPress fires a setTimeout(() => { throw new Error('Dash0 RN iOS Gate 3 test crash'); }, 0)
+so the throw escapes React's commit phase and reaches RN's
+ErrorUtils global handler, which our instrumentation/errors.ts has
+chained into.
+
+Expected flow: errors.ts emits Dash0Mobile.log('app.error',
+  { exception.type, exception.message, exception.stacktrace },
+  SEVERITY_FATAL=21) → bridge.emit(queue) → 50ms debounced drain →
+native.emitBatch → emitLog → native logger → OTLP.
+
+Actual: process dies between `bridge.emit` (queued to a JS array)
+and the scheduled 50ms drain timer. The native `willTerminate`
+auto-forceFlush from commit 1a69c7e only drains what already crossed
+the bridge — JS-queue-side payloads are lost.
+
+Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop and event.name is app.error" --from now-5m
+Expected: 1 FATAL record with crash.from_marker=true. Actual: 0.
+
+Naming drift to record: errors.ts emits `app.error`, not `app.crash`
+like iOS native's CrashInstrumentation. A future cross-platform Gate
+3 filter needs both event names OR an alias.
+
+Remediation sketch:
+  1. When bridge.emit receives a payload with severity ≥ FATAL,
+     bypass debounce and call native.emitBatch synchronously.
+  2. On the native side, treat FATAL log emissions as a hint to
+     mark-and-re-emit on next launch (marker pattern already used
+     by iOS native's CrashInstrumentation).
+```
+
+**Gate 4 — Offline 🔴**
+
+```
+Procedure: cp otel-config.json → .invalid endpoint → rebuild JS
+bundle + Release .app → terminate + install + launch → drive UI
+for ~35s → terminate → swap back → rebuild → relaunch → query.
+
+Result during offline window:
+- App runs, fetch + tap span activity flows through bridge → native.
+- sqlite `buffered_events` row count stays at 0 throughout and
+  post-terminate.
+
+Root cause: commit 1a69c7e's fail-to-disk persist is wired to
+`MobileLogRecordProcessor`. Spans use `BatchSpanProcessor` (see
+OTelMobile.swift:182 "For traces, a single BatchSpanProcessor
+exports to OTLP") which has no disk-persist on export failure. RN
+iOS primary telemetry under `autoCaptureOptions: .none` is:
+  * HTTP spans (fetch / XHR shims) — spans, lost
+  * Tap / screen_view spans (ShopTelemetry.emit*) — spans, lost
+  * JS error logs (errors.ts) — logs, but lost to Gate 3 bug
+
+Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop and event.name is app.recovery_start" --from now-5m
+Expected: 1 marker with dash0.recovery.event_count≥1. Actual: 0.
+
+Remediation sketch:
+  1. Apply the same RAM→disk fail-persist wrapper to the span
+     pipeline (`BatchSpanProcessor` with a custom `SpanExporter`
+     decorator that persists on .failure).
+  2. Land a `recoverFromDisk` hook at `OTelMobile.start()` that
+     re-emits persisted spans with their original timestamps +
+     emits a `span.recovery_start` marker (mirror the log marker).
+  3. Until (1)+(2) land, the RN iOS offline-drain story is
+     "JS-side logs via FATAL emit only" — which is also broken per
+     Gate 3.
+```
+
+**What's green today despite the three reds:** the bridge contract
+works end-to-end under normal online conditions. RN iOS can produce
+the same spans shape as iOS native (same scope, same attributes,
+proper waterfall parent/child), and the install sequence (AppDelegate
+→ installSink → RCTDash0MobileModule init → JS start → native sink
+→ OTelMobile.start) runs deterministically. The four-gate reds are
+all *reliability under adversity* problems — crash path, offline
+path, and lifecycle — that compound with RN's architectural choices.
 
 ### RN Android (AstronomyShopRN) — 🟡 TODO
 
@@ -249,8 +392,17 @@ SCALE_READINESS_EPIC.md.
 ### This session
 - [x] iOS native — all four gates green, three SDK fix commits
 - [x] This epic drafted with session findings frozen in writing
-- [ ] RN iOS — four gates
+- [x] RN iOS — four gates run; 1 green (Gate 2), 3 red with documented root causes
 - [ ] Write `docs/matchy-matchy/` one runbook per demo app
+
+### Follow-ups surfaced by RN iOS validation (2026-04-22)
+
+- [ ] Gate 3 fix: make RN bridge bypass 50ms debounce for FATAL severity; consider native-side marker pattern for JS crashes
+- [ ] Gate 4 fix: extend disk-persist-on-failure from logs to spans (BatchSpanProcessor needs a custom exporter wrapper); add recoverFromDisk for spans at OTelMobile.start()
+- [ ] Gate 2 polish: deduplicate fetch+XHR double-instrumentation (only one shim should fire per request)
+- [ ] Gate 1 unblock: investigate whether AppState-under-RN-new-arch init-order has stabilized upstream since the `autoCapture: { lifecycle: false }` workaround was added
+- [ ] `.xcode.env.local` in AstronomyShopRN pinned NODE_BINARY to nvm Node 18.17 (no `Array.prototype.toReversed`) — fix folded into this session's commit
+- [ ] Document Dash0 CLI query-DSL gotcha: attribute-based filters like `http.request.method is GET` returned 0 results despite attribute present on span — filter behavior needs clarification
 
 ### Post-session
 - [ ] Android native — re-verify four gates post `iPhone` branch merge
