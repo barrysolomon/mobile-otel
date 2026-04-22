@@ -98,7 +98,7 @@ exists in code but not backend-validated this session. Red = gap.
 | Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
 | RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET spans w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. **But double-instruments** (fetch + XHR shims both fire) | 🔴 **bridge loses FATAL log** between `bridge.emit` and 50ms debounced drain when JS throw kills process; native `willTerminate` auto-flush only drains what already crossed the bridge | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
+| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🔴 **bridge loses FATAL log** between `bridge.emit` and 50ms debounced drain when JS throw kills process; native `willTerminate` auto-flush only drains what already crossed the bridge | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -279,14 +279,18 @@ Expected: ≥1 span with name=GET, kind=3 (CLIENT), attributes
   http.request.method=GET, http.response.status_code=200,
   server.address=httpbin.org, url.full=https://httpbin.org/get,
   scope=io.dash0.mobile
-Actual: 2 spans (one from fetch shim, one from XHR shim) — same
-traceId, same attributes. Both carry the kind + method + url.
+Actual (post-`ba558c2`): 1 span, named `GET httpbin.org` from the
+XHR shim. XHR is authoritative on RN because it also catches direct
+XHR callers (axios, Apollo) that would bypass the fetch wrapper.
+On non-RN JS environments, both shims still install (fetch is
+native and independent of XHR there).
 
-Platform gotcha: RN's `fetch` is implemented on top of XHR, so both
-JS-side shims intercept the same request. Results in doubled http
-spans in Dash0. Either: (a) make the fetch shim detect that XHR
-instrumentation is active and skip, or (b) make XHR skip when the
-calling chain was entered via fetch (harder).
+Pre-fix history: on 2026-04-22 initial run, 2 spans landed per
+request (`GET` from fetch shim + `GET httpbin.org` from XHR shim)
+because RN's `fetch` is implemented on top of XHR and both shims
+intercepted the same request. Fixed by detecting
+`navigator.product === 'ReactNative'` in index.ts's install path
+and skipping the fetch shim on RN only.
 
 Dash0 filter-DSL gotcha: `http.request.method is GET` returns 0
 results even though the attribute is present. Use name-based or
@@ -399,7 +403,7 @@ SCALE_READINESS_EPIC.md.
 
 - [ ] Gate 3 fix: make RN bridge bypass 50ms debounce for FATAL severity; consider native-side marker pattern for JS crashes
 - [ ] Gate 4 fix: extend disk-persist-on-failure from logs to spans (BatchSpanProcessor needs a custom exporter wrapper); add recoverFromDisk for spans at OTelMobile.start()
-- [ ] Gate 2 polish: deduplicate fetch+XHR double-instrumentation (only one shim should fire per request)
+- [x] Gate 2 polish: deduplicate fetch+XHR double-instrumentation — landed in `ba558c2` (detect RN via `navigator.product`, skip fetch shim; XHR is authoritative since RN fetch is XHR-backed)
 - [ ] Gate 1 unblock: investigate whether AppState-under-RN-new-arch init-order has stabilized upstream since the `autoCapture: { lifecycle: false }` workaround was added
 - [ ] `.xcode.env.local` in AstronomyShopRN pinned NODE_BINARY to nvm Node 18.17 (no `Array.prototype.toReversed`) — fix folded into this session's commit
 - [ ] Document Dash0 CLI query-DSL gotcha: attribute-based filters like `http.request.method is GET` returned 0 results despite attribute present on span — filter behavior needs clarification
