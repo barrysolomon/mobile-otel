@@ -21,6 +21,12 @@ export function ProductListScreen({navigation}: Props): React.ReactElement {
 
   useEffect(() => {
     ShopTelemetry.emitCatalogLoadTree(CATALOG.length);
+    // Gate 2 poke: delayed 2s so Dash0Mobile.start() finishes installing the
+    // fetch() shim before we call fetch — if they race the first GET escapes
+    // the shim. Mirrors iOS native AstronomyShop's pokeBackend() for parity.
+    setTimeout(() => {
+      fetch('https://httpbin.org/get').catch(() => {});
+    }, 2000);
   }, []);
 
   useEffect(() => {
@@ -53,12 +59,28 @@ export function ProductListScreen({navigation}: Props): React.ReactElement {
   );
 
   return (
-    <FlatList
-      data={[...CATALOG]}
-      keyExtractor={p => p.id}
-      renderItem={renderItem}
-      contentContainerStyle={styles.list}
-    />
+    <View style={{flex: 1}}>
+      <FlatList
+        data={[...CATALOG]}
+        keyExtractor={p => p.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+      />
+      <Pressable
+        testID="dash0.crashNow"
+        accessibilityLabel="dash0.crashNow"
+        onPress={() => {
+          // Gate 3 trigger: unhandled JS throw flows through ErrorUtils global
+          // handler → errors.ts emits `app.error` (severity FATAL because
+          // isFatal=true for RN ErrorUtils uncaught path).
+          setTimeout(() => {
+            throw new Error('Dash0 RN iOS Gate 3 test crash');
+          }, 0);
+        }}
+        style={styles.crashButton}>
+        <Text style={styles.crashLabel}>Trigger Crash (Gate 3)</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -82,4 +104,12 @@ const styles = StyleSheet.create({
   price: {fontSize: 14, color: '#6C6C70', marginTop: 4},
   cartButton: {paddingHorizontal: 8, paddingVertical: 4},
   cartLabel: {fontSize: 14, fontWeight: '600', color: '#007AFF'},
+  crashButton: {
+    backgroundColor: '#D32F2F',
+    paddingVertical: 14,
+    alignItems: 'center',
+    margin: 16,
+    borderRadius: 8,
+  },
+  crashLabel: {color: '#fff', fontSize: 15, fontWeight: '700'},
 });
