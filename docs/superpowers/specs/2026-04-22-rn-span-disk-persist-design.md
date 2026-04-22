@@ -69,15 +69,24 @@ OtlpHttpTraceExporter  (upstream, unchanged)
 
 On next launch:
 OTelMobile.start() — Task.detached recovery block
-    ├─ await spanDiskBuffer.stats() → { count, bytes }
-    ├─ if count == 0: return
-    ├─ logger.emit("app.recovery_start",
-    │     { dash0.recovery.event_count: logBacklog,        // existing
-    │       dash0.recovery.bytes_pending: logBytes,        // existing
-    │       dash0.recovery.span_count: spanCount,          // NEW
-    │       dash0.recovery.span_bytes_pending: spanBytes }) // NEW
-    ├─ await spanDiskBuffer.pop(limit: 2048) → [SpanData]
-    └─ otlpTraceExporter.export(spans, explicitTimeout: 10s)
+    ├─ check logDiskBuffer.stats() and spanDiskBuffer.stats()
+    ├─ if both empty: return (no marker emitted)
+    ├─ logger.emit("app.recovery_start", { <additive attrs per signal> })
+    │     // attributes for a signal are omitted when its count is 0;
+    │     // the marker fires whenever EITHER signal has backlog.
+    ├─ logDiskBuffer: existing path (processor.recoverFromDisk)
+    └─ spanDiskBuffer: new path, read-then-conditionally-delete
+         loop until fetchAll returns empty or timeout budget exhausted:
+           batch = await fetchAll(limit: 512)
+           if batch.isEmpty: break
+           result = otlpTraceExporter.export(batch.map { $0.record },
+                                             explicitTimeout: 10)
+           if result == .success:
+             await deleteUpTo(id: batch.last!.id)
+             // successful batches are removed permanently
+           else:
+             break  // leave remaining rows for next launch
+
 ```
 
 ## Key decisions (verified against existing pipeline)
@@ -148,10 +157,21 @@ the new attributes. Marker is emitted whenever either buffer has
 
 ### No `enableSpanDiskBuffer` config flag
 
-Log side uses `if diskBuffer != nil` to gate recovery and passes an
-optional `DiskLogBuffer` through `MobileConfig`. We mirror this:
-`MobileConfig.spanDiskBuffer: DiskSpanBuffer?` (default `nil`).
-Demo apps pass one in; silent no-op for apps that don't.
+Log side takes `diskBuffer: DiskLogBuffer? = nil` as a second
+parameter to `OTelMobile.start(config:diskBuffer:)` — not on
+`MobileConfig`. We mirror this exactly: add a third parameter
+`spanDiskBuffer: DiskSpanBuffer? = nil`. Signature becomes:
+
+```swift
+public static func start(
+    config: MobileConfig,
+    diskBuffer: DiskLogBuffer? = nil,
+    spanDiskBuffer: DiskSpanBuffer? = nil
+) throws -> OTelMobile
+```
+
+Default-nil preserves every existing caller; demo apps that want
+span persistence pass an instance. Silent no-op when absent.
 
 ## Components
 
@@ -161,6 +181,7 @@ Demo apps pass one in; silent no-op for apps that don't.
 
 ```swift
 public struct BufferedSpan: Sendable {
+    public let id: Int64                  // sqlite rowid — used by deleteUpTo
     public let spanKey: String            // traceId.hexString + spanId.hexString
     public let startTimeUnixNano: UInt64
     public let sessionId: String
@@ -196,9 +217,16 @@ won't double-persist.
 
 - Pragmas: `journal_mode=WAL`, `synchronous=NORMAL`,
   `temp_store=MEMORY` — same as log buffer.
-- Public API: `persist(_ spans: [SpanData]) async`,
-  `pop(limit: Int) async -> [SpanData]`, `stats() async -> (count:
-  Int, bytes: Int)`, `pruneByTTL() async`, `pruneBySize() async`.
+- Public API:
+  - `persist(_ spans: [SpanData]) async`
+  - `fetchAll(limit: Int) async -> [BufferedSpan]` — read-only
+    snapshot; caller decides what to do with the rows
+  - `deleteUpTo(id: Int64) async` — called by recovery only after
+    the batch export succeeds (read-then-conditionally-delete,
+    mirroring MobileLogRecordProcessor.recoverFromDisk at line 296)
+  - `stats() async -> (count: Int, bytes: Int)`
+  - `pruneByTTL() async`
+  - `pruneBySize() async`
 - `INSERT OR IGNORE ON CONFLICT(span_key)` for dedup-on-write.
 - All sqlite error paths fail soft per `docs/SDK_SAFETY.md` — log
   via `NSLog`, return empty/no-op.
@@ -227,9 +255,25 @@ public final class PersistingSpanExporter: SpanExporter {
     ) -> SpanExporterResultCode {
         let result = delegate.export(spans: spans, explicitTimeout: explicitTimeout)
         if result == .failure, let buffer = diskBuffer, !spans.isEmpty {
-            // Fire-and-forget persist — actor isolation serializes
-            // writes; we don't block the export call on disk I/O.
-            Task { await buffer.persist(spans) }
+            // Synchronously await the persist. `SpanExporter.export` is a
+            // synchronous protocol method; bridge the actor with a
+            // DispatchSemaphore so the disk write completes before we
+            // return .failure. This closes the race that would otherwise
+            // lose spans if the process dies between export-failure and
+            // the detached persist task running. Mirrors the log-side
+            // pattern (MobileLogRecordProcessor awaits diskBuffer.insert
+            // inline at line 105).
+            let semaphore = DispatchSemaphore(value: 0)
+            Task {
+                await buffer.persist(spans)
+                semaphore.signal()
+            }
+            // BSP runs export on a background BlockOperation; blocking it
+            // briefly on sqlite I/O is acceptable. Cap at 5s so a
+            // pathological disk I/O hang can't stall the exporter
+            // indefinitely — after that we return .failure anyway and
+            // the spans are lost (same failure mode as a sqlite crash).
+            _ = semaphore.wait(timeout: .now() + 5)
         }
         return result
     }
@@ -266,15 +310,34 @@ Two changes:
    `app.recovery_start` marker with the new attributes; drain the
    span buffer after the marker.
 
-### Modified — `otel-ios-mobile/Sources/OTelMobileSDK/Config/MobileConfig.swift`
+### Updated — `examples/upstream-demo-app-rn/AstronomyShopRN/ios/AstronomyShopRN/OTelMobileCallSink.swift`
 
-Add `public let spanDiskBuffer: DiskSpanBuffer?` (defaults nil).
+The RN iOS demo currently builds a `MobileConfig` and calls
+`OTelMobile.start(config:)` without any disk buffer — verified by
+`grep "DiskLogBuffer\|diskBuffer" ...ios/...` returning only
+build-index artifacts, no source references. So Gate 4 is
+currently failing for *both* logs and spans on RN iOS, not just
+spans. To close Gate 4 end-to-end we wire both buffers in the
+sink:
 
-### Updated — `examples/upstream-demo-app-rn/AstronomyShopRN/ios/AstronomyShopRN/ShopBootstrap.swift` or equivalent
+```swift
+let logsDir = FileManager.default.urls(for: .applicationSupportDirectory,
+                                       in: .userDomainMask)[0]
+    .appendingPathComponent("io.dash0.mobile")
+try? FileManager.default.createDirectory(at: logsDir,
+                                         withIntermediateDirectories: true)
+let logDiskBuffer = try await DiskLogBuffer.open(
+    dbPath: logsDir.appendingPathComponent("buffer.db"))
+let spanDiskBuffer = try await DiskSpanBuffer.open(
+    dbPath: logsDir.appendingPathComponent("span-buffer.db"))
+otel = try OTelMobile.start(config: mobileConfig,
+                            diskBuffer: logDiskBuffer,
+                            spanDiskBuffer: spanDiskBuffer)
+```
 
-Wire through a `DiskSpanBuffer` instance alongside the existing
-`DiskLogBuffer`. (Exact location depends on how the RN iOS demo
-initializes the SDK — need to confirm during implementation.)
+Both `.open()` calls are `async`, but `OTelMobileCallSink.start`
+is synchronous. Matches the existing `ShopBootstrap.swift` pattern
+from iOS native AstronomyShop (semaphore-bridged async init).
 
 ## Error handling
 
@@ -387,24 +450,25 @@ Dash0 shows fewer spans, check ingest-side retention policy. If
 Dash0 rejects stale spans, we document and move on — the SDK did
 its job.
 
-**Risk 3: `Task { await buffer.persist(spans) }` detached from
-export return** means export can return `.failure` before the disk
-write completes. If the process dies in that window, spans are
-lost. Mitigation: on iOS, the `didEnterBackgroundNotification` /
-`willTerminateNotification` observers already fire `forceFlush()`
-which awaits the disk buffer. The detached Task will have
-completed by then for most sessions. For extreme cases (crash
-immediately after export failure) we accept the loss.
+**Risk 3: export / persist race if done asynchronously.** Resolved
+by design — `PersistingSpanExporter.export` uses a
+`DispatchSemaphore` to block until the actor's `persist` completes
+(5s cap). BSP runs export on a background BlockOperation, so
+briefly blocking it on sqlite I/O is acceptable. See code sketch
+in the Components section.
 
 ## Estimate
 
-5-6 hours, revised from original 3-4:
+6-7 hours, revised from original 3-4:
 
 - `DiskSpanBuffer` actor + tests: ~2.5 hours (mostly sqlite binding
   boilerplate, mirrored from DiskLogBuffer but still line-by-line
   work).
-- `PersistingSpanExporter` + tests: ~1 hour.
-- `OTelMobile.start` recovery extension + `MobileConfig` field + tests:
-  ~1 hour.
-- Demo-app wiring + device validation: ~1 hour.
+- `PersistingSpanExporter` with semaphore-bridge synchronization,
+  plus tests: ~1.5 hours (semaphore bridging adds a small amount
+  of nuance vs. the log side which is already awaited-in-place).
+- `OTelMobile.start` new parameter, recovery loop extension, plus
+  tests: ~1 hour.
+- Demo-app wiring (`DiskLogBuffer` and `DiskSpanBuffer`, semaphore
+  bridge for async `open`) plus device validation: ~1.5 hours.
 - Spec edits + commit cleanup: ~0.5 hour.
