@@ -36,7 +36,7 @@ public struct BufferedSpan: Sendable {
         self.record = record
         self.recordData = recordData
         self.sizeBytes = recordData.count
-        self.createdAt = createdAt
+        self.createdAt = Date(timeIntervalSince1970: max(0, createdAt.timeIntervalSince1970))
     }
 
     /// Build a `BufferedSpan` from an upstream `SpanData`. Encodes the

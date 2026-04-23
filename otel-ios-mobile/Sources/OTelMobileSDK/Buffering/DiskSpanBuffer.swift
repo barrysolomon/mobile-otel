@@ -2,11 +2,6 @@ import Foundation
 import SQLite3
 import OpenTelemetrySdk
 
-private let SQLITE_TRANSIENT_FN = unsafeBitCast(
-    OpaquePointer(bitPattern: -1),
-    to: sqlite3_destructor_type.self
-)
-
 /// Disk-backed span buffer. Actor-isolated, raw `sqlite3` C API. Mirrors
 /// `DiskLogBuffer` but stores spans in a separate `buffered_spans` table
 /// with its own 50 MB / 24 h budget.
@@ -52,6 +47,52 @@ public actor DiskSpanBuffer {
         return Int(sqlite3_column_int64(stmt, 0))
     }
 
+    /// Insert each span with INSERT OR IGNORE on span_key; re-presenting
+    /// the same span list (e.g. during backoff retries) is a no-op.
+    public func persist(_ spans: [SpanData], sessionId: String) async {
+        guard !closed, db != nil, !spans.isEmpty else { return }
+        let encoder = JSONEncoder()
+        _ = runSql("BEGIN IMMEDIATE TRANSACTION;")
+        for span in spans {
+            guard let buffered = BufferedSpan.from(span, sessionId: sessionId, encoder: encoder) else {
+                NSLog("[DiskSpanBuffer] skip span: encode failed")
+                continue
+            }
+            insertRow(buffered)
+        }
+        _ = runSql("COMMIT;")
+        pruneIfOverBudget()
+    }
+
+    private func insertRow(_ span: BufferedSpan) {
+        let sql = """
+            INSERT OR IGNORE INTO buffered_spans
+                (span_key, start_time_ns, session_id, record_json, size_bytes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?);
+        """
+        var stmt: OpaquePointer?
+        guard let handle = db,
+              sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        _ = span.spanKey.withCString { cstr in
+            sqlite3_bind_text(stmt, 1, cstr, -1, Self.sqliteTransient)
+        }
+        // Signed cast OK: upstream timestamps stay well below 2^63 ns (≈ year 2262).
+        sqlite3_bind_int64(stmt, 2, Int64(bitPattern: span.startTimeUnixNano))
+        _ = span.sessionId.withCString { cstr in
+            sqlite3_bind_text(stmt, 3, cstr, -1, Self.sqliteTransient)
+        }
+        _ = span.recordData.withUnsafeBytes { raw in
+            sqlite3_bind_blob(stmt, 4, raw.baseAddress, Int32(span.recordData.count), Self.sqliteTransient)
+        }
+        sqlite3_bind_int64(stmt, 5, Int64(span.sizeBytes))
+        sqlite3_bind_int64(stmt, 6, Int64(span.createdAt.timeIntervalSince1970 * 1000))
+        _ = sqlite3_step(stmt)
+    }
+
+    /// Placeholder for size-cap enforcement; real implementation lands in Task 5.
+    private func pruneIfOverBudget() {}
+
     // MARK: - Internal
 
     private static func resolveDbPath(preferred: URL?) throws -> URL {
@@ -67,8 +108,10 @@ public actor DiskSpanBuffer {
     private func openAndPrepare() {
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
-        guard sqlite3_open_v2(dbPath.path, &handle, flags, nil) == SQLITE_OK, handle != nil else {
-            NSLog("[DiskSpanBuffer] sqlite3_open_v2 failed at \(dbPath.path)")
+        let rc = sqlite3_open_v2(dbPath.path, &handle, flags, nil)
+        guard rc == SQLITE_OK, handle != nil else {
+            let msg = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "rc=\(rc)"
+            NSLog("[DiskSpanBuffer] sqlite3_open_v2 failed at \(dbPath.path): \(msg)")
             if handle != nil { sqlite3_close(handle) }
             return
         }
@@ -105,4 +148,14 @@ public actor DiskSpanBuffer {
         }
         return true
     }
+
+    // MARK: - sqlite destructor constants
+
+    // SQLite C headers expose SQLITE_TRANSIENT as `((sqlite3_destructor_type)-1)`
+    // which doesn't survive the Swift importer. We reconstruct it manually.
+    // Matches the `sqliteTransient` pattern in `DiskLogBuffer` so grep finds both.
+    private static let sqliteTransient = unsafeBitCast(
+        OpaquePointer(bitPattern: -1),
+        to: sqlite3_destructor_type.self
+    )
 }
