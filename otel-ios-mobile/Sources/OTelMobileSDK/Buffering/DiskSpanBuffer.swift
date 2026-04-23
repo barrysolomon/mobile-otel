@@ -146,8 +146,99 @@ public actor DiskSpanBuffer {
         _ = sqlite3_step(stmt)
     }
 
-    /// Placeholder for size-cap enforcement; real implementation lands in Task 5.
-    private func pruneIfOverBudget() {}
+    /// Remove rows older than `retentionSeconds`. Called from recovery.
+    public func pruneByTTL() async {
+        guard !closed, let handle = db else { return }
+        let cutoffMs = Int64((Date().timeIntervalSince1970 - retentionSeconds) * 1000)
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "DELETE FROM buffered_spans WHERE created_at < ?;", -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, cutoffMs)
+        _ = sqlite3_step(stmt)
+    }
+
+    /// Current total size in bytes. Used by recovery stats + tests.
+    public func totalSizeBytes() async -> Int {
+        guard !closed, let handle = db else { return 0 }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "SELECT COALESCE(SUM(size_bytes), 0) FROM buffered_spans;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int64(stmt, 0))
+    }
+
+    private func pruneIfOverBudget() {
+        guard !closed, db != nil else { return }
+        let total = currentBytes()
+        if total <= Int64(maxTotalBytes) { return }
+        pruneBySizeInternal(maxBytes: maxTotalBytes)
+    }
+
+    private func pruneBySizeInternal(maxBytes: Int) {
+        guard let handle = db else { return }
+        let total = currentBytes()
+        if total <= Int64(maxBytes) { return }
+        let needToFree = total - Int64(maxBytes)
+
+        // Window function requires SQLite 3.25+ which ships with iOS 14+.
+        // We target iOS 15, so it's guaranteed available.
+        // Rows ordered by id ASC is oldest-first because id is AUTOINCREMENT
+        // and insertion order follows persist order within a process; on
+        // recovery, earlier disk rows replay with lower ids.
+        let sql = """
+        WITH ranked AS (
+            SELECT id, size_bytes,
+                   SUM(size_bytes) OVER (ORDER BY id ASC) AS running
+            FROM buffered_spans
+        )
+        SELECT id FROM ranked WHERE running >= ? ORDER BY running ASC LIMIT 1;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else {
+            fallbackPruneBySize(targetBytes: maxBytes)
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, needToFree)
+
+        var deleteThreshold: Int64 = -1
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            deleteThreshold = sqlite3_column_int64(stmt, 0)
+        }
+        guard deleteThreshold >= 0 else { return }
+
+        let deleteSql = "DELETE FROM buffered_spans WHERE id <= ?;"
+        var delStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, deleteSql, -1, &delStmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(delStmt) }
+        sqlite3_bind_int64(delStmt, 1, deleteThreshold)
+        _ = sqlite3_step(delStmt)
+    }
+
+    private func fallbackPruneBySize(targetBytes: Int) {
+        guard let handle = db else { return }
+        // Bounded at 10k iterations to guard against runaway loop.
+        var guardIterations = 10_000
+        while guardIterations > 0 {
+            guardIterations -= 1
+            if currentBytes() <= Int64(targetBytes) { return }
+            let sql = "DELETE FROM buffered_spans WHERE id = (SELECT id FROM buffered_spans ORDER BY id ASC LIMIT 1);"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            let rc = sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+            if rc != SQLITE_DONE { return }
+        }
+    }
+
+    private func currentBytes() -> Int64 {
+        guard let handle = db else { return 0 }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "SELECT COALESCE(SUM(size_bytes), 0) FROM buffered_spans;", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return sqlite3_column_int64(stmt, 0)
+    }
 
     // MARK: - Internal
 

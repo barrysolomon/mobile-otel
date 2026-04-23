@@ -137,4 +137,45 @@ struct DiskSpanBufferTests {
         #expect(rows[0].record == nil)
         #expect(DiskSpanBufferTestSupport.recordDataMatches(rows[0], bytes: garbage))
     }
+
+    @Test("pruneByTTL removes rows older than retentionSeconds")
+    func pruneByTTL() async throws {
+        let dbPath = DiskSpanBufferTestSupport.tempDbPath()
+        defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
+        let buffer = try await DiskSpanBuffer(dbPath: dbPath, retentionSeconds: 1)
+        defer { Task { await buffer.shutdown() } }
+
+        await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "old")], sessionId: "s")
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        await buffer.pruneByTTL()
+        #expect(await buffer.rowCount() == 0)
+    }
+
+    @Test("size cap evicts oldest when exceeded")
+    func pruneBySize() async throws {
+        let dbPath = DiskSpanBufferTestSupport.tempDbPath()
+        defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
+        let buffer = try await DiskSpanBuffer(dbPath: dbPath, maxTotalBytes: 2048)
+        defer { Task { await buffer.shutdown() } }
+
+        for i in 0..<20 {
+            await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "span.\(i)")], sessionId: "s")
+        }
+        let survivors = await buffer.fetchAll(limit: 100)
+        #expect(survivors.count < 20)
+        // The YOUNGEST spans survive (oldest-first eviction). If any
+        // survivor is span.N for small N while span.M for larger M was
+        // pruned, the ORDER BY is wrong.
+        let survivorIndices = survivors.compactMap { row -> Int? in
+            guard let name = row.record?.name,
+                  name.hasPrefix("span."),
+                  let n = Int(name.dropFirst("span.".count)) else { return nil }
+            return n
+        }
+        #expect(survivorIndices == survivorIndices.sorted())
+        if let minSurvivor = survivorIndices.min(),
+           let maxPruned = (0..<20).filter({ !survivorIndices.contains($0) }).max() {
+            #expect(minSurvivor > maxPruned)
+        }
+    }
 }
