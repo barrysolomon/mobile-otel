@@ -83,6 +83,14 @@ public final class OTelMobile: @unchecked Sendable {
     private let tracerProvider: TracerProviderSdk?
     private let meterProvider: MeterProviderSdk?
 
+    /// Disk buffer for spans, if configured. Held so the post-start
+    /// recovery Task.detached can call `stats()` / `fetchAll()` /
+    /// `deleteUpTo(_:)` / `pruneByTTL(_:)` to drain events persisted by a
+    /// previous process. Nil when the caller did not pass a
+    /// `spanDiskBuffer` — in that case PersistingSpanExporter passes
+    /// through transparently and no recovery is needed.
+    private let spanDiskBuffer: DiskSpanBuffer?
+
     /// NotificationCenter observers registered by `start(config:)` so we
     /// can auto-`forceFlush()` on backgrounding/termination. Held on the
     /// instance so they live as long as the SDK does.
@@ -102,7 +110,8 @@ public final class OTelMobile: @unchecked Sendable {
         predictiveExportPolicy: PredictiveExportPolicy?,
         fleetAlertHandler: FleetAlertHandler,
         tracerProvider: TracerProviderSdk? = nil,
-        meterProvider: MeterProviderSdk? = nil
+        meterProvider: MeterProviderSdk? = nil,
+        spanDiskBuffer: DiskSpanBuffer? = nil
     ) {
         self.config = config
         self.processor = processor
@@ -118,6 +127,7 @@ public final class OTelMobile: @unchecked Sendable {
         self.fleetAlertHandler = fleetAlertHandler
         self.tracerProvider = tracerProvider
         self.meterProvider = meterProvider
+        self.spanDiskBuffer = spanDiskBuffer
     }
 
     /// Wires the SDK with a caller-supplied `BufferedEventExporter`.
@@ -187,7 +197,8 @@ public final class OTelMobile: @unchecked Sendable {
     /// available for unit tests and bespoke transport adapters.
     public static func start(
         config: MobileConfig,
-        diskBuffer: DiskLogBuffer? = nil
+        diskBuffer: DiskLogBuffer? = nil,
+        spanDiskBuffer: DiskSpanBuffer? = nil
     ) throws -> OTelMobile {
         // SessionManager with UUID rotation on inactivity timeout and
         // UserDefaults persistence. Replaces the earlier StaticSessionProvider
@@ -242,10 +253,22 @@ public final class OTelMobile: @unchecked Sendable {
             diskBuffer: diskBuffer,
             policyEvaluator: policyEvaluator
         )
-        let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
+        // Trace export pipeline: BatchSpanProcessor → PersistingSpanExporter →
+        // OTLPHttpTraceExporter. When `spanDiskBuffer` is supplied, the
+        // decorator persists batches to disk on `.failure` (or on timeout) so
+        // the next process launch can drain them via the recovery task. When
+        // `spanDiskBuffer` is nil, the decorator is a transparent pass-through
+        // (see PersistingSpanExporter.nilBufferPassthrough test) — identical
+        // behavior to the earlier no-decorator path.
+        let baseTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
             endpoint: config.endpoint,
             authToken: config.authToken,
             extraHeaders: config.extraHeaders
+        )
+        let otlpTraceExporter = PersistingSpanExporter(
+            delegate: baseTraceExporter,
+            diskBuffer: spanDiskBuffer,
+            sessionId: sessionProvider.sessionId
         )
         let otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
             endpoint: config.endpoint,
@@ -371,7 +394,8 @@ public final class OTelMobile: @unchecked Sendable {
             predictiveExportPolicy: predictivePolicy,
             fleetAlertHandler: fleetAlertHandler,
             tracerProvider: tracerProvider,
-            meterProvider: meterProvider
+            meterProvider: meterProvider,
+            spanDiskBuffer: spanDiskBuffer
         )
 
         // Auto-install instrumentation modules based on config.autoCaptureOptions.
