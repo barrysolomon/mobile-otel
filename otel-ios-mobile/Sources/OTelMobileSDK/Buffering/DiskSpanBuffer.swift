@@ -90,6 +90,62 @@ public actor DiskSpanBuffer {
         _ = sqlite3_step(stmt)
     }
 
+    /// Read-only snapshot of up to `limit` rows, oldest first (by rowid).
+    /// Used by recovery; caller decides what to delete after a successful
+    /// export (see `deleteUpTo(id:)`).
+    public func fetchAll(limit: Int) async -> [BufferedSpan] {
+        guard !closed, let handle = db, limit > 0 else { return [] }
+        let sql = """
+            SELECT id, span_key, start_time_ns, session_id, record_json, size_bytes, created_at
+            FROM buffered_spans
+            ORDER BY id ASC
+            LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt, 1, Int32(limit))
+
+        var out: [BufferedSpan] = []
+        let decoder = JSONDecoder()
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let id = sqlite3_column_int64(stmt, 0)
+            let spanKey: String = {
+                if let c = sqlite3_column_text(stmt, 1) { return String(cString: c) }
+                return ""
+            }()
+            let startNs = UInt64(bitPattern: sqlite3_column_int64(stmt, 2))
+            let sessionId: String = {
+                if let c = sqlite3_column_text(stmt, 3) { return String(cString: c) }
+                return ""
+            }()
+            let blobPtr = sqlite3_column_blob(stmt, 4)
+            let blobLen = Int(sqlite3_column_bytes(stmt, 4))
+            let data = (blobPtr != nil && blobLen > 0)
+                ? Data(bytes: blobPtr!, count: blobLen)
+                : Data()
+            let createdMs = sqlite3_column_int64(stmt, 6)
+            let createdAt = Date(timeIntervalSince1970: TimeInterval(createdMs) / 1000)
+            let record = (try? decoder.decode(SpanData.self, from: data))
+            out.append(BufferedSpan(
+                id: id, spanKey: spanKey, startTimeUnixNano: startNs,
+                sessionId: sessionId, record: record, recordData: data,
+                createdAt: createdAt))
+        }
+        return out
+    }
+
+    /// Delete rows with `id <= anchor`. Called by recovery after a
+    /// successful batch export.
+    public func deleteUpTo(id anchor: Int64) async {
+        guard !closed, let handle = db else { return }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "DELETE FROM buffered_spans WHERE id <= ?;", -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, anchor)
+        _ = sqlite3_step(stmt)
+    }
+
     /// Placeholder for size-cap enforcement; real implementation lands in Task 5.
     private func pruneIfOverBudget() {}
 

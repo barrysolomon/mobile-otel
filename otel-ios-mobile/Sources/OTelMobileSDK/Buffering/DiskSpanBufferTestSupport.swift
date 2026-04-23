@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import OpenTelemetryApi
 import OpenTelemetrySdk
 
@@ -59,6 +60,36 @@ public enum DiskSpanBufferTestSupport {
         // `as!` is acceptable in test-support code and guarded by this
         // invariant; see SDK_SAFETY.md for SDK-source vs test-support policy.
         return (span as! ReadableSpan).toSpanData()
+    }
+
+    /// UPDATE the first row's `record_json` column to the given bytes. Test-only;
+    /// used to exercise the corrupt-row path in `fetchAll`.
+    public static func overwriteRecordJson(dbPath: URL, bytes: [UInt8]) {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath.path, &db,
+                              SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
+              let handle = db else { return }
+        defer { sqlite3_close(handle) }
+
+        let sql = "UPDATE buffered_spans SET record_json = ?, size_bytes = ? WHERE id = (SELECT MIN(id) FROM buffered_spans);"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        let sqliteTransient = unsafeBitCast(
+            OpaquePointer(bitPattern: -1),
+            to: sqlite3_destructor_type.self)
+        _ = bytes.withUnsafeBufferPointer { buf in
+            sqlite3_bind_blob(stmt, 1, buf.baseAddress, Int32(bytes.count), sqliteTransient)
+        }
+        sqlite3_bind_int64(stmt, 2, Int64(bytes.count))
+        _ = sqlite3_step(stmt)
+    }
+
+    /// Byte-equality check for `BufferedSpan.recordData`. Lives here so test
+    /// files don't need to `import Foundation` just to build a `Data`.
+    public static func recordDataMatches(_ span: BufferedSpan, bytes: [UInt8]) -> Bool {
+        span.recordData == Data(bytes)
     }
 
     // MARK: - Internal
