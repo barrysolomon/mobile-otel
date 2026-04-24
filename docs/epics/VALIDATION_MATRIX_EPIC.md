@@ -98,7 +98,7 @@ exists in code but not backend-validated this session. Red = gap.
 | Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
 | RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🔴 **span path has no disk persist** — `BatchSpanProcessor` drops on export failure. RN iOS telemetry is primarily spans (fetch/XHR + ShopTelemetry). Fix in `1a69c7e` covers logs only |
+| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🟢 **verified 2026-04-23** 7 failed OTLP trace POSTs persisted to `buffered_span_requests` during *.invalid window, all 7 replayed on reconnect; 99 spans landed in Dash0 with original timestamps and full ShopTelemetry waterfall intact; `app.recovery_start` marker carried `dash0.recovery.span_count=7` + `dash0.recovery.span_bytes_pending=7595`. Fix intercepts at `HTTPClient` layer (`PersistingTraceHTTPClient`), not `SpanExporter` — see Gate 4 section for why the obvious decorator design is dead code |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -226,18 +226,18 @@ Needs this session's 4-gate template applied. Service name:
 `otel-android-astronomy-shop`. Existing `HOW_TO_DEMO.md` covers a
 different (broader) runbook; reconcile.
 
-### RN iOS (AstronomyShopRN) — 2 of 4 gates green
+### RN iOS (AstronomyShopRN) — 3 of 4 gates green
 
-**Validated 2026-04-22.** Service name: `otel-rn-astronomy-shop`.
-Result summary: **Gates 2 + 3 🟢, Gates 1 / 4 🔴** with documented
-root causes. RN iOS is the hardest platform to pass the four-gate
-bar because its architecture inverts several iOS-native
-assumptions: native auto-capture defaults to OFF, lifecycle
-emission is disabled in the demo app, and primary telemetry flows
-as spans (not logs) so the offline-drain fixes from `1a69c7e`
-don't cover it. Gate 3 (crash) took two iterations beyond the
-initial design — see Gate 3 section for the v1→v2→v3 correction
-chain.
+**Validated 2026-04-22 + 2026-04-23.** Service name:
+`otel-rn-astronomy-shop`. Result summary: **Gates 2 + 3 + 4 🟢,
+Gate 1 🔴** — Gate 1 remains an architectural choice (RN demo
+disables `autoCapture.lifecycle` + native defaults to `.none`)
+rather than a bug. Gate 3 (crash) took three iterations beyond the
+initial design; Gate 4 (offline) required a mid-course redesign
+from a SpanExporter decorator to an HTTPClient interceptor after
+the original approach was discovered to be dead code (upstream
+OTLP trace exporter returns `.success` synchronously before the
+HTTP call — see Gate 4 section for the full explanation).
 
 Pre-flight (same for each gate run):
 
@@ -365,40 +365,59 @@ Not a blocker — the RN JS path is inherently distinct from the
 native signal-handler path, and both names are meaningful.
 ```
 
-**Gate 4 — Offline 🔴**
+**Gate 4 — Offline 🟢**
 
 ```
 Procedure: cp otel-config.json → .invalid endpoint → rebuild JS
-bundle + Release .app → terminate + install + launch → drive UI
-for ~35s → terminate → swap back → rebuild → relaunch → query.
+bundle + Release .app → install + launch → drive UI for ~30s →
+terminate → swap back → rebuild → relaunch → query.
 
-Result during offline window:
-- App runs, fetch + tap span activity flows through bridge → native.
-- sqlite `buffered_events` row count stays at 0 throughout and
-  post-terminate.
+Result on 2026-04-23 validation run:
+- Offline window: 7 OTLP trace POSTs to *.invalid fail DNS; each
+  gets captured by PersistingTraceHTTPClient and spilled to
+  buffered_span_requests (7595 bytes total, preserves endpoint +
+  headers + body).
+- On reconnect launch: Task.detached recovery block reads rowCount,
+  emits app.recovery_start with
+    dash0.recovery.span_count = 7
+    dash0.recovery.span_bytes_pending = 7595
+  then OTelMobile.recoverSpanRequests replays each row via
+  BaseHTTPClient → original endpoint. 7 POSTs to
+  ingress.us-west-2.aws.dash0.com return 2xx, rows deleted.
+- Dash0 backend: 99 spans land under service.name=
+  otel-rn-astronomy-shop, scope io.dash0.mobile, full
+  ShopTelemetry hierarchy intact (shop.view_product → detail.render
+  + detail.load_related; checkout → validate_cart → inventory_check
+  → calculate_totals → charge.authorize).
 
-Root cause: commit 1a69c7e's fail-to-disk persist is wired to
-`MobileLogRecordProcessor`. Spans use `BatchSpanProcessor` (see
-OTelMobile.swift:182 "For traces, a single BatchSpanProcessor
-exports to OTLP") which has no disk-persist on export failure. RN
-iOS primary telemetry under `autoCaptureOptions: .none` is:
-  * HTTP spans (fetch / XHR shims) — spans, lost
-  * Tap / screen_view spans (ShopTelemetry.emit*) — spans, lost
-  * JS error logs (errors.ts) — logs, but lost to Gate 3 bug
+Architectural lesson (IMPORTANT, reusable for iOS native + future
+work): the OBVIOUS-looking design — a SpanExporter decorator that
+watches for `.failure` from the OTLP exporter — IS DEAD CODE.
+Upstream's OtlpHttpTraceExporter.export() returns .success
+synchronously BEFORE the HTTP call completes (see
+opentelemetry-swift/Sources/Exporters/OpenTelemetryProtocolHttp/
+trace/OtlpHttpTraceExporter.swift ~line 85). Failures surface only
+via the internal httpClient.send { result in ... } callback, which
+a SpanExporter-level decorator never sees.
 
-Query: dash0 -X logs query --filter "service.name is otel-rn-astronomy-shop and event.name is app.recovery_start" --from now-5m
-Expected: 1 marker with dash0.recovery.event_count≥1. Actual: 0.
+The fix intercepts at the layer that DOES see failures: the custom
+HTTPClient passed into OtlpHttpTraceExporter via its existing
+`httpClient:` init parameter. PersistingTraceHTTPClient wraps
+BaseHTTPClient, and on failure modes (network error, 5xx, 429) it
+captures the raw URLRequest body bytes and persists them to
+DiskSpanBuffer. We store bytes not SpanData because decoded spans
+are not available at the HTTPClient layer — and because raw-byte
+replay is actually better (byte-identical collector input means
+perfect idempotency).
 
-Remediation sketch:
-  1. Apply the same RAM→disk fail-persist wrapper to the span
-     pipeline (`BatchSpanProcessor` with a custom `SpanExporter`
-     decorator that persists on .failure).
-  2. Land a `recoverFromDisk` hook at `OTelMobile.start()` that
-     re-emits persisted spans with their original timestamps +
-     emits a `span.recovery_start` marker (mirror the log marker).
-  3. Until (1)+(2) land, the RN iOS offline-drain story is
-     "JS-side logs via FATAL emit only" — which is also broken per
-     Gate 3.
+What drops vs retries vs succeeds on replay:
+  - 2xx  → delete row (success; count toward `replayed`)
+  - 5xx  → retry (leave on disk, stop the batch early to spare
+           bandwidth against a dead collector)
+  - 429  → retry (explicit backpressure)
+  - 4xx non-429 → drop row (client error, won't succeed later;
+                  keeps the disk from filling with perma-bad bytes)
+  - network error → retry
 ```
 
 **What's green today despite the three reds:** the bridge contract
@@ -429,7 +448,7 @@ SCALE_READINESS_EPIC.md.
 ### This session
 - [x] iOS native — all four gates green, three SDK fix commits
 - [x] This epic drafted with session findings frozen in writing
-- [x] RN iOS — four gates run; 2 green (Gates 2 + 3), 2 red (Gates 1 + 4) with documented root causes
+- [x] RN iOS — four gates run; 3 green (Gates 2 + 3 + 4), 1 red (Gate 1) with documented architectural root cause
 - [x] Write `docs/matchy-matchy/` one runbook per demo app — landed as [`docs/matchy-matchy/`](../matchy-matchy/README.md): [`ios-native.md`](../matchy-matchy/ios-native.md) 🟢, [`rn-ios.md`](../matchy-matchy/rn-ios.md) 🟢🟢🔴🔴, [`android-native.md`](../matchy-matchy/android-native.md) 🟡 TODO, [`rn-android.md`](../matchy-matchy/rn-android.md) 🟡 TODO
 
 ### Follow-ups surfaced by RN iOS validation (2026-04-22)
