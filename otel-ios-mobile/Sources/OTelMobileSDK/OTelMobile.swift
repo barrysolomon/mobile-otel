@@ -1,6 +1,7 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import OpenTelemetryProtocolExporterHttp
 import OTelMobileCore
 import NetworkInstrumentation
 import LifecycleInstrumentation
@@ -195,6 +196,15 @@ public final class OTelMobile: @unchecked Sendable {
     ///
     /// The injectable-exporter overload `start(config:exporter:)` remains
     /// available for unit tests and bespoke transport adapters.
+    ///
+    /// - Parameters:
+    ///   - config: SDK configuration (endpoint, auth, features, sampling).
+    ///   - diskBuffer: Optional sqlite-backed spill buffer for log records.
+    ///     When non-nil, RAM-evicted events spill to disk and drain on
+    ///     start-time recovery.
+    ///   - spanDiskBuffer: Optional sqlite-backed buffer for failed span
+    ///     export batches. When non-nil, BatchSpanProcessor failures
+    ///     persist to disk and drain on start-time recovery.
     public static func start(
         config: MobileConfig,
         diskBuffer: DiskLogBuffer? = nil,
@@ -253,22 +263,30 @@ public final class OTelMobile: @unchecked Sendable {
             diskBuffer: diskBuffer,
             policyEvaluator: policyEvaluator
         )
-        // Trace export pipeline: BatchSpanProcessor → PersistingSpanExporter →
-        // OTLPHttpTraceExporter. When `spanDiskBuffer` is supplied, the
-        // decorator persists batches to disk on `.failure` (or on timeout) so
-        // the next process launch can drain them via the recovery task. When
-        // `spanDiskBuffer` is nil, the decorator is a transparent pass-through
-        // (see PersistingSpanExporter.nilBufferPassthrough test) — identical
-        // behavior to the earlier no-decorator path.
-        let baseTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
+        // Trace export pipeline: BatchSpanProcessor → OtlpHttpTraceExporter,
+        // with an optional PersistingTraceHTTPClient inserted at the HTTP
+        // layer when `spanDiskBuffer` is supplied. That client sees every
+        // POST outcome (success, network error, 5xx, 429) and spills the
+        // raw request body to disk on retryable failures so the next
+        // process launch can replay it via recoverSpanRequests.
+        //
+        // Why not decorate the SpanExporter? Upstream's
+        // OtlpHttpTraceExporter.export() returns .success synchronously
+        // before the HTTP call completes — failure is only observable in
+        // the HTTP callback. A SpanExporter-level decorator sees only
+        // .success and cannot trigger persist. See the PersistingTraceHTTPClient
+        // doc comment for the full rationale.
+        let traceHTTPClient: HTTPClient? = spanDiskBuffer.map { buffer in
+            PersistingTraceHTTPClient(
+                diskBuffer: buffer,
+                sessionProvider: sessionProvider
+            )
+        }
+        let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
             endpoint: config.endpoint,
             authToken: config.authToken,
-            extraHeaders: config.extraHeaders
-        )
-        let otlpTraceExporter = PersistingSpanExporter(
-            delegate: baseTraceExporter,
-            diskBuffer: spanDiskBuffer,
-            sessionId: sessionProvider.sessionId
+            extraHeaders: config.extraHeaders,
+            httpClient: traceHTTPClient
         )
         let otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
             endpoint: config.endpoint,
@@ -479,23 +497,54 @@ public final class OTelMobile: @unchecked Sendable {
             // previous process, emit a marker log with the backlog size then
             // drain them through the exporter. Non-blocking — runs on a
             // detached Task so the first SwiftUI render is not delayed.
-            if diskBuffer != nil {
-                Task.detached { [bufferProcessor, logger] in
-                    guard let stats = await bufferProcessor.diskStats(), stats.count > 0 else {
-                        return
+            if diskBuffer != nil || spanDiskBuffer != nil {
+                Task.detached { [bufferProcessor, logger, spanDiskBuffer, otlpTraceExporter] in
+                    let logStats = await bufferProcessor.diskStats()
+                    let spanStats: (count: Int, bytes: Int)? = await {
+                        guard let b = spanDiskBuffer else { return nil }
+                        let count = await b.rowCount()
+                        guard count > 0 else { return nil }
+                        let bytes = await b.totalSizeBytes()
+                        return (count, bytes)
+                    }()
+                    let logCount = logStats?.count ?? 0
+                    let spanCount = spanStats?.count ?? 0
+                    guard logCount > 0 || spanCount > 0 else { return }
+
+                    // Combined marker — a single `app.recovery_start` log
+                    // carries whichever of {event,span}_count/bytes_pending
+                    // are non-zero. Keeps the breadcrumb additive so log-only
+                    // dashboards from the pre-span-persist era keep working.
+                    var attrs: [String: AttributeValue] = [:]
+                    if let s = logStats, s.count > 0 {
+                        attrs["dash0.recovery.event_count"] = .int(s.count)
+                        attrs["dash0.recovery.bytes_pending"] = .int(s.bytes)
                     }
-                    // Marker event — surfaces in backend as a recovery
-                    // breadcrumb so operators can see that the SDK resumed
-                    // from a prior process.
+                    if let s = spanStats {
+                        attrs["dash0.recovery.span_count"] = .int(s.count)
+                        attrs["dash0.recovery.span_bytes_pending"] = .int(s.bytes)
+                    }
                     logger.logRecordBuilder()
                         .setBody(AttributeValue.string("app.recovery_start"))
                         .setSeverity(.info)
-                        .setAttributes([
-                            "dash0.recovery.event_count": AttributeValue.int(stats.count),
-                            "dash0.recovery.bytes_pending": AttributeValue.int(stats.bytes)
-                        ])
+                        .setAttributes(attrs)
                         .emit()
-                    _ = await bufferProcessor.recoverFromDisk()
+
+                    if logCount > 0 {
+                        _ = await bufferProcessor.recoverFromDisk()
+                    }
+                    if let b = spanDiskBuffer, spanCount > 0 {
+                        // Use a vanilla BaseHTTPClient for replay so retry
+                        // failures don't re-persist the same rows we just
+                        // drained. Each row's endpoint + headers are the
+                        // originals (captured at the time of the failed
+                        // export), so routing is identical to what a live
+                        // export would have been.
+                        _ = await OTelMobile.recoverSpanRequests(
+                            from: b,
+                            httpClient: BaseHTTPClient(),
+                            batchSize: 64)
+                    }
                 }
             }
             if opts.contains(.screen) {
@@ -604,5 +653,95 @@ public final class OTelMobile: @unchecked Sendable {
             errorStatusThreshold: base.errorStatusThreshold,
             propagateTraceContext: base.propagateTraceContext
         )
+    }
+
+    /// Drains all persisted spans through `exporter` in `batchSize` chunks.
+    /// Read-then-conditionally-delete: rows are only removed from disk
+    /// after a successful export. Mirrors `MobileLogRecordProcessor.recoverFromDisk`.
+    ///
+    /// Public for testability. Called from the `Task.detached` recovery
+    /// block inside `start()`.
+    /// Replay persisted OTLP trace requests through `httpClient`. Each row
+    /// is POSTed individually; a row is deleted only after its POST returns
+    /// 2xx. Retryable failures (5xx, 429, network error) leave the row on
+    /// disk for the next launch.
+    ///
+    /// Returns the number of rows successfully replayed and deleted.
+    ///
+    /// Public for testability. Called from the `Task.detached` recovery
+    /// block inside `start()`.
+    public static func recoverSpanRequests(
+        from buffer: DiskSpanBuffer,
+        httpClient: HTTPClient,
+        batchSize: Int = 64,
+        perRequestTimeout: TimeInterval = 30
+    ) async -> Int {
+        var replayed = 0
+        outer: while true {
+            let batch = await buffer.fetchAll(limit: batchSize)
+            if batch.isEmpty { break }
+            for row in batch {
+                let outcome = await Self.replayOne(
+                    row: row,
+                    httpClient: httpClient,
+                    timeout: perRequestTimeout)
+                switch outcome {
+                case .delete:
+                    await buffer.delete(id: row.id)
+                    replayed += 1
+                case .retry:
+                    // Stop at first retryable failure — leave the rest for
+                    // the next launch so we don't spin on a dead network.
+                    break outer
+                case .drop:
+                    // Non-retryable client error (400/401/etc.) — deleting
+                    // here prevents the disk from accumulating permanently-
+                    // bad requests that no replay would ever succeed on.
+                    await buffer.delete(id: row.id)
+                }
+            }
+        }
+        return replayed
+    }
+
+    private enum ReplayOutcome { case delete, retry, drop }
+
+    private static func replayOne(
+        row: BufferedSpanRequest,
+        httpClient: HTTPClient,
+        timeout: TimeInterval
+    ) async -> ReplayOutcome {
+        var request = URLRequest(url: row.endpoint)
+        request.httpMethod = "POST"
+        for (k, v) in row.headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        request.httpBody = row.body
+
+        return await withCheckedContinuation { cont in
+            let semaphore = DispatchSemaphore(value: 0)
+            var outcome: ReplayOutcome = .retry
+            httpClient.send(request: request) { result in
+                switch result {
+                case .success(let resp):
+                    let status = resp.statusCode
+                    if (200..<300).contains(status) {
+                        outcome = .delete
+                    } else if status >= 500 || status == 429 {
+                        outcome = .retry
+                    } else {
+                        // 4xx non-429: client/auth error, won't succeed later.
+                        outcome = .drop
+                    }
+                case .failure:
+                    outcome = .retry
+                }
+                semaphore.signal()
+            }
+            // Cap wait on the BSP background thread so a hanging call does
+            // not block the rest of recovery indefinitely.
+            _ = semaphore.wait(timeout: .now() + timeout)
+            cont.resume(returning: outcome)
+        }
     }
 }

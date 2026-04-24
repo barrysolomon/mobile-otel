@@ -1,7 +1,5 @@
 import Foundation
 import SQLite3
-import OpenTelemetryApi
-import OpenTelemetrySdk
 
 /// Test helpers for `DiskSpanBuffer`. Lives in the SDK target (not the test
 /// target) because CLT's `_Testing_Foundation` overlay ships without its
@@ -19,14 +17,10 @@ public enum DiskSpanBufferTestSupport {
     public static func removeFile(_ url: URL) {
         let fm = FileManager.default
         try? fm.removeItem(at: url)
-        // SQLite WAL/SHM sidecars are created alongside the .db once writes
-        // begin (Task 3). Mirror the pattern from `DiskLogBufferTestSupport`.
         let walSidecar = URL(fileURLWithPath: url.path + "-wal")
         let shmSidecar = URL(fileURLWithPath: url.path + "-shm")
         try? fm.removeItem(at: walSidecar)
         try? fm.removeItem(at: shmSidecar)
-        // Only remove the parent directory if we created it in `tempDbPath()`.
-        // Guard against the helper being pointed at arbitrary paths.
         let parent = url.deletingLastPathComponent()
         if parent.lastPathComponent.hasPrefix("dash0-span-test-") {
             try? fm.removeItem(at: parent)
@@ -37,41 +31,37 @@ public enum DiskSpanBufferTestSupport {
         FileManager.default.fileExists(atPath: url.path)
     }
 
-    /// Build a minimal `SpanData` for tests. `SpanData`'s memberwise init is
-    /// internal to `OpenTelemetrySdk`, so we can't invoke it directly — we
-    /// route through a real `TracerProviderSdk` and end the span to get a
-    /// realistic `SpanData`. Unique traceId/spanId per call (upstream
-    /// generates them).
-    public static func fakeSpan(
-        name: String,
-        startSecondsAgo: TimeInterval = 5
-    ) -> SpanData {
-        let tracer = tracerProvider.get(
-            instrumentationName: "DiskSpanBufferTestSupport",
-            instrumentationVersion: nil
+    /// Build a fake pending `BufferedSpanRequest` for tests. Default headers
+    /// mirror what `OtlpHttpExporterBase.createRequest` actually sets in
+    /// production so replay-path tests exercise realistic inputs.
+    public static func fakeRequest(
+        bodyBytes: [UInt8] = [0x08, 0x01],
+        endpoint: String = "https://example.invalid/v1/traces",
+        extraHeaders: [String: String] = [:]
+    ) -> BufferedSpanRequest {
+        var headers: [String: String] = [
+            "Content-Type": "application/x-protobuf",
+            "User-Agent": "OTel-OTLP-Exporter-Swift/test"
+        ]
+        for (k, v) in extraHeaders { headers[k] = v }
+        return BufferedSpanRequest.pending(
+            endpoint: URL(string: endpoint)!,
+            headers: headers,
+            body: Data(bodyBytes),
+            sessionId: "test-session"
         )
-        let span = tracer
-            .spanBuilder(spanName: name)
-            .setSpanKind(spanKind: .client)
-            .setStartTime(time: Date().addingTimeInterval(-startSecondsAgo))
-            .startSpan()
-        span.end()
-        // safe: alwaysOn sampler → PropagatedSpan never returned → ReadableSpan always.
-        // `as!` is acceptable in test-support code and guarded by this
-        // invariant; see SDK_SAFETY.md for SDK-source vs test-support policy.
-        return (span as! ReadableSpan).toSpanData()
     }
 
-    /// UPDATE the first row's `record_json` column to the given bytes. Test-only;
-    /// used to exercise the corrupt-row path in `fetchAll`.
-    public static func overwriteRecordJson(dbPath: URL, bytes: [UInt8]) {
+    /// UPDATE the first row's `body` column to the given bytes. Test-only;
+    /// used to exercise corrupt-row paths.
+    public static func overwriteBody(dbPath: URL, bytes: [UInt8]) {
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbPath.path, &db,
                               SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
               let handle = db else { return }
         defer { sqlite3_close(handle) }
 
-        let sql = "UPDATE buffered_spans SET record_json = ?, size_bytes = ? WHERE id = (SELECT MIN(id) FROM buffered_spans);"
+        let sql = "UPDATE buffered_span_requests SET body = ?, size_bytes = ? WHERE id = (SELECT MIN(id) FROM buffered_span_requests);"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -86,20 +76,9 @@ public enum DiskSpanBufferTestSupport {
         _ = sqlite3_step(stmt)
     }
 
-    /// Byte-equality check for `BufferedSpan.recordData`. Lives here so test
-    /// files don't need to `import Foundation` just to build a `Data`.
-    public static func recordDataMatches(_ span: BufferedSpan, bytes: [UInt8]) -> Bool {
-        span.recordData == Data(bytes)
+    /// Byte-equality check for `BufferedSpanRequest.body`. Lives here so
+    /// test files don't need to `import Foundation` to build a `Data`.
+    public static func bodyMatches(_ req: BufferedSpanRequest, bytes: [UInt8]) -> Bool {
+        req.body == Data(bytes)
     }
-
-    // MARK: - Internal
-
-    private static let tracerProvider: TracerProviderSdk = {
-        // Pin `alwaysOn` so `SpanBuilderSdk.prepareSpan` never returns a
-        // non-`ReadableSpan` `PropagatedSpan` — the `as! ReadableSpan` cast
-        // in `fakeSpan` then stays safe.
-        TracerProviderBuilder()
-            .with(sampler: Samplers.alwaysOn)
-            .build()
-    }()
 }

@@ -26,41 +26,42 @@ struct DiskSpanBufferTests {
         await buffer.shutdown()
     }
 
-    @Test("persist writes each span once")
+    @Test("persist writes one row per request")
     func persistWritesOnce() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
         let buffer = try await DiskSpanBuffer(dbPath: dbPath)
         defer { Task { await buffer.shutdown() } }
 
-        let span = DiskSpanBufferTestSupport.fakeSpan(name: "span.a")
-        await buffer.persist([span], sessionId: "sess-1")
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest())
         #expect(await buffer.rowCount() == 1)
     }
 
-    @Test("persist is idempotent on dedup key")
+    @Test("persist is idempotent on requestKey")
     func persistDedup() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
         let buffer = try await DiskSpanBuffer(dbPath: dbPath)
         defer { Task { await buffer.shutdown() } }
 
-        let span = DiskSpanBufferTestSupport.fakeSpan(name: "span.a")
-        await buffer.persist([span], sessionId: "sess-1")
-        await buffer.persist([span], sessionId: "sess-1")
+        // Re-presenting the SAME request (same requestKey) must not create
+        // a duplicate row. Simulates a retry path that hands the same
+        // BufferedSpanRequest back to persist().
+        let req = DiskSpanBufferTestSupport.fakeRequest()
+        await buffer.persist(req)
+        await buffer.persist(req)
         #expect(await buffer.rowCount() == 1)
     }
 
-    @Test("persist empty list is a no-op")
-    func persistEmpty() async throws {
+    @Test("persistBatch empty list is a no-op")
+    func persistBatchEmpty() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
         let buffer = try await DiskSpanBuffer(dbPath: dbPath)
         defer { Task { await buffer.shutdown() } }
 
-        let span = DiskSpanBufferTestSupport.fakeSpan(name: "span.a")
-        await buffer.persist([span], sessionId: "sess-1")
-        await buffer.persist([], sessionId: "sess-1")
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest())
+        await buffer.persistBatch([])
         #expect(await buffer.rowCount() == 1)
     }
 
@@ -71,14 +72,15 @@ struct DiskSpanBufferTests {
         let buffer = try await DiskSpanBuffer(dbPath: dbPath)
         defer { Task { await buffer.shutdown() } }
 
-        let a = DiskSpanBufferTestSupport.fakeSpan(name: "span.a")
-        let b = DiskSpanBufferTestSupport.fakeSpan(name: "span.b")
-        await buffer.persist([a, b], sessionId: "sess-1")
+        let a = DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [0x01])
+        let b = DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [0x02])
+        await buffer.persistBatch([a, b])
 
         let rows = await buffer.fetchAll(limit: 100)
         #expect(rows.count == 2)
         #expect(rows[0].id < rows[1].id)
-        #expect(rows[0].record?.name == "span.a")
+        #expect(DiskSpanBufferTestSupport.bodyMatches(rows[0], bytes: [0x01]))
+        #expect(DiskSpanBufferTestSupport.bodyMatches(rows[1], bytes: [0x02]))
     }
 
     @Test("fetchAll honors the limit")
@@ -89,11 +91,11 @@ struct DiskSpanBufferTests {
         defer { Task { await buffer.shutdown() } }
 
         for i in 0..<5 {
-            await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "span.\(i)")], sessionId: "sess-1")
+            await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [UInt8(i)]))
         }
         let rows = await buffer.fetchAll(limit: 2)
         #expect(rows.count == 2)
-        #expect(rows[0].record?.name == "span.0")
+        #expect(DiskSpanBufferTestSupport.bodyMatches(rows[0], bytes: [0x00]))
     }
 
     @Test("deleteUpTo removes rows with id <= anchor")
@@ -104,7 +106,7 @@ struct DiskSpanBufferTests {
         defer { Task { await buffer.shutdown() } }
 
         for i in 0..<4 {
-            await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "span.\(i)")], sessionId: "sess-1")
+            await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [UInt8(i)]))
         }
         let rows = await buffer.fetchAll(limit: 10)
         let anchor = rows[1].id
@@ -115,27 +117,45 @@ struct DiskSpanBufferTests {
         #expect(remaining.allSatisfy { $0.id > anchor })
     }
 
-    @Test("fetchAll returns nil record on corrupt row but preserves recordData")
+    @Test("delete(id:) removes a single row")
+    func deleteSingleRow() async throws {
+        let dbPath = DiskSpanBufferTestSupport.tempDbPath()
+        defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
+        let buffer = try await DiskSpanBuffer(dbPath: dbPath)
+        defer { Task { await buffer.shutdown() } }
+
+        for i in 0..<3 {
+            await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [UInt8(i)]))
+        }
+        let rows = await buffer.fetchAll(limit: 10)
+        await buffer.delete(id: rows[1].id)
+        let remaining = await buffer.fetchAll(limit: 10)
+        #expect(remaining.count == 2)
+        #expect(remaining.map(\.id) == [rows[0].id, rows[2].id])
+    }
+
+    @Test("fetchAll survives corrupt body blob")
     func fetchAllCorruptRow() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
         let buffer = try await DiskSpanBuffer(dbPath: dbPath)
 
-        await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "span.corrupt")],
-                             sessionId: "sess-1")
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [0x01, 0x02]))
         await buffer.shutdown()
 
-        // Corrupt the row's JSON blob via a side-channel connection.
+        // Corrupt the body blob. Replay-time handling of "invalid protobuf"
+        // is the collector's problem — the buffer only needs to deliver the
+        // bytes it was asked to store. So this primarily exercises the
+        // decode-corrupt-body path without losing the row.
         let garbage: [UInt8] = [0xFF, 0xFE, 0xFD]
-        DiskSpanBufferTestSupport.overwriteRecordJson(dbPath: dbPath, bytes: garbage)
+        DiskSpanBufferTestSupport.overwriteBody(dbPath: dbPath, bytes: garbage)
 
         let reopened = try await DiskSpanBuffer(dbPath: dbPath)
         defer { Task { await reopened.shutdown() } }
 
         let rows = await reopened.fetchAll(limit: 10)
         #expect(rows.count == 1)
-        #expect(rows[0].record == nil)
-        #expect(DiskSpanBufferTestSupport.recordDataMatches(rows[0], bytes: garbage))
+        #expect(DiskSpanBufferTestSupport.bodyMatches(rows[0], bytes: garbage))
     }
 
     @Test("pruneByTTL removes rows older than retentionSeconds")
@@ -145,7 +165,7 @@ struct DiskSpanBufferTests {
         let buffer = try await DiskSpanBuffer(dbPath: dbPath, retentionSeconds: 1)
         defer { Task { await buffer.shutdown() } }
 
-        await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "old")], sessionId: "s")
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest())
         try await Task.sleep(nanoseconds: 1_200_000_000)
         await buffer.pruneByTTL()
         #expect(await buffer.rowCount() == 0)
@@ -155,27 +175,32 @@ struct DiskSpanBufferTests {
     func pruneBySize() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
+        // Each fakeRequest() body is 2 bytes but size_bytes is the body
+        // length; to make the cap meaningful, bloat the bodies.
         let buffer = try await DiskSpanBuffer(dbPath: dbPath, maxTotalBytes: 2048)
         defer { Task { await buffer.shutdown() } }
 
-        for i in 0..<20 {
-            await buffer.persist([DiskSpanBufferTestSupport.fakeSpan(name: "span.\(i)")], sessionId: "s")
+        let bigBody = [UInt8](repeating: 0x41, count: 512)
+        for _ in 0..<20 {
+            await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: bigBody))
         }
         let survivors = await buffer.fetchAll(limit: 100)
         #expect(survivors.count < 20)
-        // The YOUNGEST spans survive (oldest-first eviction). If any
-        // survivor is span.N for small N while span.M for larger M was
-        // pruned, the ORDER BY is wrong.
-        let survivorIndices = survivors.compactMap { row -> Int? in
-            guard let name = row.record?.name,
-                  name.hasPrefix("span."),
-                  let n = Int(name.dropFirst("span.".count)) else { return nil }
-            return n
-        }
-        #expect(survivorIndices == survivorIndices.sorted())
-        if let minSurvivor = survivorIndices.min(),
-           let maxPruned = (0..<20).filter({ !survivorIndices.contains($0) }).max() {
-            #expect(minSurvivor > maxPruned)
-        }
+        // Survivors must be a contiguous tail of the insertion order
+        // (oldest-first eviction).
+        let ids = survivors.map(\.id)
+        #expect(ids == ids.sorted())
+    }
+
+    @Test("totalSizeBytes sums all rows")
+    func totalSizeBytesSums() async throws {
+        let dbPath = DiskSpanBufferTestSupport.tempDbPath()
+        defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
+        let buffer = try await DiskSpanBuffer(dbPath: dbPath)
+        defer { Task { await buffer.shutdown() } }
+
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [0x01, 0x02, 0x03]))
+        await buffer.persist(DiskSpanBufferTestSupport.fakeRequest(bodyBytes: [0x04, 0x05]))
+        #expect(await buffer.totalSizeBytes() == 5)
     }
 }

@@ -88,13 +88,27 @@ public enum OTLPExporterFactory {
     /// Build an OTLP/HTTP trace exporter. Same semantics as
     /// `makeHttpLogExporter`: appends `/v1/traces` if missing, bearer auth,
     /// gzipped protobuf over the wire.
+    ///
+    /// `httpClient` is injected when the caller wants to intercept POST
+    /// outcomes — typically to persist failed batches to disk via
+    /// `PersistingTraceHTTPClient`. When nil, the upstream default
+    /// (`BaseHTTPClient` over `URLSession.ephemeral`) is used.
     public static func makeHttpTraceExporter(
         endpoint: String,
         authToken: String?,
-        extraHeaders: [String: String] = [:]
+        extraHeaders: [String: String] = [:],
+        httpClient: HTTPClient? = nil
     ) throws -> OtlpHttpTraceExporter {
         let url = try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/traces")
         let otlpConfig = buildOtlpConfig(authToken: authToken, extraHeaders: extraHeaders)
+        if let httpClient = httpClient {
+            return OtlpHttpTraceExporter(
+                endpoint: url,
+                config: otlpConfig,
+                httpClient: httpClient,
+                envVarHeaders: nil
+            )
+        }
         return OtlpHttpTraceExporter(
             endpoint: url,
             config: otlpConfig,

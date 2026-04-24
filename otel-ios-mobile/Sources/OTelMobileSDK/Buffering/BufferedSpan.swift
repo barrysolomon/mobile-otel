@@ -1,69 +1,73 @@
 import Foundation
-import OpenTelemetrySdk
 
-/// Disk-persisted span wrapper. Mirrors `BufferedEvent` but carries the
-/// upstream `SpanData` (Codable) instead of `ReadableLogRecord`. Used by
-/// `DiskSpanBuffer` for fail-to-disk persistence when the OTLP trace
-/// exporter returns `.failure`.
+/// Disk-persisted OTLP trace request. When the in-memory OTLP/HTTP trace
+/// exporter's underlying POST fails (network error, 5xx, 429), the bytes
+/// it tried to send are spilled to disk so the next process launch can
+/// replay them.
 ///
-/// `id` is the sqlite rowid; only meaningful on reads. `spanKey` is the
-/// dedup unique index (traceId hex + spanId hex) — prevents duplicate
-/// disk rows when the same batch is re-presented during RetryableExporter
-/// backoffs or crash-safety mid-persist.
-public struct BufferedSpan: Sendable {
+/// Storing the raw serialized request body (pre-gzipped protobuf) instead
+/// of the decoded `[SpanData]` avoids re-serialization on replay and keeps
+/// the collector's view of the payload byte-identical across attempts —
+/// good for idempotency and for preserving any adapter-specific encoding
+/// choices the upstream exporter made.
+///
+/// `id` is the sqlite rowid; only meaningful on reads. `requestKey` is a
+/// UUID generated at persist time — not derived from body bytes, because
+/// legitimate retries can produce byte-identical payloads that deserve
+/// their own rows.
+public struct BufferedSpanRequest: Sendable {
     public let id: Int64
-    public let spanKey: String
-    public let startTimeUnixNano: UInt64
+    public let requestKey: String
+    public let endpoint: URL
+    public let headers: [String: String]
+    public let body: Data
     public let sessionId: String
-    public let record: SpanData?
-    public let recordData: Data
     public let sizeBytes: Int
     public let createdAt: Date
 
     public init(
         id: Int64 = 0,
-        spanKey: String,
-        startTimeUnixNano: UInt64,
+        requestKey: String,
+        endpoint: URL,
+        headers: [String: String],
+        body: Data,
         sessionId: String,
-        record: SpanData? = nil,
-        recordData: Data = Data(),
         createdAt: Date = Date()
     ) {
         self.id = id
-        self.spanKey = spanKey
-        self.startTimeUnixNano = startTimeUnixNano
+        self.requestKey = requestKey
+        self.endpoint = endpoint
+        self.headers = headers
+        self.body = body
         self.sessionId = sessionId
-        self.record = record
-        self.recordData = recordData
-        self.sizeBytes = recordData.count
+        self.sizeBytes = body.count
         self.createdAt = Date(timeIntervalSince1970: max(0, createdAt.timeIntervalSince1970))
     }
 
-    /// Build a `BufferedSpan` from an upstream `SpanData`. Encodes the
-    /// record to JSON for disk persistence. Returns `nil` if encoding
-    /// fails — per SDK_SAFETY.md, buffer malfunction must never crash
-    /// the host.
-    public static func from(
-        _ span: SpanData,
-        sessionId: String,
-        encoder: JSONEncoder = JSONEncoder()
-    ) -> BufferedSpan? {
-        guard let data = try? encoder.encode(span) else { return nil }
-        let key = span.traceId.hexString + span.spanId.hexString
-        let secs = max(0, span.startTime.timeIntervalSince1970)
-        let startNs = UInt64(secs * 1_000_000_000)
-        return BufferedSpan(
-            spanKey: key,
-            startTimeUnixNano: startNs,
-            sessionId: sessionId,
-            record: span,
-            recordData: data
+    /// Build a fresh `BufferedSpanRequest` for a pending POST. Assigns a
+    /// UUID request key so concurrent retries of byte-identical payloads
+    /// each get their own row.
+    public static func pending(
+        endpoint: URL,
+        headers: [String: String],
+        body: Data,
+        sessionId: String
+    ) -> BufferedSpanRequest {
+        BufferedSpanRequest(
+            requestKey: UUID().uuidString,
+            endpoint: endpoint,
+            headers: headers,
+            body: body,
+            sessionId: sessionId
         )
     }
 }
 
-extension BufferedSpan: Equatable {
-    public static func == (lhs: BufferedSpan, rhs: BufferedSpan) -> Bool {
-        lhs.spanKey == rhs.spanKey && lhs.recordData == rhs.recordData
+extension BufferedSpanRequest: Equatable {
+    public static func == (lhs: BufferedSpanRequest, rhs: BufferedSpanRequest) -> Bool {
+        lhs.requestKey == rhs.requestKey
+            && lhs.endpoint == rhs.endpoint
+            && lhs.body == rhs.body
+            && lhs.sessionId == rhs.sessionId
     }
 }
