@@ -25,6 +25,32 @@ public final class OTelMobileCallSink: BridgeCallSink {
         if let dataset = config.dataset, !dataset.isEmpty {
             extraHeaders["Dash0-Dataset"] = dataset
         }
+
+        // Open dual disk buffers (logs + spans) synchronously via a
+        // DispatchSemaphore bridge. The sink's start() is synchronous
+        // (the RN bridge contract expects it), but DiskLogBuffer and
+        // DiskSpanBuffer are actors with async init — same pattern the
+        // iOS-native AstronomyShop demo uses in ShopBootstrap.swift.
+        // 5s timeout lets a bricked sqlite path fall back to "no disk
+        // buffer" rather than hanging RN startup forever.
+        let diskBaseDir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("io.dash0.mobile")
+        try? FileManager.default.createDirectory(
+            at: diskBaseDir, withIntermediateDirectories: true)
+        let logDbPath = diskBaseDir.appendingPathComponent("buffer.db")
+        let spanDbPath = diskBaseDir.appendingPathComponent("span-buffer.db")
+
+        var logBuffer: DiskLogBuffer?
+        var spanBuffer: DiskSpanBuffer?
+        let openSemaphore = DispatchSemaphore(value: 0)
+        Task {
+            logBuffer = try? await DiskLogBuffer(dbPath: logDbPath)
+            spanBuffer = try? await DiskSpanBuffer(dbPath: spanDbPath)
+            openSemaphore.signal()
+        }
+        _ = openSemaphore.wait(timeout: .now() + 5)
+
         let mobileConfig = MobileConfig(
             serviceName: config.serviceName,
             serviceVersion: config.serviceVersion ?? "unknown",
@@ -57,7 +83,10 @@ public final class OTelMobileCallSink: BridgeCallSink {
             extraResourceAttributes: config.extraResourceAttributes
         )
         do {
-            otel = try OTelMobile.start(config: mobileConfig)
+            otel = try OTelMobile.start(
+                config: mobileConfig,
+                diskBuffer: logBuffer,
+                spanDiskBuffer: spanBuffer)
         } catch {
             // Start failure is logged but non-fatal — JS side stays operational
             // and future emitBatch calls become no-ops until a successful start.
