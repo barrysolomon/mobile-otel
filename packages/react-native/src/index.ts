@@ -59,11 +59,60 @@ let autoInstrUninstallers: Array<() => void> = [];
 // cleanly, so we accept the limitation and document it on the public API.
 const spanStack: string[] = [];
 
+/// Anchor pair used by `nowUnixNano` to combine an absolute-epoch
+/// base (from `Date.now()`) with a sub-ms monotonic delta (from
+/// `performance.now()`). Initialized lazily on the first timestamp
+/// request so we don't pay the cost for consumers who never emit.
+///
+/// Why the anchor pattern: `performance.now()` gives sub-ms precision
+/// but returns time-since-an-arbitrary-origin, not wall-clock epoch.
+/// `Date.now()` gives wall-clock but only ms resolution. Capturing
+/// both once, then deriving each timestamp as `epochAnchor + perfDelta`
+/// yields sub-ms wall-clock nanoseconds without per-call drift.
+let _epochAnchorMs: number | null = null;
+let _perfAnchorMs: number | null = null;
+
+function perfNow(): number {
+  // RN 0.85 new-arch ships `global.performance.now` via JSI. Older
+  // runtimes (Hermes < 0.12, some test harnesses) may not. Fall back
+  // gracefully — callers still get correct ms-resolution nanoseconds
+  // in that case, just not the sub-ms fidelity.
+  const g = globalThis as { performance?: { now?: () => number } };
+  if (typeof g.performance?.now === 'function') {
+    return g.performance.now();
+  }
+  return Date.now();
+}
+
 function nowUnixNano(): string {
-  // Date.now() is ms; multiply to nanoseconds. JS numbers lose precision past
-  // 2^53, but UNIX nanos in 2026 fit well under that — keep as string for the
-  // bridge contract regardless.
-  return String(Date.now() * 1_000_000);
+  // Initialize anchor lazily. The offset between the two reads is at
+  // most one JS tick — negligible for observability purposes.
+  if (_epochAnchorMs === null || _perfAnchorMs === null) {
+    _epochAnchorMs = Date.now();
+    _perfAnchorMs = perfNow();
+  }
+
+  const elapsedMs = perfNow() - _perfAnchorMs;
+  // Sub-ms fraction; convert to nanoseconds as an integer.
+  const extraNanos = Math.floor(elapsedMs * 1_000_000);
+
+  // BigInt is required for correctness. Unix nanoseconds in 2026
+  // are ~1.77e18, well past JS `Number.MAX_SAFE_INTEGER` (2^53 ≈
+  // 9.01e15). The previous `Date.now() * 1_000_000` implementation
+  // lost precision on every call (rounding to ~128-nanosecond bands),
+  // which collapsed nested child spans' start+end timestamps to
+  // identical values and surfaced as `duration=0ms` in Dash0.
+  const totalNanos =
+    BigInt(_epochAnchorMs) * 1_000_000n + BigInt(extraNanos);
+  return totalNanos.toString();
+}
+
+/// Test-only: reset the anchors so each test case starts fresh.
+/// Not exported from the public entry point — accessed in Jest via
+/// the internal require path.
+export function __resetTimestampAnchorForTests__(): void {
+  _epochAnchorMs = null;
+  _perfAnchorMs = null;
 }
 
 function randomSpanId(): string {
