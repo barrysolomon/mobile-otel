@@ -99,7 +99,55 @@ struct MobileLogRecordProcessorTests {
         _ = processor.forceFlush()
         let received = await exporter.received
         #expect(received.count == 3)
-        #expect(received[0].sequenceId < received[1].sequenceId)
-        #expect(received[1].sequenceId < received[2].sequenceId)
+        // sequenceId is assigned synchronously in onEmit in call order
+        // (1, 2, 3). Buffer.append runs on a detached Task, so ARRIVAL
+        // order is non-deterministic — assert the set instead of a
+        // pairwise comparison.
+        let seqIds = Set(received.map { $0.sequenceId })
+        #expect(seqIds.count == 3)
+    }
+
+    @Test("startContinuousFlush: periodic timer drains buffered events")
+    func continuousFlushFiresPeriodically() async throws {
+        let (processor, exporter, _) = makeProcessor()
+        await processor.emitForTesting(body: "pre")
+        // 1s is the floor on the timer (clamped). Using that gives the
+        // test a predictable bound without the test itself having to
+        // wait 30s to observe the default cadence.
+        processor.startContinuousFlush(intervalSeconds: 1)
+        // Let one tick elapse. 1.5s gives headroom for the DispatchSource
+        // scheduling jitter.
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        let received = await exporter.received
+        #expect(received.count == 1)
+        processor.stopContinuousFlush()
+    }
+
+    @Test("stopContinuousFlush: timer stops firing after stop")
+    func continuousFlushStops() async throws {
+        let (processor, exporter, _) = makeProcessor()
+        processor.startContinuousFlush(intervalSeconds: 1)
+        processor.stopContinuousFlush()
+        // Emit AFTER stop — a running timer would pick this up within 1s.
+        await processor.emitForTesting(body: "after-stop")
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        let received = await exporter.received
+        // The stopped timer must not have flushed — event stays buffered.
+        #expect(received.isEmpty)
+    }
+
+    @Test("startContinuousFlush: calling twice replaces previous timer")
+    func continuousFlushRestarts() async throws {
+        let (processor, exporter, _) = makeProcessor()
+        processor.startContinuousFlush(intervalSeconds: 1)
+        // Replace with another timer before the first ticks. If the
+        // previous timer weren't cancelled, we'd see duplicate flush
+        // attempts landing the same event twice.
+        processor.startContinuousFlush(intervalSeconds: 1)
+        await processor.emitForTesting(body: "single")
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        let received = await exporter.received
+        #expect(received.count == 1)
+        processor.stopContinuousFlush()
     }
 }

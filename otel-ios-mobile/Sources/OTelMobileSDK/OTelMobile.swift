@@ -294,16 +294,11 @@ public final class OTelMobile: @unchecked Sendable {
             extraHeaders: config.extraHeaders
         )
 
-        // Small schedule delay for demo visibility — production deployments
-        // can tune this up; 2s gives crisp turnaround during live demos
-        // without being so aggressive that we spam the collector.
-        let batchLogProcessor = BatchLogRecordProcessor(
-            logRecordExporter: otlpLogExporter,
-            scheduleDelay: 2,
-            exportTimeout: 30,
-            maxQueueSize: 2048,
-            maxExportBatchSize: 512
-        )
+        // Spans still go through upstream's BatchSpanProcessor — the iOS
+        // MobileLogRecordProcessor analogue for traces doesn't exist yet,
+        // and BatchSpanProcessor handles batching/queuing natively.
+        // PersistingTraceHTTPClient intercepts BSP's POSTs at the HTTP
+        // layer when a spanDiskBuffer is configured.
         let batchSpanProcessor = BatchSpanProcessor(
             spanExporter: otlpTraceExporter,
             scheduleDelay: 2,
@@ -323,13 +318,34 @@ public final class OTelMobile: @unchecked Sendable {
             extraAttributes: config.extraResourceAttributes
         )
 
-        // `with(processors:)` appends — both processors receive every
-        // emitted log record.
+        // `MobileLogRecordProcessor` is the sole log pipeline. It buffers
+        // in RAM, drains through the OTLP exporter on forceFlush /
+        // selective flush / CONTINUOUS-mode periodic timer / FATAL-severity
+        // crash path, and spills RAM-evicted events to disk when a
+        // diskBuffer is configured.
+        //
+        // Historical note: an earlier iteration attached a second
+        // `BatchLogRecordProcessor` to this provider alongside
+        // `bufferProcessor`. Because `with(processors:)` appends and each
+        // processor owns its own export pipeline, every log emit was
+        // POSTed to OTLP twice, landing as duplicates in Dash0. Removing
+        // the batch processor fixed the dup and, combined with the new
+        // `startContinuousFlush` timer below, matches Android's single-
+        // pipeline model.
         let loggerProvider = LoggerProviderBuilder()
             .with(resource: resource)
-            .with(processors: [bufferProcessor, batchLogProcessor])
+            .with(processors: [bufferProcessor])
             .build()
         let logger = loggerProvider.get(instrumentationScopeName: "io.dash0.mobile")
+
+        // CONTINUOUS mode wants periodic log export so long-running apps
+        // don't rely on backgrounding or policy triggers for logs to land.
+        // Mirrors Android's `executor.scheduleAtFixedRate(forceFlush, ...)`
+        // in its `MobileLogRecordProcessor.start()`.
+        if config.exportMode == .continuous {
+            bufferProcessor.startContinuousFlush(
+                intervalSeconds: config.logExportIntervalSeconds)
+        }
 
         // Build the sampler from MobileConfig. Default is dynamic (10%
         // baseline / 100% for page.* + app.startup) so trace waterfalls

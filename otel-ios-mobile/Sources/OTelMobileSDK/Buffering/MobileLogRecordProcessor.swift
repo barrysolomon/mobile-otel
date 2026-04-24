@@ -43,6 +43,25 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// processor behaves exactly like the earlier no-policy implementation.
     private let policyEvaluator: PolicyEvaluator?
 
+    /// Periodic flush timer used in CONTINUOUS export mode. When running,
+    /// every `intervalSeconds` the timer calls `forceFlushBuffered()` so
+    /// long-lived apps in CONTINUOUS mode don't depend on backgrounding
+    /// or policy triggers for logs to land in the backend.
+    ///
+    /// Mirror of Android's `executor.scheduleAtFixedRate(forceFlush, N, N, SECONDS)`
+    /// loop inside Android's `MobileLogRecordProcessor`. Before this was
+    /// added, iOS compensated by attaching a second upstream
+    /// `BatchLogRecordProcessor` to the `LoggerProvider`, but that caused
+    /// every log record to be double-exported (both processors ran
+    /// independently and each POSTed the record to OTLP). See the
+    /// project's 2026-04-23b session notes for the bug investigation.
+    ///
+    /// Only used in CONTINUOUS mode. CONDITIONAL + HYBRID flush only on
+    /// policy match, which matches Android behaviour.
+    private var continuousTimer: DispatchSourceTimer?
+    private let timerQueue = DispatchQueue(label: "io.dash0.mobile.MobileLogRecordProcessor.timer",
+                                           qos: .utility)
+
     /// Production constructor: drains buffered records through an upstream OTel
     /// `LogRecordExporter` on forceFlush/selective-flush.
     public init(
@@ -189,7 +208,40 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     }
 
     public func shutdown(explicitTimeout: TimeInterval? = nil) -> ExportResult {
-        forceFlush(explicitTimeout: explicitTimeout)
+        stopContinuousFlush()
+        return forceFlush(explicitTimeout: explicitTimeout)
+    }
+
+    // MARK: - Periodic flush (CONTINUOUS mode)
+
+    /// Schedule a repeating `forceFlushBuffered()` call every
+    /// `intervalSeconds`. Idempotent — calling twice replaces the
+    /// previous timer. Call from `OTelMobile.start` when
+    /// `MobileConfig.exportMode == .continuous`.
+    ///
+    /// Why this exists: on iOS, the RAM buffer holds emitted events until
+    /// something explicitly drains it (policy trigger, backgrounding,
+    /// FATAL severity, explicit forceFlush). In CONTINUOUS mode callers
+    /// expect a steady trickle of exports even when the app is quietly
+    /// in the foreground — this timer provides that.
+    public func startContinuousFlush(intervalSeconds: UInt64) {
+        stopContinuousFlush()
+        // Clamp to a reasonable floor — a 0s timer would spin the CPU.
+        let interval = max(1, intervalSeconds)
+        let timer = DispatchSource.makeTimerSource(queue: timerQueue)
+        timer.schedule(deadline: .now() + .seconds(Int(interval)),
+                       repeating: .seconds(Int(interval)))
+        timer.setEventHandler { [weak self] in
+            _ = self?.forceFlushBuffered()
+        }
+        timer.resume()
+        continuousTimer = timer
+    }
+
+    /// Stop the periodic flush timer if one is running. Idempotent.
+    public func stopContinuousFlush() {
+        continuousTimer?.cancel()
+        continuousTimer = nil
     }
 
     // MARK: - Selective flush

@@ -50,6 +50,17 @@ public struct MobileConfig: Sendable {
     /// `MobileConfig.extraResourceAttributes`.
     public let extraResourceAttributes: [String: String]
 
+    /// Cadence for the CONTINUOUS-mode periodic log flush. In CONTINUOUS
+    /// mode the buffer processor drains its RAM ring through the OTLP
+    /// exporter every N seconds so long-running apps don't rely on a
+    /// policy trigger or backgrounding event for logs to land in the
+    /// backend. Ignored in CONDITIONAL and HYBRID modes — those flush only
+    /// on policy match.
+    ///
+    /// Default 30s matches Android's `traceExportIntervalSeconds` so both
+    /// platforms have the same observable latency characteristics.
+    public let logExportIntervalSeconds: UInt64
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -66,7 +77,8 @@ public struct MobileConfig: Sendable {
         enablePredictiveExport: Bool = false,
         predictiveExportIntervalSeconds: UInt64 = 30,
         samplingConfig: SamplingConfig = .dynamic(normalRate: 0.1, highPriorityRate: 1.0),
-        extraResourceAttributes: [String: String] = [:]
+        extraResourceAttributes: [String: String] = [:],
+        logExportIntervalSeconds: UInt64 = 30
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -84,5 +96,6 @@ public struct MobileConfig: Sendable {
         self.predictiveExportIntervalSeconds = predictiveExportIntervalSeconds
         self.samplingConfig = samplingConfig
         self.extraResourceAttributes = extraResourceAttributes
+        self.logExportIntervalSeconds = logExportIntervalSeconds
     }
 }

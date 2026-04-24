@@ -26,8 +26,13 @@ struct SmokeTests {
 
         let events = await captured.events
         #expect(events.count == 3)
-        #expect(events[0].sequenceId < events[1].sequenceId)
-        #expect(events[1].sequenceId < events[2].sequenceId)
+        // sequenceId is assigned synchronously in `onEmit` (1, 2, 3 in call
+        // order) but the buffer.append runs on a detached Task, so the
+        // ORDER in which events land is non-deterministic under concurrency.
+        // Assert the set — the monotonicity invariant is already covered by
+        // `MobileLogRecordProcessor.sequenceIdsMonotonicAcrossEmits`.
+        let seqIds = Set(events.map { $0.sequenceId })
+        #expect(seqIds == [1, 2, 3])
 
         // All should share the same session id, UUID-formatted (8-4-4-4-12).
         let sessionIds = Set(events.map { $0.sessionId })
