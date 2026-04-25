@@ -116,6 +116,19 @@ class NavigationInstrumentation private constructor(
                         )
                     )
                     breadcrumbBuffer.add(breadcrumb)
+
+                    // Hook fragment lifecycle if this Activity hosts
+                    // fragments. No-ops cleanly when androidx.fragment
+                    // isn't on the host classpath OR the activity isn't
+                    // a FragmentActivity. Single-Activity-many-Fragment
+                    // apps (Jetpack Navigation Component pattern) get
+                    // per-fragment breadcrumbs from this — without it,
+                    // the timeline would only show the host Activity
+                    // and miss the actual user-perceived screen
+                    // transitions inside it.
+                    FragmentLifecycleInstrumentation.tryAttach(
+                        activity, config, breadcrumbBuffer
+                    )
                 }
 
                 override fun onActivityStarted(activity: Activity) {}

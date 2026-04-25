@@ -18,7 +18,7 @@ Prioritized remaining work. Items are grouped by track, ordered by priority with
 ### P1 — Auto-Capture Enhancements
 
 - [ ] **Compose Navigation support** — Intercept `NavHostController` navigation events for breadcrumbs
-- [ ] **Fragment lifecycle** — `FragmentManager.registerFragmentLifecycleCallbacks()` for breadcrumbs
+- [x] **Fragment lifecycle** — `FragmentManager.registerFragmentLifecycleCallbacks()` for breadcrumbs. Implemented as `FragmentLifecycleInstrumentation` in `otel-android-mobile-core/src/main/java/io/opentelemetry/android/mobile/navigation/FragmentLifecycleInstrumentation.kt` (parallel to `NavigationInstrumentation`). Hooked from `NavigationInstrumentation.onActivityCreated` so any FragmentActivity gets per-fragment breadcrumbs for free. `androidx.fragment` is `compileOnly` + reflective gate — Compose-only / pure-View apps without fragment-ktx are a clean no-op. 13 Robolectric unit tests cover the gating, attach path, all four lifecycle callbacks, allowlist filtering, and the NavigationInstrumentation hook integration.
 - [ ] **Early event queue** — Buffer up to 100 events before SDK init completes, replay after init
 - [ ] **ProGuard/R8 symbolication** — Parse mapping.txt to deobfuscate stack traces in ErrorInstrumentation. (Future enhancement, stubbed)
 
@@ -38,8 +38,8 @@ Target: >80% coverage. All core test files exist. Gaps remaining:
 - [x] **DynamicSamplerTest** — done
 - [x] **ExportModeTest** — CONDITIONAL/CONTINUOUS/HYBRID mode behavior, policy trigger gates (~60 tests)
 - [x] **UserJourneyExportModeTest** — 18 scenario tests across 4 journey families, cross-mode comparisons (~40 tests)
-- [ ] **JourneyBreadcrumbBufferTest** — FIFO eviction, thread safety, time-window filtering, JSON serialization (~15 tests)
-- [ ] **NavigationInstrumentationTest** — Activity lifecycle, deep link capture, manual navigation (~20 tests)
+- [x] **JourneyBreadcrumbBufferTest** — FIFO eviction, thread safety, time-window filtering, JSON serialization. 30 tests in `otel-android-mobile/src/test/java/io/opentelemetry/android/mobile/breadcrumb/JourneyBreadcrumbBufferTest.kt`, all pass under `./gradlew :otel-android-mobile:testDebugUnitTest --tests "*.JourneyBreadcrumbBufferTest"`.
+- [x] **NavigationInstrumentationTest** — Activity lifecycle, deep link capture, manual navigation. 23 tests in `otel-android-mobile/src/test/java/io/opentelemetry/android/mobile/navigation/NavigationInstrumentationTest.kt`, all pass.
 
 ### P0 — Unit Tests (Go)
 

@@ -59,6 +59,12 @@ dependencies {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
     implementation("androidx.core:core-ktx:1.17.0")
+    // Fragment lifecycle callbacks for FragmentLifecycleInstrumentation.
+    // compileOnly so the SDK doesn't force this dep on consumers that don't
+    // ship Fragment-hosting activities — the runtime path checks for the
+    // class via reflection and short-circuits when the dep isn't on the
+    // host classpath. Test classpath gets it explicitly below.
+    compileOnly("androidx.fragment:fragment-ktx:1.8.5")
     // Kotlin Serialization (used by JourneyBreadcrumb / JourneyBreadcrumbBuffer)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
@@ -69,4 +75,9 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    // Real fragment-ktx so FragmentLifecycleInstrumentation tests can
+    // actually exercise FragmentManager + FragmentLifecycleCallbacks under
+    // Robolectric. compileOnly above keeps the dep off SDK consumers; this
+    // test-only line is the matching test-side wiring.
+    testImplementation("androidx.fragment:fragment-ktx:1.8.5")
 }
