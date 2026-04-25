@@ -124,30 +124,29 @@ dash0 -X spans query \
 `errors.ts` → `Dash0Mobile.log(..., 21)` → `bridge.emitSync` →
 native eager `forceFlush`.
 
-**Cross-platform note (2026-04-24):** the eager-forceFlush-on-FATAL
-contract is now LIBRARY-LEVEL on iOS — commit `39bd258` moved it
-out of the per-sink `emitLog` body and into
-`Dash0MobileBridgeDispatcher`, which calls `sink.forceFlush()`
-after every severity-21 emit. The protocol method has a default
-no-op extension, so production sinks override and
-test/lightweight sinks inherit safe behavior.
+**Cross-platform parity (landed 2026-04-25):** the eager-forceFlush-
+on-FATAL contract is library-level on both platforms now.
 
-The RN Android bridge dispatcher should mirror this: after
-`sink.emitLog(...)` for FATAL (severity ≥ 21), call
-`sink.forceFlush()` before continuing the batch. **Verify this is
-in the Java/Kotlin equivalent of `Dash0MobileBridgeDispatcher` on
-the Android side; if not, that's the parity work to land before
-Gate 3 can pass on RN Android.**
+- iOS: commit `39bd258` moved it out of the per-sink `emitLog`
+  body into `Dash0MobileBridgeDispatcher`, which calls
+  `sink.forceFlush()` after every severity-21 emit.
+- Android: commit `60375bd` mirrored the same change in
+  `Dash0MobileModule.dispatch`. `BridgeCallSink` interface
+  gained `fun forceFlush() = Unit` (default no-op so existing
+  implementations compile unchanged); `OTelMobileCallSink`
+  overrides to call
+  `OTelMobile.getLoggerProvider().getMobileProcessor().forceFlush()`,
+  wrapped in try/catch so a flush failure never throws out of
+  the dispatcher.
 
-Look for: `packages/react-native/android/.../Dash0MobileModule.kt`
-or similar. The Android sink protocol is `BridgeCallSink` (Kotlin
-interface). Add a `fun forceFlush()` with default `= Unit` and
-have the production `OTelMobileCallSink` override it to call
-`OTelMobile.forceFlush()`.
+5 unit tests in each platform's dispatcher test class assert the
+same invariants: FATAL severity ≥ 21 triggers flush, ERROR (17)
+does not, ordering is `emit → forceFlush → next payload`, multiple
+FATALs in a batch each get their own flush, and severity range
+21..24 all qualify.
 
-**Expected (after parity work):** 1 `app.error` FATAL log with
-full exception semconv (`exception.type`, `exception.message`,
-`exception.stacktrace`).
+**Expected:** 1 `app.error` FATAL log with full exception semconv
+(`exception.type`, `exception.message`, `exception.stacktrace`).
 
 **Query:**
 
@@ -247,11 +246,10 @@ original timestamps.
    RN-iOS-specific, likely affects RN Android too. Investigation
    tracked in the iPhone-branch session journal under "Gate 1
    unblock investigation."
-2. Gate 3 dispatcher-level eager-flush parity — iOS dispatcher
-   gained `sink.forceFlush()` invocation in `39bd258`; Android
-   needs the matching change in its Java/Kotlin
-   `Dash0MobileBridgeDispatcher` equivalent before Gate 3 will
-   pass on RN Android.
+2. Gate 3 dispatcher-level eager-flush parity — DONE 2026-04-25.
+   iOS landed `39bd258`, Android landed `60375bd`. Both
+   `BridgeCallSink` interfaces and dispatchers carry the same
+   contract; both have 5 dispatcher unit tests asserting it.
 3. Gate 4 expected to work for free (Android dual-tier buffer
    covers both logs and spans, unlike iOS BSP).
 
@@ -259,6 +257,14 @@ original timestamps.
 
 ## 6. Session journal
 
+- **2026-04-25** — Gate 3 parity work landed: commit `60375bd`
+  added `forceFlush()` to the Android `BridgeCallSink` interface
+  with a default no-op, dispatcher invokes it after every
+  severity ≥ 21 emit, and `OTelMobileCallSink` overrides to call
+  `MobileLogRecordProcessor.forceFlush()`. 5 new dispatcher
+  tests pass (17/17 module tests total). Closes the iOS-Android
+  drift in this code path; on-device Gate 3 validation still
+  deferred for the emulator-network reason.
 - **2026-04-24** — runbook refreshed: linked the
   android-native.md environment-limitation section, replaced
   speculative `0eed784` JNI reference with concrete `39bd258`
