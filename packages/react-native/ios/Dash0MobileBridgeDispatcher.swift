@@ -60,12 +60,30 @@ public final class Dash0MobileBridgeDispatcher {
         switch kind {
         case "log":
             guard let name = p["name"] as? String else { return }
+            let severity = intValue(p["severity"]) ?? 9
             sink.emitLog(
                 name: name,
-                severity: intValue(p["severity"]) ?? 9,
+                severity: severity,
                 attributes: attrs,
                 timeUnixNano: stringAsUInt64(p["timeUnixNano"])
             )
+            // FATAL-severity logs (OTel semconv 21..24) are the crash
+            // path. JS-side bypasses the 50ms debounce via emitSync, but
+            // the payload still sits in MobileLogRecordProcessor's RAM
+            // buffer. The willTerminate observer (1a69c7e) doesn't fire
+            // on RN's abort()/_exit() termination, so we eagerly flush
+            // here BEFORE the next payload in the batch. The sink's
+            // forceFlush() is synchronous: it drains RAM and persists
+            // any export failures to disk so the next launch can recover.
+            //
+            // Lives in the dispatcher rather than each sink so every
+            // BridgeCallSink consumer benefits — was previously wired
+            // demo-app-locally in OTelMobileCallSink.emitLog, which left
+            // non-RN consumers exposed to the same bridge-RAM-buffer
+            // race.
+            if severity >= 21 {
+                sink.forceFlush()
+            }
         case "spanStart":
             guard
                 let spanId = p["spanId"] as? String,

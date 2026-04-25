@@ -111,22 +111,14 @@ public final class OTelMobileCallSink: BridgeCallSink {
         }
         builder.emit()
 
-        // FATAL-severity logs (21 in OTel semconv) are the crash path. The
-        // RN ErrorUtils handler emits these from JS moments before the
-        // process dies, and the JS-side bridge already bypasses the 50ms
-        // debounce via `emitSync`. But the payload still sits in
-        // `MobileLogRecordProcessor`'s RAM buffer waiting for the next
-        // batch export; the `willTerminate` observer (commit 1a69c7e)
-        // does not fire reliably on RN-JS-throw-induced termination
-        // (RN's fatal reporter terminates via abort()/exit() and skips
-        // UIApplication lifecycle teardown). Eagerly call `forceFlush`
-        // here so the RAM buffer drains to disk synchronously — the
-        // SynchronousLogRecordExporter wrapper + MobileLogRecordProcessor's
-        // fail-persist path guarantee the event is recoverable on next
-        // launch even if the network call is unreachable or too slow.
-        if severity >= 21 {
-            _ = instance.forceFlush()
-        }
+        // NOTE: FATAL-severity (>=21) eager forceFlush is now centralized
+        // in `Dash0MobileBridgeDispatcher` — it calls `sink.forceFlush()`
+        // on the protocol after dispatching a FATAL emit, so every
+        // BridgeCallSink consumer (including this demo sink) gets the
+        // crash-path drain for free. Used to live here as a per-sink
+        // hand-rolled `if severity >= 21 { _ = instance.forceFlush() }`
+        // block; moved out so non-RN consumers writing their own sinks
+        // don't have to re-derive the bridge-RAM-buffer race fix.
     }
 
     public func startSpan(
@@ -230,6 +222,17 @@ public final class OTelMobileCallSink: BridgeCallSink {
         spanLock.lock()
         liveSpans.removeAll()
         spanLock.unlock()
+    }
+
+    /// Synchronous drain of every buffered log + span through the OTLP
+    /// exporter, persisting on failure. Invoked by
+    /// `Dash0MobileBridgeDispatcher` after a FATAL-severity (>=21) log
+    /// emit so the crash payload lands in Dash0 even when RN's fatal
+    /// reporter terminates via abort()/_exit() and skips
+    /// UIApplication.willTerminateNotification.
+    public func forceFlush() {
+        guard let instance = otel else { return }
+        _ = instance.forceFlush()
     }
 
     // MARK: - Helpers

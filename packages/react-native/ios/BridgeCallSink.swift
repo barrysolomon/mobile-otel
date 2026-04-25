@@ -14,6 +14,34 @@ public protocol BridgeCallSink: AnyObject {
     func recordMetric(name: String, instrumentType: String, value: Double, attributes: [String: Any], timeUnixNano: UInt64)
     func flushWindow(minutes: Int)
     func shutdown()
+
+    /// Synchronously flush every buffered telemetry record through the
+    /// underlying SDK's exporter, persisting any in-flight records to
+    /// disk on export failure. Called by `Dash0MobileBridgeDispatcher`
+    /// immediately after dispatching a FATAL-severity (>=21) log emit,
+    /// before continuing to the next payload in the batch.
+    ///
+    /// **Why this is in the protocol, not the dispatcher:** the
+    /// dispatcher could call something like `sink.flushWindow(...)`,
+    /// but that's selective + async. FATAL needs synchronous flush of
+    /// everything because the process is about to die on the calling
+    /// thread (RN's fatal reporter terminates via `abort()` / `_exit()`,
+    /// skipping `UIApplication.willTerminateNotification`). The sink
+    /// has the underlying SDK handle and knows how to do a real
+    /// synchronous flush; the dispatcher only knows the protocol.
+    ///
+    /// Default implementation is a no-op — sinks that don't have an
+    /// underlying SDK to flush (e.g. `NoopSink`, lightweight test
+    /// fakes) inherit safe behavior. Production sinks like
+    /// `OTelMobileCallSink` override.
+    func forceFlush()
+}
+
+extension BridgeCallSink {
+    public func forceFlush() {
+        // Default no-op. Override in concrete sinks that wrap a real
+        // exporter (e.g. OTelMobileCallSink calls `OTelMobile.forceFlush`).
+    }
 }
 
 public struct BridgeStartConfig: Equatable {

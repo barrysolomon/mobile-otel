@@ -152,6 +152,23 @@ final class OTelMobileCallSink: BridgeCallSink {
         spanLock.unlock()
     }
 
+    /// Drain all RAM-buffered telemetry through the OTLP exporter,
+    /// persisting on export failure. Called by `Dash0MobileBridgeDispatcher`
+    /// after dispatching a FATAL-severity log emit, before continuing
+    /// to the next payload in the same batch.
+    ///
+    /// `OTelMobile.forceFlush` is synchronous and routes both logs and
+    /// pending spans through the configured persistence path
+    /// (`MobileLogRecordProcessor` for logs, `BatchSpanProcessor`'s
+    /// shutdown drain for spans). On RN's abort()/_exit() termination
+    /// path this is the only thing that gives the FATAL log a chance
+    /// to land in Dash0 — the willTerminate observer doesn't fire on
+    /// abort().
+    func forceFlush() {
+        guard let otel = otel else { return }
+        _ = otel.forceFlush()
+    }
+
     // MARK: - Helpers
 
     private static func toAttributeValues(_ raw: [String: Any]) -> [String: AttributeValue] {
