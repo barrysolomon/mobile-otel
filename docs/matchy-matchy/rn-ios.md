@@ -297,21 +297,26 @@ Offline window:
 
 - App runs, all OTLP/HTTP trace POSTs fail with DNS NoSuchRecord
   for `ingress-offline-test.invalid`.
-- `PersistingTraceHTTPClient` captures each failed request's body +
-  endpoint + headers + current session id to
-  `buffered_span_requests`.
-- Post-terminate disk state: 7 rows, 7595 bytes.
+- `PersistingTraceHTTPClient` captures each failed request's
+  body + current session id to `buffered_span_requests`.
+  Endpoint + headers are NOT persisted — replays route to the
+  user's CURRENT `MobileConfig` at recovery time.
+- Post-terminate disk state: N rows.
 
 Reconnect launch:
 
 - `OTelMobile.start` emits `app.recovery_start` with
-  `dash0.recovery.span_count=7`, `dash0.recovery.span_bytes_pending=7595`.
-- `OTelMobile.recoverSpanRequests` replays each row via
-  `BaseHTTPClient` → 7 POSTs to real Dash0 endpoint succeed (2xx)
-  → rows deleted.
-- Post-recovery disk state: 0 rows.
-- Dash0 receives 99 spans under `service.name=otel-rn-astronomy-shop`,
-  scope `io.dash0.mobile`, full ShopTelemetry waterfall intact.
+  `dash0.recovery.span_count=N`, `dash0.recovery.span_bytes_pending=…`.
+- `OTelMobile.recoverSpanRequests(from:endpoint:headers:httpClient:)`
+  replays each row via `BaseHTTPClient`, posting to the URL built
+  from `config.endpoint` with headers built from `config.authToken` +
+  `config.extraHeaders` (via `OTelMobile.buildReplayHeaders`).
+  2xx → row deleted, 5xx/429/network → leave on disk + stop batch,
+  4xx-non-429 → drop row. Latest device validation: 2 rows
+  persisted offline, both 2xx on replay, disk drained to 0.
+- Dash0 receives the original spans (the body bytes are
+  byte-identical OTLP protobuf, so the collector can't tell a
+  replayed payload from a live one).
 
 ### Architectural lesson (keep this, it's not obvious)
 
@@ -332,10 +337,20 @@ callback and the callback sees the real outcome.
 
 **Schema:** persist bytes, not decoded spans. At the HTTPClient
 layer, serialization has already happened — the body is
-pre-gzipped protobuf. Store those bytes directly in
-`buffered_span_requests(endpoint, headers_json, body, session_id, ...)`
-and replay by POSTing the original bytes. Byte-identical collector
-input = perfect idempotency.
+pre-gzipped protobuf. Store those bytes in
+`buffered_span_requests(request_key, body, session_id, size_bytes,
+created_at)` and replay by POSTing the original bytes. Byte-
+identical collector input = perfect idempotency.
+
+**Routing:** the persisted row does NOT carry the original
+endpoint or headers. Recovery routes to the URL + headers built
+from the user's CURRENT `MobileConfig`. This is the right
+default — token rotation, region migration, dataset rename, and
+typo fixes all do the right thing automatically because the
+caller's intent on the recovery launch is what counts. (The
+earlier design that captured endpoint/headers had to be reworked
+on the same day it shipped — see session memory
+`feedback_replay_routing.md`.)
 
 **Replay behavior per status:** 2xx → delete row. 5xx or 429 →
 leave on disk and stop the batch (don't hammer a dead collector).

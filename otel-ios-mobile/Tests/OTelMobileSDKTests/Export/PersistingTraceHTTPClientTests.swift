@@ -53,7 +53,7 @@ struct PersistingTraceHTTPClientTests {
 
     // MARK: - Integration with DiskSpanBuffer via stub delegate
 
-    @Test("on network error: body + endpoint + headers persist to disk")
+    @Test("on network error: body + sessionId persist to disk")
     func networkErrorPersists() async throws {
         let dbPath = DiskSpanBufferTestSupport.tempDbPath()
         defer { DiskSpanBufferTestSupport.removeFile(dbPath) }
@@ -65,6 +65,12 @@ struct PersistingTraceHTTPClientTests {
         let client = PersistingTraceHTTPClient(
             delegate: delegate, diskBuffer: buffer, sessionProvider: provider)
 
+        // Endpoint and headers on the URLRequest are deliberately NOT
+        // persisted. The buffer holds only the body + session id, plus
+        // the dedup key + timestamps. Replay-time routing comes from
+        // the user's current MobileConfig — a deliberate design choice
+        // so token rotation, region migration, dataset rename, and
+        // typo fixes between launches all do the right thing.
         var req = URLRequest(url: URL(string: "https://collector.example.com/v1/traces")!)
         req.httpMethod = "POST"
         req.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
@@ -86,9 +92,6 @@ struct PersistingTraceHTTPClientTests {
 
         let rows = await buffer.fetchAll(limit: 10)
         #expect(rows.count == 1)
-        #expect(rows[0].endpoint.absoluteString == "https://collector.example.com/v1/traces")
-        #expect(rows[0].headers["Authorization"] == "Bearer abc")
-        #expect(rows[0].headers["Content-Type"] == "application/x-protobuf")
         #expect(DiskSpanBufferTestSupport.bodyMatches(rows[0], bytes: [0xDE, 0xAD, 0xBE, 0xEF]))
         #expect(rows[0].sessionId == "test-session")
     }

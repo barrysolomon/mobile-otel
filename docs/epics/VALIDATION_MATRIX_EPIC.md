@@ -98,7 +98,7 @@ exists in code but not backend-validated this session. Red = gap.
 | Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
 | RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🟢 **verified 2026-04-23** 7 failed OTLP trace POSTs persisted to `buffered_span_requests` during *.invalid window, all 7 replayed on reconnect; 99 spans landed in Dash0 with original timestamps and full ShopTelemetry waterfall intact; `app.recovery_start` marker carried `dash0.recovery.span_count=7` + `dash0.recovery.span_bytes_pending=7595`. Fix intercepts at `HTTPClient` layer (`PersistingTraceHTTPClient`), not `SpanExporter` — see Gate 4 section for why the obvious decorator design is dead code |
+| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🟢 **verified 2026-04-23, redesigned 2026-04-24** 7 failed OTLP trace POSTs persisted to `buffered_span_requests`, replayed on reconnect; `app.recovery_start` marker carries `dash0.recovery.span_count` + `dash0.recovery.span_bytes_pending`. Fix intercepts at `HTTPClient` layer (`PersistingTraceHTTPClient`), not `SpanExporter`, because upstream `OtlpHttpTraceExporter.export()` returns `.success` synchronously before the HTTP call. Replay routing comes from the user's CURRENT `MobileConfig` (not whatever was captured at failure time), so token rotation / region migration / dataset rename / typo fixes between launches all do the right thing automatically. Re-validated end-to-end without any manual sqlite endpoint rewrites |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -228,16 +228,21 @@ different (broader) runbook; reconcile.
 
 ### RN iOS (AstronomyShopRN) — 3 of 4 gates green
 
-**Validated 2026-04-22 + 2026-04-23.** Service name:
-`otel-rn-astronomy-shop`. Result summary: **Gates 2 + 3 + 4 🟢,
-Gate 1 🔴** — Gate 1 remains an architectural choice (RN demo
-disables `autoCapture.lifecycle` + native defaults to `.none`)
-rather than a bug. Gate 3 (crash) took three iterations beyond the
-initial design; Gate 4 (offline) required a mid-course redesign
-from a SpanExporter decorator to an HTTPClient interceptor after
-the original approach was discovered to be dead code (upstream
-OTLP trace exporter returns `.success` synchronously before the
-HTTP call — see Gate 4 section for the full explanation).
+**Validated 2026-04-22, 2026-04-23, redesigned 2026-04-24.**
+Service name: `otel-rn-astronomy-shop`. Result summary: **Gates
+2 + 3 + 4 🟢, Gate 1 🔴** — Gate 1 remains an architectural
+choice (RN demo disables `autoCapture.lifecycle` + native
+defaults to `.none`) rather than a bug. Gate 3 (crash) took
+three iterations beyond the initial design; Gate 4 (offline)
+went through TWO design corrections: (a) original SpanExporter
+decorator was dead code because upstream OTLP trace exporter
+returns `.success` synchronously before the HTTP call, fixed by
+moving to an HTTPClient interceptor; (b) initial HTTPClient
+design captured + replayed to the captured endpoint, but that
+fails token rotation, region migration, and dataset rename
+between launches — fixed by routing replays through the user's
+CURRENT `MobileConfig`. The persisted schema now stores only
+the body bytes + session id, not endpoint or headers.
 
 Pre-flight (same for each gate run):
 
@@ -372,23 +377,29 @@ Procedure: cp otel-config.json → .invalid endpoint → rebuild JS
 bundle + Release .app → install + launch → drive UI for ~30s →
 terminate → swap back → rebuild → relaunch → query.
 
-Result on 2026-04-23 validation run:
-- Offline window: 7 OTLP trace POSTs to *.invalid fail DNS; each
-  gets captured by PersistingTraceHTTPClient and spilled to
-  buffered_span_requests (7595 bytes total, preserves endpoint +
-  headers + body).
-- On reconnect launch: Task.detached recovery block reads rowCount,
-  emits app.recovery_start with
-    dash0.recovery.span_count = 7
-    dash0.recovery.span_bytes_pending = 7595
-  then OTelMobile.recoverSpanRequests replays each row via
-  BaseHTTPClient → original endpoint. 7 POSTs to
-  ingress.us-west-2.aws.dash0.com return 2xx, rows deleted.
-- Dash0 backend: 99 spans land under service.name=
-  otel-rn-astronomy-shop, scope io.dash0.mobile, full
-  ShopTelemetry hierarchy intact (shop.view_product → detail.render
-  + detail.load_related; checkout → validate_cart → inventory_check
-  → calculate_totals → charge.authorize).
+Result on 2026-04-24 redesigned validation run:
+- Offline window: OTLP trace POSTs to *.invalid fail DNS; each
+  gets captured by PersistingTraceHTTPClient. Persisted shape is
+  body bytes + session id only — NOT endpoint or headers.
+  Disk state: 2 rows, 1356 bytes total.
+- On reconnect launch: Task.detached recovery block reads
+  rowCount, emits app.recovery_start with
+    dash0.recovery.span_count = 2
+    dash0.recovery.span_bytes_pending = 1356
+  then OTelMobile.recoverSpanRequests(from:endpoint:headers:
+  httpClient:batchSize:) replays each row via BaseHTTPClient,
+  POSTing to the URL built from CURRENT config.endpoint with
+  headers built by OTelMobile.buildReplayHeaders(authToken:
+  extraHeaders:). 2 POSTs to ingress.us-west-2.aws.dash0.com
+  return 2xx, rows deleted. NO manual sqlite endpoint rewrite
+  needed — the original validation in 2026-04-23 required
+  rewriting the captured endpoint column before relaunch
+  because the old design preserved the failed-export URL.
+- Dash0 backend: app.recovery_start marker landed with the
+  exact attribute values predicted by the persisted disk state
+  (count=2, bytes=1356). Replayed span bodies are byte-identical
+  OTLP protobuf so the collector treats them as live spans at
+  their original timestamps.
 
 Architectural lesson (IMPORTANT, reusable for iOS native + future
 work): the OBVIOUS-looking design — a SpanExporter decorator that
@@ -409,6 +420,22 @@ DiskSpanBuffer. We store bytes not SpanData because decoded spans
 are not available at the HTTPClient layer — and because raw-byte
 replay is actually better (byte-identical collector input means
 perfect idempotency).
+
+Second design lesson (2026-04-24): the schema initially preserved
+endpoint + headers along with the body, so replay POSTed to
+whatever URL was captured at failure time. That is wrong for the
+common lifecycle events that motivate offline buffering:
+  - Token rotation: Authorization header captured stale, replays 401
+  - Region migration: replays go to old region, never reach new one
+  - Dataset rename: replays land in deprecated dataset
+  - Endpoint typo fix: replays still go to the typo
+The corrected design persists ONLY the body + session_id + dedup
+key, and `recoverSpanRequests(from:endpoint:headers:httpClient:)`
+takes the destination as an explicit caller arg. The recovery
+block in OTelMobile.start derives both from the user's CURRENT
+MobileConfig at recovery time. Body bytes are byte-identical OTLP
+protobuf, so the collector still receives the original spans —
+only the routing reflects current intent.
 
 What drops vs retries vs succeeds on replay:
   - 2xx  → delete row (success; count toward `replayed`)

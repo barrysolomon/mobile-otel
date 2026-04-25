@@ -140,6 +140,14 @@ public enum OTLPExporterFactory {
         try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/logs")
     }
 
+    /// Derive the full traces-ingest URL from a user-supplied endpoint
+    /// string. Used by `OTelMobile.recoverSpanRequests` to route replays
+    /// to whatever endpoint the SDK is currently configured with —
+    /// independent of whatever was captured at the failed-export time.
+    static func buildTracesEndpointURL(from endpoint: String) throws -> URL {
+        try buildSignalEndpointURL(from: endpoint, signalPath: "/v1/traces")
+    }
+
     /// Generic endpoint-normalisation used by the log/trace/metric factories.
     /// If the caller already supplied a URL ending in `signalPath`, it's kept
     /// as-is; otherwise `signalPath` is appended (trailing-slash safe).

@@ -31,22 +31,14 @@ public enum DiskSpanBufferTestSupport {
         FileManager.default.fileExists(atPath: url.path)
     }
 
-    /// Build a fake pending `BufferedSpanRequest` for tests. Default headers
-    /// mirror what `OtlpHttpExporterBase.createRequest` actually sets in
-    /// production so replay-path tests exercise realistic inputs.
+    /// Build a fake pending `BufferedSpanRequest` for tests. Endpoint
+    /// and headers are no longer part of the persisted shape — replays
+    /// route to the user's current `MobileConfig` at recovery time, so
+    /// only the body + session-id need to round-trip through disk.
     public static func fakeRequest(
-        bodyBytes: [UInt8] = [0x08, 0x01],
-        endpoint: String = "https://example.invalid/v1/traces",
-        extraHeaders: [String: String] = [:]
+        bodyBytes: [UInt8] = [0x08, 0x01]
     ) -> BufferedSpanRequest {
-        var headers: [String: String] = [
-            "Content-Type": "application/x-protobuf",
-            "User-Agent": "OTel-OTLP-Exporter-Swift/test"
-        ]
-        for (k, v) in extraHeaders { headers[k] = v }
-        return BufferedSpanRequest.pending(
-            endpoint: URL(string: endpoint)!,
-            headers: headers,
+        BufferedSpanRequest.pending(
             body: Data(bodyBytes),
             sessionId: "test-session"
         )

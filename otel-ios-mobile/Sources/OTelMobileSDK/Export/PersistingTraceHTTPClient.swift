@@ -68,13 +68,14 @@ public final class PersistingTraceHTTPClient: HTTPClient, @unchecked Sendable {
         request: URLRequest,
         completion: @escaping (Result<HTTPURLResponse, Error>) -> Void
     ) {
-        // Snapshot request shape NOW, on the calling thread — URLRequest
-        // is a value type but URL/headerFields are read-mostly so this is
-        // a cheap defensive copy that also avoids racing with any later
-        // mutation the caller might do before the callback fires.
-        let endpoint = request.url
+        // Snapshot the body on the calling thread — URLRequest is a
+        // value type but httpBody is read-mostly so this is a cheap
+        // defensive copy. We deliberately do NOT capture the endpoint
+        // or headers; routing on replay uses the user's current
+        // MobileConfig so token rotation, region migration, dataset
+        // rename, and typo fixes between failed-export and recovery
+        // launches all do the right thing.
         let body = request.httpBody ?? Data()
-        let headers = request.allHTTPHeaderFields ?? [:]
 
         delegate.send(request: request) { [weak self] result in
             // Forward the original completion immediately. The upstream
@@ -85,13 +86,9 @@ public final class PersistingTraceHTTPClient: HTTPClient, @unchecked Sendable {
             completion(result)
 
             guard let self = self else { return }
-            guard Self.shouldPersist(result: result),
-                  let endpoint = endpoint,
-                  !body.isEmpty else { return }
+            guard Self.shouldPersist(result: result), !body.isEmpty else { return }
 
             let bufferedRequest = BufferedSpanRequest.pending(
-                endpoint: endpoint,
-                headers: headers,
                 body: body,
                 sessionId: self.sessionProvider.sessionId
             )

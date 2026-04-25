@@ -1,15 +1,19 @@
 import Foundation
 
-/// Disk-persisted OTLP trace request. When the in-memory OTLP/HTTP trace
-/// exporter's underlying POST fails (network error, 5xx, 429), the bytes
-/// it tried to send are spilled to disk so the next process launch can
-/// replay them.
+/// Disk-persisted OTLP trace request body. When the in-memory OTLP/HTTP
+/// trace exporter's underlying POST fails (network error, 5xx, 429), the
+/// raw serialized request body is spilled to disk so the next process
+/// launch can replay it.
 ///
-/// Storing the raw serialized request body (pre-gzipped protobuf) instead
-/// of the decoded `[SpanData]` avoids re-serialization on replay and keeps
-/// the collector's view of the payload byte-identical across attempts —
-/// good for idempotency and for preserving any adapter-specific encoding
-/// choices the upstream exporter made.
+/// We persist the body but NOT the original endpoint or headers. Routing
+/// decisions (where to send) and credentials (auth, dataset) come from
+/// the user's CURRENT `MobileConfig` at recovery time. This is correct
+/// for the realistic lifecycle events the obvious "store everything"
+/// design fails at: token rotation, region migration, dataset rename, or
+/// fixing a typo'd endpoint between the failed-export launch and the
+/// recovery launch. The body is byte-identical OTLP protobuf, so the
+/// collector receives the original spans regardless of where the request
+/// is now addressed.
 ///
 /// `id` is the sqlite rowid; only meaningful on reads. `requestKey` is a
 /// UUID generated at persist time — not derived from body bytes, because
@@ -18,8 +22,6 @@ import Foundation
 public struct BufferedSpanRequest: Sendable {
     public let id: Int64
     public let requestKey: String
-    public let endpoint: URL
-    public let headers: [String: String]
     public let body: Data
     public let sessionId: String
     public let sizeBytes: Int
@@ -28,16 +30,12 @@ public struct BufferedSpanRequest: Sendable {
     public init(
         id: Int64 = 0,
         requestKey: String,
-        endpoint: URL,
-        headers: [String: String],
         body: Data,
         sessionId: String,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.requestKey = requestKey
-        self.endpoint = endpoint
-        self.headers = headers
         self.body = body
         self.sessionId = sessionId
         self.sizeBytes = body.count
@@ -48,15 +46,11 @@ public struct BufferedSpanRequest: Sendable {
     /// UUID request key so concurrent retries of byte-identical payloads
     /// each get their own row.
     public static func pending(
-        endpoint: URL,
-        headers: [String: String],
         body: Data,
         sessionId: String
     ) -> BufferedSpanRequest {
         BufferedSpanRequest(
             requestKey: UUID().uuidString,
-            endpoint: endpoint,
-            headers: headers,
             body: body,
             sessionId: sessionId
         )
@@ -66,7 +60,6 @@ public struct BufferedSpanRequest: Sendable {
 extension BufferedSpanRequest: Equatable {
     public static func == (lhs: BufferedSpanRequest, rhs: BufferedSpanRequest) -> Bool {
         lhs.requestKey == rhs.requestKey
-            && lhs.endpoint == rhs.endpoint
             && lhs.body == rhs.body
             && lhs.sessionId == rhs.sessionId
     }

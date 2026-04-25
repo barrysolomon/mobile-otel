@@ -77,8 +77,8 @@ public actor DiskSpanBuffer {
     private func insertRow(_ req: BufferedSpanRequest) {
         let sql = """
             INSERT OR IGNORE INTO buffered_span_requests
-                (request_key, endpoint, headers_json, body, session_id, size_bytes, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?);
+                (request_key, body, session_id, size_bytes, created_at)
+                VALUES (?, ?, ?, ?, ?);
         """
         var stmt: OpaquePointer?
         guard let handle = db,
@@ -87,21 +87,14 @@ public actor DiskSpanBuffer {
         _ = req.requestKey.withCString { cstr in
             sqlite3_bind_text(stmt, 1, cstr, -1, Self.sqliteTransient)
         }
-        _ = req.endpoint.absoluteString.withCString { cstr in
-            sqlite3_bind_text(stmt, 2, cstr, -1, Self.sqliteTransient)
-        }
-        let headersJson = encodeHeaders(req.headers)
-        _ = headersJson.withCString { cstr in
-            sqlite3_bind_text(stmt, 3, cstr, -1, Self.sqliteTransient)
-        }
         _ = req.body.withUnsafeBytes { raw in
-            sqlite3_bind_blob(stmt, 4, raw.baseAddress, Int32(req.body.count), Self.sqliteTransient)
+            sqlite3_bind_blob(stmt, 2, raw.baseAddress, Int32(req.body.count), Self.sqliteTransient)
         }
         _ = req.sessionId.withCString { cstr in
-            sqlite3_bind_text(stmt, 5, cstr, -1, Self.sqliteTransient)
+            sqlite3_bind_text(stmt, 3, cstr, -1, Self.sqliteTransient)
         }
-        sqlite3_bind_int64(stmt, 6, Int64(req.sizeBytes))
-        sqlite3_bind_int64(stmt, 7, Int64(req.createdAt.timeIntervalSince1970 * 1000))
+        sqlite3_bind_int64(stmt, 4, Int64(req.sizeBytes))
+        sqlite3_bind_int64(stmt, 5, Int64(req.createdAt.timeIntervalSince1970 * 1000))
         _ = sqlite3_step(stmt)
     }
 
@@ -109,7 +102,7 @@ public actor DiskSpanBuffer {
     public func fetchAll(limit: Int) async -> [BufferedSpanRequest] {
         guard !closed, let handle = db, limit > 0 else { return [] }
         let sql = """
-            SELECT id, request_key, endpoint, headers_json, body, session_id, created_at
+            SELECT id, request_key, body, session_id, created_at
             FROM buffered_span_requests
             ORDER BY id ASC
             LIMIT ?;
@@ -123,22 +116,17 @@ public actor DiskSpanBuffer {
         while sqlite3_step(stmt) == SQLITE_ROW {
             let id = sqlite3_column_int64(stmt, 0)
             let requestKey = readCString(stmt, 1) ?? ""
-            guard let endpointStr = readCString(stmt, 2),
-                  let endpoint = URL(string: endpointStr) else { continue }
-            let headersStr = readCString(stmt, 3) ?? "{}"
-            let headers = decodeHeaders(headersStr)
-            let blobPtr = sqlite3_column_blob(stmt, 4)
-            let blobLen = Int(sqlite3_column_bytes(stmt, 4))
+            let blobPtr = sqlite3_column_blob(stmt, 2)
+            let blobLen = Int(sqlite3_column_bytes(stmt, 2))
             let body = (blobPtr != nil && blobLen > 0)
                 ? Data(bytes: blobPtr!, count: blobLen)
                 : Data()
-            let sessionId = readCString(stmt, 5) ?? ""
-            let createdMs = sqlite3_column_int64(stmt, 6)
+            let sessionId = readCString(stmt, 3) ?? ""
+            let createdMs = sqlite3_column_int64(stmt, 4)
             let createdAt = Date(timeIntervalSince1970: TimeInterval(createdMs) / 1000)
             out.append(BufferedSpanRequest(
-                id: id, requestKey: requestKey, endpoint: endpoint,
-                headers: headers, body: body, sessionId: sessionId,
-                createdAt: createdAt))
+                id: id, requestKey: requestKey, body: body,
+                sessionId: sessionId, createdAt: createdAt))
         }
         return out
     }
@@ -278,12 +266,21 @@ public actor DiskSpanBuffer {
         _ = runSql("PRAGMA journal_mode=WAL;")
         _ = runSql("PRAGMA synchronous=NORMAL;")
         _ = runSql("PRAGMA temp_store=MEMORY;")
+        // Schema rationale: we persist only the OTLP request BODY plus
+        // identifying metadata (session id, timestamps). Endpoint and
+        // headers are NOT stored — `recoverSpanRequests` replays to the
+        // CURRENTLY configured endpoint with the CURRENTLY configured
+        // headers (auth token, dataset, etc.), which is correct for
+        // realistic lifecycle events the previous design failed at:
+        // token rotation, region migration, dataset rename, and typo
+        // fixes between the failed-export and recovery launches. The
+        // body is byte-identical OTLP protobuf, so the collector still
+        // sees the original spans intact — only the routing reflects
+        // the user's current intent.
         _ = runSql("""
             CREATE TABLE IF NOT EXISTS buffered_span_requests (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_key   TEXT NOT NULL UNIQUE,
-                endpoint      TEXT NOT NULL,
-                headers_json  TEXT NOT NULL,
                 body          BLOB NOT NULL,
                 session_id    TEXT NOT NULL,
                 size_bytes    INTEGER NOT NULL,
@@ -313,23 +310,6 @@ public actor DiskSpanBuffer {
     private func readCString(_ stmt: OpaquePointer?, _ col: Int32) -> String? {
         guard let c = sqlite3_column_text(stmt, col) else { return nil }
         return String(cString: c)
-    }
-
-    private func encodeHeaders(_ headers: [String: String]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: headers, options: []),
-              let s = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return s
-    }
-
-    private func decodeHeaders(_ json: String) -> [String: String] {
-        guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data, options: []),
-              let dict = obj as? [String: String] else {
-            return [:]
-        }
-        return dict
     }
 
     // MARK: - sqlite destructor constants

@@ -550,16 +550,29 @@ public final class OTelMobile: @unchecked Sendable {
                         _ = await bufferProcessor.recoverFromDisk()
                     }
                     if let b = spanDiskBuffer, spanCount > 0 {
-                        // Use a vanilla BaseHTTPClient for replay so retry
-                        // failures don't re-persist the same rows we just
-                        // drained. Each row's endpoint + headers are the
-                        // originals (captured at the time of the failed
-                        // export), so routing is identical to what a live
-                        // export would have been.
-                        _ = await OTelMobile.recoverSpanRequests(
-                            from: b,
-                            httpClient: BaseHTTPClient(),
-                            batchSize: 64)
+                        // Replay routes through the user's CURRENT
+                        // MobileConfig — endpoint, auth token, extra
+                        // headers (Dash0-Dataset, etc.) all reflect what
+                        // the SDK is configured with on this launch, not
+                        // what was captured at the failed export. Token
+                        // rotation, region migration, and dataset rename
+                        // therefore "just work."
+                        //
+                        // Use a vanilla BaseHTTPClient (NOT
+                        // PersistingTraceHTTPClient) so retry failures
+                        // during replay don't re-persist the same rows
+                        // we're trying to drain.
+                        if let replayURL = try? OTLPExporterFactory.buildTracesEndpointURL(from: config.endpoint) {
+                            let replayHeaders = Self.buildReplayHeaders(
+                                authToken: config.authToken,
+                                extraHeaders: config.extraHeaders)
+                            _ = await OTelMobile.recoverSpanRequests(
+                                from: b,
+                                endpoint: replayURL,
+                                headers: replayHeaders,
+                                httpClient: BaseHTTPClient(),
+                                batchSize: 64)
+                        }
                     }
                 }
             }
@@ -677,10 +690,45 @@ public final class OTelMobile: @unchecked Sendable {
     ///
     /// Public for testability. Called from the `Task.detached` recovery
     /// block inside `start()`.
-    /// Replay persisted OTLP trace requests through `httpClient`. Each row
-    /// is POSTed individually; a row is deleted only after its POST returns
-    /// 2xx. Retryable failures (5xx, 429, network error) leave the row on
+    /// Build the header map used for OTLP/HTTP trace replays. Mirrors
+    /// the shape `OTLPExporterFactory.buildOtlpConfig` produces for live
+    /// exports: `Authorization: Bearer <token>` (when set), all caller-
+    /// supplied `extraHeaders`, plus `Content-Type: application/x-protobuf`
+    /// and `Content-Encoding: gzip` to match what the upstream
+    /// `OtlpHttpExporterBase.createRequest` adds to live requests. The
+    /// stored body is already gzipped protobuf, so the
+    /// `Content-Encoding: gzip` declaration is essential for the
+    /// collector to decompress it correctly on replay.
+    public static func buildReplayHeaders(
+        authToken: String?,
+        extraHeaders: [String: String]
+    ) -> [String: String] {
+        var headers: [String: String] = [
+            "Content-Type": "application/x-protobuf",
+            "Content-Encoding": "gzip",
+        ]
+        if let token = authToken, !token.isEmpty {
+            headers["Authorization"] = "Bearer \(token)"
+        }
+        for (k, v) in extraHeaders {
+            headers[k] = v
+        }
+        return headers
+    }
+
+    /// Replay persisted OTLP trace request bodies, routing each one to
+    /// `endpoint` with the supplied `headers`. Each row is POSTed
+    /// individually; a row is deleted only after its POST returns 2xx.
+    /// Retryable failures (5xx, 429, network error) leave the row on
     /// disk for the next launch.
+    ///
+    /// `endpoint` and `headers` come from the CURRENT `MobileConfig`,
+    /// not from anything captured at failure time. This is the correct
+    /// semantics for token rotation, region migration, dataset rename,
+    /// or fixing a typo'd endpoint between the failed-export launch
+    /// and the recovery launch — the body is byte-identical OTLP
+    /// protobuf, so the collector still sees the original spans, but
+    /// routing reflects the user's current intent.
     ///
     /// Returns the number of rows successfully replayed and deleted.
     ///
@@ -688,6 +736,8 @@ public final class OTelMobile: @unchecked Sendable {
     /// block inside `start()`.
     public static func recoverSpanRequests(
         from buffer: DiskSpanBuffer,
+        endpoint: URL,
+        headers: [String: String],
         httpClient: HTTPClient,
         batchSize: Int = 64,
         perRequestTimeout: TimeInterval = 30
@@ -698,7 +748,9 @@ public final class OTelMobile: @unchecked Sendable {
             if batch.isEmpty { break }
             for row in batch {
                 let outcome = await Self.replayOne(
-                    row: row,
+                    body: row.body,
+                    endpoint: endpoint,
+                    headers: headers,
                     httpClient: httpClient,
                     timeout: perRequestTimeout)
                 switch outcome {
@@ -723,16 +775,18 @@ public final class OTelMobile: @unchecked Sendable {
     private enum ReplayOutcome { case delete, retry, drop }
 
     private static func replayOne(
-        row: BufferedSpanRequest,
+        body: Data,
+        endpoint: URL,
+        headers: [String: String],
         httpClient: HTTPClient,
         timeout: TimeInterval
     ) async -> ReplayOutcome {
-        var request = URLRequest(url: row.endpoint)
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        for (k, v) in row.headers {
+        for (k, v) in headers {
             request.setValue(v, forHTTPHeaderField: k)
         }
-        request.httpBody = row.body
+        request.httpBody = body
 
         return await withCheckedContinuation { cont in
             let semaphore = DispatchSemaphore(value: 0)
