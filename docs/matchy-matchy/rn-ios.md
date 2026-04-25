@@ -122,6 +122,55 @@ AppState init race so the JS shim is reliable, or add an opt-in flag
 for native `lifecycle` capability that is known-safe with the RN
 new-arch event loop.
 
+### 2026-04-24 unblock investigation (DID NOT WORK — kept for record)
+
+Tried flipping `App.tsx:38` to remove `autoCapture: { lifecycle: false }` and
+relying on the existing 100ms defer in
+[`appstate.ts:71`](../../packages/react-native/src/instrumentation/appstate.ts#L71)
+to dodge the TurboModule init race. **Still redboxed** on iPhone 17
+Simulator iOS 26.4 + RN 0.85 + Hermes.
+
+Symptom (captured in `/tmp/gate1-app.log`):
+
+```text
+React: { Invariant Violation: TurboModuleRegistry.getEnforcing(...): 'PlatformConstants'
+  could not be found. Verify that a module by this name is registered in the native binary. }
+React: Unhandled JS Exception: Invariant Violation: ...
+CoreFoundation: *** Terminating app due to uncaught exception 'RCTFatalException' ...
+  stack:
+    invariant@68105:25
+    getEnforcing@68576:27
+    ...
+    get AppState@67469:24
+    resolveAppState@111842:<…>
+```
+
+Then bumped the defer from 100ms to 1500ms. Still redboxed — the
+Invariant Violation fires BEFORE the deferred setTimeout callback
+runs. Diagnosis: RN's `RCTFatal` catches the JS throw and converts
+it to a native fatal exception that bypasses our try/catch around
+`require('react-native')`. The defer is delaying *when* we touch
+AppState; it isn't preventing whatever asynchronous tick triggers
+the throw. This is upstream RN, not a defer-tuning problem.
+
+Reverted both changes. `lifecycle: false` stays. The 100ms defer
+is retained as defensive code in case a future RN version makes
+the race narrower.
+
+**Future-attempt ideas** (none tried yet, none proven):
+
+1. Defer until first `requestAnimationFrame` callback, then
+   `setTimeout(0)`. Empirically "after first paint" — should mean
+   all TurboModules are wired.
+2. Subscribe via a non-AppState mechanism — e.g. use the iOS
+   `UIApplication.willResignActiveNotification` from the bridge's
+   native side, surfacing as a synthetic JS-emit. Trade-off: native
+   event riding through bridge → JS → bridge round-trip.
+3. Wait for upstream RN to fix the new-arch init order. Filed as
+   GitHub issue search starting point: `react-native turbomodule
+   PlatformConstants getEnforcing useEffect`. Several open issues
+   exist in RN repo.
+
 ---
 
 ## 2. Gate 2 — Network 🟢

@@ -35,6 +35,15 @@ export default function App(): React.ReactElement {
       // RN 0.85 new-arch TurboModule init order makes `AppState` unreliable
       // inside the first useEffect. Disable lifecycle auto-capture until
       // the init-order story stabilizes upstream.
+      //
+      // 2026-04-24 re-investigated: tried bumping the JS-side defer to
+      // 1500ms. Still redboxes — the `Invariant Violation` from
+      // `TurboModuleRegistry.getEnforcing('PlatformConstants')` fires
+      // BEFORE the defer's setTimeout callback runs, and RN's `RCTFatal`
+      // converts the JS throw to a native fatal that bypasses our
+      // try/catch. This is upstream RN, not a defer-tuning problem.
+      // Leave `lifecycle: false` in place. Gate 1 stays 🔴 with this
+      // documented architectural cause.
       autoCapture: { lifecycle: false },
     }).catch(() => {
       // Non-RN runtime (tests, SSR) — safe to ignore

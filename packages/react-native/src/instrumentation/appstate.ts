@@ -61,11 +61,25 @@ export function installAppStateInstrumentation(
   // `TurboModuleRegistry.getEnforcing('PlatformConstants')`, and that registry
   // isn't ready inside the first useEffect of the first render.
   //
-  // 100ms is empirically enough for the new-arch TurboModule registry to
-  // finish wiring up. setTimeout(0) alone isn't — it fires on the same macrotask
-  // cycle as the failing useEffect. We accept the trade: lifecycle events
-  // fired within the first 100ms of start() are missed, but start() itself
-  // never redboxes.
+  // 2026-04-24 investigation: even with the 100ms defer, attempting to
+  // `require('react-native')` to resolve `AppState` consistently
+  // redboxes on iPhone 17 Simulator iOS 26.4 + RN 0.85 new-arch +
+  // Hermes. Bumping the defer to 1500ms did not help — `getEnforcing`
+  // throws BEFORE the defer fires, suggesting the Invariant Violation
+  // surfaces on a different scheduler tick than the JS try/catch we
+  // wrap it in (RN's `RCTFatal` catches the JS throw and converts it
+  // to a native fatal exception that bypasses our try/catch).
+  //
+  // Conclusion: this is an upstream RN issue, not something a longer
+  // timeout fixes. Keep the `lifecycle: false` opt-out in the demo
+  // app's `Dash0Mobile.start({...})` call until the upstream new-arch
+  // init order is addressed (or until we adopt a registry-ready signal
+  // like a `requestAnimationFrame` + `setTimeout(0)` chain that
+  // empirically waits for "after first paint").
+  //
+  // The 100ms defer here is retained as a defensive measure for any
+  // RN version where the race is narrower; it doesn't hurt non-redbox
+  // cases.
   let uninstaller: (() => void) | null = null;
   let uninstalled = false;
   const deferHandle = setTimeout(() => {

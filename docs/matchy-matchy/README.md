@@ -29,9 +29,9 @@ trigger. Unit tests do NOT count.
 | Platform | Runbook | Status |
 |---|---|---|
 | iOS native (AstronomyShop) | [`ios-native.md`](ios-native.md) | 🟢 all 4 gates (canonical) |
-| RN iOS (AstronomyShopRN) | [`rn-ios.md`](rn-ios.md) | 🟢 Gate 2 + 3 · 🔴 Gate 1 + 4 (documented root causes) |
-| Android native (demo-app, AstronomyShop Android) | [`android-native.md`](android-native.md) | 🟡 TODO |
-| RN Android (AstronomyShopRN on Android host) | [`rn-android.md`](rn-android.md) | 🟡 TODO |
+| RN iOS (AstronomyShopRN) | [`rn-ios.md`](rn-ios.md) | 🟢 Gate 2 + 3 + 4 · 🔴 Gate 1 (architectural choice) |
+| Android native (demo-app, AstronomyShop Android) | [`android-native.md`](android-native.md) | 🟡 scaffold complete, on-device validation deferred (emulator-network) |
+| RN Android (AstronomyShopRN on Android host) | [`rn-android.md`](rn-android.md) | 🟡 scaffold complete, on-device validation deferred (emulator-network) |
 
 ## Shared pre-flight (do once per session)
 
