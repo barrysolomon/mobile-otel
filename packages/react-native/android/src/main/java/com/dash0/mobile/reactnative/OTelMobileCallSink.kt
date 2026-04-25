@@ -138,6 +138,27 @@ internal class OTelMobileCallSink(
         OTelMobile.stop()
     }
 
+    /**
+     * Synchronous drain through the OTLP exporter, persisting any
+     * in-flight records to disk on export failure. Invoked by
+     * [Dash0MobileModule.dispatch] after a FATAL-severity (severity ≥ 21)
+     * log emit so the crash payload lands in Dash0 even when the JS
+     * fatal reporter terminates the process before the periodic flush
+     * timer fires.
+     *
+     * Mirrors iOS commit `39bd258` (library-level FATAL forceFlush).
+     */
+    override fun forceFlush() {
+        try {
+            OTelMobile.getLoggerProvider().getMobileProcessor().forceFlush()
+        } catch (_: Throwable) {
+            // Best-effort: a forceFlush failure on the FATAL path must
+            // never throw out of the dispatcher (we'd lose the rest of
+            // the batch). The SDK's own retry/disk-buffer handles any
+            // export failure under the hood.
+        }
+    }
+
     companion object {
         private const val SCOPE = "io.dash0.mobile.reactnative"
 

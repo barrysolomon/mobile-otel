@@ -93,12 +93,27 @@ class Dash0MobileModule internal constructor(
         val kind = p.getString("kind") ?: return
         val attrs = p.getMapOrNull("attributes")?.toAttributeMap() ?: emptyMap()
         when (kind) {
-            "log" -> sink.emitLog(
-                name = p.getString("name") ?: return,
-                severity = p.getInt("severity"),
-                attributes = attrs,
-                timeUnixNano = p.getStringAsLong("timeUnixNano"),
-            )
+            "log" -> {
+                val severity = p.getInt("severity")
+                sink.emitLog(
+                    name = p.getString("name") ?: return,
+                    severity = severity,
+                    attributes = attrs,
+                    timeUnixNano = p.getStringAsLong("timeUnixNano"),
+                )
+                // FATAL-severity logs (OTel semconv 21..24) are the
+                // crash path. JS-side bypasses the 50ms debounce via
+                // emitSync, but the payload still sits in
+                // MobileLogRecordProcessor's RAM buffer waiting for the
+                // periodic flush. Eagerly drain BEFORE the next payload
+                // in the batch so the FATAL has a chance to reach disk
+                // (and from there OTLP) even if the next payload's
+                // dispatch path or the JS reporter terminates the
+                // process. Mirrors iOS dispatcher commit `39bd258`.
+                if (severity >= 21) {
+                    sink.forceFlush()
+                }
+            }
             "spanStart" -> sink.startSpan(
                 spanId = p.getString("spanId") ?: return,
                 parentSpanId = p.getStringOrNull("parentSpanId"),

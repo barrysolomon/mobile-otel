@@ -224,6 +224,117 @@ class Dash0MobileModuleTest {
     fun getName_returns_Dash0Mobile() {
         assertEquals("Dash0Mobile", module.name)
     }
+
+    // ── FATAL-severity forceFlush hook ───────────────────────────────────
+
+    @Test
+    fun emitLog_fatalSeverity_triggersForceFlush() {
+        val payload = JavaOnlyMap.of(
+            "kind", "log",
+            "name", "app.error",
+            "severity", 21.0,
+            "attributes", JavaOnlyMap.of(),
+            "timeUnixNano", "1700000000000000000",
+        )
+        module.emitBatch(JavaOnlyArray.of(payload), RecordingPromise())
+
+        assertEquals(1, sink.logs.size)
+        assertEquals(1, sink.forceFlushes)
+    }
+
+    @Test
+    fun emitLog_belowFatal_doesNotTriggerForceFlush() {
+        // 17 = ERROR in OTel semconv. Should NOT flush.
+        val payload = JavaOnlyMap.of(
+            "kind", "log",
+            "name", "app.error",
+            "severity", 17.0,
+            "attributes", JavaOnlyMap.of(),
+            "timeUnixNano", "1700000000000000000",
+        )
+        module.emitBatch(JavaOnlyArray.of(payload), RecordingPromise())
+
+        assertEquals(1, sink.logs.size)
+        assertEquals(0, sink.forceFlushes)
+    }
+
+    @Test
+    fun emitLog_fatalSeverity_flushOrderingIsPostEmitPrePeer() {
+        // FATAL log followed by another payload in the same batch. The
+        // dispatcher must emit the FATAL, force-flush, THEN dispatch
+        // the next payload — never the other way around.
+        val fatal = JavaOnlyMap.of(
+            "kind", "log",
+            "name", "app.error",
+            "severity", 21.0,
+            "attributes", JavaOnlyMap.of(),
+            "timeUnixNano", "1700000000000000000",
+        )
+        val context = JavaOnlyMap.of(
+            "kind", "log",
+            "name", "app.error.context",
+            "severity", 9.0,
+            "attributes", JavaOnlyMap.of(),
+            "timeUnixNano", "1700000000000000001",
+        )
+        module.emitBatch(JavaOnlyArray.of(fatal, context), RecordingPromise())
+
+        assertEquals(
+            listOf(
+                "emitLog(app.error,21)",
+                "forceFlush",
+                "emitLog(app.error.context,9)",
+            ),
+            sink.actionLog,
+        )
+    }
+
+    @Test
+    fun emitLog_multipleFatalsInBatch_eachTriggersFlush() {
+        // Two FATALs in a row — each gets its own flush. Wasteful but
+        // safer than batching: a flush after the first FATAL might
+        // succeed-then-die before reaching the second; flushing after
+        // each ensures both have a chance to reach disk independently.
+        val a = JavaOnlyMap.of(
+            "kind", "log", "name", "a", "severity", 21.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "1",
+        )
+        val b = JavaOnlyMap.of(
+            "kind", "log", "name", "b", "severity", 22.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "2",
+        )
+        module.emitBatch(JavaOnlyArray.of(a, b), RecordingPromise())
+
+        assertEquals(2, sink.forceFlushes)
+    }
+
+    @Test
+    fun emitLog_fatalSeverityRangeBoundary() {
+        // OTel semconv: FATAL severity range is 21..24. Anything ≥ 21
+        // is FATAL. The dispatcher's threshold (≥ 21) covers all.
+        val fatal22 = JavaOnlyMap.of(
+            "kind", "log", "name", "fatal2", "severity", 22.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "1",
+        )
+        val fatal23 = JavaOnlyMap.of(
+            "kind", "log", "name", "fatal3", "severity", 23.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "2",
+        )
+        val fatal24 = JavaOnlyMap.of(
+            "kind", "log", "name", "fatal4", "severity", 24.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "3",
+        )
+        val warn = JavaOnlyMap.of(
+            "kind", "log", "name", "warn", "severity", 13.0,
+            "attributes", JavaOnlyMap.of(), "timeUnixNano", "4",
+        )
+        module.emitBatch(
+            JavaOnlyArray.of(fatal22, fatal23, fatal24, warn),
+            RecordingPromise(),
+        )
+
+        assertEquals(3, sink.forceFlushes)
+    }
 }
 
 // ─── test doubles ────────────────────────────────────────────────────────
@@ -241,22 +352,47 @@ private class RecordingSink : BridgeCallSink {
     val metrics = mutableListOf<MetricCall>()
     val flushMinutes = mutableListOf<Int>()
     var shutdowns = 0
+    /**
+     * Order of `(action, payloadId)` so the ordering tests can assert
+     * forceFlush runs AFTER the FATAL emit but BEFORE the next payload
+     * — the dispatcher contract is "drain the buffer for the FATAL
+     * before the next payload could clobber it or the process dies."
+     */
+    val actionLog = mutableListOf<String>()
+    var forceFlushes = 0
 
-    override fun start(config: StartConfig) { starts += config }
+    override fun start(config: StartConfig) {
+        starts += config
+        actionLog += "start"
+    }
     override fun emitLog(name: String, severity: Int, attributes: Map<String, Any?>, timeUnixNano: Long) {
         logs += LogCall(name, severity, attributes, timeUnixNano)
+        actionLog += "emitLog($name,$severity)"
     }
     override fun startSpan(spanId: String, parentSpanId: String?, name: String, spanKind: String, attributes: Map<String, Any?>, startTimeUnixNano: Long) {
         spanStarts += SpanStartCall(spanId, parentSpanId, name, spanKind, attributes, startTimeUnixNano)
+        actionLog += "startSpan($name)"
     }
     override fun endSpan(spanId: String, status: String, statusMessage: String?, attributes: Map<String, Any?>, endTimeUnixNano: Long) {
         spanEnds += SpanEndCall(spanId, status, statusMessage, attributes, endTimeUnixNano)
+        actionLog += "endSpan($spanId)"
     }
     override fun recordMetric(name: String, instrumentType: String, value: Double, attributes: Map<String, Any?>, timeUnixNano: Long) {
         metrics += MetricCall(name, instrumentType, value, attributes, timeUnixNano)
+        actionLog += "recordMetric($name)"
     }
-    override fun flushWindow(minutes: Int) { flushMinutes += minutes }
-    override fun shutdown() { shutdowns += 1 }
+    override fun flushWindow(minutes: Int) {
+        flushMinutes += minutes
+        actionLog += "flushWindow($minutes)"
+    }
+    override fun shutdown() {
+        shutdowns += 1
+        actionLog += "shutdown"
+    }
+    override fun forceFlush() {
+        forceFlushes += 1
+        actionLog += "forceFlush"
+    }
 }
 
 private class RecordingPromise : Promise {

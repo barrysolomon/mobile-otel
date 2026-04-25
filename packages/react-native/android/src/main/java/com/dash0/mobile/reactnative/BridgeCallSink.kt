@@ -16,6 +16,25 @@ interface BridgeCallSink {
     fun recordMetric(name: String, instrumentType: String, value: Double, attributes: Map<String, Any?>, timeUnixNano: Long)
     fun flushWindow(minutes: Int)
     fun shutdown()
+
+    /**
+     * Synchronously drain every buffered telemetry record through the
+     * underlying SDK exporter, persisting any in-flight records to disk
+     * on export failure. Called by `Dash0MobileModule.dispatch`
+     * immediately after dispatching a FATAL-severity (severity ≥ 21)
+     * log emit, before continuing to the next payload in the batch.
+     *
+     * Mirrors the iOS [`BridgeCallSink.forceFlush`](../../../../../../../ios/BridgeCallSink.swift)
+     * contract introduced in commit `39bd258`. Default no-op so test
+     * fakes and lightweight non-RN consumers inherit safe behavior;
+     * production sinks override.
+     *
+     * Kept as a default method so existing implementations (test
+     * fakes from earlier RN-bridge work) compile without needing to
+     * be touched. Production [`OTelMobileCallSink.forceFlush`]
+     * overrides this to call [io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor.forceFlush].
+     */
+    fun forceFlush() = Unit
 }
 
 data class StartConfig(
