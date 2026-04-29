@@ -96,5 +96,12 @@ let package = Package(
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             ]
         ),
+        .testTarget(
+            name: "LifecycleInstrumentationTests",
+            dependencies: [
+                "LifecycleInstrumentation",
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            ]
+        ),
     ]
 )
