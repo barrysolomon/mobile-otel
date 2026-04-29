@@ -161,6 +161,14 @@ if [ "$RUN_IOS" = true ]; then
     if [ ! -d "$REPO_ROOT/otel-ios-mobile" ]; then
         echo -e "${YELLOW}⚠ otel-ios-mobile directory missing, skipping${NC}"
     else
+        # Prefer the Xcode toolchain when available — `otel-ios-mobile/run-tests.sh`
+        # injects framework search paths from the Command Line Tools install,
+        # which on a Xcode-active machine causes `_Testing_Foundation` to
+        # mis-resolve. With DEVELOPER_DIR pointed at Xcode, plain `swift test`
+        # picks up the right toolchain and Swift Testing resolves cleanly.
+        if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app ]; then
+            export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+        fi
         cd "$REPO_ROOT/otel-ios-mobile"
         if ./run-tests.sh; then
             echo -e "${GREEN}✓ iOS unit tests (host) passed${NC}"
@@ -169,9 +177,6 @@ if [ "$RUN_IOS" = true ]; then
         fi
 
         if [ "$RUN_INTEGRATION" = true ]; then
-            if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app ]; then
-                export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-            fi
             echo -e "${YELLOW}Running iOS Simulator tests (iPhone 17)...${NC}"
             if xcodebuild test \
                 -scheme OTelMobile-Package \

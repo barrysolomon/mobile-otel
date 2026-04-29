@@ -225,6 +225,28 @@ class MobileLoggerProvider private constructor(
             .addLogRecordProcessor(mobileProcessor)
             .build()
 
+        // Emit `app.recovery_start` marker if the disk buffer has leftover events
+        // from a previous launch that did not successfully export. Matches iOS's
+        // matchy-matchy Gate 4 contract: a queryable signal that recovery drain
+        // happened, with `dash0.recovery.event_count` attribute. Read pre-drain
+        // (drain runs on a 30s schedule, this code runs on calling thread).
+        try {
+            val pending = mobileProcessor.getBufferStats().diskBufferSize
+            if (pending > 0) {
+                sdkLoggerProvider.get("io.opentelemetry.android.mobile.recovery")
+                    .logRecordBuilder()
+                    .setBody("app.recovery_start")
+                    .setAttribute(
+                        io.opentelemetry.api.common.AttributeKey.longKey("dash0.recovery.event_count"),
+                        pending.toLong()
+                    )
+                    .emit()
+                android.util.Log.i("MobileLoggerProvider", "Emitted app.recovery_start marker with event_count=$pending")
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("MobileLoggerProvider", "Failed to emit app.recovery_start marker", t)
+        }
+
         // Build OpenTelemetry SDK with logging, tracing, metrics, and W3C context propagation
         openTelemetrySdk = OpenTelemetrySdk.builder()
             .setLoggerProvider(sdkLoggerProvider)
