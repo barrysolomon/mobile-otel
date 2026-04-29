@@ -11,3 +11,13 @@ android/local.properties
 .vscode/
 *.log
 otel-config.json
+
+# RN bundle outputs from `react-native bundle` + `assembleRelease`.
+# Generated on every Release build; should never be committed.
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-mdpi/
+android/app/src/main/res/drawable-xhdpi/
+android/app/src/main/res/drawable-xxhdpi/
+android/app/src/main/res/drawable-xxxhdpi/
+android/app/src/main/res/raw/
+ios/main.jsbundle
