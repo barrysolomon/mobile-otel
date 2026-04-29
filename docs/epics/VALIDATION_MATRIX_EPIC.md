@@ -95,10 +95,10 @@ exists in code but not backend-validated this session. Red = gap.
 
 | SDK | Gate 1 Lifecycle | Gate 2 Network | Gate 3 Crash | Gate 4 Offline |
 |---|---|---|---|---|
-| Android native (`otel-android-mobile/`) | 🟡 existing runbook, needs re-validation post-`iPhone`-branch SDK changes | 🟡 same | 🟡 same | 🟡 same |
+| Android native (`otel-android-mobile/`) | 🟢 **verified 2026-04-28** 3× `app.foreground` + 2× `app.background` + `app.start` from scope `io.opentelemetry.android.mobile.lifecycle` | 🟢 **verified 2026-04-28** 13/30 GET httpbin.org spans (10% sampler default), kind=CLIENT, full http.* + server.* semconv, scope `io.opentelemetry.android.demo.gate2`. Trigger added to MainActivity.onResume | 🟢 **verified 2026-04-28** 16 `app.crash` records, scope `error-instrumentation`, sev=17, full `exception.*` semconv, original timestamps. Driven via `--ez gate3_crash true` launch-intent extra → `multiThreadCrashing()` after 3s warmup | 🟢 **verified 2026-04-28** `app.recovery_start` marker w/ `dash0.recovery.event_count=6` (matches disk row count), scope `io.opentelemetry.android.mobile.recovery`. SDK fix: `MobileLoggerProvider.init` now emits this marker on disk-buffer-non-empty startup (previously Android only emitted `app.recovery` for crash/anr) |
 | iOS native (`otel-ios-mobile/`) | 🟢 **verified 2026-04-21, commit `d1eb755`** | 🟢 **verified 2026-04-21, commit `25d47b6`** | 🟢 **verified 2026-04-21** | 🟢 **verified 2026-04-21, commit `1a69c7e`** |
-| RN Android (`packages/react-native/` on Android host) | 🟡 Jest + demo APK green per 2026-04-20, needs Dash0-side re-check | 🟡 | 🔴 untested | 🔴 untested |
-| RN iOS (`packages/react-native/` on iOS host) | 🔴 **architecturally off** (AstronomyShopRN disables `autoCapture.lifecycle` + native defaults to `.none`) | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🟢 **verified 2026-04-23, redesigned 2026-04-24** 7 failed OTLP trace POSTs persisted to `buffered_span_requests`, replayed on reconnect; `app.recovery_start` marker carries `dash0.recovery.span_count` + `dash0.recovery.span_bytes_pending`. Fix intercepts at `HTTPClient` layer (`PersistingTraceHTTPClient`), not `SpanExporter`, because upstream `OtlpHttpTraceExporter.export()` returns `.success` synchronously before the HTTP call. Replay routing comes from the user's CURRENT `MobileConfig` (not whatever was captured at failure time), so token rotation / region migration / dataset rename / typo fixes between launches all do the right thing automatically. Re-validated end-to-end without any manual sqlite endpoint rewrites |
+| RN Android (`packages/react-native/` on Android host) | 🟢 **verified 2026-04-29 (Pixel_7)** `app.start: 1` (type=`instrumentation_late`, duration_ms=699), `app.foreground: 3` (1 at-attach replay + 2 natural cycles), `app.background: 2` from scope `io.opentelemetry.android.mobile.lifecycle`. Closure required two SDK fixes: (a) migrate to `androidx.lifecycle.ProcessLifecycleOwner` (`853b3c1`), (b) dispatch `addObserver()` to main (`919ca39`) — `LifecycleRegistry.assertMainThread()` was throwing silently from RN's JS bridge thread. Spec: `2026-04-29-gate1-rn-lifecycle-design.md` | 🟢 **verified 2026-04-29 (Pixel_7)** 1 span `GET httpbin.org` from scope `io.dash0.mobile.reactnative`, `http.request.method=GET`, `url.full=https://httpbin.org/get`, `http.response.status_code=200`. Single span (XHR shim alone, no fetch dup). Unblocked by `endpointForPlatform` fix in `examples/upstream-demo-app-rn/AstronomyShopRN/src/otelEndpoint.ts` (Android SDK is gRPC `:4317`, iOS SDK is HTTP `:4318`) | 🟢 **verified 2026-04-29 (Pixel_7)** `app.crash` log from scope `error-instrumentation` sev 17 with `exception.message: Error: Dash0 RN iOS Gate 3 test crash`; paired `app.error` from RN bridge scope sev 21 (FATAL); `Crash-mirror: persisted N new RAM events to disk` confirms pre-flush mirror on the FATAL path | 🟢 **verified 2026-04-29 (Pixel_7) Dash0 round-trip** `app.recovery_start` log from scope `io.opentelemetry.android.mobile.recovery` with `dash0.recovery.event_count=91` lands in Dash0 on recovery launch. SDK marker emission was already proven 2026-04-28 |
+| RN iOS (`packages/react-native/` on iOS host) | 🟢 **verified 2026-04-29 (iPhone 17 Pro Simulator)** `app.launch: 1`, `app.foreground: 3` (1 `instrumentation_late` synthesis + 2 `natural` cycles), `app.background: 2` from scope `io.dash0.mobile`. Closure: (a) iOS SDK late-init synthesis via `applicationStateProvider` closure check (`764b67b`) — NotificationCenter has no at-attach replay so we synthesize `app.foreground` if `applicationState == .active` at install time, (b) iOS RN bridge defaults `autoCaptureOptions: [.lifecycle]` (`4b91e12`), (c) JS-side AppState shim deleted (`00526ed`). Spec: `2026-04-29-gate1-rn-lifecycle-design.md` | 🟢 **verified 2026-04-22** GET span w/ kind=CLIENT, status=200, url.full=`https://httpbin.org/get`, scope `io.dash0.mobile`. Shim dedup landed in `ba558c2` — exactly 1 span per request (re-verified) | 🟢 **verified 2026-04-22** `app.error` FATAL log lands in Dash0 at exact crash timestamp with full exception semconv. Two-sided fix: JS `emitSync` (`4399e7a`) closes bridge-queue race + native eager `forceFlush` (`0eed784`) closes RAM-buffer race since RN fatal reporter skips UIApplication teardown | 🟢 **verified 2026-04-23, redesigned 2026-04-24** 7 failed OTLP trace POSTs persisted to `buffered_span_requests`, replayed on reconnect; `app.recovery_start` marker carries `dash0.recovery.span_count` + `dash0.recovery.span_bytes_pending`. Fix intercepts at `HTTPClient` layer (`PersistingTraceHTTPClient`), not `SpanExporter`, because upstream `OtlpHttpTraceExporter.export()` returns `.success` synchronously before the HTTP call. Replay routing comes from the user's CURRENT `MobileConfig` (not whatever was captured at failure time), so token rotation / region migration / dataset rename / typo fixes between launches all do the right thing automatically. Re-validated end-to-end without any manual sqlite endpoint rewrites |
 | Collector processor (`mobilepolicyprocessor/`) | ➖ N/A (no lifecycle of its own) | ➖ N/A | ➖ N/A | ➖ N/A — but must pass DSL evaluation tests |
 
 ### Hardware × OS
@@ -226,23 +226,28 @@ Needs this session's 4-gate template applied. Service name:
 `otel-android-astronomy-shop`. Existing `HOW_TO_DEMO.md` covers a
 different (broader) runbook; reconcile.
 
-### RN iOS (AstronomyShopRN) — 3 of 4 gates green
+### RN iOS (AstronomyShopRN) — 4 of 4 gates green
 
-**Validated 2026-04-22, 2026-04-23, redesigned 2026-04-24.**
-Service name: `otel-rn-astronomy-shop`. Result summary: **Gates
-2 + 3 + 4 🟢, Gate 1 🔴** — Gate 1 remains an architectural
-choice (RN demo disables `autoCapture.lifecycle` + native
-defaults to `.none`) rather than a bug. Gate 3 (crash) took
-three iterations beyond the initial design; Gate 4 (offline)
-went through TWO design corrections: (a) original SpanExporter
-decorator was dead code because upstream OTLP trace exporter
-returns `.success` synchronously before the HTTP call, fixed by
-moving to an HTTPClient interceptor; (b) initial HTTPClient
-design captured + replayed to the captured endpoint, but that
-fails token rotation, region migration, and dataset rename
-between launches — fixed by routing replays through the user's
-CURRENT `MobileConfig`. The persisted schema now stores only
-the body bytes + session id, not endpoint or headers.
+**Validated 2026-04-22, 2026-04-23, redesigned 2026-04-24, Gate 1 closed 2026-04-29.**
+Service name: `otel-rn-astronomy-shop`. Result summary: **all four
+gates 🟢**. Gate 1 closure required a design change in the iOS SDK
+(late-init synthesis via `applicationStateProvider` closure check —
+NotificationCenter has no at-attach replay so the SDK now synthesizes
+an initial `app.foreground` if `applicationState == .active` at
+install time) plus defaulting `autoCaptureOptions: [.lifecycle]` in
+the iOS RN bridge. JS-side AppState shim was deleted as the same
+change. Spec: `docs/superpowers/specs/2026-04-29-gate1-rn-lifecycle-design.md`.
+
+Gate 3 (crash) took three iterations beyond the initial design; Gate 4
+(offline) went through TWO design corrections: (a) original
+SpanExporter decorator was dead code because upstream OTLP trace
+exporter returns `.success` synchronously before the HTTP call, fixed
+by moving to an HTTPClient interceptor; (b) initial HTTPClient design
+captured + replayed to the captured endpoint, but that fails token
+rotation, region migration, and dataset rename between launches —
+fixed by routing replays through the user's CURRENT `MobileConfig`.
+The persisted schema now stores only the body bytes + session id, not
+endpoint or headers.
 
 Pre-flight (same for each gate run):
 
@@ -456,11 +461,16 @@ proper waterfall parent/child), and the install sequence (AppDelegate
 all *reliability under adversity* problems — crash path, offline
 path, and lifecycle — that compound with RN's architectural choices.
 
-### RN Android (AstronomyShopRN) — 🟡 TODO
+### RN Android (AstronomyShopRN) — 4 of 4 gates green
 
-Service name: same `otel-rn-astronomy-shop` (same app, different
-platform, different device attributes). Android-host native SDK is
-the underlying buffer store.
+**Validated 2026-04-29 (Pixel_7 emulator).** Service name: same
+`otel-rn-astronomy-shop` (same app as RN iOS, different platform,
+different device attributes). Android-host native SDK is the
+underlying buffer store. Gates 2 + 3 + 4 🟢 via the
+`endpointForPlatform` port-rewrite fix (`otelEndpoint.ts`); Gate 1 🟢
+via ProcessLifecycleOwner migration + main-thread dispatch in the
+Android `LifecycleInstrumentation` (commits `853b3c1` + `919ca39`).
+Spec: `docs/superpowers/specs/2026-04-29-gate1-rn-lifecycle-design.md`.
 
 ### Collector processor — ➖ N/A for device gates
 
@@ -477,19 +487,20 @@ SCALE_READINESS_EPIC.md.
 - [x] This epic drafted with session findings frozen in writing
 - [x] RN iOS — four gates run; 3 green (Gates 2 + 3 + 4), 1 red (Gate 1) with documented architectural root cause
 - [x] Write `docs/matchy-matchy/` one runbook per demo app — landed as [`docs/matchy-matchy/`](../matchy-matchy/README.md): [`ios-native.md`](../matchy-matchy/ios-native.md) 🟢, [`rn-ios.md`](../matchy-matchy/rn-ios.md) 🟢🟢🔴🔴, [`android-native.md`](../matchy-matchy/android-native.md) 🟡 TODO, [`rn-android.md`](../matchy-matchy/rn-android.md) 🟡 TODO
+- [x] **Gate 1 closure for both RN platforms (2026-04-29)** — Android via ProcessLifecycleOwner migration + main-thread dispatch (commits `853b3c1` + `919ca39`); iOS via `applicationStateProvider` late-init synthesis + bridge `[.lifecycle]` default (commits `764b67b` + `4b91e12`); JS shim deleted (`00526ed`). All matchy-matchy runbooks now 🟢 4/4. Spec: `docs/superpowers/specs/2026-04-29-gate1-rn-lifecycle-design.md`. Plan: `docs/superpowers/plans/2026-04-29-gate1-rn-lifecycle.md`
 
 ### Follow-ups surfaced by RN iOS validation (2026-04-22)
 
 - [x] Gate 3 fix: JS-side bypass for FATAL via new `NativeBridge.emitSync` (`4399e7a`) + native-side eager `forceFlush` on FATAL in `OTelMobileCallSink.emitLog` (`0eed784`). willTerminate auto-flush was unreliable because RN's fatal reporter skips UIApplication teardown. Device-verified — `app.error` FATAL log lands in Dash0 at exact crash-tap timestamp with full exception semconv
 - [ ] Gate 4 fix: extend disk-persist-on-failure from logs to spans (BatchSpanProcessor needs a custom exporter wrapper); add recoverFromDisk for spans at OTelMobile.start()
 - [x] Gate 2 polish: deduplicate fetch+XHR double-instrumentation — landed in `ba558c2` (detect RN via `navigator.product`, skip fetch shim; XHR is authoritative since RN fetch is XHR-backed)
-- [ ] Gate 1 unblock: investigate whether AppState-under-RN-new-arch init-order has stabilized upstream since the `autoCapture: { lifecycle: false }` workaround was added
+- [x] **Gate 1 unblock (2026-04-29):** root cause was *not* the AppState init race — it was an Android SDK install-time race + an iOS RN bridge `autoCaptureOptions: .none` over-broad default. Both fixed without restoring the JS shim. See "This session" entry above.
 - [ ] `.xcode.env.local` in AstronomyShopRN pinned NODE_BINARY to nvm Node 18.17 (no `Array.prototype.toReversed`) — fix folded into this session's commit
 - [ ] Document Dash0 CLI query-DSL gotcha: attribute-based filters like `http.request.method is GET` returned 0 results despite attribute present on span — filter behavior needs clarification
 
 ### Post-session
-- [ ] Android native — re-verify four gates post `iPhone` branch merge
-- [ ] RN Android — four gates
+- [ ] Android native — re-verify four gates post `iPhone` branch merge (also: regression smoke for the 2026-04-29 lifecycle migration; current session blocked on gradle KSP/transform-cache corruption from a disk-full event, not on any code regression)
+- [x] **RN Android — four gates verified 2026-04-29 (Pixel_7)**
 - [ ] CI hook: Gate 1 + 2 on every PR against at least iOS Simulator + Android emulator
 - [ ] Real-device matrix (at least one iOS physical + one Android physical) run weekly
 - [ ] Collector-side validation matrix as separate epic

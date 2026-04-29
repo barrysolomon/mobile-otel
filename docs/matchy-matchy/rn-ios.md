@@ -1,8 +1,11 @@
-# Matchy-matchy — RN iOS (AstronomyShopRN)
+# Matchy-matchy — RN iOS (AstronomyShopRN) 🟢 4/4
 
 **Service name:** `otel-rn-astronomy-shop`
-**Last validated:** 2026-04-22 (branch `iPhone`, HEAD at that time: `2954774`)
-**Status:** 🟢 Gate 2 · 🟢 Gate 3 · 🟢 Gate 4 · 🔴 Gate 1
+**Last validated:** 2026-04-29 (iPhone 17 Pro Simulator, all four gates 🟢
+after Gate 1 closure via iOS late-init synthesis + bridge
+`autoCaptureOptions: [.lifecycle]` default — commits `764b67b` + `4b91e12`).
+Earlier 2026-04-22 (HEAD `2954774`) validated Gates 2/3/4.
+**Status:** 🟢 Gate 1 · 🟢 Gate 2 · 🟢 Gate 3 · 🟢 Gate 4 (4/4 verified 2026-04-29)
 
 RN iOS is the hardest platform to pass the four-gate bar because its
 architecture inverts several iOS-native assumptions: native
@@ -85,27 +88,40 @@ xcrun simctl launch "$SIM" com.dash0.mobile.demo.AstronomyShopRN
 
 ---
 
-## 1. Gate 1 — Lifecycle 🔴
+## 1. Gate 1 — Lifecycle 🟢 verified 2026-04-29
 
-**Architectural gap, not a bug.**
+**Closure:** the previous architectural gap is gone.
 
-**Trigger:** Launch clean + two background↔foreground cycles (via
-`xcrun simctl` home-button sim or Simulator.app menu).
+**What changed:**
 
-**Expected:** `app.launch` + 3×`app.foreground` + 2×`app.background`.
+1. **iOS SDK** got a late-init synthesis path (commit `764b67b`):
+   `LifecycleInstrumentation.install()` now checks
+   `UIApplication.shared.applicationState` after registering observers
+   and synthesizes an initial `app.foreground` if the app is `.active`
+   at install time. This is the iOS analog of Android's at-attach
+   replay — necessary because NotificationCenter has no built-in
+   replay (unlike `androidx.lifecycle.LifecycleRegistry.addObserver`).
+   Synthesized events are tagged `app.foreground.type = "instrumentation_late"`;
+   natural `didBecomeActive`/`didActivateNotification` callbacks tag
+   `"natural"`.
+2. **iOS RN bridge** defaults `autoCaptureOptions: [.lifecycle]` (commit
+   `4b91e12`). NotificationCenter observers don't touch the JS event
+   loop, so they're safe with RN's new-arch dispatch. URLProtocol
+   swizzle, NSException/signal handlers, and screen swizzle still
+   default to off (those genuinely conflict with RN).
+3. **JS-side AppState shim deleted** (commit `00526ed`) along with
+   the `autoCapture.lifecycle` flag and the demo's `App.tsx` opt-out.
 
-**Actual:** 0 results.
+Spec: [`docs/superpowers/specs/2026-04-29-gate1-rn-lifecycle-design.md`](../superpowers/specs/2026-04-29-gate1-rn-lifecycle-design.md).
 
-**Why:**
-- `AstronomyShopRN/src/App.tsx:38` disables `autoCapture.lifecycle`
-  with a comment about RN 0.85 new-arch + AppState init-order race.
-- `ios/AstronomyShopRN/OTelMobileCallSink.swift:39-46` defaults native
-  `autoCaptureOptions` to `.none` because the iOS URLProtocol
-  swizzle and NSException/signal handlers collide with RN's JS
-  event loop.
+**Verified 2026-04-29 (iPhone 17 Pro Simulator):**
 
-Result: neither the JS-side `installAppStateInstrumentation` nor the
-native iOS `LifecycleInstrumentation` emits lifecycle logs.
+```text
+events: {'app.launch': 1, 'app.foreground': 3, 'app.background': 2}
+app.foreground.type breakdown:
+  - 1× instrumentation_late (cold-launch synthesis)
+  - 2× natural (the bg/fg returns)
+```
 
 **Query:**
 
@@ -114,13 +130,6 @@ dash0 -X logs query \
   --filter "service.name is otel-rn-astronomy-shop and event.name is app.foreground" \
   --from now-5m
 ```
-
-Expected: ≥3. Actual: 0.
-
-**Remediation (tracked in epic follow-ups):** either fix RN's
-AppState init race so the JS shim is reliable, or add an opt-in flag
-for native `lifecycle` capability that is known-safe with the RN
-new-arch event loop.
 
 ### 2026-04-24 unblock investigation (DID NOT WORK — kept for record)
 
