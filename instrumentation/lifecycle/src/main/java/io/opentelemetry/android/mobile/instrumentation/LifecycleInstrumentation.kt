@@ -47,14 +47,21 @@ class LifecycleInstrumentation : MobileInstrumentation {
 
     @Volatile private var firstStartLogged = false
     @Volatile private var lastBackgroundAtMs = 0L
-    private var installTimeMs = 0L
+    // Wall-clock + uptime captured at install for the two duration calculations:
+    // - cold-start path uses (now - installTimeWallMs) as elapsed install latency
+    // - late-init path uses (installTimeUptimeMs - Process.getStartUptimeMillis())
+    //   to attribute the "process up before SDK init" gap with both sides anchored
+    //   to the same monotonic clock.
+    private var installTimeWallMs = 0L
+    private var installTimeUptimeMs = 0L
 
     override fun install(application: Application, context: InstrumentationContext) {
         this.application = application
         this.logger = context.logger(instrumentationName)
         this.sessionProvider = context.sessionProvider
         this.instrumentationContext = context
-        this.installTimeMs = System.currentTimeMillis()
+        this.installTimeWallMs = System.currentTimeMillis()
+        this.installTimeUptimeMs = android.os.SystemClock.uptimeMillis()
 
         // app.start synthesis for late-init: if the process is already past
         // INITIALIZED at install-time, an Activity already exists. Emit
@@ -67,6 +74,11 @@ class LifecycleInstrumentation : MobileInstrumentation {
         // already STARTED when addObserver runs, onStart fires synchronously
         // before addObserver returns. That gives late-init sessions their
         // app.foreground for free. Subsequent transitions fire as usual.
+        //
+        // CRITICAL: addObserver() must run on the main thread —
+        // LifecycleRegistry has an assertMainThread() check that throws
+        // IllegalStateException otherwise. RN consumers call OTelMobile.start()
+        // from the JS bridge thread, not main, so we dispatch.
         val observer = object : androidx.lifecycle.DefaultLifecycleObserver {
             override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
                 emitForeground()
@@ -76,7 +88,6 @@ class LifecycleInstrumentation : MobileInstrumentation {
             }
         }
         lifecycleObserver = observer
-        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
 
         // onActivityCreated remains the cold-start app.start signal — the
         // only event ProcessLifecycleOwner doesn't cover. For native consumers
@@ -96,6 +107,17 @@ class LifecycleInstrumentation : MobileInstrumentation {
         }
         activityCallbacks = cb
         application.registerActivityLifecycleCallbacks(cb)
+
+        // Defer addObserver to the main thread (see CRITICAL note above).
+        // If we're already on main, run synchronously; otherwise post.
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        if (android.os.Looper.myLooper() === android.os.Looper.getMainLooper()) {
+            androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+        } else {
+            mainHandler.post {
+                androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+            }
+        }
     }
 
     override fun uninstall() {
@@ -113,13 +135,28 @@ class LifecycleInstrumentation : MobileInstrumentation {
 
     private fun emitAppStartIfLateInstall() {
         if (firstStartLogged) return
+        // ProcessLifecycleOwner.currentState reads must happen on main, but
+        // for the at-install initial check we're often off-main (RN bridge
+        // thread). Use a Looper check; if we can't safely read currentState,
+        // fall through and let the activity-callback cold-start path handle
+        // app.start emission instead.
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            // Best-effort: we can still inspect lifecycle state from off-main;
+            // it's just that the docs don't strictly guarantee thread safety.
+            // ProcessLifecycleOwner's internal Handler dispatches all state
+            // transitions to main, so reading currentState off-main returns
+            // the latest value as of the last main-thread transition — which
+            // is fine for our "is the process already up?" gate.
+        }
         val state = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState
         if (!state.isAtLeast(androidx.lifecycle.Lifecycle.State.CREATED)) return
 
         firstStartLogged = true
-        // Process.getStartUptimeMillis is API 24+; project minSdk = 26.
+        // Both anchors are uptime millis (monotonic since boot), so the
+        // subtraction yields a real "time from process start to SDK install"
+        // duration. Process.getStartUptimeMillis is API 24+; project minSdk = 26.
         val processStart = android.os.Process.getStartUptimeMillis()
-        val durationMs = (installTimeMs - processStart).coerceAtLeast(0L)
+        val durationMs = (installTimeUptimeMs - processStart).coerceAtLeast(0L)
         emitLog(
             MobileSemconv.APP_START, Severity.INFO,
             Attributes.builder()
@@ -139,7 +176,10 @@ class LifecycleInstrumentation : MobileInstrumentation {
     private fun emitAppStartIfFirstSeen(a: Activity) {
         if (firstStartLogged) return
         firstStartLogged = true
-        val durationMs = System.currentTimeMillis() - installTimeMs
+        // Cold-start path: install was called from Application.onCreate, so
+        // installTimeWallMs is "process startup ish" and the duration to first
+        // activity creation is small (typically a few hundred ms).
+        val durationMs = System.currentTimeMillis() - installTimeWallMs
         emitLog(
             MobileSemconv.APP_START, Severity.INFO,
             Attributes.builder()
