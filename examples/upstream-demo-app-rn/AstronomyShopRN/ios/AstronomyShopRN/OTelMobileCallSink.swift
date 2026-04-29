@@ -61,14 +61,14 @@ public final class OTelMobileCallSink: BridgeCallSink {
             // conditional-export battery story, so default CONTINUOUS.
             exportMode: .continuous,
             // Translate the bridge's string tokens into AutoCaptureOptions.
-            // Default (empty array) = .none so the iOS SDK installs no
-            // UI/network/error instrumentation — RN apps get those signals
-            // from JS-side shims (fetch + XHR, ErrorUtils, unhandledRejection,
-            // withTapTelemetry). Enabling the native iOS suite on top of RN's
-            // new-arch JS event loop collides with it (URLProtocol swizzle
-            // and NSException/signal handlers leave the touch responder
-            // alive but dormant — surface paints, taps dead). Apps who want
-            // a specific native signal can opt in per capability from JS.
+            // Default = `.lifecycle` only — NotificationCenter observers
+            // don't touch the JS event loop and don't swizzle. Network
+            // (URLProtocol), errors (NSException + signals), and screen
+            // (UIViewController swizzle) DO conflict with the RN new-arch
+            // JS event loop, so they remain off-by-default; RN apps get
+            // those signals from JS-side shims (fetch + XHR, ErrorUtils,
+            // unhandledRejection, withTapTelemetry). Apps that want a
+            // specific native signal opt in per capability from JS.
             autoCaptureOptions: Self.parseAutoCaptureOptions(config.nativeAutoCapture),
             extraHeaders: extraHeaders,
             // Demo default: keep every span. The SDK's default is a 10%
@@ -238,10 +238,21 @@ public final class OTelMobileCallSink: BridgeCallSink {
     // MARK: - Helpers
 
     /// Translate JS-side capability tokens into an `AutoCaptureOptions`.
+    ///
+    /// Lifecycle is on by default — it observes UIApplication / UIScene
+    /// notifications via NotificationCenter, which doesn't touch the JS
+    /// event loop, doesn't swizzle anything, and doesn't chain fatal
+    /// handlers. Safe in RN.
+    ///
+    /// Other capabilities (network URLProtocol swizzle, NSException/signal
+    /// handlers, screen swizzle) DO collide with the RN new-arch event loop
+    /// and remain off-by-default. Apps that want them must opt in per
+    /// capability from JS via `autoCapture: { network: true }` etc.
+    ///
     /// Unknown tokens are silently dropped for forward compatibility (apps
     /// targeting newer SDKs than the host build can use).
     private static func parseAutoCaptureOptions(_ tokens: [String]) -> AutoCaptureOptions {
-        var opts: AutoCaptureOptions = []
+        var opts: AutoCaptureOptions = [.lifecycle]
         for token in tokens {
             switch token {
             case "tap":         opts.insert(.tap)
