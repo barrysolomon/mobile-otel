@@ -69,7 +69,7 @@ describe('FATAL-severity bridge bypass', () => {
       endpoint: 'https://collector.example.com:4317',
       // Keep auto-instrumentation off — testing only the bridge bypass
       // contract, not any particular auto-capture path.
-      autoCapture: { network: false, errors: false, lifecycle: false },
+      autoCapture: { network: false, errors: false },
     });
     emitBatch.mockClear();
 
@@ -100,7 +100,7 @@ describe('FATAL-severity bridge bypass', () => {
     await Dash0Mobile.start({
       serviceName: 'rn-fatal-drain-test',
       endpoint: 'https://collector.example.com:4317',
-      autoCapture: { network: false, errors: false, lifecycle: false },
+      autoCapture: { network: false, errors: false },
     });
     emitBatch.mockClear();
 
@@ -132,7 +132,7 @@ describe('FATAL-severity bridge bypass', () => {
     await Dash0Mobile.start({
       serviceName: 'rn-non-fatal-test',
       endpoint: 'https://collector.example.com:4317',
-      autoCapture: { network: false, errors: false, lifecycle: false },
+      autoCapture: { network: false, errors: false },
     });
     emitBatch.mockClear();
 

@@ -1,8 +1,12 @@
 /**
- * Verifies that `autoCapture: { network: false, errors: false, lifecycle: false }`
- * actually prevents auto-instrumentation from installing. A silent regression
- * here would force users into instrumentation they want to disable — the
- * single most important opt-out contract in the SDK.
+ * Verifies that `autoCapture: { network: false, errors: false }` actually
+ * prevents JS-side auto-instrumentation from installing. A silent
+ * regression here would force users into instrumentation they want to
+ * disable — the single most important opt-out contract in the SDK.
+ *
+ * Lifecycle is intentionally absent: it's now native-only (Android
+ * ProcessLifecycleOwner, iOS NotificationCenter) with no JS-side shim
+ * and no per-flag knob.
  */
 
 import {
@@ -114,26 +118,12 @@ describe('autoCapture opt-outs', () => {
     expect(eu.setGlobalHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('lifecycle=false: AppState listener is not installed (no RN AppState ref → no-op)', async () => {
-    // The lifecycle install path calls require('react-native') to get
-    // AppState. Since we don't provide it in this environment, the
-    // installer returns a no-op. The test therefore verifies that start()
-    // completes successfully without throwing either way when lifecycle
-    // is explicitly disabled — guarding against a regression where the
-    // install was unconditional.
-    const native = makeFakeNative();
-    __setNativeForTesting(native);
+  // Removed: a test that asserted `autoCapture: { lifecycle: false }`
+  // produced a no-op install. Lifecycle is now native-only (Android
+  // ProcessLifecycleOwner, iOS NotificationCenter); there is no JS-side
+  // shim to opt out of, and no `lifecycle` field on the autoCapture type.
 
-    await expect(
-      Dash0Mobile.start({
-        serviceName: 'rn-test',
-        endpoint: 'https://collector.example.com:4317',
-        autoCapture: { lifecycle: false },
-      }),
-    ).resolves.toBeUndefined();
-  });
-
-  it('all three opt-outs combined: fetch unwrapped, ErrorUtils untouched, start still succeeds', async () => {
+  it('both opt-outs combined: fetch unwrapped, ErrorUtils untouched, start still succeeds', async () => {
     const native = makeFakeNative();
     __setNativeForTesting(native);
 
@@ -142,7 +132,7 @@ describe('autoCapture opt-outs', () => {
     await Dash0Mobile.start({
       serviceName: 'rn-test',
       endpoint: 'https://collector.example.com:4317',
-      autoCapture: { network: false, errors: false, lifecycle: false },
+      autoCapture: { network: false, errors: false },
     });
     expect(globalThis.fetch).toBe(beforeFetch);
     expect(eu.setGlobalHandler).not.toHaveBeenCalled();

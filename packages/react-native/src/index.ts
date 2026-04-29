@@ -12,7 +12,6 @@ import { installFetchInstrumentation } from './instrumentation/fetch';
 import { installXhrInstrumentation } from './instrumentation/xhr';
 import { installErrorInstrumentation } from './instrumentation/errors';
 import { installUnhandledRejectionInstrumentation } from './instrumentation/unhandledRejection';
-import { installAppStateInstrumentation } from './instrumentation/appstate';
 import type {
   Attributes,
   BridgePayload,
@@ -209,9 +208,11 @@ export const Dash0Mobile = {
       autoInstrUninstallers.push(installErrorInstrumentation());
       autoInstrUninstallers.push(installUnhandledRejectionInstrumentation());
     }
-    if (auto.lifecycle !== false) {
-      autoInstrUninstallers.push(installAppStateInstrumentation());
-    }
+    // Lifecycle (`app.foreground` / `app.background` / `app.start`) is now
+    // emitted by native instrumentation on both platforms — Android via
+    // ProcessLifecycleOwner, iOS via NotificationCenter with applicationState
+    // late-init synthesis. The previous JS-side AppState shim was deleted
+    // because RN 0.85 new-arch made it unreliable (TurboModule init race).
   },
 
   log(name: string, attributes: Attributes = {}, severity: SeverityNumber = 9): void {
@@ -375,7 +376,6 @@ type AutoCaptureFlag = keyof NonNullable<StartConfig['autoCapture']>;
 const NATIVE_AUTO_CAPTURE_FLAGS: ReadonlyArray<[AutoCaptureFlag, string]> = [
   ['network', 'network'],
   ['errors', 'errors'],
-  ['lifecycle', 'lifecycle'],
   ['tap', 'tap'],
   ['scroll', 'scroll'],
   ['textInput', 'textInput'],

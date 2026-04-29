@@ -11,6 +11,7 @@ import {useCartStore} from './shop/CartStore';
 import {ShopTelemetry} from './shop/ShopTelemetry';
 import {CATALOG} from './shop/Product';
 import type {RootStackParamList} from './navigation/types';
+import {endpointForPlatform} from './otelEndpoint';
 // Loaded from a .gitignored JSON at repo root — matches iOS + Android demo
 // convention. Template (`otel-config.json.template`) is committed.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -29,22 +30,13 @@ export default function App(): React.ReactElement {
     Dash0Mobile.start({
       serviceName: otelConfig.serviceName,
       serviceVersion: otelConfig.serviceVersion,
-      endpoint: otelConfig.endpoint,
+      endpoint: endpointForPlatform(otelConfig.endpoint),
       authToken: otelConfig.authToken,
       dataset: otelConfig.dataset,
-      // RN 0.85 new-arch TurboModule init order makes `AppState` unreliable
-      // inside the first useEffect. Disable lifecycle auto-capture until
-      // the init-order story stabilizes upstream.
-      //
-      // 2026-04-24 re-investigated: tried bumping the JS-side defer to
-      // 1500ms. Still redboxes — the `Invariant Violation` from
-      // `TurboModuleRegistry.getEnforcing('PlatformConstants')` fires
-      // BEFORE the defer's setTimeout callback runs, and RN's `RCTFatal`
-      // converts the JS throw to a native fatal that bypasses our
-      // try/catch. This is upstream RN, not a defer-tuning problem.
-      // Leave `lifecycle: false` in place. Gate 1 stays 🔴 with this
-      // documented architectural cause.
-      autoCapture: { lifecycle: false },
+      // Lifecycle auto-capture is native on both platforms now (Android
+      // ProcessLifecycleOwner + iOS NotificationCenter via the SDK's
+      // late-init synthesis). The previous JS-side AppState shim opt-out
+      // is no longer needed — see Gate 1 closure 2026-04-29.
     }).catch(() => {
       // Non-RN runtime (tests, SSR) — safe to ignore
     });

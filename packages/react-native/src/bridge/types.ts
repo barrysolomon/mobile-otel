@@ -36,20 +36,22 @@ export interface StartConfig {
   enablePolicyPolling?: boolean;
   /**
    * Toggles for JS-side auto-instrumentation (fetch/XHR spans, JS error +
-   * unhandled rejection logs, AppState foreground/background). Defaults to
-   * all-on. RN bridge uses the same flags to decide which native iOS/Android
-   * auto-capture suites to enable via `nativeAutoCapture`, so e.g.
-   * `autoCapture: { network: true }` enables the iOS `URLProtocol` swizzle
-   * in addition to the JS fetch/XHR wrappers. The default is OFF on the
-   * native side for RN — RN host apps typically don't want the native iOS
-   * URLProtocol swizzle or NSException handlers because they collide with
-   * RN's new-arch JS event loop (touch responder goes dormant).
+   * unhandled rejection logs). Defaults to all-on. RN bridge uses the same
+   * flags to decide which native iOS/Android auto-capture suites to enable
+   * via `nativeAutoCapture`, so e.g. `autoCapture: { network: true }`
+   * enables the iOS `URLProtocol` swizzle in addition to the JS fetch/XHR
+   * wrappers. The default is OFF on the native side for `network`/`errors`
+   * — RN host apps typically don't want the native iOS URLProtocol swizzle
+   * or NSException handlers because they collide with RN's new-arch JS
+   * event loop (touch responder goes dormant).
+   *
+   * Lifecycle (`app.foreground` / `app.background` / `app.start`) is
+   * always-on via native instrumentation (Android ProcessLifecycleOwner,
+   * iOS NotificationCenter); there is no JS or per-flag knob for it.
    */
   autoCapture?: {
     network?: boolean;
     errors?: boolean;
-    lifecycle?: boolean;
-    appState?: boolean;
     /** Native iOS/Android-only capability — captures UI taps via swizzle/recognizer. Off by default on RN. */
     tap?: boolean;
     /** Native-only — scroll spans. Off by default on RN. */
