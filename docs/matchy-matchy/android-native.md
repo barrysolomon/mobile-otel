@@ -1,8 +1,14 @@
-# Matchy-matchy — Android native (upstream-demo-app, dash0 flavor) 🟢 4/4
+# Matchy-matchy — Android native (upstream-demo-app, dash0Continuous flavor) 🟢 4/4
+
+> **Three Dash0 flavors are now built per Android** —
+> `dash0Continuous` (this runbook's reference), `dash0Conditional`, and
+> `dash0Hybrid`. The matchy-matchy 4-gate evidence in this doc was
+> captured against `dash0Continuous`. The other two flavors share
+> `src/dash0Common/` and differ only in `BuildConfig.DASH0_EXPORT_MODE_ENUM`.
 
 **Service name:** `otel-android-astronomy-shop` (set in
-[`SdkInitializer.kt`](../../examples/upstream-demo-app/src/dash0/java/io/opentelemetry/android/demo/SdkInitializer.kt))
-**Package:** `io.opentelemetry.android.demo.dash0` (the `dash0` product flavor)
+[`SdkInitializer.kt`](../../examples/upstream-demo-app/src/dash0Common/java/io/opentelemetry/android/demo/SdkInitializer.kt))
+**Package:** `io.opentelemetry.android.demo.dash0.cont` (the `dash0Continuous` product flavor)
 **Launcher activity:** `io.opentelemetry.android.demo.MainActivity`
 **Last validated:** 2026-04-28 (Pixel_7 emulator, all four gates green in Dash0)
 **Status:** 🟢 Gate 1 · 🟢 Gate 2 · 🟢 Gate 3 · 🟢 Gate 4
@@ -65,12 +71,12 @@ and any export failure is SDK config or content-type, not transport.
 
 ### Demo app configuration (pre-wired)
 
-The dash0 flavor already sets:
+The `dash0Continuous` flavor already sets (shared with `dash0Conditional` / `dash0Hybrid` via `src/dash0Common/`):
 
-- `service.name = otel-android-astronomy-shop` ([`SdkInitializer.kt:23`](../../examples/upstream-demo-app/src/dash0/java/io/opentelemetry/android/demo/SdkInitializer.kt))
+- `service.name = otel-android-astronomy-shop` ([`SdkInitializer.kt:23`](../../examples/upstream-demo-app/src/dash0Common/java/io/opentelemetry/android/demo/SdkInitializer.kt))
 - `service.version = 0.1.0`
 - `endpoint = ExportConfig.grpcEndpoint` (gRPC, port 4317)
-- `mode = ExportMode.CONTINUOUS`
+- `mode = ExportMode.valueOf(BuildConfig.DASH0_EXPORT_MODE_ENUM)` (per-flavor — `CONTINUOUS` for `dash0Continuous`, `CONDITIONAL` for `dash0Conditional`, `HYBRID` for `dash0Hybrid`)
 - `headers = ExportConfig.headers` (Bearer auth + `Dash0-Dataset: otel-mobile`)
 - `instrumentations { discoverAll() }` — every auto-capture enabled
 
@@ -81,12 +87,13 @@ Endpoint + auth come from
 
 ```bash
 cd examples/demo-app
-./gradlew :upstream-demo-app:assembleDash0Debug
-# APK lands at examples/upstream-demo-app/build/outputs/apk/dash0/debug/upstream-demo-app-dash0-debug.apk
-adb -s <serial> install -r ../upstream-demo-app/build/outputs/apk/dash0/debug/upstream-demo-app-dash0-debug.apk
+./gradlew :upstream-demo-app:assembleDash0ContinuousDebug
+# APK lands at examples/upstream-demo-app/build/outputs/apk/dash0Continuous/debug/upstream-demo-app-dash0Continuous-debug.apk
+adb -s <serial> install -r ../upstream-demo-app/build/outputs/apk/dash0Continuous/debug/upstream-demo-app-dash0Continuous-debug.apk
 ```
 
-The `dash0` flavor uses the project-reference path to our SDK, so
+The `dash0Continuous` flavor (and its `dash0Conditional` /
+`dash0Hybrid` siblings) uses the project-reference path to our SDK, so
 fixes to `otel-android-mobile/` flow into this APK. The `upstream`
 flavor uses published Maven artifacts only — useful for a
 "baseline upstream behavior" comparison run if a gate disagrees.
@@ -101,15 +108,15 @@ via `instrumentations { discoverAll() }` and emits on every
 Activity lifecycle transition.
 
 ```bash
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity
 sleep 3
 adb shell input keyevent KEYCODE_HOME           # background
 sleep 2
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity   # foreground
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity   # foreground
 sleep 2
 adb shell input keyevent KEYCODE_HOME           # background again
 sleep 2
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity   # final foreground
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity   # final foreground
 ```
 
 **Expected:** ≥3× `app.foreground` + ≥2× `app.background` log
@@ -178,7 +185,7 @@ all from scope `io.opentelemetry.android.mobile.lifecycle`. Spec match.
 
 ## 2. Gate 2 — Network 🟢
 
-**Trigger (added 2026-04-28):** [`MainActivity.fireGate2HttpProbe`](../../examples/upstream-demo-app/src/main/java/io/opentelemetry/android/demo/MainActivity.kt)
+**Trigger (added 2026-04-28):** [`Gate2Probe.fire`](../../examples/upstream-demo-app/src/dash0Common/java/io/opentelemetry/android/demo/Gate2Probe.kt)
 fires from `onResume` once per launch. It builds an `OkHttpClient`
 with `OTelNetworkInterceptor`, then hits `https://httpbin.org/get`
 30 times in a tight loop on a worker thread.
@@ -256,10 +263,10 @@ to disk before the FATAL fires).
 
 ```bash
 # Launch with crash extra
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity --ez gate3_crash true
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity --ez gate3_crash true
 sleep 12   # 3s delay + ~5x FATAL across crash threads + crash-mirror flush
 # Process is gone. Relaunch (no extra) for normal session.
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity
 ```
 
 **Expected:**
@@ -338,11 +345,11 @@ json.dump(c, open('/tmp/android-otel-invalid.json', 'w'), indent=2)"
 
 # 2. Swap to invalid + rebuild + reinstall
 cp /tmp/android-otel-invalid.json examples/upstream-demo-app/src/main/assets/otel-config.json
-( cd examples/demo-app && ./gradlew :upstream-demo-app:assembleDash0Debug )
-adb install -r examples/upstream-demo-app/build/outputs/apk/dash0/debug/upstream-demo-app-dash0-debug.apk
+( cd examples/demo-app && ./gradlew :upstream-demo-app:assembleDash0ContinuousDebug )
+adb install -r examples/upstream-demo-app/build/outputs/apk/dash0Continuous/debug/upstream-demo-app-dash0Continuous-debug.apk
 
 # 3. Launch + drive UI for ~30s
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity
 sleep 30   # in real session, drive UI to trigger lifecycle, scrolls, taps
 adb shell am force-stop io.opentelemetry.android.demo.dash0
 
@@ -350,15 +357,15 @@ adb shell am force-stop io.opentelemetry.android.demo.dash0
 #    Note: actual table is log_records (not buffered_events) and the
 #    DB filename is otel_log_buffer.db (not disk_log_buffer.db).
 #    Pull both .db and .db-wal because Room writes via WAL.
-adb shell "run-as io.opentelemetry.android.demo.dash0 cat databases/otel_log_buffer.db" > /tmp/o.db
-adb shell "run-as io.opentelemetry.android.demo.dash0 cat databases/otel_log_buffer.db-wal" > /tmp/o.db-wal
+adb shell "run-as io.opentelemetry.android.demo.dash0.cont cat databases/otel_log_buffer.db" > /tmp/o.db
+adb shell "run-as io.opentelemetry.android.demo.dash0.cont cat databases/otel_log_buffer.db-wal" > /tmp/o.db-wal
 sqlite3 /tmp/o.db "SELECT COUNT(*) FROM log_records;"
 
 # 5. Swap back + rebuild + relaunch + query Dash0
 cp /tmp/android-otel-real.json examples/upstream-demo-app/src/main/assets/otel-config.json
-( cd examples/demo-app && ./gradlew :upstream-demo-app:assembleDash0Debug )
-adb install -r examples/upstream-demo-app/build/outputs/apk/dash0/debug/upstream-demo-app-dash0-debug.apk
-adb shell am start -n io.opentelemetry.android.demo.dash0/io.opentelemetry.android.demo.MainActivity
+( cd examples/demo-app && ./gradlew :upstream-demo-app:assembleDash0ContinuousDebug )
+adb install -r examples/upstream-demo-app/build/outputs/apk/dash0Continuous/debug/upstream-demo-app-dash0Continuous-debug.apk
+adb shell am start -n io.opentelemetry.android.demo.dash0.cont/io.opentelemetry.android.demo.MainActivity
 sleep 30   # let recovery fire + indexing settle
 
 dash0 -X logs query \
@@ -442,7 +449,7 @@ None blocking. Drift to track for future passes:
    severities; cross-platform filters should accept ≥17.
 4. **Trace sampler default:** the SDK defaults to dynamic sampling
    at 10% normal-rate. Single-shot CLIENT span gates are flaky as a
-   result; the demo's `fireGate2HttpProbe` fires 30 calls to overcome
+   result; the demo's `Gate2Probe.fire` fires 30 calls to overcome
    this. A `gate2_high_priority_force=true` MobileConfig knob would
    make the demo cleaner; tracked as a follow-up.
 

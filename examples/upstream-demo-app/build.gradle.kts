@@ -29,13 +29,46 @@ android {
             applicationIdSuffix = ".upstream"
             manifestPlaceholders["appNameSuffix"] = "(Upstream)"
         }
-        create("dash0") {
+        create("dash0Continuous") {
             dimension = "sdk"
-            applicationIdSuffix = ".dash0"
-            manifestPlaceholders["appNameSuffix"] = "(Dash0)"
-            // Default values; per-mode flavors in Task 0.4 will override these.
+            applicationIdSuffix = ".dash0.cont"
+            manifestPlaceholders["appNameSuffix"] = "(Dash0 Cont)"
             buildConfigField("String", "DASH0_EXPORT_MODE", "\"cont\"")
             buildConfigField("String", "DASH0_EXPORT_MODE_ENUM", "\"CONTINUOUS\"")
+        }
+        create("dash0Conditional") {
+            dimension = "sdk"
+            applicationIdSuffix = ".dash0.cond"
+            manifestPlaceholders["appNameSuffix"] = "(Dash0 Cond)"
+            buildConfigField("String", "DASH0_EXPORT_MODE", "\"cond\"")
+            buildConfigField("String", "DASH0_EXPORT_MODE_ENUM", "\"CONDITIONAL\"")
+        }
+        create("dash0Hybrid") {
+            dimension = "sdk"
+            applicationIdSuffix = ".dash0.hyb"
+            manifestPlaceholders["appNameSuffix"] = "(Dash0 Hyb)"
+            buildConfigField("String", "DASH0_EXPORT_MODE", "\"hyb\"")
+            buildConfigField("String", "DASH0_EXPORT_MODE_ENUM", "\"HYBRID\"")
+        }
+    }
+
+    // All three dash0 flavors share src/dash0Common (SdkInitializer + Gate2Probe).
+    // Both `java` and `kotlin` source sets must be extended:
+    //   - srcDir (additive) keeps each flavor's own src/<flavor>/{java,kotlin}.
+    //   - Kotlin source dirs are tracked separately from Java; adding to
+    //     `java.srcDirs` alone leaves .kt files off the Kotlin classpath.
+    sourceSets {
+        getByName("dash0Continuous") {
+            java.srcDir("src/dash0Common/java")
+            kotlin.srcDir("src/dash0Common/java")
+        }
+        getByName("dash0Conditional") {
+            java.srcDir("src/dash0Common/java")
+            kotlin.srcDir("src/dash0Common/java")
+        }
+        getByName("dash0Hybrid") {
+            java.srcDir("src/dash0Common/java")
+            kotlin.srcDir("src/dash0Common/java")
         }
     }
 
@@ -94,8 +127,10 @@ dependencies {
     // and W3C tracecontext injection by hand — see src/upstream/.../Gate2Probe.kt.
     "upstreamImplementation"("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Dash0 flavor — our SDK via project reference
-    "dash0Implementation"(project(":otel-android-mobile"))
+    // Dash0 flavors — all three pull our SDK via project reference.
+    "dash0ContinuousImplementation"(project(":otel-android-mobile"))
+    "dash0ConditionalImplementation"(project(":otel-android-mobile"))
+    "dash0HybridImplementation"(project(":otel-android-mobile"))
 
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
