@@ -840,8 +840,9 @@ uat::probe_disk_buffer() {
     local mode="$1"
     local pkg
     pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
-    # The DiskLogBuffer DB filename is "buffer.db" per DiskLogBuffer.kt; verify before merge.
-    adb shell "run-as $pkg sqlite3 databases/buffer.db 'SELECT COUNT(*) FROM buffered_events'" 2>/dev/null \
+    # DB filename + table name verified against DiskLogBuffer.kt:
+    # Room database = "otel_log_buffer.db", @Entity tableName = "log_records".
+    adb shell "run-as $pkg sqlite3 databases/otel_log_buffer.db 'SELECT COUNT(*) FROM log_records'" 2>/dev/null \
         || echo "0"
 }
 ```
@@ -1903,7 +1904,7 @@ uat::trigger_crash() {
 uat::cleanup() { adb uninstall "$UAT_RN_ANDROID_PKG" >/dev/null 2>&1 || true; }
 
 uat::probe_disk_buffer() {
-    adb shell "run-as $UAT_RN_ANDROID_PKG sqlite3 databases/buffer.db 'SELECT COUNT(*) FROM buffered_events'" 2>/dev/null \
+    adb shell "run-as $UAT_RN_ANDROID_PKG sqlite3 databases/otel_log_buffer.db 'SELECT COUNT(*) FROM log_records'" 2>/dev/null \
         || echo "0"
 }
 ```
