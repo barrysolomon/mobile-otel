@@ -33,6 +33,9 @@ android {
             dimension = "sdk"
             applicationIdSuffix = ".dash0"
             manifestPlaceholders["appNameSuffix"] = "(Dash0)"
+            // Default values; per-mode flavors in Task 0.4 will override these.
+            buildConfigField("String", "DASH0_EXPORT_MODE", "\"cont\"")
+            buildConfigField("String", "DASH0_EXPORT_MODE_ENUM", "\"CONTINUOUS\"")
         }
     }
 
@@ -47,6 +50,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
     val javaVersion = JavaVersion.VERSION_11
     compileOptions {

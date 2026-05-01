@@ -13,7 +13,8 @@ import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 
 object SdkInitializer {
-    fun initialize(app: Application) {
+    @Suppress("UNUSED_PARAMETER")
+    fun initialize(app: Application, cellId: String? = null) {
         try {
             val endpoint = ExportConfig.endpoint
             val headers = ExportConfig.headers

@@ -20,6 +20,7 @@ class OtelDemoApplication : Application() {
     companion object {
         var openTelemetry: OpenTelemetry? = null
         var sessionId: String = ""
+        var resourceAttributesSnapshot: Map<String, String> = emptyMap()
 
         fun tracer(name: String): Tracer? = openTelemetry?.getTracer(name)
         fun logger(name: String): Logger? = openTelemetry?.logsBridge?.get(name)
@@ -41,6 +42,9 @@ class OtelDemoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         ExportConfig.load(this)
-        SdkInitializer.initialize(this)
+        // SDK init is deferred to MainActivity.onCreate so we can read the
+        // DASH0_CELL_ID launch intent extra and stamp it onto every record
+        // as a resource attribute. Pre-Activity vitals will not carry
+        // cell_id; that's an accepted tradeoff for the UAT matrix runner.
     }
 }

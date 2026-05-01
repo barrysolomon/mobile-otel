@@ -48,6 +48,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (OtelDemoApplication.openTelemetry == null) {
+            val cellId = intent?.getStringExtra("DASH0_CELL_ID")
+            SdkInitializer.initialize(application, cellId)
+        }
         setContent {
             DemoAppTheme {
                 // A surface container using the 'background' color from the theme

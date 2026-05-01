@@ -460,7 +460,23 @@ For Android, the cleanest path: `SdkInitializer.initialize(app, cellId: String?)
 
 If the SDK is currently initialized in `Application.onCreate`, this is a small structural change.
 
-- [ ] **Step 2: Write a tracer-level test confirming `extraResourceAttributes` propagation**
+- [ ] **Step 2: ~~Write a tracer-level test~~ — SKIPPED (see decision note)**
+
+**Decision (2026-05-01):** No demo-app unit test added for `SdkInitializer`.
+
+The original plan called for a Robolectric test in a new `dash0Test` source set. Reasons we skipped:
+
+1. SDK-side `MobileOtelDslTest` (in commit `e8f3b20`) already proves `extraResourceAttributes` plumbs through `MobileOtelDsl.buildConfig() → MobileConfig`. The demo's `SdkInitializer` is a 10-line wrapper that just builds a map and forwards it — testing it duplicates SDK coverage.
+2. Robolectric is the wrong tool here: `SdkInitializer` does no real Android-framework work; Robolectric collapses threading (see `feedback_robolectric_main_thread.md`) and would mask the `ProcessLifecycleOwner` main-thread dispatch we explicitly added.
+3. The demo app currently has zero `test` source set — only `androidTest`. Standing one up (Robolectric config, manifest stub, +Mockk) for a one-line map assertion is overhead with no signal.
+4. Real validation comes from `assembleDash0Debug` (compile-time) + the UAT runner reading `dash0.test.cell_id` back from Dash0 via `dash0` CLI in Task 1.x. That's stronger evidence than any in-process test.
+
+Skipping Steps 2, 3, and 6. Keeping Step 4, 5, 7, 8.
+
+If a future change makes the wrapper non-trivial (e.g. async init, multiple branching paths), add a plain JUnit test alongside `MobileOtelDslTest` rather than retrofitting Robolectric.
+
+<details>
+<summary>Original spec (kept for reference)</summary>
 
 Create `examples/upstream-demo-app/src/dash0Test/java/.../SdkInitializerCellIdTest.kt` (you may need to add a `dash0Test` source set if instrumented test variants don't already exist; otherwise place in unit-test sources):
 
@@ -505,6 +521,8 @@ cd examples/demo-app
 ```
 
 Expected: compilation failure (`initialize` doesn't take `cellId`).
+
+</details>
 
 - [ ] **Step 4: Update `SdkInitializer.initialize` signature**
 
