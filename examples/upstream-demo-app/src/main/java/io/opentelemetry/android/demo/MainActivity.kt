@@ -36,11 +36,6 @@ import io.opentelemetry.android.demo.about.AboutActivity
 import io.opentelemetry.android.demo.theme.DemoAppTheme
 import io.opentelemetry.android.demo.shop.ui.AstronomyShopActivity
 import io.opentelemetry.android.demo.shop.ui.products.multiThreadCrashing
-import io.opentelemetry.android.mobile.network.NetworkConfig
-import io.opentelemetry.android.mobile.network.OTelNetworkInterceptor
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.IOException
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<DemoViewModel>()
@@ -131,7 +126,7 @@ class MainActivity : ComponentActivity() {
         // RN iOS demos which also fire httpbin.org/get from launch UI.
         if (!gate2Fired) {
             gate2Fired = true
-            fireGate2HttpProbe()
+            Gate2Probe.fire(this)
         }
         // Gate 3 (matchy-matchy): deterministic crash trigger via launch
         // intent extra. Mirrors iOS native's -DASH0_CRASH_NOW launch arg.
@@ -147,43 +142,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun fireGate2HttpProbe() {
-        val otel = OtelDemoApplication.openTelemetry
-        if (otel == null) {
-            Log.w(TAG, "Gate2: openTelemetry is null, skipping HTTP probe")
-            return
-        }
-        Log.i(TAG, "Gate2: firing httpbin.org/get")
-        val tracer = otel.getTracer("io.opentelemetry.android.demo.gate2", "0.1.0")
-        val propagator = otel.propagators.textMapPropagator
-        val interceptor = OTelNetworkInterceptor.create(
-            applicationContext,
-            NetworkConfig(),
-            tracer,
-            propagator
-        )
-        val client = OkHttpClient.Builder()
-            .addInterceptor(interceptor)
-            .build()
-        val request = Request.Builder()
-            .url("https://httpbin.org/get")
-            .get()
-            .build()
-        // Fire 30 in parallel to overcome the SDK's default 10% trace sampler
-        // (SamplingConfig.dynamic(normalRate=0.1)). 30x ≈ 95.8% chance one
-        // CLIENT span survives sampling and reaches Dash0. Single-shot was
-        // flaky for matchy-matchy validation.
-        Thread {
-            for (i in 1..30) {
-                try {
-                    val r = client.newCall(request).execute()
-                    if (i == 1) Log.i(TAG, "Gate2: httpbin response code=${r.code}")
-                    r.close()
-                } catch (e: IOException) {
-                    Log.w(TAG, "Gate2: httpbin call failed: ${e.message}")
-                }
-            }
-            Log.i(TAG, "Gate2: 30 probes complete")
-        }.start()
-    }
 }

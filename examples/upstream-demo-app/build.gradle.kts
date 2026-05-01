@@ -88,6 +88,11 @@ dependencies {
     "upstreamImplementation"("io.opentelemetry.android.instrumentation:sessions:0.11.0-alpha") {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
+    // OkHttp is needed by the upstream flavor's hand-rolled Gate 2 probe.
+    // The upstream Android agent does not ship a first-party HTTP
+    // interceptor, so the demo app re-implements span lifecycle, semconv,
+    // and W3C tracecontext injection by hand — see src/upstream/.../Gate2Probe.kt.
+    "upstreamImplementation"("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Dash0 flavor — our SDK via project reference
     "dash0Implementation"(project(":otel-android-mobile"))

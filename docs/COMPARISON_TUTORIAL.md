@@ -121,6 +121,24 @@ OtelDemoApplication.openTelemetry = mobile.openTelemetry
 
 Same pattern, richer capabilities. 22 modules auto-discovered vs upstream's 9.
 
+### Per-call instrumentation: HTTP
+
+The init delta above is the *configuration* surface. The *call-site* surface
+is just as telling. Both flavors include a "Gate 2" probe that fires
+`https://httpbin.org/get` and emits a CLIENT span. Same observable
+outcome — same OTel SemConv on the wire — but the upstream Android
+agent ships no first-party HTTP interceptor, so the caller is on the
+hook for span lifecycle, semantic-convention attributes, W3C
+tracecontext injection, and exception-to-status mapping.
+
+| Flavor | `Gate2Probe.kt` | Substantive LOC | What you write |
+|---|---|---|---|
+| **Upstream** | [src/upstream/.../Gate2Probe.kt](../examples/upstream-demo-app/src/upstream/java/io/opentelemetry/android/demo/Gate2Probe.kt) | ~70 | SemConv attribute keys by hand, `spanBuilder().setSpanKind(CLIENT)`, manual `propagator.inject(...)` into request headers, manual `IOException` → `StatusCode.ERROR` + `error.type`, `try/finally span.end()` on every path |
+| **Dash0** | [src/dash0/.../Gate2Probe.kt](../examples/upstream-demo-app/src/dash0/java/io/opentelemetry/android/demo/Gate2Probe.kt) | ~36 | `OkHttpClient.Builder().addInterceptor(OTelNetworkInterceptor.create(ctx, NetworkConfig(), tracer, propagator)).build()` — that's it |
+
+The wire-up itself collapses from ~20 lines to 4. Read both files
+side-by-side; the savings show up at every HTTP call site, not just at init.
+
 ---
 
 ## Local Collector Setup (Docker)
