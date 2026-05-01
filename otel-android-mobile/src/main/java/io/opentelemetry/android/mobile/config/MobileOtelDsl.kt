@@ -26,6 +26,14 @@ class MobileOtelDsl {
 
     // Top-level settings exposed directly
     var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
+
+    /**
+     * Extra resource attributes attached to every emitted record.
+     * Useful for test cell IDs, deployment tags, and similar metadata
+     * that the OTel `service.*` and `device.*` defaults don't cover.
+     * Null entries and blank keys are ignored downstream.
+     */
+    var extraResourceAttributes: Map<String, String>? = null
     private var screenshotConfig = ScreenshotConfig(enabled = false)
     private var wireframeConfig = WireframeConfig(enabled = false)
     private var networkConfig = NetworkConfig.default()
@@ -60,7 +68,8 @@ class MobileOtelDsl {
         networkConfig = networkConfig,
         errorConfig = errorConfig,
         vitalsConfig = vitalsConfig,
-        breadcrumbConfig = breadcrumbConfig
+        breadcrumbConfig = breadcrumbConfig,
+        extraResourceAttributes = extraResourceAttributes
     )
 
     internal fun buildCustomizers(): ExporterCustomizers = customizerConfig.build()

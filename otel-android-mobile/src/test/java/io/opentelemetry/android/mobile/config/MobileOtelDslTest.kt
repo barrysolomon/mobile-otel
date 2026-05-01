@@ -105,6 +105,29 @@ class MobileOtelDslTest {
         assertTrue(customizers.metric.isEmpty())
     }
 
+    @Test fun `dsl exposes extraResourceAttributes setter`() {
+        val dsl = MobileOtelDsl().apply {
+            service { name = "test"; version = "0.1.0" }
+            export { endpoint = "http://localhost:4317" }
+            extraResourceAttributes = mapOf(
+                "dash0.test.cell_id" to "abc-123",
+                "dash0.test.export_mode" to "cont",
+            )
+        }
+        val config = dsl.buildConfig()
+        assertEquals("abc-123", config.extraResourceAttributes?.get("dash0.test.cell_id"))
+        assertEquals("cont", config.extraResourceAttributes?.get("dash0.test.export_mode"))
+    }
+
+    @Test fun `extraResourceAttributes defaults to null when unset`() {
+        val dsl = MobileOtelDsl().apply {
+            service { name = "test"; version = "0.1.0" }
+            export { endpoint = "http://localhost:4317" }
+        }
+        val config = dsl.buildConfig()
+        assertEquals(null, config.extraResourceAttributes)
+    }
+
     @Test fun `uiTelemetryMode is configurable`() {
         val dsl = MobileOtelDsl().apply {
             service { name = "app"; version = "1.0" }
