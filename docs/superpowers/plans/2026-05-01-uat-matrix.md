@@ -121,11 +121,50 @@ assert_exit_code 1 $? "must::zero returns 1 when value is nonzero"
 ( warn::eq "test_warn_eq_mismatch" 5 6 ) >/dev/null 2>&1
 assert_exit_code 0 $? "warn::eq never returns nonzero (mismatch is just a warning)"
 
-# --- JSONL emission ---
-output=$(must::eq "test_jsonl" 5 5 2>&1 || true)
+# --- warn::within ---
+( warn::within "test_within_inside" 105 100 10 ) >/dev/null 2>&1
+assert_exit_code 0 $? "warn::within returns 0 when observed inside tolerance"
+
+( warn::within "test_within_outside" 200 100 10 ) >/dev/null 2>&1
+assert_exit_code 0 $? "warn::within returns 0 even when observed outside tolerance (warn-tier)"
+
+( warn::within "test_within_nonnumeric" "" 100 10 ) >/dev/null 2>&1
+assert_exit_code 0 $? "warn::within returns 0 on non-numeric input (warn-tier)"
+
+# --- numeric guards on must:: helpers ---
+( must::ge "test_ge_empty" "" 3 ) >/dev/null 2>&1
+assert_exit_code 1 $? "must::ge returns 1 on empty observed"
+
+( must::zero "test_zero_text" "abc" ) >/dev/null 2>&1
+assert_exit_code 1 $? "must::zero returns 1 on non-numeric observed"
+
+# --- JSONL is valid JSON for numeric, string, and empty observed ---
+validate_json() {
+    local label="$1" line="$2"
+    if printf '%s' "$line" | python3 -c 'import sys,json; json.loads(sys.stdin.read())' 2>/dev/null; then
+        PASSED=$((PASSED + 1)); echo "  PASS  $label"
+    else
+        FAILED=$((FAILED + 1)); echo "  FAIL  $label: not valid JSON: $line"
+    fi
+}
+
+emit_line=$(must::eq "test_jsonl_num" 5 5 2>/dev/null | head -n 1)
+validate_json "must::eq emits valid JSON for numeric observed" "$emit_line"
+
+emit_line=$(must::eq "test_jsonl_str" "hello" "hello" 2>/dev/null | head -n 1)
+validate_json "must::eq emits valid JSON for string observed" "$emit_line"
+
+emit_line=$(must::ge "test_jsonl_empty" "" 3 2>/dev/null | head -n 1)
+validate_json "must::ge emits valid JSON for empty observed" "$emit_line"
+
+emit_line=$(must::eq "test_jsonl_quotes" 'has"quote' 'other' 2>/dev/null | head -n 1)
+validate_json "must::eq emits valid JSON when observed contains quotes" "$emit_line"
+
+# --- field shape: tier/gate/observed present and observed is JSON-string ---
+output=$(must::eq "test_jsonl" 5 5 2>/dev/null | head -n 1)
 case "$output" in
-    *'"tier":"must"'*'"observed":5'*) PASSED=$((PASSED + 1)); echo "  PASS  must::eq emits expected JSONL fields" ;;
-    *) FAILED=$((FAILED + 1)); echo "  FAIL  must::eq JSONL missing expected fields:  $output" ;;
+    *'"tier":"must"'*'"observed":"5"'*) PASSED=$((PASSED + 1)); echo "  PASS  must::eq JSONL has expected fields and string-quoted observed" ;;
+    *) FAILED=$((FAILED + 1)); echo "  FAIL  must::eq JSONL fields wrong:  $output" ;;
 esac
 
 echo
@@ -155,11 +194,26 @@ Create `scripts/test/uat/lib-uat-assertions.sh`:
 
 set -u
 
+# Internal: is the value a finite integer? (bash 3.2-safe.)
+__uat_is_int() {
+    case "$1" in
+        ''|*[!0-9-]*) return 1 ;;
+        -|*-*-*)      return 1 ;;
+        -*[!0-9]*)    return 1 ;;
+        *)            return 0 ;;
+    esac
+}
+
 # Internal: emit one JSONL assertion line.
+# `observed` is always serialized as a JSON string (quoted + escaped) so the
+# row is valid JSON regardless of whether the caller passed a number, empty
+# string, or arbitrary text. Downstream consumers can coerce with jq/tonumber.
 __uat_emit() {
     local tier="$1" gate="$2" claim="$3" observed="$4" passed="$5"
+    local esc_claim="${claim//\\/\\\\}"; esc_claim="${esc_claim//\"/\\\"}"
+    local esc_obs="${observed//\\/\\\\}"; esc_obs="${esc_obs//\"/\\\"}"
     local line
-    line="{\"tier\":\"${tier}\",\"gate\":\"${gate}\",\"claim\":\"${claim//\"/\\\"}\",\"observed\":${observed},\"passed\":${passed}}"
+    line="{\"tier\":\"${tier}\",\"gate\":\"${gate}\",\"claim\":\"${esc_claim}\",\"observed\":\"${esc_obs}\",\"passed\":${passed}}"
     if [[ -n "${UAT_EVIDENCE_FILE:-}" ]]; then
         echo "$line" >> "$UAT_EVIDENCE_FILE"
     fi
@@ -182,7 +236,12 @@ must::eq() {
 # must::ge <name> <observed> <expected> — exit 1 if observed < expected.
 must::ge() {
     local name="$1" observed="$2" expected="$3"
-    if [[ "$observed" -ge "$expected" ]] 2>/dev/null; then
+    if ! __uat_is_int "$observed" || ! __uat_is_int "$expected"; then
+        __uat_emit "must" "$name" "observed >= $expected" "$observed" "false"
+        echo "[FAIL] must $name: non-numeric input (observed='$observed' expected='$expected')" >&2
+        return 1
+    fi
+    if [[ "$observed" -ge "$expected" ]]; then
         __uat_emit "must" "$name" "observed >= $expected" "$observed" "true"
         echo "[PASS] must $name: $observed >= $expected"
     else
@@ -195,7 +254,12 @@ must::ge() {
 # must::zero <name> <observed> — exit 1 if observed != 0.
 must::zero() {
     local name="$1" observed="$2"
-    if [[ "$observed" -eq 0 ]] 2>/dev/null; then
+    if ! __uat_is_int "$observed"; then
+        __uat_emit "must" "$name" "observed == 0" "$observed" "false"
+        echo "[FAIL] must $name: non-numeric input (observed='$observed')" >&2
+        return 1
+    fi
+    if [[ "$observed" -eq 0 ]]; then
         __uat_emit "must" "$name" "observed == 0" "$observed" "true"
         echo "[PASS] must $name: $observed == 0"
     else
@@ -221,10 +285,17 @@ warn::eq() {
 # warn::within <name> <observed> <expected> <tolerance_pct> — log only.
 warn::within() {
     local name="$1" observed="$2" expected="$3" tol_pct="$4"
+    if ! __uat_is_int "$observed" || ! __uat_is_int "$expected" || ! __uat_is_int "$tol_pct"; then
+        __uat_emit "warn" "$name" "observed within ${tol_pct}% of $expected" "$observed" "false"
+        echo "[WARN] warn $name: non-numeric input (observed='$observed' expected='$expected' tol='$tol_pct')" >&2
+        return 0
+    fi
     # Integer math; tolerance as a whole-percent value (0-100).
-    local hi=$(( expected + (expected * tol_pct / 100) ))
-    local lo=$(( expected - (expected * tol_pct / 100) ))
-    if [[ "$observed" -ge "$lo" && "$observed" -le "$hi" ]] 2>/dev/null; then
+    local margin=$(( expected * tol_pct / 100 ))
+    [[ $margin -lt 0 ]] && margin=$(( -margin ))
+    local hi=$(( expected + margin ))
+    local lo=$(( expected - margin ))
+    if [[ "$observed" -ge "$lo" && "$observed" -le "$hi" ]]; then
         __uat_emit "warn" "$name" "observed within ${tol_pct}% of $expected" "$observed" "true"
         echo "[ OK ] warn $name: $observed within ±${tol_pct}% of $expected"
     else
@@ -242,7 +313,7 @@ chmod +x scripts/test/uat/lib-uat-assertions.sh
 scripts/test/uat/test-assertions.sh
 ```
 
-Expected output ends with: `Results: 9 passed, 0 failed` and exit 0.
+Expected output ends with: `Results: 18 passed, 0 failed` and exit 0.
 
 - [ ] **Step 5: Add `.gitignore` for evidence dir**
 

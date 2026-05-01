@@ -6,11 +6,26 @@
 
 set -u
 
+# Internal: is the value a finite integer? (bash 3.2-safe, no regex flags.)
+__uat_is_int() {
+    case "$1" in
+        ''|*[!0-9-]*) return 1 ;;
+        -|*-*-*)      return 1 ;;
+        -*[!0-9]*)    return 1 ;;
+        *)            return 0 ;;
+    esac
+}
+
 # Internal: emit one JSONL assertion line.
+# `observed` is always serialized as a JSON string (quoted + escaped) so the
+# row is valid JSON regardless of whether the caller passed a number, empty
+# string, or arbitrary text. Downstream consumers can coerce with jq/tonumber.
 __uat_emit() {
     local tier="$1" gate="$2" claim="$3" observed="$4" passed="$5"
+    local esc_claim="${claim//\\/\\\\}"; esc_claim="${esc_claim//\"/\\\"}"
+    local esc_obs="${observed//\\/\\\\}"; esc_obs="${esc_obs//\"/\\\"}"
     local line
-    line="{\"tier\":\"${tier}\",\"gate\":\"${gate}\",\"claim\":\"${claim//\"/\\\"}\",\"observed\":${observed},\"passed\":${passed}}"
+    line="{\"tier\":\"${tier}\",\"gate\":\"${gate}\",\"claim\":\"${esc_claim}\",\"observed\":\"${esc_obs}\",\"passed\":${passed}}"
     if [[ -n "${UAT_EVIDENCE_FILE:-}" ]]; then
         echo "$line" >> "$UAT_EVIDENCE_FILE"
     fi
@@ -33,7 +48,12 @@ must::eq() {
 # must::ge <name> <observed> <expected> — exit 1 if observed < expected.
 must::ge() {
     local name="$1" observed="$2" expected="$3"
-    if [[ "$observed" -ge "$expected" ]] 2>/dev/null; then
+    if ! __uat_is_int "$observed" || ! __uat_is_int "$expected"; then
+        __uat_emit "must" "$name" "observed >= $expected" "$observed" "false"
+        echo "[FAIL] must $name: non-numeric input (observed='$observed' expected='$expected')" >&2
+        return 1
+    fi
+    if [[ "$observed" -ge "$expected" ]]; then
         __uat_emit "must" "$name" "observed >= $expected" "$observed" "true"
         echo "[PASS] must $name: $observed >= $expected"
     else
@@ -46,7 +66,12 @@ must::ge() {
 # must::zero <name> <observed> — exit 1 if observed != 0.
 must::zero() {
     local name="$1" observed="$2"
-    if [[ "$observed" -eq 0 ]] 2>/dev/null; then
+    if ! __uat_is_int "$observed"; then
+        __uat_emit "must" "$name" "observed == 0" "$observed" "false"
+        echo "[FAIL] must $name: non-numeric input (observed='$observed')" >&2
+        return 1
+    fi
+    if [[ "$observed" -eq 0 ]]; then
         __uat_emit "must" "$name" "observed == 0" "$observed" "true"
         echo "[PASS] must $name: $observed == 0"
     else
@@ -72,10 +97,17 @@ warn::eq() {
 # warn::within <name> <observed> <expected> <tolerance_pct> — log only.
 warn::within() {
     local name="$1" observed="$2" expected="$3" tol_pct="$4"
+    if ! __uat_is_int "$observed" || ! __uat_is_int "$expected" || ! __uat_is_int "$tol_pct"; then
+        __uat_emit "warn" "$name" "observed within ${tol_pct}% of $expected" "$observed" "false"
+        echo "[WARN] warn $name: non-numeric input (observed='$observed' expected='$expected' tol='$tol_pct')" >&2
+        return 0
+    fi
     # Integer math; tolerance as a whole-percent value (0-100).
-    local hi=$(( expected + (expected * tol_pct / 100) ))
-    local lo=$(( expected - (expected * tol_pct / 100) ))
-    if [[ "$observed" -ge "$lo" && "$observed" -le "$hi" ]] 2>/dev/null; then
+    local margin=$(( expected * tol_pct / 100 ))
+    [[ $margin -lt 0 ]] && margin=$(( -margin ))
+    local hi=$(( expected + margin ))
+    local lo=$(( expected - margin ))
+    if [[ "$observed" -ge "$lo" && "$observed" -le "$hi" ]]; then
         __uat_emit "warn" "$name" "observed within ${tol_pct}% of $expected" "$observed" "true"
         echo "[ OK ] warn $name: $observed within ±${tol_pct}% of $expected"
     else
