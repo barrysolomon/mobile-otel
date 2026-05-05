@@ -62,6 +62,12 @@ __uat_adb() {
 # uat::install <mode>
 # Uninstall any prior version of the package to guarantee a fresh
 # session/cell_id, then install the matching APK.
+#
+# Robustness against matrix mode: the prior cell's app process may still
+# be alive when this runs (especially after a fast cell_lifecycle), and
+# Android's package manager can return DELETE_FAILED_INTERNAL_ERROR if
+# uninstall races with a running process. We force-stop, uninstall with
+# a short retry, then install.
 uat::install() {
     local mode="$1"
     local apk pkg
@@ -72,8 +78,32 @@ uat::install() {
         echo "       Run: ./gradlew :upstream-demo-app:assembleDash0$(__uat_android_flavor_suffix "$mode")Debug" >&2
         return 2
     fi
-    __uat_adb uninstall "$pkg" >/dev/null 2>&1 || true
-    __uat_adb install -r "$apk" >/dev/null
+
+    # Stop any running instance — otherwise uninstall can fail and the
+    # next launch attaches to the existing process (with the previous
+    # cell's cell_id baked in).
+    __uat_adb shell am force-stop "$pkg" >/dev/null 2>&1 || true
+    sleep 1
+
+    # Uninstall with retry; ignore "package not installed" but propagate
+    # real failures so the runner aborts the cell instead of silently
+    # running on stale state.
+    local i out
+    for i in 1 2 3; do
+        out=$(__uat_adb uninstall "$pkg" 2>&1)
+        if [[ "$out" == *"Success"* || "$out" == *"not installed"* ]]; then
+            break
+        fi
+        if [[ "$i" -lt 3 ]]; then
+            sleep 2
+        fi
+    done
+
+    out=$(__uat_adb install -r "$apk" 2>&1)
+    if [[ "$out" != *"Success"* ]]; then
+        echo "ERROR: install failed: $out" >&2
+        return 1
+    fi
 }
 
 # uat::launch <mode> <cell_id>
@@ -88,6 +118,12 @@ uat::launch() {
         echo "ERROR: uat::launch requires non-empty cell_id" >&2
         return 1
     fi
+    # Explicit force-stop (-S on am start is unreliable on API 36 — it
+    # logs "intent has been delivered to currently running top-most
+    # instance" and skips cold-start). force-stop guarantees onCreate
+    # fires and reads the new DASH0_CELL_ID.
+    __uat_adb shell am force-stop "$pkg" >/dev/null 2>&1 || true
+    sleep 1
     __uat_adb shell am start \
         -n "${pkg}/io.opentelemetry.android.demo.MainActivity" \
         --es DASH0_CELL_ID "$cell_id" >/dev/null
