@@ -265,12 +265,10 @@ InstrumentationRegistry.getInstrumentation().runOnMainSync {
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/test.yml`) runs on push to `main`/`develop` and PRs:
-- **android-unit-tests**: JDK 17, `./gradlew test`, Codecov upload
-- **go-tests**: Go 1.21, race detection, Codecov upload
-- **lint**: Android lint + `go vet` + `golangci-lint`
-- **build**: Full build verification including demo app
-- **android-integration-tests**: Emulator-based, main branch only
+No GitHub Actions test workflows are currently configured. Earlier `test.yml`,
+`ios-tests.yml`, and `rn-tests.yml` workflows were removed on 2026-05-05
+because they were consistently failing and need a redesign. Run tests
+locally via `./run-tests.sh` (see "Build & Test Commands" above).
 
 ## Key Dependencies
 

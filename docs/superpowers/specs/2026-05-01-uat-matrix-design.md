@@ -46,8 +46,11 @@ The framework extends — does not replace — the existing four-gate validation
 - **Physical-device cells** — emulator/simulator only. Physical-device coverage is a separate epic.
 - **Policy DSL semantics tests** — `mobilepolicyprocessor`'s Go test suite already covers DSL evaluation. The matrix exercises end-to-end behavior, not DSL grammar.
 - **Per-instrumentation-module sweep** — the matrix asserts the four-gate envelope (lifecycle + network + crash + recovery), not screenshot/wireframe/scroll/etc. Those have their own unit and integration tests.
-- **SDK code changes for `cell_id` plumbing** — the SDK already exposes `MobileConfig.extraResourceAttributes` (verified at `MobileLoggerProvider.kt:103`). No SDK-side change is needed to attach `cell_id` to records emitted within a session. See §7 for the recovery-marker exception.
-- **A new SDK-level "test mode"** — the matrix uses the production code path. The only test-specific signal is the `cell_id` resource attribute, which is indistinguishable to the SDK from any other user-supplied resource attribute.
+- **A new SDK-level "test mode"** — the matrix uses the production code path. The only test-specific signal is the `cell_id` attribute, which is indistinguishable to the SDK from any other user-supplied attribute.
+
+> **Amendment 2026-05-05:** The original spec scoped out SDK changes for `cell_id` plumbing on the assumption that `MobileConfig.extraResourceAttributes` round-trips through Dash0 to the queryable Resource. **It does not.** Empirical verification on 2026-05-05 showed Dash0 ingestion strips Resource attributes outside its known schema (anything not under `service.*`, `device.*`, `os.*`, `telemetry.sdk.*`, `dash0.resource.*`, `dash0.auth.*`). The SDK side is correct — the merged Resource at SDK init contains `dash0.test.cell_id` — but the attribute is dropped server-side and unqueryable.
+>
+> **Resolution:** `cell_id` and `export_mode` are now copied onto **every emitted LogRecord** as record-level attributes (not Resource-level). The SDK change lives in `EnrichingLogRecordExporter`, which already enriches every record on the export path. The DSL surface (`extraResourceAttributes`) keeps its name for backwards-compatibility with already-shipped Tasks 0.2/0.3, but its semantics are now "attributes attached to every emitted record" — equivalent to a per-record stamp. Filter syntax in §5 stays identical (`dash0.test.cell_id is <uuid>`) since the dash0 CLI matches LogRecord attributes. Span attributes will need a parallel change for Gate 2 — tracked as a follow-on.
 - **Runtime export-mode swap** — out of scope per design conversation. Each export mode is a pre-built flavor.
 
 ## 4. Architecture

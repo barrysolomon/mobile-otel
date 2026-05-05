@@ -270,3 +270,6 @@ examples/demo-app-ios-starter/**/xcuserdata/
 examples/upstream-demo-app-ios/*.xcuserstate
 examples/upstream-demo-app-ios/**/xcuserdata/
 examples/upstream-demo-app-ios/build/
+
+# UAT matrix evidence artifacts (per-run, never committed)
+scripts/test/uat/evidence/

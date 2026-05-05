@@ -106,13 +106,18 @@ uat::online() {
 
 # uat::cycle_lifecycle <mode> — background → foreground once.
 # Used by Gate 1 cells to exercise app.foreground / app.background emission.
+#
+# Sleeps must exceed ProcessLifecycleOwner's 700ms debounce (otherwise
+# rapid HOME → am start collapses into a no-op, verified 2026-05-05 by
+# observing fg=2/bg=1 instead of expected fg=3/bg=2 for two cycles).
 uat::cycle_lifecycle() {
     local mode="$1"
     local pkg
     pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
     __uat_adb shell input keyevent KEYCODE_HOME
-    sleep 1
+    sleep 2
     __uat_adb shell am start -n "${pkg}/io.opentelemetry.android.demo.MainActivity" >/dev/null
+    sleep 1
 }
 
 # uat::trigger_crash <mode> — fire the demo's gate3_crash extra.

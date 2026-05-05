@@ -237,6 +237,7 @@ class LifecycleInstrumentation : MobileInstrumentation {
             ?.setSeverity(severity)
             ?.setAllAttributes(
                 Attributes.builder()
+                    .put(io.opentelemetry.api.common.AttributeKey.stringKey("event.name"), name)
                     .put(MobileSemconv.SESSION_ID, sp.getSessionId())
                     .put(MobileSemconv.VIEW_ID, sp.getViewId())
                     .putAll(extra)

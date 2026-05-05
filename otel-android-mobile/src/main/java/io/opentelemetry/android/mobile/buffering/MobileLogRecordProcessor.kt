@@ -292,6 +292,19 @@ class MobileLogRecordProcessor private constructor(
             return
         }
 
+        // Stamp caller-supplied attributes (e.g., dash0.test.cell_id) onto every
+        // record. Dash0 ingestion drops unknown Resource-level attributes
+        // (verified 2026-05-05), so we attach them per-record instead. The DSL
+        // surface keeps the historical `extraResourceAttributes` name; the
+        // semantics are now per-record.
+        config.extraResourceAttributes?.forEach { (key, value) ->
+            if (key.isNotBlank()) {
+                logRecord.setAttribute(
+                    io.opentelemetry.api.common.AttributeKey.stringKey(key), value
+                )
+            }
+        }
+
         // Convert to LogRecordData for processing
         val logRecordData = logRecord.toLogRecordData().ensureTimestamp()
 
