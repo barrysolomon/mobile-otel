@@ -48,9 +48,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UAT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 export UAT_REPO_ROOT
 
+# RUN_ID groups cells of one matrix run (shared evidence dir).
+# CELL_UUID is per-cell (shared between original and recovery launch within
+# this cell). Earlier versions reused RUN_ID as cell_id, which collided
+# across cells in a matrix run and made queries unfilterable.
 RUN_ID="${RUN_ID:-$(uuidgen | tr 'A-Z' 'a-z')}"
-ORIGINAL_CELL_ID="${RUN_ID}"
-RECOVERY_CELL_ID="${RUN_ID}-recov"
+CELL_UUID="$(uuidgen | tr 'A-Z' 'a-z')"
+ORIGINAL_CELL_ID="${CELL_UUID}"
+RECOVERY_CELL_ID="${CELL_UUID}-recov"
 EVIDENCE_DIR="${EVIDENCE_DIR:-${SCRIPT_DIR}/evidence/${RUN_ID}}"
 mkdir -p "$EVIDENCE_DIR"
 EVIDENCE_FILE="${EVIDENCE_DIR}/${PLATFORM}-${MODE}-${CONNECTIVITY}-${CRASH}.jsonl"

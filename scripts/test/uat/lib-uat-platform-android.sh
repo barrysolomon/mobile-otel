@@ -115,9 +115,9 @@ uat::cycle_lifecycle() {
     local pkg
     pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
     __uat_adb shell input keyevent KEYCODE_HOME
-    sleep 2
+    sleep 3
     __uat_adb shell am start -n "${pkg}/io.opentelemetry.android.demo.MainActivity" >/dev/null
-    sleep 1
+    sleep 2
 }
 
 # uat::trigger_crash <mode> — fire the demo's gate3_crash extra.
