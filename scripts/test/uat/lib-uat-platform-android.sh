@@ -165,7 +165,13 @@ uat::trigger_crash() {
     local mode="$1"
     local pkg
     pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
+    # Add --activity-single-top so am start delivers the new intent via
+    # onNewIntent on the existing instance (default launchMode standard
+    # does not do this without the flag, and the gate3_crash extra is
+    # silently ignored — verified 2026-05-05). The MainActivity sets
+    # the new intent via onNewIntent, then onResume reads gate3_crash.
     __uat_adb shell am start \
+        --activity-single-top \
         -n "${pkg}/io.opentelemetry.android.demo.MainActivity" \
         --ez gate3_crash true >/dev/null
 }

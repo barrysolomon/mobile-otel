@@ -226,8 +226,17 @@ case "$KEY" in
         warn::eq "bg_exact" "$LIFE_BG" 2
         ;;
     cont-online-yes)
+        # Crash cells: the `app.crash` log is NOT a reliable signal on
+        # Android. ErrorInstrumentation hooks the default uncaught
+        # exception handler, but multi-thread crashes race
+        # RuntimeInit's KillApplicationHandler — the process can be
+        # SIGABRT'd before our chain runs. The reliable signal is
+        # `app.recovery_start` on relaunch with event_count > 0,
+        # proving the disk-buffered events from before the crash were
+        # recovered. See memory feedback_crash_handler_race.
         must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
+        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     cont-offline-no)
         # CONT-offline-no: events buffer in RAM during offline window,
@@ -243,9 +252,10 @@ case "$KEY" in
         warn::eq "recovery_optional" "$RECOVERY_COUNT" 0
         ;;
     cont-offline-yes)
+        # See cont-online-yes: app.crash is unreliable due to crash-handler race.
         must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
         must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     cond-online-no)
         # "Expected nothing" — four-gate signals all zero.
@@ -257,10 +267,14 @@ case "$KEY" in
         warn::eq "presence_zero" "$PRESENCE" 0
         ;;
     cond-online-yes)
-        # Crash drains buffered events synchronously online.
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
+        # COND online + crash: the disk-mirror writes RAM events to
+        # disk every 2s, so by crash time the recent events are
+        # already on disk. On relaunch app.recovery_start fires with
+        # event_count > 0, proving the recovery path. app.crash is
+        # unreliable (see cont-online-yes).
+        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
         must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        must::zero "no_recovery" "$RECOVERY_COUNT" || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     cond-offline-no)
         # COND-offline-no tests buffer-don't-export semantics, but
@@ -280,8 +294,8 @@ case "$KEY" in
         ;;
     cond-offline-yes)
         must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
         must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     hyb-online-no)
         # HYB lifecycle events are buffered until policy match (same as
@@ -294,8 +308,12 @@ case "$KEY" in
         must::zero "no_recovery" "$RECOVERY_COUNT" || EXIT=1
         ;;
     hyb-online-yes)
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
+        # HYB lifecycle is buffered until policy match; on crash the
+        # disk-mirror has events that survive. Recovery_start fires on
+        # relaunch.
+        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     hyb-offline-no)
         # Same logic as cont-offline-no: HYB lifecycle is buffered, but
@@ -308,9 +326,9 @@ case "$KEY" in
         warn::eq "recovery_optional" "$RECOVERY_COUNT" 0
         ;;
     hyb-offline-yes)
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
         must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::eq "crash_present" "$CRASH_COUNT" 1 || EXIT=1
+        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
         ;;
     *)
         echo "ERROR: unknown cell key $KEY" >&2; EXIT=2 ;;

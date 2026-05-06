@@ -235,6 +235,7 @@ class ErrorInstrumentation private constructor(
         // Body is "app.crash" so the default crash-recovery policy matches.
         // Exception details are in attributes (exception.type, exception.message, exception.stacktrace).
         attributesBuilder.put(AttributeKey.stringKey("mobile.exception.summary"), "Exception captured: ${throwable.javaClass.simpleName}")
+        attributesBuilder.put(AttributeKey.stringKey("event.name"), "app.crash")
         logger.logRecordBuilder()
             .setBody("app.crash")
             .setSeverity(Severity.ERROR)

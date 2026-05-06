@@ -118,6 +118,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        // CRITICAL: setIntent() updates getIntent() so onResume sees the
+        // new extras (e.g., gate3_crash). Without this, am start
+        // delivers the new intent but getIntent() keeps returning the
+        // original — verified 2026-05-05 in UAT cell 2 investigation.
+        setIntent(newIntent)
+    }
+
     override fun onResume() {
         super.onResume()
         // Gate 2 (matchy-matchy): one-shot HTTP call so the four-gate
