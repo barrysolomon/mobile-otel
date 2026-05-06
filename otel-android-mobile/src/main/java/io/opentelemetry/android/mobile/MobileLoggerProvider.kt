@@ -237,6 +237,10 @@ class MobileLoggerProvider private constructor(
                     .logRecordBuilder()
                     .setBody("app.recovery_start")
                     .setAttribute(
+                        io.opentelemetry.api.common.AttributeKey.stringKey("event.name"),
+                        "app.recovery_start"
+                    )
+                    .setAttribute(
                         io.opentelemetry.api.common.AttributeKey.longKey("dash0.recovery.event_count"),
                         pending.toLong()
                     )

@@ -190,13 +190,23 @@ uat::cleanup() {
 # Requires the APK to be debuggable (it is — `:debug` flavor).
 uat::probe_disk_buffer() {
     local mode="$1"
-    local pkg
+    local pkg tmpdb count
     pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
-    local count
-    count=$(__uat_adb shell "run-as $pkg sqlite3 databases/otel_log_buffer.db 'SELECT COUNT(*) FROM log_records'" 2>/dev/null | tr -d '\r')
-    # `run-as` fails silently on non-debuggable APKs or wrong package;
-    # treat empty/non-numeric as 0 so callers can `must::ge`/`must::eq`
-    # without spurious assertion failures from infra noise.
+    # API 36 emulators don't ship `sqlite3` (verified 2026-05-05). We
+    # exfiltrate the DB to the host and query it locally with the host's
+    # sqlite3 (macOS ships it at /usr/bin/sqlite3). Earlier on-device
+    # probe silently returned 0 even when the buffer had rows.
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        echo "0"
+        return
+    fi
+    tmpdb="/tmp/uat-buffer-${pkg}-$$.db"
+    if __uat_adb shell "run-as $pkg cat databases/otel_log_buffer.db" > "$tmpdb" 2>/dev/null && [[ -s "$tmpdb" ]]; then
+        count=$(sqlite3 "$tmpdb" 'SELECT COUNT(*) FROM log_records' 2>/dev/null)
+    else
+        count="0"
+    fi
+    rm -f "$tmpdb"
     case "$count" in
         ''|*[!0-9]*) echo "0" ;;
         *)           echo "$count" ;;

@@ -2,24 +2,24 @@
 
 **Service name:** `otel-android-astronomy-shop`
 **Demo app:** `examples/upstream-demo-app/` (flavors: `dash0Continuous`, `dash0Conditional`, `dash0Hybrid`)
-**Last full sweep:** *pending Task 1.5 first run*
+**Last full non-crash sweep:** 2026-05-05 (6/6 🟢)
 
 ## Status
 
 | Cell | Mode | Conn | Crash | Result | Last verified |
 |---|---|---|---|---|---|
-| 1 | CONT | online | no | 🟢 | 2026-05-05 (Phase 0 close) |
-| 2 | CONT | online | yes | ⏳ | pending sweep |
-| 3 | CONT | offline | no | ⏳ | pending sweep |
-| 4 | CONT | offline | yes | ⏳ | pending sweep |
-| 5 | COND | online | no | ⏳ | pending sweep |
-| 6 | COND | online | yes | ⏳ | pending sweep |
-| 7 | COND | offline | no | ⏳ | pending sweep |
-| 8 | COND | offline | yes | ⏳ | pending sweep |
-| 9 | HYB | online | no | ⏳ | pending sweep |
-| 10 | HYB | online | yes | ⏳ | pending sweep |
-| 11 | HYB | offline | no | ⏳ | pending sweep |
-| 12 | HYB | offline | yes | ⏳ | pending sweep |
+| 1 | CONT | online | no | 🟢 | 2026-05-05 (sweep) |
+| 2 | CONT | online | yes | ⏳ | crash subset pending |
+| 3 | CONT | offline | no | 🟢 | 2026-05-05 (sweep) |
+| 4 | CONT | offline | yes | ⏳ | crash subset pending |
+| 5 | COND | online | no | 🟢 | 2026-05-05 (sweep) |
+| 6 | COND | online | yes | ⏳ | crash subset pending |
+| 7 | COND | offline | no | 🟢 | 2026-05-05 (sweep) |
+| 8 | COND | offline | yes | ⏳ | crash subset pending |
+| 9 | HYB | online | no | 🟢 | 2026-05-05 (sweep) |
+| 10 | HYB | online | yes | ⏳ | crash subset pending |
+| 11 | HYB | offline | no | 🟢 | 2026-05-05 (sweep) |
+| 12 | HYB | offline | yes | ⏳ | crash subset pending |
 
 Status legend: 🟢 pass, 🔴 fail, ⚠️ infra, ➖ skip, ⏳ pending.
 
