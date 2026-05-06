@@ -2,7 +2,7 @@
 
 **Service name:** `otel-android-astronomy-shop`
 **Demo app:** `examples/upstream-demo-app/` (flavors: `dash0Continuous`, `dash0Conditional`, `dash0Hybrid`)
-**Last full sweep:** 2026-05-05 (8/12 🟢)
+**Last full sweep:** 2026-05-05 (7/12 🟢)
 
 ## Status
 
