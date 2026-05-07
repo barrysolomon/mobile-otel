@@ -616,6 +616,67 @@ public final class OTelMobile: @unchecked Sendable {
 
     // MARK: - Public API
 
+    // MARK: User Journey API (parity with Android `OTelMobile.startJourney/...`)
+
+    /// Starts a journey span — a long-running parent span representing a
+    /// logical user task (e.g. `"checkout"`, `"book_appointment"`). Make the
+    /// returned span current with the upstream OTel-Swift `OpenTelemetry
+    /// .instance.contextProvider.setActiveSpan(span)` so subsequent page +
+    /// interaction spans nest under it automatically; the resulting trace
+    /// gives the control plane a single `trace_id` to query when stitching
+    /// together a journey replay timeline.
+    ///
+    /// For visual replay, pair with [endJourney] (or [captureScreenshot] /
+    /// [captureWireframe] explicitly) so the journey timeline carries
+    /// screenshot + wireframe attachments. See
+    /// `docs/epics/USER_JOURNEY_CAPTURES_EPIC.md`.
+    ///
+    /// Mirrors Android's `OTelMobile.startJourney(name)`.
+    @discardableResult
+    public func startJourney(name: String) -> Span {
+        let tracer = self.tracer ?? OpenTelemetry.instance.tracerProvider.get(
+            instrumentationName: "io.opentelemetry.android.mobile.journey"
+        )
+        return tracer.spanBuilder(spanName: name)
+            .setSpanKind(spanKind: .internal)
+            .startSpan()
+    }
+
+    /// Ends a [journey] span and triggers a final screenshot + wireframe
+    /// capture so the control plane has the visual end-state. Captures emit
+    /// BEFORE [Span.end] so they inherit the journey's `trace_id`.
+    ///
+    /// Silent no-op for capture if the screenshot/wireframe instrumentation
+    /// modules aren't registered (currently always — iOS capture modules
+    /// land in a separate Phase 2 sub-item). Always ends the span.
+    ///
+    /// Mirrors Android's `OTelMobile.endJourney(span)`.
+    public func endJourney(_ journey: Span) {
+        captureScreenshot(trigger: "journey_end")
+        captureWireframe(trigger: "journey_end")
+        journey.end()
+    }
+
+    /// Triggers a screenshot capture if a screenshot instrumentation module is
+    /// registered. Silent no-op otherwise — the iOS screenshot module is a
+    /// Phase 2 sub-item not yet shipped, so today this method is always a
+    /// no-op on iOS. The signature lands now so host-app journey integration
+    /// code (e.g. demo app `BookFragment`-equivalent) is identical across
+    /// Android and iOS.
+    ///
+    /// Mirrors Android's `OTelMobile.captureScreenshot(trigger)`.
+    public func captureScreenshot(trigger: String = "manual") {
+        // Hook for the future iOS ScreenshotInstrumentation module. Until
+        // that ships, this is a documented no-op so callers can write
+        // platform-portable journey code today.
+    }
+
+    /// Triggers a wireframe capture. See [captureScreenshot] for the
+    /// platform-availability contract.
+    public func captureWireframe(trigger: String = "manual") {
+        // Hook for the future iOS WireframeInstrumentation module.
+    }
+
     /// Emit a log event with an optional severity. Thin-slice convenience —
     /// real instrumentation modules will land in subsequent tasks.
     public func emit(body: String, severity: Severity = .info) {
