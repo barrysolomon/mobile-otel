@@ -19,7 +19,15 @@ import io.opentelemetry.android.mobile.errors.ErrorInstrumentation
  * complete silently so the host app does not crash.
  */
 @Incubating
-class ErrorsInstrumentation : MobileInstrumentation {
+class ErrorsInstrumentation(
+    /**
+     * Optional callback fired after every successful error capture. Receives
+     * the source (`"uncaught"`, `"coroutine"`, `"manual"`, `"rxjava"`) so the
+     * host SDK can chain visual capture (screenshot + wireframe) — see
+     * UJ-004 in `docs/epics/USER_JOURNEY_CAPTURES_EPIC.md`.
+     */
+    private val onErrorCaptured: ((source: String) -> Unit)? = null
+) : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.errors"
 
@@ -35,7 +43,8 @@ class ErrorsInstrumentation : MobileInstrumentation {
                 config = ErrorConfig.default(),
                 logger = logger,
                 onFlush = null,
-                sessionProvider = context.sessionProvider
+                sessionProvider = context.sessionProvider,
+                onErrorCaptured = onErrorCaptured
             )
         } catch (e: Exception) {
             Log.w("ErrorsInstrumentation", "Failed to initialize ErrorInstrumentation: ${e.message}")

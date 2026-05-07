@@ -108,7 +108,14 @@ object OTelMobile {
                     .addInstrumentation(TextInputInstrumentation(config.textInputConfig))
                     .addInstrumentation(BackPressInstrumentation())
                     .addInstrumentation(FreezeInstrumentation())
-                    .addInstrumentation(ErrorsInstrumentation())
+                    .addInstrumentation(ErrorsInstrumentation(onErrorCaptured = { source ->
+                        // UJ-004: chain visual capture onto every recorded error.
+                        // The captures inherit Context.current() so they carry
+                        // the active journey's trace_id (UJ-003). Silent no-op if
+                        // the screenshot/wireframe modules aren't installed.
+                        captureScreenshot("error_$source")
+                        captureWireframe("error_$source")
+                    }))
                     .addInstrumentation(VitalsInstrumentation())
 
                 // Incubating: non-OTel-native modules, opt-in via config flags.

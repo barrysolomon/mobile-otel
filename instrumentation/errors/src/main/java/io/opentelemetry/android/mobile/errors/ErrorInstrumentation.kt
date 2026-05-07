@@ -46,7 +46,8 @@ class ErrorInstrumentation private constructor(
     private val logger: Logger,
     private val onFlush: (() -> CompletableResultCode)?,
     private val onCrashPersist: (() -> Unit)?,
-    private val sessionProvider: MobileSessionProvider? = null
+    private val sessionProvider: MobileSessionProvider? = null,
+    private val onErrorCaptured: ((source: String) -> Unit)? = null
 ) {
     private val defaultExceptionHandler: Thread.UncaughtExceptionHandler? =
         Thread.getDefaultUncaughtExceptionHandler()
@@ -257,6 +258,15 @@ class ErrorInstrumentation private constructor(
         if (config.flushOnError && source != "uncaught") {  // Uncaught already flushes
             onFlush?.invoke()
         }
+
+        // UJ-004: notify the host SDK that an error was successfully captured
+        // so it can chain visual capture (screenshot + wireframe). Best-effort
+        // — never let the callback derail the error pipeline.
+        try {
+            onErrorCaptured?.invoke(source)
+        } catch (_: Throwable) {
+            // intentional swallow
+        }
     }
 
     /**
@@ -336,16 +346,22 @@ class ErrorInstrumentation private constructor(
          * @param onFlush Optional callback to trigger flush on non-crash errors.
          * @param onCrashPersist Optional callback to persist RAM to disk on crash (no network I/O).
          * @param sessionProvider Optional session provider for crash-free session tracking
+         * @param onErrorCaptured Optional callback fired AFTER an error is successfully
+         *   captured (not when filtered, rate-limited, or dedup-skipped). Receives the
+         *   `source` string (e.g., `"uncaught"`, `"coroutine"`, `"manual"`, `"rxjava"`).
+         *   Used by the host SDK to chain visual capture (screenshot + wireframe) onto
+         *   recorded errors — see UJ-004.
          */
         fun initialize(
             config: ErrorConfig,
             logger: Logger,
             onFlush: (() -> CompletableResultCode)? = null,
             onCrashPersist: (() -> Unit)? = null,
-            sessionProvider: MobileSessionProvider? = null
+            sessionProvider: MobileSessionProvider? = null,
+            onErrorCaptured: ((source: String) -> Unit)? = null
         ): ErrorInstrumentation {
             return instance ?: synchronized(this) {
-                instance ?: ErrorInstrumentation(config, logger, onFlush, onCrashPersist, sessionProvider).also {
+                instance ?: ErrorInstrumentation(config, logger, onFlush, onCrashPersist, sessionProvider, onErrorCaptured).also {
                     instance = it
                 }
             }
