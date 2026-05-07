@@ -121,6 +121,24 @@ class BookFragment : Fragment() {
     /** Number of booking attempts in this screen session. */
     private val bookingAttemptCount = AtomicInteger(0)
 
+    // UJ-006: journey replay. The booking flow is a "user journey" — start
+    // when the form opens, end on success/failure/cancel. All page spans,
+    // taps, screenshots, wireframes, and any errors emitted in between are
+    // automatically nested under this span via OTel Context propagation,
+    // so the control plane can render a coherent journey timeline.
+    private var journeySpan: Span? = null
+    private var journeyScope: io.opentelemetry.context.Scope? = null
+
+    private fun endJourneyIfActive(outcome: String) {
+        val span = journeySpan ?: return
+        span.setAttribute("journey.outcome", outcome)
+        journeyScope?.close()
+        journeyScope = null
+        journeySpan = null
+        // Captures emit BEFORE Span.end() so they inherit journey trace_id.
+        OTelMobile.endJourney(span)
+    }
+
     /** Tracks which form fields were changed from their defaults. */
     private val changedFields = mutableSetOf<String>()
 
@@ -133,6 +151,19 @@ class BookFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         screenOpenedAtMs = System.currentTimeMillis()
+
+        // Start the booking journey — must run before any auto-instrumented
+        // page span starts so the page span can nest under the journey.
+        // makeCurrent() ties Context.current() on this thread to the journey
+        // span; subsequent OTelMobile.captureScreenshot/Wireframe calls
+        // automatically pin the journey trace_id on emitted log records
+        // (UJ-003 / UJ-005).
+        val journey = OTelMobile.startJourney("book_appointment")
+        journey.setAttribute("journey.kind", "booking_flow")
+        journeyScope = journey.makeCurrent()
+        journeySpan = journey
+        OTelMobile.captureScreenshot("journey_start")
+        OTelMobile.captureWireframe("journey_start")
 
         spinnerProvider   = view.findViewById(R.id.spinnerProvider)
         spinnerTimeSlot   = view.findViewById(R.id.spinnerTimeSlot)
@@ -154,6 +185,14 @@ class BookFragment : Fragment() {
 
         btnPickDate.setOnClickListener { showDatePicker() }
         btnBook.setOnClickListener { bookAppointment() }
+    }
+
+    override fun onDestroyView() {
+        // If the user navigated away without completing the booking, end the
+        // journey with an "abandoned" outcome so the replay timeline is still
+        // closed — no orphan journey spans.
+        endJourneyIfActive(outcome = "abandoned")
+        super.onDestroyView()
     }
 
     private fun setupSpinners() {
@@ -374,6 +413,10 @@ class BookFragment : Fragment() {
                 ), Severity.INFO)
                 etNotes.text.clear()
                 changedFields.clear()
+
+                // Journey complete — booking succeeded. Captures end-state
+                // (form cleared, success message visible) and ends the span.
+                endJourneyIfActive(outcome = "success")
 
             } catch (e: DuplicateAppointmentException) {
                 val bookingDurationMs = System.currentTimeMillis() - bookingStartMs

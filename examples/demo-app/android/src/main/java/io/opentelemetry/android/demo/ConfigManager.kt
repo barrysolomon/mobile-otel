@@ -132,13 +132,16 @@ object ConfigManager {
 
     // Screenshot defaults (incubating — non-OTel-native, off by default)
     private const val KEY_SCREENSHOT_ENABLED = "screenshot_enabled"
-    private const val DEFAULT_SCREENSHOT_ENABLED = false
+    // Demo defaults: screenshot + wireframe enabled so the User Journey replay
+    // flow (UJ-006) lights up automatically. Both modules are still
+    // @Incubating in the SDK — see docs/governance/INCUBATING_MODULES.md.
+    private const val DEFAULT_SCREENSHOT_ENABLED = true
     private const val KEY_SCREENSHOT_ON_SCREEN_VIEW = "screenshot_on_screen_view"
     private const val DEFAULT_SCREENSHOT_ON_SCREEN_VIEW = false
 
     // Wireframe defaults (incubating — non-OTel-native, off by default)
     private const val KEY_WIREFRAME_ENABLED = "wireframe_enabled"
-    private const val DEFAULT_WIREFRAME_ENABLED = false
+    private const val DEFAULT_WIREFRAME_ENABLED = true
 
     // Error handling defaults
     private const val DEFAULT_ERROR_CAPTURE_UNCAUGHT = true
