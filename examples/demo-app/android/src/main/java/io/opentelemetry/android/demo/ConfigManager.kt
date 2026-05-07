@@ -628,6 +628,17 @@ object ConfigManager {
         // Load device metrics config from telemetry settings that were already parsed
         val deviceMetricsConfig = loadDeviceMetricsConfig(context)
 
+        // Incubating modules — parsed from the JSON if present, otherwise
+        // fall through to ConfigManager defaults (which the demo flips to
+        // true so the User Journey replay flow lights up out of the box).
+        val incubating = jsonObj.optJSONObject("incubating")
+        val screenshotEnabled = incubating?.optBoolean("screenshot", DEFAULT_SCREENSHOT_ENABLED)
+            ?: DEFAULT_SCREENSHOT_ENABLED
+        val screenshotOnScreenView = incubating?.optBoolean("screenshotOnScreenView", DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
+            ?: DEFAULT_SCREENSHOT_ON_SCREEN_VIEW
+        val wireframeEnabled = incubating?.optBoolean("wireframe", DEFAULT_WIREFRAME_ENABLED)
+            ?: DEFAULT_WIREFRAME_ENABLED
+
         val config = MobileConfig(
             serviceName = jsonObj.optString("serviceName", DEFAULT_SERVICE_NAME),
             serviceVersion = jsonObj.optString("serviceVersion", DEFAULT_SERVICE_VERSION),
@@ -650,7 +661,14 @@ object ConfigManager {
             headers = headers,
             attachContextAttributes = jsonObj.optBoolean("attachContextAttributes", DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
             buildChannel = jsonObj.optString("buildChannel", DEFAULT_BUILD_CHANNEL),
-            deviceMetricsConfig = deviceMetricsConfig
+            deviceMetricsConfig = deviceMetricsConfig,
+            screenshotConfig = ScreenshotConfig(
+                enabled = screenshotEnabled,
+                captureOnScreenView = screenshotOnScreenView
+            ),
+            wireframeConfig = WireframeConfig(
+                enabled = wireframeEnabled
+            )
         )
 
         return config

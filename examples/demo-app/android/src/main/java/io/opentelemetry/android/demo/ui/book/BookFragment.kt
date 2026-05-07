@@ -132,11 +132,16 @@ class BookFragment : Fragment() {
     private fun endJourneyIfActive(outcome: String) {
         val span = journeySpan ?: return
         span.setAttribute("journey.outcome", outcome)
+        // Order matters: keep the scope open across endJourney so the
+        // captureScreenshot/captureWireframe calls inside endJourney pick up
+        // the journey span as Context.current() and emit log records that
+        // carry the journey trace_id (UJ-003 stitching contract). Close the
+        // scope AFTER, since endJourney calls Span.end() internally and the
+        // scope only ties Context.current() to the still-active span.
+        OTelMobile.endJourney(span)
         journeyScope?.close()
         journeyScope = null
         journeySpan = null
-        // Captures emit BEFORE Span.end() so they inherit journey trace_id.
-        OTelMobile.endJourney(span)
     }
 
     /** Tracks which form fields were changed from their defaults. */
