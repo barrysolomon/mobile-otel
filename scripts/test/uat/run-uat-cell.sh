@@ -99,9 +99,13 @@ uat::cycle_lifecycle "$MODE"
 sleep 5
 
 # t=30: go offline (only if connectivity=offline)
+# Sleep 5s after airplane mode to let gRPC connection pools drain and
+# any in-flight CONT periodic flush to fail. Without this, the 30s CONT
+# flush can succeed on a lingering TCP connection, draining the disk
+# buffer before the crash fires (verified 2026-05-06).
 if [[ "$CONNECTIVITY" == "offline" ]]; then
     uat::offline
-    sleep 2
+    sleep 5
 fi
 
 # t=40: app-driven GET attempt (relies on app emitting periodic GETs;
@@ -113,9 +117,23 @@ if [[ "$CONNECTIVITY" == "offline" ]]; then
 fi
 
 # t=50: trigger crash (only if crash=yes)
+# The crash fires 3s after the intent delivery (Handler.postDelayed).
+# We must force-stop the process BEFORE the background executor can
+# drain the disk buffer via forceFlush(). Timeline:
+#   t+0s: intent delivered, crash scheduled
+#   t+3s: RuntimeException on main thread
+#   t+3.5s: background thread's forceFlush() can succeed, clearing disk
+#
+# Force-stop at t+3.5s kills the process and all threads, preserving
+# the disk buffer for recovery. The crash-safety mirror (2s schedule)
+# has run at least once by t+3s, so the disk has events.
 if [[ "$CRASH" == "yes" ]]; then
     uat::trigger_crash "$MODE"
-    sleep 3
+    # Sleep 3.5s: enough for the crash to fire (3s) + margin for
+    # crash-mirror to persist, but before forceFlush can complete.
+    sleep 4
+    uat::force_stop "$MODE"
+    sleep 1
 fi
 
 # t=60: go online (only if connectivity=offline)
@@ -210,7 +228,13 @@ PRESENCE=$(run_logs_query "service.name is ${SERVICE_NAME}" "dash0.test.cell_id 
 # regardless of policy. This is the signal that distinguishes HYB from
 # pure COND. Cell 9 / 11 assert this rather than lifecycle counts since
 # HYB lifecycle events are buffered until policy match, like COND.
-HEARTBEAT_COUNT=$(run_logs_query "service.name is ${SERVICE_NAME}" "otel.scope.name is io.opentelemetry.android.mobile.heartbeat" "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
+# For crash cells the app dies before the first heartbeat fires (30s default),
+# so the only heartbeats come from the recovery launch (RECOVERY_CELL_ID).
+HEARTBEAT_CELL_ID="$ORIGINAL_CELL_ID"
+if [[ "$CRASH" == "yes" ]]; then
+    HEARTBEAT_CELL_ID="$RECOVERY_CELL_ID"
+fi
+HEARTBEAT_COUNT=$(run_logs_query "service.name is ${SERVICE_NAME}" "otel.scope.name is io.opentelemetry.android.mobile.heartbeat" "dash0.test.cell_id is ${HEARTBEAT_CELL_ID}")
 
 EXIT=0
 

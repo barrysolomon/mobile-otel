@@ -136,6 +136,7 @@ object MobileOtel {
                 config = config.errorConfig,
                 logger = loggerProvider.get("error-instrumentation"),
                 onFlush = { processor.forceFlush() },
+                onCrashPersist = { processor.persistForCrash() },
                 sessionProvider = sessionProv
             )
         }

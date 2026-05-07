@@ -130,12 +130,22 @@ uat::launch() {
 }
 
 # uat::offline / uat::online — toggle wifi + cellular on the emulator.
+# Uses airplane mode as a nuclear kill for all radios, then disables wifi
+# and data individually as belt-and-suspenders. Airplane mode tears down
+# all socket connections immediately — svc wifi/data disable alone leaves
+# kernel socket buffers alive long enough for in-flight gRPC exports to
+# succeed (verified 2026-05-06: CONT flush at 30s completed 5s after
+# svc wifi disable because the connection pool still had a live TCP conn).
 uat::offline() {
+    __uat_adb shell settings put global airplane_mode_on 1
+    __uat_adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null 2>&1
     __uat_adb shell svc wifi disable
     __uat_adb shell svc data disable
 }
 
 uat::online() {
+    __uat_adb shell settings put global airplane_mode_on 0
+    __uat_adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1
     __uat_adb shell svc wifi enable
     __uat_adb shell svc data enable
 }
@@ -174,6 +184,16 @@ uat::trigger_crash() {
         --activity-single-top \
         -n "${pkg}/io.opentelemetry.android.demo.MainActivity" \
         --ez gate3_crash true >/dev/null
+}
+
+# uat::force_stop <mode> — kill the app process without uninstalling.
+# Used after crash to prevent background executor threads from draining
+# the disk buffer when network returns.
+uat::force_stop() {
+    local mode="$1"
+    local pkg
+    pkg=$(__uat_android_pkg_for_mode "$mode") || return 1
+    __uat_adb shell am force-stop "$pkg" >/dev/null 2>&1 || true
 }
 
 # uat::cleanup <mode> — uninstall the package; cell-end teardown.

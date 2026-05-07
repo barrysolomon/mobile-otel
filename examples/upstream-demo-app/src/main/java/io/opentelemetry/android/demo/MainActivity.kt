@@ -35,8 +35,6 @@ import androidx.core.content.ContextCompat
 import io.opentelemetry.android.demo.about.AboutActivity
 import io.opentelemetry.android.demo.theme.DemoAppTheme
 import io.opentelemetry.android.demo.shop.ui.AstronomyShopActivity
-import io.opentelemetry.android.demo.shop.ui.products.multiThreadCrashing
-
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<DemoViewModel>()
     private var gate2Fired: Boolean = false
@@ -140,13 +138,26 @@ class MainActivity : ComponentActivity() {
         // Gate 3 (matchy-matchy): deterministic crash trigger via launch
         // intent extra. Mirrors iOS native's -DASH0_CRASH_NOW launch arg.
         // Use: adb shell am start -n .../MainActivity --ez gate3_crash true
+        //
+        // intent.removeExtra() only clears the in-memory Intent; Android
+        // restores the original intent from the task record on crash-restart,
+        // causing a crash loop. SharedPreferences survives process death and
+        // prevents re-triggering.
         if (intent?.getBooleanExtra("gate3_crash", false) == true) {
-            // Clear the extra so we don't re-crash on re-launch
+            val prefs = getSharedPreferences("uat_gate3", MODE_PRIVATE)
+            val alreadyFired = prefs.getBoolean("crash_fired", false)
+            if (alreadyFired) {
+                Log.i(TAG, "Gate3: crash already fired (preventing loop), clearing task")
+                intent.removeExtra("gate3_crash")
+                prefs.edit().remove("crash_fired").apply()
+                return
+            }
+            prefs.edit().putBoolean("crash_fired", true).commit()
             intent.removeExtra("gate3_crash")
             Log.i(TAG, "Gate3: scheduling crash in 3s (after telemetry buffer warms)")
             android.os.Handler(mainLooper).postDelayed({
-                Log.w(TAG, "Gate3: crashing now")
-                multiThreadCrashing()
+                Log.w(TAG, "Gate3: crashing NOW on main thread")
+                throw RuntimeException("UAT Gate3 deterministic crash")
             }, 3000)
         }
     }

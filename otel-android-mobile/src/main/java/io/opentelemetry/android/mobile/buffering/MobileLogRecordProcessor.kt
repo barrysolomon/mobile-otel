@@ -117,7 +117,6 @@ class MobileLogRecordProcessor private constructor(
     // Executor for background tasks
     private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
 
-    // Shutdown flag
     private val isShutdown = AtomicBoolean(false)
 
     // Tracks the monotonic start time of the most recently seen screen view event.
@@ -561,32 +560,30 @@ class MobileLogRecordProcessor private constructor(
                 executor.submit {
                     if (result.isSuccess) {
                         try {
-                            lastFlushStartMonoMs.set(effectiveMonoStart)
-                            lastFlushEndMonoMs.set(SystemClock.elapsedRealtime())
+                            if (isShutdown.get()) {
+                                Log.i(TAG, "Window flush exported but skipping buffer clear (shutdown/crash)")
+                            } else {
+                                lastFlushStartMonoMs.set(effectiveMonoStart)
+                                lastFlushEndMonoMs.set(SystemClock.elapsedRealtime())
 
-                            // Remove ONLY the exact exported objects from the RAM buffer.
-                            // Using an identity set avoids the clear()+addAll() race condition
-                            // that would silently drop events written during the export window.
-                            val exportedIds = Collections.newSetFromMap(
-                                IdentityHashMap<BufferedEvent, Boolean>()
-                            )
-                            exportedIds.addAll(ramEventsToFlush)
+                                val exportedIds = Collections.newSetFromMap(
+                                    IdentityHashMap<BufferedEvent, Boolean>()
+                                )
+                                exportedIds.addAll(ramEventsToFlush)
 
-                            var removed = 0
-                            ramBuffer.removeIf { event ->
-                                exportedIds.contains(event).also { matched ->
-                                    if (matched) removed++
+                                var removed = 0
+                                ramBuffer.removeIf { event ->
+                                    exportedIds.contains(event).also { matched ->
+                                        if (matched) removed++
+                                    }
                                 }
+                                ramBufferCount.addAndGet(-removed)
+                                synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
+
+                                runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
+
+                                Log.i(TAG, "Cleared $removed RAM + disk events after successful flush")
                             }
-                            ramBufferCount.addAndGet(-removed)
-                            synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
-
-                            // Delete disk events by the exact IDs that were SELECTed,
-                            // not by timestamp window — avoids clock-skew inconsistency
-                            // between the read and delete queries.
-                            runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
-
-                            Log.i(TAG, "Cleared $removed RAM + disk events after successful flush")
                         } catch (e: Exception) {
                             Log.e(TAG, "Error clearing events after successful flush", e)
                         } finally {
@@ -785,20 +782,22 @@ class MobileLogRecordProcessor private constructor(
             result.whenComplete {
                 executor.submit {
                     if (result.isSuccess) {
-                        // Remove exactly the snapshotted RAM events by object identity.
-                        // Events that arrived after the snapshot was taken are preserved.
-                        val exportedIds = Collections.newSetFromMap(
-                            IdentityHashMap<BufferedEvent, Boolean>()
-                        )
-                        exportedIds.addAll(ramSnapshot)
-                        var removed = 0
-                        ramBuffer.removeIf { event ->
-                            exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                        if (isShutdown.get()) {
+                            Log.i(TAG, "Force flush exported but skipping buffer clear (shutdown/crash)")
+                        } else {
+                            val exportedIds = Collections.newSetFromMap(
+                                IdentityHashMap<BufferedEvent, Boolean>()
+                            )
+                            exportedIds.addAll(ramSnapshot)
+                            var removed = 0
+                            ramBuffer.removeIf { event ->
+                                exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                            }
+                            ramBufferCount.addAndGet(-removed)
+                            synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
+                            runBlocking { diskBuffer.clearAll() }
+                            Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
                         }
-                        ramBufferCount.addAndGet(-removed)
-                        synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
-                        runBlocking { diskBuffer.clearAll() }
-                        Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
                     } else {
                         Log.w(TAG, "Force flush failed, keeping events in buffer")
                     }
@@ -812,6 +811,27 @@ class MobileLogRecordProcessor private constructor(
             Log.e(TAG, "Error during force flush", e)
             if (acquired) flushInProgress.set(false)
             return CompletableResultCode.ofFailure()
+        }
+    }
+
+    /**
+     * Called from the uncaught exception handler on crash. Synchronously
+     * persists the RAM buffer to disk and sets isShutdown to prevent any
+     * in-flight or pending flushes from clearing the disk buffer. The next
+     * launch detects non-empty disk → emits app.recovery_start.
+     *
+     * No network I/O — just a local SQLite write (milliseconds).
+     */
+    fun persistForCrash() {
+        isShutdown.set(true)
+        try {
+            val events = ramBuffer.toList()
+            if (events.isNotEmpty()) {
+                diskBuffer.persistBufferedEvents(events)
+                Log.i(TAG, "Crash persist: wrote ${events.size} RAM events to disk")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Crash persist failed", e)
         }
     }
 

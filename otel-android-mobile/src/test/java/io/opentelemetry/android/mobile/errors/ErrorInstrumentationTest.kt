@@ -280,27 +280,28 @@ class ErrorInstrumentationTest {
     // ── 11. Flush on uncaught ───────────────────────────────────────────────
 
     @Test
-    fun `uncaught exception handler invokes onFlush`() {
+    fun `uncaught exception handler invokes onCrashPersist not onFlush`() {
         val flushCount = AtomicInteger(0)
+        val persistCount = AtomicInteger(0)
         createInstrumentation(
             ErrorConfig(
                 captureUncaughtExceptions = true,
                 flushOnError = true
             ),
-            onFlush = { flushCount.incrementAndGet(); CompletableResultCode.ofSuccess() }
+            onFlush = { flushCount.incrementAndGet(); CompletableResultCode.ofSuccess() },
+            onCrashPersist = { persistCount.incrementAndGet() }
         )
 
-        // Get the installed uncaught exception handler
         val handler = Thread.getDefaultUncaughtExceptionHandler()
         assertNotNull(handler, "Uncaught exception handler should be installed")
 
-        // Simulate an uncaught exception on a fake thread
         val fakeThread = Thread("test-thread")
         handler.uncaughtException(fakeThread, RuntimeException("uncaught boom"))
 
-        // The uncaught handler path calls onFlush directly
-        assertTrue(flushCount.get() >= 1,
-            "Uncaught exception handler should invoke flush")
+        assertEquals(0, flushCount.get(),
+            "Uncaught handler must NOT network-flush (process is dying)")
+        assertEquals(1, persistCount.get(),
+            "Uncaught handler must persist RAM to disk")
     }
 
     // ── 12. No double flush on uncaught ─────────────────────────────────────
@@ -325,24 +326,26 @@ class ErrorInstrumentationTest {
     }
 
     @Test
-    fun `uncaught handler flushes exactly once`() {
+    fun `uncaught handler persists exactly once and never flushes`() {
         val flushCount = AtomicInteger(0)
+        val persistCount = AtomicInteger(0)
         createInstrumentation(
             ErrorConfig(
                 captureUncaughtExceptions = true,
                 flushOnError = true
             ),
-            onFlush = { flushCount.incrementAndGet(); CompletableResultCode.ofSuccess() }
+            onFlush = { flushCount.incrementAndGet(); CompletableResultCode.ofSuccess() },
+            onCrashPersist = { persistCount.incrementAndGet() }
         )
 
         val handler = Thread.getDefaultUncaughtExceptionHandler()!!
         val fakeThread = Thread("test-thread")
         handler.uncaughtException(fakeThread, RuntimeException("crash"))
 
-        // The uncaught handler calls captureException(source="uncaught") which does NOT flush,
-        // then the handler itself flushes. So exactly 1 flush total.
-        assertEquals(1, flushCount.get(),
-            "Uncaught path should produce exactly 1 flush (from handler, not from captureException)")
+        assertEquals(1, persistCount.get(),
+            "Uncaught path should produce exactly 1 persist (sync RAM→disk)")
+        assertEquals(0, flushCount.get(),
+            "Uncaught path must not network-flush (process is dying)")
     }
 
     // ── 13. Stack trace scrubbing ───────────────────────────────────────────
@@ -713,12 +716,14 @@ class ErrorInstrumentationTest {
     private fun createInstrumentation(
         config: ErrorConfig,
         onFlush: (() -> CompletableResultCode)? = null,
+        onCrashPersist: (() -> Unit)? = null,
         sessionProvider: MobileSessionProvider? = null
     ): ErrorInstrumentation {
         return ErrorInstrumentation.initialize(
             config = config,
             logger = logger,
             onFlush = onFlush,
+            onCrashPersist = onCrashPersist,
             sessionProvider = sessionProvider
         )
     }

@@ -246,6 +246,7 @@ class MobileLoggerProvider private constructor(
                     )
                     .emit()
                 android.util.Log.i("MobileLoggerProvider", "Emitted app.recovery_start marker with event_count=$pending")
+                mobileProcessor.forceFlush()
             }
         } catch (t: Throwable) {
             android.util.Log.w("MobileLoggerProvider", "Failed to emit app.recovery_start marker", t)
