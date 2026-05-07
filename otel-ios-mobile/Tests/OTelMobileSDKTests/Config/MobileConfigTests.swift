@@ -45,7 +45,10 @@ struct MobileConfigTests {
     @Test("MobileConfig default field values")
     func mobileConfigDefaults() {
         let config = MobileConfig(serviceName: "test-app", endpoint: "https://collector:4317")
-        #expect(config.exportMode == .conditional)
+        // HYBRID is the default — same rationale as Android PR-007:
+        // CONDITIONAL gives zero periodic telemetry until a policy fires,
+        // which makes the SDK look broken on first integration.
+        #expect(config.exportMode == .hybrid)
         #expect(config.pollingIntervalSeconds == 300)
         #expect(config.authToken == nil)
     }

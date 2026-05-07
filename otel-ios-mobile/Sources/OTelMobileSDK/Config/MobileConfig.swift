@@ -66,7 +66,7 @@ public struct MobileConfig: Sendable {
         serviceVersion: String = "1.0.0",
         endpoint: String,
         authToken: String? = nil,
-        exportMode: ExportMode = .conditional,
+        exportMode: ExportMode = .hybrid,
         bufferConfig: BufferConfig = .default,
         privacyConfig: PrivacyConfig = .default,
         autoCaptureOptions: AutoCaptureOptions = .all,
