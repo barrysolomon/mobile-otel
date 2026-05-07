@@ -7,6 +7,7 @@ import android.util.Log
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
+import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import java.util.concurrent.TimeUnit
@@ -36,6 +37,72 @@ class OTelMobileHandle internal constructor(
 
     /** Returns a [Meter] scoped to [scope]. */
     fun getMeter(scope: String): Meter = openTelemetry.getMeter(scope)
+
+    /**
+     * Triggers a screenshot capture if [ScreenshotInstrumentation] is registered.
+     *
+     * Reflective lookup keeps `otel-android-mobile-core` decoupled from the
+     * separate `instrumentation/screenshot/` module; if the screenshot
+     * module isn't on the classpath this is a silent no-op.
+     *
+     * The captured screenshot inherits the current OTel `Context` so it
+     * carries the active journey span's `trace_id` (see UJ-003).
+     *
+     * @param trigger Describes what triggered the capture. Recorded as
+     *   `mobile.screenshot.trigger`. Common values: `"manual"`,
+     *   `"journey_start"`, `"journey_end"`, `"error"`.
+     */
+    fun captureScreenshot(trigger: String = "manual") {
+        invokeCapture("io.opentelemetry.android.mobile.screenshot", "captureScreenshot", trigger)
+    }
+
+    /**
+     * Triggers a wireframe capture if [WireframeInstrumentation] is registered.
+     *
+     * See [captureScreenshot] for the lookup + context-propagation contract.
+     */
+    fun captureWireframe(trigger: String = "manual") {
+        invokeCapture("io.opentelemetry.android.mobile.wireframe", "captureWireframe", trigger)
+    }
+
+    /**
+     * Convenience: ends a journey [Span] and triggers a final screenshot +
+     * wireframe capture so the control plane has the visual state at the
+     * journey boundary. Captures emit BEFORE [Span.end] so they inherit the
+     * journey's context.
+     *
+     * Usage:
+     * ```kotlin
+     * val journey = otelMobile.startJourney("book_appointment")
+     * val scope = journey.makeCurrent()
+     * try {
+     *     // ... user flow
+     * } finally {
+     *     scope.close()
+     *     otelMobile.endJourney(journey)
+     * }
+     * ```
+     */
+    fun endJourney(journey: Span) {
+        try {
+            captureScreenshot("journey_end")
+            captureWireframe("journey_end")
+        } finally {
+            journey.end()
+        }
+    }
+
+    private fun invokeCapture(instrumentationName: String, methodName: String, trigger: String) {
+        val inst = registry.findByName(instrumentationName) ?: return
+        try {
+            val method = inst.javaClass.getMethod(methodName, String::class.java)
+            method.invoke(inst, trigger)
+        } catch (e: NoSuchMethodException) {
+            Log.d("OTelMobileHandle", "$instrumentationName has no $methodName(String) method", e)
+        } catch (e: Exception) {
+            Log.w("OTelMobileHandle", "$instrumentationName.$methodName failed", e)
+        }
+    }
 
     /**
      * Stops all instrumentation, flushes pending telemetry, and releases resources.

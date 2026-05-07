@@ -66,6 +66,17 @@ class InstrumentationRegistry(
         installed.clear()
     }
 
+    /**
+     * Looks up a registered instrumentation by its [MobileInstrumentation.instrumentationName].
+     * Returns `null` if no instrumentation with that name is registered.
+     *
+     * Used by journey-aware capture wiring (UJ-001/UJ-002) to invoke
+     * specific instrumentations from the public [OTelMobile] entry points
+     * without baking module-specific dependencies into the core API.
+     */
+    fun findByName(name: String): MobileInstrumentation? =
+        instrumentations.firstOrNull { it.instrumentationName == name }
+
     companion object {
         private const val TAG = "InstrumentationRegistry"
     }

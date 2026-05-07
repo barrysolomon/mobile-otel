@@ -69,4 +69,23 @@ class InstrumentationRegistryTest {
         registry.install(app, ctx)
         assertSame(provider, registry.sessionProvider)
     }
+
+    // UJ-001 / UJ-002: lookup hooks for journey-aware capture wiring
+
+    @Test fun `findByName returns the registered instrumentation`() {
+        val i1 = mockk<MobileInstrumentation>(relaxed = true) {
+            every { instrumentationName } returns "io.opentelemetry.android.mobile.screenshot"
+        }
+        val i2 = mockk<MobileInstrumentation>(relaxed = true) {
+            every { instrumentationName } returns "io.opentelemetry.android.mobile.wireframe"
+        }
+        val registry = InstrumentationRegistry(listOf(i1, i2))
+        assertSame(i1, registry.findByName("io.opentelemetry.android.mobile.screenshot"))
+        assertSame(i2, registry.findByName("io.opentelemetry.android.mobile.wireframe"))
+    }
+
+    @Test fun `findByName returns null for unregistered names`() {
+        val registry = InstrumentationRegistry(emptyList())
+        assertNull(registry.findByName("io.opentelemetry.android.mobile.does_not_exist"))
+    }
 }

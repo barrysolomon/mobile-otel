@@ -215,14 +215,56 @@ object OTelMobile {
      * Make the returned span current on the main thread with [Span.makeCurrent] so that
      * [ScreenViewInstrumentation] can nest page spans under it automatically.
      *
+     * For visual replay, pair with [endJourney] (or [captureScreenshot] /
+     * [captureWireframe] explicitly) so the journey timeline carries
+     * screenshot + wireframe attachments. See
+     * [USER_JOURNEY_CAPTURES_EPIC](../../docs/epics/USER_JOURNEY_CAPTURES_EPIC.md).
+     *
      * @param name Journey name (e.g., "checkout", "onboarding").
-     * @return The started journey [Span]. Caller is responsible for calling [Span.end].
+     * @return The started journey [Span]. Caller is responsible for calling
+     *   [Span.end] (or [endJourney] for the auto-capture variant).
      */
     @Incubating
     fun startJourney(name: String): Span {
         return getTracer("io.opentelemetry.android.mobile.journey").spanBuilder(name)
             .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
             .startSpan()
+    }
+
+    /**
+     * Ends a [journey] span and triggers a final screenshot + wireframe
+     * capture so the control plane has the visual end-state. Captures emit
+     * BEFORE [Span.end] so they inherit the journey's `trace_id` (UJ-003).
+     *
+     * Silent no-op for capture if the screenshot/wireframe instrumentation
+     * modules aren't registered. Always ends the span.
+     */
+    @Incubating
+    fun endJourney(journey: Span) {
+        handle?.endJourney(journey) ?: journey.end()
+    }
+
+    /**
+     * Triggers a screenshot capture. Inherits the current OTel `Context` so
+     * captures emitted inside a journey span carry the journey's `trace_id`.
+     * Silent no-op if the screenshot instrumentation module isn't registered.
+     *
+     * @param trigger Common values: `"manual"`, `"journey_start"`,
+     *   `"journey_end"`, `"error"`. Recorded as
+     *   `mobile.screenshot.trigger` on the emitted log record.
+     */
+    @Incubating
+    fun captureScreenshot(trigger: String = "manual") {
+        handle?.captureScreenshot(trigger)
+    }
+
+    /**
+     * Triggers a wireframe capture. See [captureScreenshot] for the
+     * context-propagation contract.
+     */
+    @Incubating
+    fun captureWireframe(trigger: String = "manual") {
+        handle?.captureWireframe(trigger)
     }
 
     /**
