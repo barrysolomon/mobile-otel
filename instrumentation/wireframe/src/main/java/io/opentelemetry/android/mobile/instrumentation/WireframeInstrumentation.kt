@@ -21,6 +21,7 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import java.lang.ref.WeakReference
 
 /**
@@ -144,14 +145,21 @@ class WireframeInstrumentation(
         if (event.actionMasked != MotionEvent.ACTION_UP) return
 
         val activity = currentActivity?.get() ?: return
+        val parentContext = Context.current()
         // Small delay to let any resulting layout changes settle.
-        mainHandler.postDelayed({ captureFromActivity(activity, "tap") }, 100)
+        mainHandler.postDelayed({ captureFromActivity(activity, "tap", parentContext) }, 100)
     }
 
     /**
      * Manually capture a wireframe of the current foreground activity.
      *
-     * @param trigger Describes what triggered the capture (e.g., "manual", "button_press").
+     * Captures `Context.current()` at call time so the resulting log record
+     * carries the active span's trace_id. This stitches the wireframe to
+     * the journey span the user was in when it was triggered — see
+     * [USER_JOURNEY_CAPTURES_EPIC](docs/epics/USER_JOURNEY_CAPTURES_EPIC.md).
+     *
+     * @param trigger Describes what triggered the capture (e.g., "manual",
+     *   "button_press", "journey_start").
      */
     fun captureWireframe(trigger: String = "manual") {
         if (!config.enabled) return
@@ -159,7 +167,7 @@ class WireframeInstrumentation(
             Log.d(TAG, "No foreground activity, skipping wireframe capture")
             return
         }
-        captureFromActivity(activity, trigger)
+        captureFromActivity(activity, trigger, Context.current())
     }
 
     /** Synchronous capture — used from crash handler. */
@@ -168,11 +176,12 @@ class WireframeInstrumentation(
         val activity = currentActivity?.get() ?: return
         if (!rateLimiter.tryAcquire()) return
 
+        val parentContext = Context.current()
         try {
             val rootView = activity.window?.decorView?.rootView ?: return
             val screenName = activity.javaClass.simpleName
             val node = buildTree(rootView, 0)
-            emitWireframe(node, screenName, trigger)
+            emitWireframe(node, screenName, trigger, parentContext)
         } catch (e: Exception) {
             Log.w(TAG, "Sync wireframe capture failed: ${e.message}")
         }
@@ -183,12 +192,13 @@ class WireframeInstrumentation(
      */
     private fun capturePostLayout(activity: Activity, trigger: String) {
         val rootView = activity.window?.decorView?.rootView ?: return
+        val parentContext = Context.current()
         rootView.post {
-            captureFromActivity(activity, trigger)
+            captureFromActivity(activity, trigger, parentContext)
         }
     }
 
-    private fun captureFromActivity(activity: Activity, trigger: String) {
+    private fun captureFromActivity(activity: Activity, trigger: String, parentContext: Context) {
         if (!rateLimiter.tryAcquire()) {
             Log.d(TAG, "Wireframe rate limit exceeded, skipping capture")
             return
@@ -200,7 +210,7 @@ class WireframeInstrumentation(
 
             val screenName = activity.javaClass.simpleName
             val node = buildTree(rootView, 0)
-            emitWireframe(node, screenName, trigger)
+            emitWireframe(node, screenName, trigger, parentContext)
         } catch (e: Exception) {
             Log.w(TAG, "Wireframe capture failed: ${e.message}")
         }
@@ -311,7 +321,12 @@ class WireframeInstrumentation(
         }
     }
 
-    private fun emitWireframe(node: WireframeNode, screenName: String, trigger: String) {
+    private fun emitWireframe(
+        node: WireframeNode,
+        screenName: String,
+        trigger: String,
+        parentContext: Context
+    ) {
         val context = ctx ?: return
         val sessionProvider = context.sessionProvider
 
@@ -329,24 +344,50 @@ class WireframeInstrumentation(
             .put(MobileSemconv.WIREFRAME_DATA, json)
             .build()
 
-        emitUiTelemetry(MobileSemconv.UI_WIREFRAME, attrs)
+        emitUiTelemetry(MobileSemconv.UI_WIREFRAME, attrs, parentContext)
     }
 
-    private fun emitUiTelemetry(name: String, attrs: Attributes) {
+    private fun emitUiTelemetry(name: String, attrs: Attributes, parentContext: Context) {
         when (uiTelemetryMode) {
             UiTelemetryMode.EVENTS -> logger?.logRecordBuilder()
+                ?.setContext(parentContext)
                 ?.setBody(name)?.setSeverity(Severity.INFO)?.setAllAttributes(attrs)?.emit()
             UiTelemetryMode.SPANS -> tracer
-                ?.spanBuilder(name)?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
+                ?.spanBuilder(name)?.setParent(parentContext)
+                ?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
                 ?.apply { setAllAttributes(attrs); end() }
             UiTelemetryMode.BOTH -> {
                 logger?.logRecordBuilder()
+                    ?.setContext(parentContext)
                     ?.setBody(name)?.setSeverity(Severity.INFO)?.setAllAttributes(attrs)?.emit()
                 tracer
-                    ?.spanBuilder(name)?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
+                    ?.spanBuilder(name)?.setParent(parentContext)
+                    ?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
                     ?.apply { setAllAttributes(attrs); end() }
             }
         }
+    }
+
+    /**
+     * Test seam: emit a synthetic wireframe log without going through the
+     * view-tree pipeline. Validates trace_id propagation through the emit
+     * path without needing a real Activity.
+     */
+    internal fun emitForTesting(
+        trigger: String,
+        screenName: String,
+        parentContext: Context = Context.current()
+    ) {
+        val context = ctx ?: return
+        val sessionProvider = context.sessionProvider
+        val attrs = Attributes.builder()
+            .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
+            .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
+            .put(MobileSemconv.SCREEN_NAME, screenName)
+            .put(MobileSemconv.WIREFRAME_TRIGGER, trigger)
+            .put(MobileSemconv.WIREFRAME_SEQUENCE, sequenceNumber++)
+            .build()
+        emitUiTelemetry(MobileSemconv.UI_WIREFRAME, attrs, parentContext)
     }
 
     /** Count total nodes in the tree (for the metadata attribute). */

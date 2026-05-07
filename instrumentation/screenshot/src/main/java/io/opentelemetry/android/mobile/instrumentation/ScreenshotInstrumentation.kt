@@ -26,6 +26,7 @@ import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
@@ -158,8 +159,15 @@ class ScreenshotInstrumentation(
     /**
      * Capture a screenshot of the current foreground activity.
      *
-     * @param trigger Describes what triggered the capture (e.g., "manual", "error", "freeze").
-     *   Recorded as the `mobile.screenshot.trigger` attribute.
+     * Captures `Context.current()` at call time so the resulting log record
+     * carries the active span's trace_id even though the actual emit
+     * happens later on a background PixelCopy thread. This is what stitches
+     * a screenshot to the journey span the user was in when it was
+     * triggered — see [USER_JOURNEY_CAPTURES_EPIC](docs/epics/USER_JOURNEY_CAPTURES_EPIC.md).
+     *
+     * @param trigger Describes what triggered the capture (e.g., "manual",
+     *   "error", "journey_start"). Recorded as the
+     *   `mobile.screenshot.trigger` attribute.
      */
     fun captureScreenshot(trigger: String = "manual") {
         if (!config.enabled) return
@@ -173,7 +181,9 @@ class ScreenshotInstrumentation(
             return
         }
 
-        captureFromActivity(activity, trigger)
+        // Pin the call-site context so async PixelCopy callbacks emit with
+        // the right trace_id.
+        captureFromActivity(activity, trigger, Context.current())
     }
 
     /**
@@ -185,6 +195,7 @@ class ScreenshotInstrumentation(
         if (!rateLimiter.tryAcquire()) return
 
         val activity = currentActivity?.get() ?: return
+        val parentContext = Context.current()
 
         try {
             val rootView = activity.window.decorView.rootView
@@ -201,14 +212,14 @@ class ScreenshotInstrumentation(
                 redactTextViews(rootView, scaled, rootView.width, rootView.height)
             }
 
-            emitScreenshot(scaled, trigger, activity)
+            emitScreenshot(scaled, trigger, activity, parentContext)
             scaled.recycle()
         } catch (e: Exception) {
             Log.w(TAG, "Sync screenshot capture failed: ${e.message}")
         }
     }
 
-    private fun captureFromActivity(activity: Activity, trigger: String) {
+    private fun captureFromActivity(activity: Activity, trigger: String, parentContext: Context) {
         val window = activity.window ?: return
         val decorView = window.decorView
         val rootView = decorView.rootView
@@ -248,7 +259,7 @@ class ScreenshotInstrumentation(
                 }
 
                 if (latch.await(3, TimeUnit.SECONDS) && copyResult == PixelCopy.SUCCESS) {
-                    processAndEmit(bitmap, rootView, trigger, activity)
+                    processAndEmit(bitmap, rootView, trigger, activity, parentContext)
                     return
                 }
             } catch (e: Exception) {
@@ -262,7 +273,7 @@ class ScreenshotInstrumentation(
                 try {
                     val canvas = Canvas(bitmap)
                     rootView.draw(canvas)
-                    processAndEmit(bitmap, rootView, trigger, activity)
+                    processAndEmit(bitmap, rootView, trigger, activity, parentContext)
                 } catch (e: Exception) {
                     Log.w(TAG, "View.draw fallback failed: ${e.message}")
                     bitmap.recycle()
@@ -280,7 +291,13 @@ class ScreenshotInstrumentation(
         }
     }
 
-    private fun processAndEmit(bitmap: Bitmap, rootView: View, trigger: String, activity: Activity) {
+    private fun processAndEmit(
+        bitmap: Bitmap,
+        rootView: View,
+        trigger: String,
+        activity: Activity,
+        parentContext: Context
+    ) {
         val scaled = scaleBitmap(bitmap)
         if (scaled !== bitmap) bitmap.recycle()
 
@@ -288,7 +305,7 @@ class ScreenshotInstrumentation(
             redactTextViews(rootView, scaled, rootView.width, rootView.height)
         }
 
-        emitScreenshot(scaled, trigger, activity)
+        emitScreenshot(scaled, trigger, activity, parentContext)
         scaled.recycle()
     }
 
@@ -362,7 +379,12 @@ class ScreenshotInstrumentation(
         }
     }
 
-    private fun emitScreenshot(bitmap: Bitmap, trigger: String, activity: Activity) {
+    private fun emitScreenshot(
+        bitmap: Bitmap,
+        trigger: String,
+        activity: Activity,
+        parentContext: Context
+    ) {
         val log = logger ?: return
         val context = ctx ?: return
         val sessionProvider = context.sessionProvider
@@ -408,24 +430,49 @@ class ScreenshotInstrumentation(
             }
             .build()
 
-        emitUiTelemetry(MobileSemconv.UI_SCREENSHOT, attrs)
+        emitUiTelemetry(MobileSemconv.UI_SCREENSHOT, attrs, parentContext)
     }
 
-    private fun emitUiTelemetry(name: String, attrs: Attributes) {
+    private fun emitUiTelemetry(name: String, attrs: Attributes, parentContext: Context) {
         when (uiTelemetryMode) {
             UiTelemetryMode.EVENTS -> logger?.logRecordBuilder()
+                ?.setContext(parentContext)
                 ?.setBody(name)?.setSeverity(Severity.INFO)?.setAllAttributes(attrs)?.emit()
             UiTelemetryMode.SPANS -> tracer
-                ?.spanBuilder(name)?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
+                ?.spanBuilder(name)?.setParent(parentContext)
+                ?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
                 ?.apply { setAllAttributes(attrs); end() }
             UiTelemetryMode.BOTH -> {
                 logger?.logRecordBuilder()
+                    ?.setContext(parentContext)
                     ?.setBody(name)?.setSeverity(Severity.INFO)?.setAllAttributes(attrs)?.emit()
                 tracer
-                    ?.spanBuilder(name)?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
+                    ?.spanBuilder(name)?.setParent(parentContext)
+                    ?.setSpanKind(SpanKind.INTERNAL)?.startSpan()
                     ?.apply { setAllAttributes(attrs); end() }
             }
         }
+    }
+
+    /**
+     * Test seam: emit a synthetic screenshot log record without going through
+     * the bitmap pipeline. Used to validate trace_id propagation through the
+     * emit path without needing a real Activity + PixelCopy.
+     */
+    internal fun emitForTesting(
+        trigger: String,
+        screenName: String,
+        parentContext: Context = Context.current()
+    ) {
+        val context = ctx ?: return
+        val sessionProvider = context.sessionProvider
+        val attrs = Attributes.builder()
+            .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
+            .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
+            .put(MobileSemconv.SCREENSHOT_TRIGGER, trigger)
+            .put(MobileSemconv.SCREEN_NAME, screenName)
+            .build()
+        emitUiTelemetry(MobileSemconv.UI_SCREENSHOT, attrs, parentContext)
     }
 
     /** Visible for testing — returns the currently tracked foreground activity. */
