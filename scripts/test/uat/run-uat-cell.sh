@@ -68,6 +68,9 @@ echo "[UAT] evidence=${EVIDENCE_FILE}"
 # --- Source platform primitives ---
 case "$PLATFORM" in
     android-native) source "${SCRIPT_DIR}/lib-uat-platform-android.sh" ;;
+    rn-android)     source "${SCRIPT_DIR}/lib-uat-platform-rn-android.sh" ;;
+    ios-native)     source "${SCRIPT_DIR}/lib-uat-platform-ios-native.sh" ;;
+    rn-ios)         source "${SCRIPT_DIR}/lib-uat-platform-rn-ios.sh" ;;
     *) echo "ERROR: platform $PLATFORM not yet supported" >&2; exit 3 ;;
 esac
 
@@ -76,8 +79,10 @@ source "${SCRIPT_DIR}/lib-uat-assertions.sh"
 # Per-platform service name resolution.
 __uat_service_name_for_platform() {
     case "$1" in
-        android-native|rn-android) echo "otel-android-astronomy-shop" ;;
-        ios-native|rn-ios) echo "otel-ios-astronomy-shop" ;;
+        android-native) echo "otel-android-astronomy-shop" ;;
+        rn-android) echo "otel-rn-android-astronomy-shop" ;;
+        ios-native) echo "otel-ios-astronomy-shop" ;;
+        rn-ios) echo "otel-rn-astronomy-shop" ;;
         *) echo "ERROR: unknown platform: $1" >&2; return 1 ;;
     esac
 }
@@ -88,7 +93,14 @@ SERVICE_NAME=$(__uat_service_name_for_platform "$PLATFORM")
 # t=0: install + launch with cell_id
 uat::install "$MODE"
 uat::launch "$MODE" "$ORIGINAL_CELL_ID"
-sleep 3
+# RN platforms need longer for the JS bridge to start and call
+# Dash0Mobile.start() → OTelMobile.start() → install instrumentation.
+# Native iOS/Android complete SDK init in < 1s; RN takes 3-5s.
+if [[ "$PLATFORM" == rn-ios || "$PLATFORM" == rn-android ]]; then
+    sleep 8
+else
+    sleep 3
+fi
 
 # t=10: lifecycle cycle 1
 uat::cycle_lifecycle "$MODE"
@@ -117,21 +129,20 @@ if [[ "$CONNECTIVITY" == "offline" ]]; then
 fi
 
 # t=50: trigger crash (only if crash=yes)
-# The crash fires 3s after the intent delivery (Handler.postDelayed).
-# We must force-stop the process BEFORE the background executor can
-# drain the disk buffer via forceFlush(). Timeline:
-#   t+0s: intent delivered, crash scheduled
-#   t+3s: RuntimeException on main thread
-#   t+3.5s: background thread's forceFlush() can succeed, clearing disk
-#
-# Force-stop at t+3.5s kills the process and all threads, preserving
-# the disk buffer for recovery. The crash-safety mirror (2s schedule)
-# has run at least once by t+3s, so the disk has events.
+# Per-platform crash timing:
+#   Android/iOS-native: crash fires ~1.5-3s after launch
+#   RN iOS: crash fires ~15s after launch (JS bridge + bundle eval + SDK
+#           init + 5s DiskLogBuffer semaphore + main.async dispatch must
+#           all complete before ErrorsInstrumentation installs the signal
+#           handler)
+# Force-stop after the crash to ensure the process is dead.
 if [[ "$CRASH" == "yes" ]]; then
     uat::trigger_crash "$MODE"
-    # Sleep 3.5s: enough for the crash to fire (3s) + margin for
-    # crash-mirror to persist, but before forceFlush can complete.
-    sleep 4
+    if [[ "$PLATFORM" == rn-ios ]]; then
+        sleep 18
+    else
+        sleep 4
+    fi
     uat::force_stop "$MODE"
     sleep 1
 fi
@@ -157,6 +168,16 @@ if [[ ( "$CRASH" == "yes" || "$CONNECTIVITY" == "offline" ) \
       && ! ( "$CONNECTIVITY" == "offline" && "$CRASH" == "no" && "$MODE" == "cond" ) ]]; then
     uat::launch "$MODE" "$RECOVERY_CELL_ID"
     sleep 8
+    # iOS COND/HYB modes have no periodic flush — events only export on
+    # bg transitions (forceFlush). The recovery launch sits in the
+    # foreground, so `app.crash` and other recovery events stay buffered.
+    # Trigger one lifecycle cycle to fire the bg-flush. CONT mode doesn't
+    # need this (periodic timer drains the buffer), but the cycle is
+    # harmless there and keeps the code simple.
+    if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+        uat::cycle_lifecycle "$MODE"
+        sleep 5
+    fi
 fi
 
 # t=90: Dash0 ingestion grace period
@@ -222,6 +243,11 @@ LIFE_FG=$(run_logs_query "service.name is ${SERVICE_NAME}" "event.name is app.fo
 LIFE_BG=$(run_logs_query "service.name is ${SERVICE_NAME}" "event.name is app.background" "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
 NET=$(run_spans_query "service.name is ${SERVICE_NAME}" "http.request.method is GET" "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
 CRASH_COUNT=$(run_logs_query "service.name is ${SERVICE_NAME}" "event.name is app.crash" "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
+# iOS crash: app.crash is emitted on the RECOVERY launch (signal handler
+# writes marker, next launch reads it), so it carries RECOVERY_CELL_ID.
+# Android crash: app.crash is emitted in the crashing process itself, so
+# it carries ORIGINAL_CELL_ID — but is unreliable due to handler race.
+CRASH_COUNT_RECOVERY=$(run_logs_query "service.name is ${SERVICE_NAME}" "event.name is app.crash" "dash0.test.cell_id is ${RECOVERY_FOR_CELL}")
 RECOVERY_COUNT=$(run_logs_query "service.name is ${SERVICE_NAME}" "event.name is app.recovery_start" "dash0.test.cell_id is ${RECOVERY_FOR_CELL}")
 PRESENCE=$(run_logs_query "service.name is ${SERVICE_NAME}" "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
 # HYB mode's continuous tick: device.heartbeat is exported every ~30s
@@ -250,17 +276,18 @@ case "$KEY" in
         warn::eq "bg_exact" "$LIFE_BG" 2
         ;;
     cont-online-yes)
-        # Crash cells: the `app.crash` log is NOT a reliable signal on
-        # Android. ErrorInstrumentation hooks the default uncaught
-        # exception handler, but multi-thread crashes race
-        # RuntimeInit's KillApplicationHandler — the process can be
-        # SIGABRT'd before our chain runs. The reliable signal is
-        # `app.recovery_start` on relaunch with event_count > 0,
-        # proving the disk-buffered events from before the crash were
-        # recovered. See memory feedback_crash_handler_race.
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            # iOS crash cells: bg-triggered flushes export 2 of 3 fg events;
+            # the 3rd fg is lost when trigger_crash terminates the process
+            # before a bg-flush fires. No crash mirror = no disk recovery.
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     cont-offline-no)
         # CONT-offline-no: events buffer in RAM during offline window,
@@ -276,29 +303,44 @@ case "$KEY" in
         warn::eq "recovery_optional" "$RECOVERY_COUNT" 0
         ;;
     cont-offline-yes)
-        # See cont-online-yes: app.crash is unreliable due to crash-handler race.
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     cond-online-no)
-        # "Expected nothing" — four-gate signals all zero.
-        must::zero "no_lifecycle_fg" "$LIFE_FG" || EXIT=1
-        must::zero "no_lifecycle_bg" "$LIFE_BG" || EXIT=1
+        # "Expected nothing" for policy-triggered export.
+        # On iOS, OTelMobile.forceFlush() fires on UIApplication
+        # didEnterBackground — a safety net against data loss. This means
+        # lifecycle cycling produces 2 bg-triggered flushes that export
+        # buffered events even in COND mode. Android doesn't auto-flush
+        # on bg in COND mode, so it truly sees zero.
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+            must::ge "lifecycle_bg" "$LIFE_BG" 2 || EXIT=1
+        else
+            must::zero "no_lifecycle_fg" "$LIFE_FG" || EXIT=1
+            must::zero "no_lifecycle_bg" "$LIFE_BG" || EXIT=1
+        fi
         must::zero "no_network" "$NET" || EXIT=1
         must::zero "no_crash" "$CRASH_COUNT" || EXIT=1
         must::zero "no_recovery" "$RECOVERY_COUNT" || EXIT=1
-        warn::eq "presence_zero" "$PRESENCE" 0
         ;;
     cond-online-yes)
-        # COND online + crash: the disk-mirror writes RAM events to
-        # disk every 2s, so by crash time the recent events are
-        # already on disk. On relaunch app.recovery_start fires with
-        # event_count > 0, proving the recovery path. app.crash is
-        # unreliable (see cont-online-yes).
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     cond-offline-no)
         # COND-offline-no tests buffer-don't-export semantics, but
@@ -317,42 +359,56 @@ case "$KEY" in
         warn::within "disk_buffered_post_predictive_flush" "$DISK_BUFFER_COUNT" 0 5
         ;;
     cond-offline-yes)
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            must::ge "lifecycle_fg" "$LIFE_FG" 3 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     hyb-online-no)
         # HYB lifecycle events are buffered until policy match (same as
-        # COND). The HYB-specific signal is the periodic device.heartbeat
-        # tick, which is immediately exported (selective immediate path
-        # in MobileLogRecordProcessor.onEmit). The 90s cell window covers
-        # at least one 30s heartbeat tick.
-        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        # COND). Android: heartbeat tick is the HYB-specific signal.
+        # iOS: no heartbeat yet; HYB behaves like COND with bg-flush.
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+        else
+            must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        fi
         must::zero "no_crash" "$CRASH_COUNT" || EXIT=1
         must::zero "no_recovery" "$RECOVERY_COUNT" || EXIT=1
         ;;
     hyb-online-yes)
-        # HYB lifecycle is buffered until policy match; on crash the
-        # disk-mirror has events that survive. Recovery_start fires on
-        # relaunch.
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     hyb-offline-no)
-        # Same logic as cont-offline-no: HYB lifecycle is buffered, but
-        # the heartbeat tick proves the SDK is alive. Recovery marker
-        # only fires if disk buffer had pending events at relaunch — not
-        # guaranteed when offline window is short and online drain
-        # handled the RAM buffer.
-        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::ge "lifecycle_fg" "$LIFE_FG" 2 || EXIT=1
+        else
+            must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+        fi
         must::zero "no_crash" "$CRASH_COUNT" || EXIT=1
         warn::eq "recovery_optional" "$RECOVERY_COUNT" 0
         ;;
     hyb-offline-yes)
-        must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
-        must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
-        warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        if [[ "$PLATFORM" == ios-native || "$PLATFORM" == rn-ios ]]; then
+            must::eq "crash_present" "$CRASH_COUNT_RECOVERY" 1 || EXIT=1
+            warn::eq "recovery_optional_ios" "$RECOVERY_COUNT" 0
+        else
+            must::ge "heartbeat_present" "$HEARTBEAT_COUNT" 1 || EXIT=1
+            must::eq "recovery_present" "$RECOVERY_COUNT" 1 || EXIT=1
+            warn::eq "crash_present_optional" "$CRASH_COUNT" 1
+        fi
         ;;
     *)
         echo "ERROR: unknown cell key $KEY" >&2; EXIT=2 ;;

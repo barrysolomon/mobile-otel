@@ -33,27 +33,14 @@ export default function App(): React.ReactElement {
       endpoint: endpointForPlatform(otelConfig.endpoint),
       authToken: otelConfig.authToken,
       dataset: otelConfig.dataset,
-      // Lifecycle auto-capture is native on both platforms now (Android
-      // ProcessLifecycleOwner + iOS NotificationCenter via the SDK's
-      // late-init synthesis). The previous JS-side AppState shim opt-out
-      // is no longer needed — see Gate 1 closure 2026-04-29.
+      autoCapture: { errors: true },
     }).catch(() => {
       // Non-RN runtime (tests, SSR) — safe to ignore
     });
 
-    // Force a periodic flush every 10s so telemetry lands quickly in demo
-    // runs. Production apps that rely on CONDITIONAL export can remove this.
-    const flushTimer = setInterval(() => {
-      Dash0Mobile.flushWindow(5).catch(() => {
-        // ignore
-      });
-    }, 10000);
-
     const auto = process.env.DASH0_AUTO_DEMO === '1';
     if (!auto) {
-      return () => {
-        clearInterval(flushTimer);
-      };
+      return;
     }
 
     const addItem = useCartStore.getState().addItem;
@@ -72,7 +59,6 @@ export default function App(): React.ReactElement {
     });
     driver.start();
     return () => {
-      clearInterval(flushTimer);
       driver.stop();
     };
   }, []);

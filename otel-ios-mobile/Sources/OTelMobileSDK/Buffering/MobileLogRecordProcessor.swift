@@ -33,6 +33,12 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// RAM-only implementation.
     private let diskBuffer: DiskLogBuffer?
 
+    /// Per-record attributes stamped onto every emitted log record. Mirrors
+    /// Android's per-record injection of `extraResourceAttributes` — Dash0
+    /// ingestion drops unknown Resource-level attributes, so UAT cell_id
+    /// and export_mode must ride as record-level attributes.
+    private let extraRecordAttributes: [String: String]
+
     /// Optional policy evaluator. When non-nil, every `onEmit` runs the event's
     /// attributes through `evaluator.evaluate(...)`. A matching policy triggers
     /// a selective `flushWindow(minutes:)` for that window — this is the
@@ -70,7 +76,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sessionProvider: SessionProvider,
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
-        policyEvaluator: PolicyEvaluator? = nil
+        policyEvaluator: PolicyEvaluator? = nil,
+        extraRecordAttributes: [String: String] = [:]
     ) {
         self.buffer = buffer
         self.legacyExporter = nil
@@ -79,6 +86,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
+        self.extraRecordAttributes = extraRecordAttributes
     }
 
     /// Test-only constructor: delivers `[BufferedEvent]` batches to an
@@ -90,7 +98,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sessionProvider: SessionProvider,
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
-        policyEvaluator: PolicyEvaluator? = nil
+        policyEvaluator: PolicyEvaluator? = nil,
+        extraRecordAttributes: [String: String] = [:]
     ) {
         self.buffer = buffer
         self.legacyExporter = exporter
@@ -99,12 +108,17 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
+        self.extraRecordAttributes = extraRecordAttributes
     }
 
     // MARK: - LogRecordProcessor
 
     public func onEmit(logRecord: ReadableLogRecord) {
-        let event = makeEvent(from: logRecord)
+        var enriched = logRecord
+        for (key, value) in extraRecordAttributes where !key.isEmpty {
+            enriched.setAttribute(key: key, value: value)
+        }
+        let event = makeEvent(from: enriched)
         // Fire-and-forget append. `onEmit` is synchronous per the protocol
         // contract; the actor append completes asynchronously. Tests that need
         // to observe the buffer after `onEmit` should `await` on a peek/flush

@@ -50,14 +50,26 @@ enum ShopBootstrap {
         let underUITest = CommandLine.arguments.contains("-DASH0_UI_TEST")
         let autoCapture: AutoCaptureOptions = underUITest ? .none : .all
 
+        let exportMode = Self.exportModeFromArgs()
+        let cellId = Self.launchArg("-DASH0_CELL_ID")
+        var extraAttrs: [String: String] = [:]
+        if let mode = Self.launchArg("-DASH0_EXPORT_MODE") {
+            extraAttrs["dash0.test.export_mode"] = mode
+        }
+        if let cid = cellId, !cid.isEmpty {
+            extraAttrs["dash0.test.cell_id"] = cid
+        }
+
         let config = MobileConfig(
             serviceName: demo.serviceName,
             serviceVersion: demo.serviceVersion,
             endpoint: demo.endpoint,
             authToken: demo.authToken,
+            exportMode: exportMode,
             autoCaptureOptions: autoCapture,
             extraHeaders: ["Dash0-Dataset": demo.dataset],
-            samplingConfig: .alwaysOn()
+            samplingConfig: .alwaysOn(),
+            extraResourceAttributes: extraAttrs
         )
         // Initialise the disk buffer synchronously via a semaphore.
         // Required because @StateObject / RootState.init is sync, and
@@ -83,6 +95,22 @@ enum ShopBootstrap {
         } catch {
             return BootResult(mobile: nil, config: demo,
                               status: "SDK start failed: \(error)")
+        }
+    }
+
+    static func launchArg(_ flag: String) -> String? {
+        let args = CommandLine.arguments
+        guard let idx = args.firstIndex(of: flag), idx + 1 < args.count else { return nil }
+        return args[idx + 1]
+    }
+
+    static func exportModeFromArgs() -> ExportMode {
+        guard let raw = launchArg("-DASH0_EXPORT_MODE") else { return .conditional }
+        switch raw.lowercased() {
+        case "cont", "continuous": return .continuous
+        case "cond", "conditional": return .conditional
+        case "hyb", "hybrid": return .hybrid
+        default: return .conditional
         }
     }
 

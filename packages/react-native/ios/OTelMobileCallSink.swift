@@ -16,6 +16,8 @@ final class OTelMobileCallSink: BridgeCallSink {
     private var liveSpans: [String: Span] = [:]
 
     func start(_ config: BridgeStartConfig) {
+        guard otel == nil else { return }
+
         // Dash0 OTLP ingress wants Bearer auth + Dash0-Dataset as explicit
         // headers, not as separate MobileConfig fields. Build them here so
         // the rest of the SDK sees a uniform headers map.
@@ -23,17 +25,27 @@ final class OTelMobileCallSink: BridgeCallSink {
         if let dataset = config.dataset, !dataset.isEmpty {
             extraHeaders["Dash0-Dataset"] = dataset
         }
+
+        // UAT launch-arg overrides: when present, the native side controls
+        // export mode and injects cell_id so the UAT matrix can drive all
+        // 12 cells without rebuilding the app.
+        let exportMode = Self.exportModeFromArgs() ?? .continuous
+        var mergedAttrs = config.extraResourceAttributes
+        if let mode = Self.launchArg("-DASH0_EXPORT_MODE") {
+            mergedAttrs["dash0.test.export_mode"] = mode
+        }
+        if let cellId = Self.launchArg("-DASH0_CELL_ID"), !cellId.isEmpty {
+            mergedAttrs["dash0.test.cell_id"] = cellId
+        }
+
         let mobileConfig = MobileConfig(
             serviceName: config.serviceName,
             serviceVersion: config.serviceVersion ?? "unknown",
             endpoint: config.endpoint,
             authToken: config.authToken,
-            // Spans + metrics go over the same gRPC endpoint as logs after
-            // the SDK transport unification — RN consumers don't need the
-            // conditional-export battery story, so default CONTINUOUS.
-            exportMode: .continuous,
+            exportMode: exportMode,
             extraHeaders: extraHeaders,
-            extraResourceAttributes: config.extraResourceAttributes
+            extraResourceAttributes: mergedAttrs
         )
         do {
             otel = try OTelMobile.start(config: mobileConfig)
@@ -226,6 +238,24 @@ final class OTelMobileCallSink: BridgeCallSink {
         case "PRODUCER": return .producer
         case "CONSUMER": return .consumer
         default:         return .internal
+        }
+    }
+
+    // MARK: - UAT launch-arg helpers
+
+    private static func launchArg(_ flag: String) -> String? {
+        let args = CommandLine.arguments
+        guard let idx = args.firstIndex(of: flag), idx + 1 < args.count else { return nil }
+        return args[idx + 1]
+    }
+
+    private static func exportModeFromArgs() -> ExportMode? {
+        guard let raw = launchArg("-DASH0_EXPORT_MODE") else { return nil }
+        switch raw.lowercased() {
+        case "cont", "continuous": return .continuous
+        case "cond", "conditional": return .conditional
+        case "hyb", "hybrid": return .hybrid
+        default: return nil
         }
     }
 }

@@ -51,36 +51,29 @@ public final class OTelMobileCallSink: BridgeCallSink {
         }
         _ = openSemaphore.wait(timeout: .now() + 5)
 
+        // UAT launch-arg overrides: simctl launch passes -DASH0_EXPORT_MODE
+        // and -DASH0_CELL_ID as process arguments. These override the JS-side
+        // config so the matrix runner can control export mode and tag records
+        // with a per-cell identifier without touching the JS bundle.
+        let exportMode = Self.exportModeFromLaunchArgs() ?? .continuous
+        var mergedAttrs = config.extraResourceAttributes
+        if let cellId = Self.launchArg("-DASH0_CELL_ID"), !cellId.isEmpty {
+            mergedAttrs["dash0.test.cell_id"] = cellId
+        }
+        if let modeStr = Self.launchArg("-DASH0_EXPORT_MODE"), !modeStr.isEmpty {
+            mergedAttrs["dash0.test.export_mode"] = modeStr
+        }
+
         let mobileConfig = MobileConfig(
             serviceName: config.serviceName,
             serviceVersion: config.serviceVersion ?? "unknown",
             endpoint: config.endpoint,
             authToken: config.authToken,
-            // Spans + metrics go over the same gRPC endpoint as logs after
-            // the SDK transport unification — RN consumers don't need the
-            // conditional-export battery story, so default CONTINUOUS.
-            exportMode: .continuous,
-            // Translate the bridge's string tokens into AutoCaptureOptions.
-            // Default = `.lifecycle` only — NotificationCenter observers
-            // don't touch the JS event loop and don't swizzle. Network
-            // (URLProtocol), errors (NSException + signals), and screen
-            // (UIViewController swizzle) DO conflict with the RN new-arch
-            // JS event loop, so they remain off-by-default; RN apps get
-            // those signals from JS-side shims (fetch + XHR, ErrorUtils,
-            // unhandledRejection, withTapTelemetry). Apps that want a
-            // specific native signal opt in per capability from JS.
+            exportMode: exportMode,
             autoCaptureOptions: Self.parseAutoCaptureOptions(config.nativeAutoCapture),
             extraHeaders: extraHeaders,
-            // Demo default: keep every span. The SDK's default is a 10%
-            // dynamic sampler that only boosts `page.*` + `app.startup` to
-            // 100% — great for production battery life, but in a demo you
-            // emit a 3-span product-view tree or a 14-span checkout tree
-            // and end up seeing 1-2 spans in Dash0, with parents missing
-            // and waterfalls broken. Apps that want production sampling
-            // can override by threading `samplingConfig` through the bridge
-            // (future enhancement).
             samplingConfig: .alwaysOn(),
-            extraResourceAttributes: config.extraResourceAttributes
+            extraResourceAttributes: mergedAttrs
         )
         do {
             otel = try OTelMobile.start(
@@ -328,6 +321,22 @@ public final class OTelMobileCallSink: BridgeCallSink {
         case "PRODUCER": return .producer
         case "CONSUMER": return .consumer
         default:         return .internal
+        }
+    }
+
+    private static func launchArg(_ flag: String) -> String? {
+        let args = CommandLine.arguments
+        guard let idx = args.firstIndex(of: flag), idx + 1 < args.count else { return nil }
+        return args[idx + 1]
+    }
+
+    private static func exportModeFromLaunchArgs() -> ExportMode? {
+        guard let raw = launchArg("-DASH0_EXPORT_MODE") else { return nil }
+        switch raw.lowercased() {
+        case "cont", "continuous": return .continuous
+        case "cond", "conditional": return .conditional
+        case "hyb", "hybrid": return .hybrid
+        default: return nil
         }
     }
 }

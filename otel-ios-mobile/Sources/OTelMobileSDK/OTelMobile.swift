@@ -261,7 +261,8 @@ public final class OTelMobile: @unchecked Sendable {
             otelExporter: otlpLogExporter,
             sessionProvider: sessionProvider,
             diskBuffer: diskBuffer,
-            policyEvaluator: policyEvaluator
+            policyEvaluator: policyEvaluator,
+            extraRecordAttributes: config.extraResourceAttributes
         )
         // Trace export pipeline: BatchSpanProcessor → OtlpHttpTraceExporter,
         // with an optional PersistingTraceHTTPClient inserted at the HTTP

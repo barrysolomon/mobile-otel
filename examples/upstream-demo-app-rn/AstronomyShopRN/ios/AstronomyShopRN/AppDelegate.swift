@@ -26,13 +26,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     Dash0MobileModule.installSink { OTelMobileCallSink() }
 
     // Test hook: if launched with -DASH0_CRASH_NOW, schedule a fatal crash
-    // ~3s after boot. Mirrors the native iOS demo's hook so the matchy-matchy
-    // Gate 3 runbook can drive a real signal-handler crash on RN iOS without
-    // a human tap. 3s (vs. native's 1.5s) gives the RN bridge + JS bundle
-    // extra warmup time. Signal handler writes a marker; next launch's
-    // ErrorsInstrumentation.install emits app.crash.
+    // ~15s after boot. Must wait for: RN bridge init (~1s) + Hermes bundle
+    // eval (~1s) + React mount + useEffect → Dash0Mobile.start() which calls
+    // OTelMobileCallSink.start() that blocks up to 5s for DiskLogBuffer init
+    // → OTelMobile.start() → main.async → ErrorsInstrumentation.install()
+    // which registers the signal handler. 15s covers the worst case with
+    // margin — the semaphore+dispatch chain can take 10-12s total.
     if CommandLine.arguments.contains("-DASH0_CRASH_NOW") {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
         let arr: [Int] = []
         _ = arr[42]   // triggers EXC_BREAKPOINT / SIGTRAP
       }
@@ -106,7 +107,15 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
 #if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+    // Prefer an embedded bundle (placed by FORCE_BUNDLING=1 or
+    // `react-native bundle` for UAT / offline use). Falls back to Metro
+    // for live-reload development. Bundle.main.url doesn't find loose
+    // files in the app bundle on Simulator — use bundlePath directly.
+    let localPath = Bundle.main.bundlePath + "/main.jsbundle"
+    if FileManager.default.fileExists(atPath: localPath) {
+      return URL(fileURLWithPath: localPath)
+    }
+    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
 #else
     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif

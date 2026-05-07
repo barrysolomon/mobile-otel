@@ -101,6 +101,10 @@ object MobileOtel {
         config: MobileConfig,
         customizers: ExporterCustomizers = ExporterCustomizers()
     ): MobileLoggerProvider {
+        // Idempotency: first caller wins — prevents double instrumentation
+        // setup when Android-side init races JS-side Dash0Mobile.start().
+        provider?.let { return it }
+
         val appContext = context.applicationContext
         currentExportMode = config.exportMode
 
@@ -187,6 +191,8 @@ object MobileOtel {
         context: Context,
         block: io.opentelemetry.android.mobile.config.MobileOtelDsl.() -> Unit
     ): OpenTelemetryMobile {
+        openTelemetryMobile?.let { return it }
+
         val dsl = io.opentelemetry.android.mobile.config.MobileOtelDsl().apply(block)
         val config = dsl.buildConfig()
         val customizers = dsl.buildCustomizers()
