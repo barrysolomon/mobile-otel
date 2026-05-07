@@ -13,6 +13,8 @@ import android.content.Intent
 import io.opentelemetry.android.demo.ui.debug.DebugToolbar
 import io.opentelemetry.android.demo.ui.debug.RingBufferActivity
 import io.opentelemetry.android.demo.ui.feed.FeedFragment
+import io.opentelemetry.android.demo.ui.likes.LikesFragment
+import io.opentelemetry.android.demo.ui.post.PostFragment
 import io.opentelemetry.android.demo.ui.profile.ProfileFragment
 import io.opentelemetry.android.demo.ui.shop.ShopFragment
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
@@ -65,13 +67,11 @@ class ShopSocialActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
                 }
                 R.id.nav_post -> {
                     trackBreadcrumb("nav_post", "PostFragment")
-                    // TODO: Create PostFragment
-                    return@setOnItemSelectedListener false
+                    PostFragment()
                 }
                 R.id.nav_likes -> {
                     trackBreadcrumb("nav_likes", "LikesFragment")
-                    // TODO: Create LikesFragment
-                    return@setOnItemSelectedListener false
+                    LikesFragment()
                 }
                 R.id.nav_profile -> {
                     trackBreadcrumb("nav_profile", "ProfileFragment")
@@ -121,7 +121,14 @@ class ShopSocialActivity : AppCompatActivity(), DebugToolbar.DebugToolbarListene
 
     override fun onTriggerHttp500() {
         trackBreadcrumb("trigger_http500", "DebugToolbar")
-        // TODO: Make API call that returns 500
+        Thread {
+            try {
+                val client = io.opentelemetry.android.demo.data.api.SchedulingApiClient.getInstance(this)
+                client.get("https://httpbin.org/status/500")
+            } catch (_: Exception) {
+                // Expected — the 500 response is the telemetry signal we want
+            }
+        }.start()
     }
 
     override fun onTriggerMemoryPressure() {

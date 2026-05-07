@@ -686,6 +686,8 @@ class MobileLogRecordProcessor private constructor(
         if (isShutdown.get()) return
         val newEvents: List<BufferedEvent>
         synchronized(persistedToDisk) {
+            // Prune stale entries that are no longer in the RAM buffer
+            persistedToDisk.retainAll(ramBuffer.toSet())
             newEvents = ramBuffer.filter { !persistedToDisk.contains(it) }
             if (newEvents.isEmpty()) return
             persistedToDisk.addAll(newEvents)

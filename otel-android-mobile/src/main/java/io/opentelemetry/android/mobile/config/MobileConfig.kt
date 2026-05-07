@@ -100,7 +100,7 @@ data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,
     val collectorEndpoint: String,
-    val exportMode: ExportMode = ExportMode.CONDITIONAL,
+    val exportMode: ExportMode = ExportMode.HYBRID,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
     val textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig(),
     val traceExportIntervalSeconds: Long = 30,
@@ -176,7 +176,7 @@ data class MobileConfig(
         private var serviceName: String? = null
         private var serviceVersion: String? = null
         private var collectorEndpoint: String? = null
-        private var exportMode: ExportMode = ExportMode.CONDITIONAL
+        private var exportMode: ExportMode = ExportMode.HYBRID
         private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
         private var textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig()
         private var traceExportIntervalSeconds: Long = 30

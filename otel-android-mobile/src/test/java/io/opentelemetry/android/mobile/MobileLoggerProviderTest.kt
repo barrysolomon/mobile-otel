@@ -166,6 +166,27 @@ class MobileLoggerProviderTest {
         assertNotNull(instance, "Should return instance when initialized")
     }
 
+    @Test
+    fun `shutdown nulls singleton instance`() {
+        val provider = MobileLoggerProvider.getInstance(context, config)
+        assertNotNull(MobileLoggerProvider.getInstanceOrNull(), "Should exist before shutdown")
+
+        provider.shutdown(5)
+
+        val afterShutdown = MobileLoggerProvider.getInstanceOrNull()
+        assertEquals(null, afterShutdown, "Singleton must be null after shutdown (PR-006)")
+    }
+
+    @Test
+    fun `re-initialization works after shutdown`() {
+        val provider1 = MobileLoggerProvider.getInstance(context, config)
+        provider1.shutdown(5)
+
+        val provider2 = MobileLoggerProvider.getInstance(context, config)
+        assertNotNull(provider2, "Should allow re-initialization after shutdown")
+        assertTrue(provider1 !== provider2, "New instance should be different object")
+    }
+
     /**
      * Helper to clear singleton using reflection for testing.
      */

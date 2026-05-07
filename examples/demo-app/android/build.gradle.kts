@@ -64,6 +64,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "false"
+        // Crash tests intentionally kill the process — run via demo-control-center.sh, not Gradle
+        testInstrumentationRunnerArguments["notClass"] =
+            "io.opentelemetry.android.demo.scenarios.RealCrashPhase1Test," +
+            "io.opentelemetry.android.demo.scenarios.RealCrashPhase2Test"
     }
 
     buildTypes {

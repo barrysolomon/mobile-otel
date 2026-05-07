@@ -5,6 +5,8 @@ import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.PrivacyConfig
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class FleetAlertHandler(
     private val processor: MobileLogRecordProcessor,
@@ -13,9 +15,9 @@ class FleetAlertHandler(
     private val privacyConfig: PrivacyConfig = PrivacyConfig(),
 ) {
     private val tag = "FleetAlertHandler"
-    private val alertTimestamps = mutableListOf<Long>()
+    private val alertTimestamps = CopyOnWriteArrayList<Long>()
     private val maxAlertsPerHour = 5
-    private val activeOverrides = mutableMapOf<String, ActiveOverride>()
+    private val activeOverrides = ConcurrentHashMap<String, ActiveOverride>()
 
     fun onFleetAlert(alert: FleetAlert): FleetAlertResult {
         // Validate expiry

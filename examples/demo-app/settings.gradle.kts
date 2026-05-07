@@ -72,6 +72,9 @@ project(":instrumentation-screen-orientation").projectDir = file("../../instrume
 include(":instrumentation-compose-click")
 project(":instrumentation-compose-click").projectDir = file("../../instrumentation/compose-click")
 
+include(":instrumentation-compose-navigation")
+project(":instrumentation-compose-navigation").projectDir = file("../../instrumentation/compose-navigation")
+
 include(":instrumentation-debug-widget")
 project(":instrumentation-debug-widget").projectDir = file("../../instrumentation/debug-widget")
 

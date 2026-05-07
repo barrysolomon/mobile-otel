@@ -8,6 +8,11 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class FleetAlertHandlerTest {
 
@@ -82,6 +87,32 @@ class FleetAlertHandlerTest {
         val result = privacyHandler.onFleetAlert(alert)
         assertTrue(result.executed)
         assertTrue(result.actionsSkipped.any { it.contains("take_screenshot") })
+    }
+
+    @Test
+    fun testFleetAlert_ConcurrentAccess_NoException() {
+        val threadCount = 10
+        val barrier = CyclicBarrier(threadCount)
+        val errors = AtomicInteger(0)
+        val executor = Executors.newFixedThreadPool(threadCount)
+        val latch = CountDownLatch(threadCount)
+
+        for (i in 1..threadCount) {
+            executor.submit {
+                try {
+                    barrier.await(5, TimeUnit.SECONDS)
+                    handler.onFleetAlert(makeAlert(alertId = "concurrent-$i"))
+                } catch (e: Exception) {
+                    errors.incrementAndGet()
+                } finally {
+                    latch.countDown()
+                }
+            }
+        }
+
+        assertTrue("Threads should complete within 10s", latch.await(10, TimeUnit.SECONDS))
+        assertEquals("No ConcurrentModificationException expected", 0, errors.get())
+        executor.shutdown()
     }
 
     @Test

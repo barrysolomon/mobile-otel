@@ -473,7 +473,7 @@ object MobileOtel {
         openTelemetryMobile = null
 
         provider?.shutdown()
-        SessionManager.getInstance().shutdown()
+        try { SessionManager.getInstance().shutdown() } catch (_: IllegalStateException) {}
         provider = null
     }
 }

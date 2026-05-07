@@ -12,6 +12,7 @@ import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
@@ -92,16 +93,21 @@ class RetryableExporter(
                             attempt = attempt + 1, maxAttempts = maxRetries + 1, delayMs = delayMs
                         ))
 
-                        scheduler.schedule({
-                            val retryResult = exportWithRetry(logs, attempt + 1)
-                            retryResult.whenComplete {
-                                if (retryResult.isSuccess) {
-                                    result.succeed()
-                                } else {
-                                    result.fail()
+                        try {
+                            scheduler.schedule({
+                                val retryResult = exportWithRetry(logs, attempt + 1)
+                                retryResult.whenComplete {
+                                    if (retryResult.isSuccess) {
+                                        result.succeed()
+                                    } else {
+                                        result.fail()
+                                    }
                                 }
-                            }
-                        }, delayMs, TimeUnit.MILLISECONDS)
+                            }, delayMs, TimeUnit.MILLISECONDS)
+                        } catch (_: RejectedExecutionException) {
+                            Log.d(TAG, "Scheduler shut down, abandoning retry")
+                            result.fail()
+                        }
                     } else {
                         val errorMsg = "Export failed after ${maxRetries + 1} attempts"
                         Log.e(TAG, errorMsg)
@@ -128,16 +134,21 @@ class RetryableExporter(
                     attempt = attempt + 1, maxAttempts = maxRetries + 1, delayMs = delayMs
                 ))
 
-                scheduler.schedule({
-                    val retryResult = exportWithRetry(logs, attempt + 1)
-                    retryResult.whenComplete {
-                        if (retryResult.isSuccess) {
-                            result.succeed()
-                        } else {
-                            result.fail()
+                try {
+                    scheduler.schedule({
+                        val retryResult = exportWithRetry(logs, attempt + 1)
+                        retryResult.whenComplete {
+                            if (retryResult.isSuccess) {
+                                result.succeed()
+                            } else {
+                                result.fail()
+                            }
                         }
-                    }
-                }, delayMs, TimeUnit.MILLISECONDS)
+                    }, delayMs, TimeUnit.MILLISECONDS)
+                } catch (_: RejectedExecutionException) {
+                    Log.d(TAG, "Scheduler shut down, abandoning retry")
+                    result.fail()
+                }
             } else {
                 ExportStatusManager.notify(classifyFailure(e.message ?: "unknown", logs.size, attempt + 1))
                 result.fail()

@@ -9,11 +9,13 @@ import android.net.Uri
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class PiiScrubberTest {
 
     // ── scrubUrl ──────────────────────────────────────────────────────────────

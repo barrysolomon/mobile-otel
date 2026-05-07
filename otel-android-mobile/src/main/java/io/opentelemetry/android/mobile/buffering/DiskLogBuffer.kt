@@ -21,6 +21,7 @@ import io.opentelemetry.sdk.resources.Resource
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Explicit Room migrations for the log_records table.
@@ -149,6 +150,10 @@ class DiskLogBuffer private constructor(
     private val logDao = database.logDao()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Cached event count — avoids runBlocking COUNT(*) on metric gauge callbacks.
+    // Seeded on first access, updated on insert/delete operations.
+    private val cachedCount = AtomicInteger(-1) // -1 = not yet seeded
+
     /**
      * Persists log records to disk.
      *
@@ -158,15 +163,15 @@ class DiskLogBuffer private constructor(
      * @param records List of log records to persist
      */
     fun persistEvents(records: List<LogRecordData>) {
+        adjustCachedCount(records.size)
         scope.launch {
             try {
                 val entities = records.map { it.toEntity() }
                 logDao.insertAll(entities)
                 Log.d(TAG, "Persisted ${entities.size} events to disk")
-
-                // Check and enforce size limit
                 enforceSizeLimit()
             } catch (e: Exception) {
+                adjustCachedCount(-records.size)
                 Log.e(TAG, "Error persisting events", e)
             }
         }
@@ -177,6 +182,7 @@ class DiskLogBuffer private constructor(
      * and boot IDs for clock-skew-safe window queries.
      */
     internal fun persistBufferedEvents(events: List<BufferedEvent>) {
+        adjustCachedCount(events.size)
         scope.launch {
             try {
                 val entities = events.map { it.toEntity() }
@@ -184,6 +190,7 @@ class DiskLogBuffer private constructor(
                 Log.d(TAG, "Persisted ${entities.size} buffered events to disk (with monotonicMs)")
                 enforceSizeLimit()
             } catch (e: Exception) {
+                adjustCachedCount(-events.size)
                 Log.e(TAG, "Error persisting buffered events", e)
             }
         }
@@ -274,6 +281,7 @@ class DiskLogBuffer private constructor(
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         try {
             val deletedCount = logDao.deleteAll()
+            cachedCount.set(0)
             Log.i(TAG, "Cleared $deletedCount events from disk")
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing events", e)
@@ -289,6 +297,7 @@ class DiskLogBuffer private constructor(
     suspend fun deleteEventsInWindow(windowStartMs: Long): Int = withContext(Dispatchers.IO) {
         try {
             val deletedCount = logDao.deleteEventsAfter(windowStartMs)
+            adjustCachedCount(-deletedCount)
             Log.d(TAG, "Deleted $deletedCount events from disk for window starting at $windowStartMs")
             deletedCount
         } catch (e: Exception) {
@@ -320,7 +329,9 @@ class DiskLogBuffer private constructor(
      */
     suspend fun deleteEventsByTraceId(traceId: String): Int = withContext(Dispatchers.IO) {
         try {
-            logDao.deleteEventsByTraceId(traceId)
+            val deleted = logDao.deleteEventsByTraceId(traceId)
+            adjustCachedCount(-deleted)
+            deleted
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting events by traceId", e)
             0
@@ -331,13 +342,24 @@ class DiskLogBuffer private constructor(
      * Gets the current number of events in disk buffer.
      */
     fun getEventCount(): Int {
+        val cached = cachedCount.get()
+        if (cached >= 0) return cached
+        // First access: seed from DB (runs once at startup, on the calling thread).
         return runBlocking {
             try {
-                logDao.getCount()
+                val count = logDao.getCount()
+                cachedCount.set(count)
+                count
             } catch (e: Exception) {
                 Log.e(TAG, "Error getting event count", e)
                 0
             }
+        }
+    }
+
+    private fun adjustCachedCount(delta: Int) {
+        cachedCount.updateAndGet { current ->
+            if (current < 0) maxOf(0, delta) else maxOf(0, current + delta)
         }
     }
 
@@ -368,6 +390,7 @@ class DiskLogBuffer private constructor(
                 val expiryTimeMs = System.currentTimeMillis() - (ttlHours * 60 * 60 * 1000L)
                 val deletedCount = logDao.deleteOlderThan(expiryTimeMs)
                 if (deletedCount > 0) {
+                    adjustCachedCount(-deletedCount)
                     Log.i(TAG, "Cleanup: deleted $deletedCount expired events (TTL: ${ttlHours}h)")
                 }
             } catch (e: Exception) {
@@ -424,9 +447,8 @@ class DiskLogBuffer private constructor(
                 val deleteCount = (totalCount * excessRatio).toInt() + 100 // Add buffer
 
                 logDao.deleteOldest(deleteCount)
+                adjustCachedCount(-deleteCount)
                 Log.i(TAG, "Size limit enforcement: deleted $deleteCount oldest events (was ${currentSizeMb}MB, limit ${maxSizeMb}MB)")
-
-                // Vacuum to reclaim space
                 database.openHelper.writableDatabase.execSQL("VACUUM")
             }
         } catch (e: Exception) {

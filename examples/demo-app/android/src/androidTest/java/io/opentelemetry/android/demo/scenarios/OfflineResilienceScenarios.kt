@@ -106,7 +106,17 @@ class OfflineResilienceScenarios {
 
     @After
     fun tearDown() {
-        setAirplaneMode(false)
+        // Dismiss any system dialogs before toggling airplane mode
+        try {
+            repeat(3) {
+                uiAuto.executeShellCommand("input keyevent 4").close()
+                Thread.sleep(300)
+            }
+        } catch (_: Exception) {}
+        try { setAirplaneMode(false) } catch (_: Exception) {
+            // Last resort: force disable even if uiAuto is stale
+            try { uiAuto.executeShellCommand("cmd connectivity airplane-mode disable").close() } catch (_: Exception) {}
+        }
         Thread.sleep(3000)
         ExportStatusManager.removeListener(exportListener)
         if (::scenario.isInitialized) scenario.close()
@@ -338,11 +348,13 @@ class OfflineResilienceScenarios {
         val cmd = if (enabled) "cmd connectivity airplane-mode enable"
         else "cmd connectivity airplane-mode disable"
         uiAuto.executeShellCommand(cmd).close()
-        Thread.sleep(2000)
+        Thread.sleep(3000)
 
-        // Dismiss connectivity dialogs
-        uiAuto.executeShellCommand("input keyevent 4").close()
-        Thread.sleep(500)
+        // Dismiss any system dialogs (ANR, connectivity, etc.)
+        repeat(3) {
+            uiAuto.executeShellCommand("input keyevent 4").close()
+            Thread.sleep(500)
+        }
 
         MobileOtel.sendEvent("test.connectivity", mapOf(
             "airplane_mode" to enabled,

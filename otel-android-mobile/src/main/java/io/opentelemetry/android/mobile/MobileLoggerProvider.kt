@@ -324,6 +324,7 @@ class MobileLoggerProvider private constructor(
             .also {
                 openTelemetrySdk.sdkTracerProvider.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
                 openTelemetrySdk.sdkMeterProvider.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
+                synchronized(Companion) { instance = null }
             }
     }
 

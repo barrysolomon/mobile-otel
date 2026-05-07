@@ -47,17 +47,17 @@ class OTelMobileHandle internal constructor(
         hubInstaller?.uninstall()
         registry.uninstall()
 
-        // Flush and shut down the OTel SDK if the underlying instance supports it.
-        // The openTelemetry field is typed as the API interface, but at runtime it is
-        // typically an OpenTelemetrySdk which exposes shutdown/forceFlush.
-        val sdk = openTelemetry as? OpenTelemetrySdk
-        if (sdk != null) {
-            try {
-                sdk.shutdown()
-                    .join(timeoutSeconds, TimeUnit.SECONDS)
-            } catch (e: Exception) {
-                Log.w("OTelMobileHandle", "Error during OTel SDK shutdown", e)
-            }
+        val sdk = openTelemetry as? OpenTelemetrySdk ?: return
+        try {
+            // Flush all pending telemetry (logs, traces, metrics) before shutdown.
+            // Without this, disk-overflow events and buffered spans are silently lost.
+            sdk.sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+            sdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+            sdk.sdkMeterProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
+
+            sdk.shutdown().join(timeoutSeconds, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w("OTelMobileHandle", "Error during OTel SDK shutdown", e)
         }
     }
 }

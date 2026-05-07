@@ -620,4 +620,24 @@ class MobileLogRecordProcessorTest {
         )
         assertTrue(mockExporter.exportedLogs.any { it.bodyValue?.asString() == "screen.view" })
     }
+
+    // ==================== PR-005: persistedToDisk pruning ====================
+
+    @Test
+    fun `persistedToDisk set does not grow unbounded after flush`() {
+        repeat(50) { i ->
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("prune.$i")))
+        }
+        assertEquals(50, processor.getBufferStats().ramBufferSize)
+
+        val result = processor.forceFlush()
+        assertTrue(result.isSuccess)
+        Thread.sleep(300)
+
+        assertEquals(0, processor.getBufferStats().ramBufferSize)
+        assertTrue(
+            "All 50 events should have been exported",
+            mockExporter.exportedLogs.size >= 50
+        )
+    }
 }

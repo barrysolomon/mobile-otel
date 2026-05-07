@@ -7,6 +7,7 @@ package io.opentelemetry.android.mobile.config
 
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import org.junit.Test
+import io.opentelemetry.android.mobile.config.ExportMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -46,6 +47,26 @@ class MobileConfigTest {
         assertEquals(30L, config.exportTimeoutSeconds)
         assertEquals(300L, config.configPollIntervalSeconds)
         assertEquals(null, config.headers)
+    }
+
+    @Test
+    fun `default export mode is HYBRID`() {
+        val config = MobileConfig(
+            serviceName = "test-service",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "http://localhost:4317"
+        )
+        assertEquals(ExportMode.HYBRID, config.exportMode, "PR-007: default must be HYBRID, not CONDITIONAL")
+    }
+
+    @Test
+    fun `builder default export mode is HYBRID`() {
+        val config = MobileConfig.builder()
+            .setServiceName("test-service")
+            .setServiceVersion("1.0.0")
+            .setCollectorEndpoint("http://localhost:4317")
+            .build()
+        assertEquals(ExportMode.HYBRID, config.exportMode, "PR-007: builder default must be HYBRID")
     }
 
     @Test
