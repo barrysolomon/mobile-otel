@@ -43,7 +43,16 @@ function makeMockNative(emitImpl?: BatchSpy): {
   const flushWindow = jest.fn<Promise<void>, [number]>(async () => {});
   const shutdown = jest.fn<Promise<void>, []>(async () => {});
   return {
-    native: { start, emitBatch, flushWindow, shutdown },
+    native: {
+      start,
+      emitBatch,
+      flushWindow,
+      shutdown,
+      startJourney: jest.fn<Promise<string>, [string]>(async () => 'mock-journey-id'),
+      endJourney: jest.fn<Promise<void>, [string]>(async () => {}),
+      captureScreenshot: jest.fn<Promise<void>, [string]>(async () => {}),
+      captureWireframe: jest.fn<Promise<void>, [string]>(async () => {}),
+    },
     emitBatch,
     start,
     flushWindow,

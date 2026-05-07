@@ -28,6 +28,10 @@ function makeFakeNative(): NativeDash0MobileModule & {emitted: Emitted} {
     },
     async flushWindow() {},
     async shutdown() {},
+    async startJourney() { return 'mock-journey-id'; },
+    async endJourney() {},
+    async captureScreenshot() {},
+    async captureWireframe() {},
   };
 }
 

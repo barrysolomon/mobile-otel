@@ -41,6 +41,12 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     private var installed = false
     private var logger: Logger?
 
+    /// Called after a `recordError` log is emitted. `OTelMobile` sets this
+    /// during wiring so the screenshot + wireframe modules can capture the
+    /// visual state at error time. NOT called from signal/exception
+    /// handlers (those run in crash context where UIKit is unsafe).
+    public var onErrorCaptured: (() -> Void)?
+
     /// Previous NSException handler installed before us. Stored as the C
     /// function-pointer type (`@convention(c)`) so we can both call it at
     /// crash time AND hand it back to `NSSetUncaughtExceptionHandler` on
@@ -130,6 +136,8 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
             .setSeverity(.error)
             .setAttributes(attrs)
             .emit()
+
+        onErrorCaptured?()
     }
 
     // MARK: - Crash marker file (signal-safe path)

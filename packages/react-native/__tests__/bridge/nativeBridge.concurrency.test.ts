@@ -38,6 +38,10 @@ function makeMockNative(
       emitBatch,
       flushWindow: jest.fn<Promise<void>, [number]>(async () => {}),
       shutdown: jest.fn<Promise<void>, []>(async () => {}),
+      startJourney: jest.fn<Promise<string>, [string]>(async () => 'mock-journey-id'),
+      endJourney: jest.fn<Promise<void>, [string]>(async () => {}),
+      captureScreenshot: jest.fn<Promise<void>, [string]>(async () => {}),
+      captureWireframe: jest.fn<Promise<void>, [string]>(async () => {}),
     },
     emitBatch,
   };

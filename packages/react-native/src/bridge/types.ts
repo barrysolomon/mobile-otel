@@ -66,6 +66,10 @@ export interface StartConfig {
     vitals?: boolean;
     /** Native-only — periodic device health gauges (battery/thermal/network). Off by default on RN. */
     deviceStats?: boolean;
+    /** Native-only — screenshot capture at journey boundaries + errors. Off by default on RN. */
+    screenshot?: boolean;
+    /** Native-only — wireframe capture at journey boundaries + screen transitions. Off by default on RN. */
+    wireframe?: boolean;
   };
   /**
    * Extra resource attributes merged into the native SDK's resource. Used by
@@ -124,4 +128,8 @@ export interface NativeDash0MobileModule {
   emitBatch(payloads: BridgePayload[]): Promise<void>;
   flushWindow(minutes: number): Promise<void>;
   shutdown(): Promise<void>;
+  startJourney(name: string): Promise<string>;
+  endJourney(journeyId: string): Promise<void>;
+  captureScreenshot(trigger: string): Promise<void>;
+  captureWireframe(trigger: string): Promise<void>;
 }

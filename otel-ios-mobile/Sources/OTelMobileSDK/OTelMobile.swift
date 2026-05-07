@@ -10,6 +10,8 @@ import ErrorsInstrumentation
 import ScreenInstrumentation
 import FreezeInstrumentation
 import VitalsInstrumentation
+import ScreenshotInstrumentation
+import WireframeInstrumentation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -91,6 +93,11 @@ public final class OTelMobile: @unchecked Sendable {
     /// `spanDiskBuffer` — in that case PersistingSpanExporter passes
     /// through transparently and no recovery is needed.
     private let spanDiskBuffer: DiskSpanBuffer?
+
+    /// Incubating capture modules. Held so `captureScreenshot` and
+    /// `captureWireframe` can delegate to the real instrumentation.
+    private var screenshotInstrumentation: ScreenshotInstrumentation?
+    private var wireframeInstrumentation: WireframeInstrumentation?
 
     /// NotificationCenter observers registered by `start(config:)` so we
     /// can auto-`forceFlush()` on backgrounding/termination. Held on the
@@ -585,6 +592,35 @@ public final class OTelMobile: @unchecked Sendable {
                 ScreenInstrumentation.shared.install(tracer: tracer, logger: logger)
             }
 
+            // Incubating capture modules — opt-in via AutoCaptureOptions.
+            let captureContext = InstrumentationContext(
+                tracer: tracer,
+                logger: logger,
+                meter: meter,
+                sessionProvider: sessionProvider,
+                eventHub: TouchEventHub(),
+                privacyConfig: config.privacyConfig
+            )
+            if opts.contains(.screenshot) {
+                let screenshotInst = ScreenshotInstrumentation.shared
+                screenshotInst.install(context: captureContext)
+                instance.screenshotInstrumentation = screenshotInst
+            }
+            if opts.contains(.wireframe) {
+                let wireframeInst = WireframeInstrumentation.shared
+                wireframeInst.install(context: captureContext)
+                instance.wireframeInstrumentation = wireframeInst
+            }
+
+            // UJ-013: chain capture-on-error so ErrorsInstrumentation
+            // triggers a screenshot + wireframe when recordError() fires.
+            if opts.contains(.errors) {
+                ErrorsInstrumentation.shared.onErrorCaptured = { [weak instance] in
+                    instance?.captureScreenshot(trigger: "error")
+                    instance?.captureWireframe(trigger: "error")
+                }
+            }
+
             // Auto-forceFlush on backgrounding. Without this, a customer app
             // that goes offline (airplane mode, lost Wi-Fi, etc.), then
             // backgrounds, then terminates before reconnecting, loses every
@@ -658,23 +694,19 @@ public final class OTelMobile: @unchecked Sendable {
     }
 
     /// Triggers a screenshot capture if a screenshot instrumentation module is
-    /// registered. Silent no-op otherwise — the iOS screenshot module is a
-    /// Phase 2 sub-item not yet shipped, so today this method is always a
-    /// no-op on iOS. The signature lands now so host-app journey integration
-    /// code (e.g. demo app `BookFragment`-equivalent) is identical across
-    /// Android and iOS.
+    /// registered. Silent no-op otherwise.
     ///
     /// Mirrors Android's `OTelMobile.captureScreenshot(trigger)`.
     public func captureScreenshot(trigger: String = "manual") {
-        // Hook for the future iOS ScreenshotInstrumentation module. Until
-        // that ships, this is a documented no-op so callers can write
-        // platform-portable journey code today.
+        screenshotInstrumentation?.capture(trigger: trigger)
     }
 
-    /// Triggers a wireframe capture. See [captureScreenshot] for the
-    /// platform-availability contract.
+    /// Triggers a wireframe capture if a wireframe instrumentation module is
+    /// registered. Silent no-op otherwise.
+    ///
+    /// Mirrors Android's `OTelMobile.captureWireframe(trigger)`.
     public func captureWireframe(trigger: String = "manual") {
-        // Hook for the future iOS WireframeInstrumentation module.
+        wireframeInstrumentation?.capture(trigger: trigger)
     }
 
     /// Emit a log event with an optional severity. Thin-slice convenience —

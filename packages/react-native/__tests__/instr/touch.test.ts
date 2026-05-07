@@ -36,6 +36,10 @@ function makeFakeNative(): NativeDash0MobileModule & { emitted: BridgePayload[] 
     },
     async flushWindow() {},
     async shutdown() {},
+    async startJourney() { return 'mock-journey-id'; },
+    async endJourney() {},
+    async captureScreenshot() {},
+    async captureWireframe() {},
   };
 }
 

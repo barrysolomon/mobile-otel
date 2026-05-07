@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version:5.9
 
 import PackageDescription
 
@@ -14,6 +14,8 @@ let package = Package(
         .library(name: "ErrorsInstrumentation", targets: ["ErrorsInstrumentation"]),
         .library(name: "VitalsInstrumentation", targets: ["VitalsInstrumentation"]),
         .library(name: "FreezeInstrumentation", targets: ["FreezeInstrumentation"]),
+        .library(name: "ScreenshotInstrumentation", targets: ["ScreenshotInstrumentation"]),
+        .library(name: "WireframeInstrumentation", targets: ["WireframeInstrumentation"]),
     ],
     dependencies: [
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.1.1"),
@@ -37,6 +39,8 @@ let package = Package(
                 "ScreenInstrumentation",
                 "FreezeInstrumentation",
                 "VitalsInstrumentation",
+                "ScreenshotInstrumentation",
+                "WireframeInstrumentation",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
@@ -85,6 +89,20 @@ let package = Package(
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ]
         ),
+        .target(
+            name: "ScreenshotInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
+        .target(
+            name: "WireframeInstrumentation",
+            dependencies: [
+                "OTelMobileCore",
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            ]
+        ),
         .testTarget(
             name: "OTelMobileSDKTests",
             dependencies: ["OTelMobileSDK", "NetworkInstrumentation"]
@@ -100,6 +118,22 @@ let package = Package(
             name: "LifecycleInstrumentationTests",
             dependencies: [
                 "LifecycleInstrumentation",
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            ]
+        ),
+        .testTarget(
+            name: "ScreenshotInstrumentationTests",
+            dependencies: [
+                "ScreenshotInstrumentation",
+                "OTelMobileCore",
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            ]
+        ),
+        .testTarget(
+            name: "WireframeInstrumentationTests",
+            dependencies: [
+                "WireframeInstrumentation",
+                "OTelMobileCore",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             ]
         ),

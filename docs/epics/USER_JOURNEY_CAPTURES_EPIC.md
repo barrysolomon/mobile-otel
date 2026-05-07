@@ -1,6 +1,6 @@
 # Epic: User Journey + Screen/Wireframe Captures
 
-**Status:** Phase 1 in progress
+**Status:** ALL PHASES COMPLETE
 **Priority:** P0 (next epic after Production Readiness)
 **Owner:** Barry Solomon
 **Created:** 2026-05-07
@@ -39,50 +39,51 @@ This epic ties the pieces together end-to-end.
 
 | ID | Title | Files | Status |
 |----|-------|-------|--------|
-| UJ-001 | Journey-aware screenshot trigger | `ScreenshotInstrumentation.kt`, `OTelMobile.kt` | TODO |
-| UJ-002 | Journey-aware wireframe trigger | `WireframeInstrumentation.kt`, `OTelMobile.kt` | TODO |
-| UJ-003 | Thread journey span context into capture log attributes (trace_id, span_id) | both instrumentation modules | TODO |
-| UJ-004 | Capture on error within active journey | `ErrorInstrumentation.kt` ↔ screenshot/wireframe | TODO |
-| UJ-005 | `endJourney()` captures final state | `OTelMobile.kt` | TODO |
-| UJ-006 | Demo app journey integration (booking flow) | `examples/demo-app/android/` | TODO |
-| UJ-007 | Tests for journey-aware capture wiring | new test files | TODO |
+| UJ-001 | Journey-aware screenshot trigger | `ScreenshotInstrumentation.kt`, `OTelMobile.kt` | ✅ Done |
+| UJ-002 | Journey-aware wireframe trigger | `WireframeInstrumentation.kt`, `OTelMobile.kt` | ✅ Done |
+| UJ-003 | Thread journey span context into capture log attributes (trace_id, span_id) | both instrumentation modules | ✅ Done |
+| UJ-004 | Capture on error within active journey | `ErrorInstrumentation.kt` ↔ screenshot/wireframe | ✅ Done |
+| UJ-005 | `endJourney()` captures final state | `OTelMobile.kt` | ✅ Done |
+| UJ-006 | Demo app journey integration (booking flow) | `examples/demo-app/android/` | ✅ Done |
+| UJ-007 | Tests for journey-aware capture wiring | `ScreenshotJourneyContextTest.kt`, `WireframeJourneyContextTest.kt` | ✅ Done |
 
 ### Phase 2: iOS Capture Instrumentation (post-Monday)
 
 | ID | Title | Notes |
 |----|-------|-------|
-| UJ-010 | iOS `ScreenshotInstrumentation` | UIGraphicsImageRenderer / Metal layer capture |
-| UJ-011 | iOS `WireframeInstrumentation` | UIView hierarchy walk, JSON serialization |
-| UJ-012 | iOS journey-aware capture wiring | mirror Android Phase 1 |
-| UJ-013 | iOS capture-on-error integration | mirror Android UJ-004 |
-| UJ-014 | iOS privacy redaction strategy | UITextField/SecureField text redaction (mirror Android `redactTextViews`) |
+| UJ-010 | iOS `ScreenshotInstrumentation` | UIGraphicsImageRenderer, rate limiting, JPEG/PNG, base64 data URL | ✅ Done |
+| UJ-011 | iOS `WireframeInstrumentation` | UIView hierarchy walk, recursive JSON, nodeCount | ✅ Done |
+| UJ-012 | iOS journey-aware capture wiring | OTelMobile.swift delegates to screenshot/wireframe modules | ✅ Done |
+| UJ-013 | iOS capture-on-error integration | ErrorsInstrumentation.onErrorCaptured callback | ✅ Done |
+| UJ-014 | iOS privacy redaction strategy | UITextField/UITextView text redaction in screenshots | ✅ Done |
 
 ### Phase 3: React Native Bridge
 
 | ID | Title | Notes |
 |----|-------|-------|
-| UJ-020 | RN bridge passes journey API through to native | thin marshalling, both platforms |
-| UJ-021 | RN auto-capture toggle for journey events | `autoCapture.journey` config |
+| UJ-020 | RN bridge passes journey API through to native | `startJourney`, `endJourney`, `captureScreenshot`, `captureWireframe` passthrough | ✅ Done |
+| UJ-021 | RN auto-capture toggle for screenshot/wireframe | `autoCapture.screenshot`, `autoCapture.wireframe` flags + NATIVE_AUTO_CAPTURE_FLAGS | ✅ Done |
 
 ### Phase 4: Control Plane Renderer
 
-| ID | Title | Notes |
-|----|-------|-------|
-| UJ-030 | Journey timeline view component | groups by `trace_id` |
-| UJ-031 | Screenshot carousel | paged by capture sequence |
-| UJ-032 | Wireframe overlay viewer | renders the wireframe JSON tree |
-| UJ-033 | Breadcrumb timeline integration | merge into journey view |
+| ID | Title | Notes | Status |
+|----|-------|-------|--------|
+| UJ-030 | Journey timeline view component | `JourneyReplay.tsx` — groups by `traceId`, sorted by timestamp | ✅ Done |
+| UJ-031 | Screenshot carousel | `ScreenshotStrip` (horizontal) + `ScreenshotRow` (inline) + `ScreenshotLightbox` (full-size modal) | ✅ Done |
+| UJ-032 | Wireframe overlay viewer | `WireframeTree` recursive collapsible renderer for `mobile.wireframe.data` JSON | ✅ Done |
+| UJ-033 | Breadcrumb timeline integration | `GenericRow` for all non-capture events as timeline entries | ✅ Done |
 
 ## Cross-Platform Status
 
 | Feature | Android | iOS | RN |
 |---------|---------|-----|-----|
 | Journey API (`startJourney`/`endJourney`) | ✅ GA | ✅ GA | ✅ GA |
-| Screen tracking (`page.X` span + `ui.screen_view`) | ✅ GA | ✅ GA | ❌ |
-| Screenshot capture | ⚠️ Incubating | ❌ Phase 2 | ❌ Phase 3 |
-| Wireframe capture | ⚠️ Incubating | ❌ Phase 2 | ❌ Phase 3 |
-| Journey-aware auto-capture | ❌ Phase 1 | ❌ Phase 2 | ❌ Phase 3 |
-| Control plane renderer | ❌ Phase 4 | ❌ Phase 4 | ❌ Phase 4 |
+| Screen tracking (`page.X` span + `ui.screen_view`) | ✅ GA | ✅ GA | ✅ Via react-navigation helper |
+| Screenshot capture | ✅ GA | ✅ GA | ✅ Bridge (native) |
+| Wireframe capture | ✅ GA | ✅ GA | ✅ Bridge (native) |
+| Journey-aware auto-capture | ✅ GA | ✅ GA | ✅ Bridge (native) |
+| Capture on error | ✅ GA | ✅ GA | ✅ Bridge (native) |
+| Control plane renderer | ✅ JourneyReplay.tsx | ✅ JourneyReplay.tsx | ✅ JourneyReplay.tsx |
 
 ## OTel-Native Constraint
 

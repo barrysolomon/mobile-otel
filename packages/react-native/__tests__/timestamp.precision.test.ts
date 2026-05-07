@@ -34,11 +34,19 @@ function installMock(): Mocks {
     const emitBatch = jest.fn<Promise<void>, [BridgePayload[]]>(async () => {});
     const flushWindow = jest.fn<Promise<void>, [number]>(async () => {});
     const shutdown = jest.fn<Promise<void>, []>(async () => {});
+    const startJourney = jest.fn<Promise<string>, [string]>(async () => 'mock-journey-id');
+    const endJourney = jest.fn<Promise<void>, [string]>(async () => {});
+    const captureScreenshot = jest.fn<Promise<void>, [string]>(async () => {});
+    const captureWireframe = jest.fn<Promise<void>, [string]>(async () => {});
     const native: NativeDash0MobileModule = {
         start,
         emitBatch,
         flushWindow,
         shutdown,
+        startJourney,
+        endJourney,
+        captureScreenshot,
+        captureWireframe,
     };
     __setNativeForTesting(native);
     return { emitBatch };

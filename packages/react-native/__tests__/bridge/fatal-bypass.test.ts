@@ -37,6 +37,10 @@ function makeFakeNative(): {
     emitBatch,
     async flushWindow() {},
     async shutdown() {},
+    async startJourney() { return 'mock-journey-id'; },
+    async endJourney() {},
+    async captureScreenshot() {},
+    async captureWireframe() {},
   };
   return { native, emitBatch };
 }

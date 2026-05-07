@@ -335,6 +335,39 @@ export const Dash0Mobile = {
     if (native) await native.flushWindow(minutes);
   },
 
+  // ─── User Journey API (UJ-020) ──────────────────────────────────────────
+  // Thin passthrough to native `OTelMobile.startJourney/endJourney`. The
+  // native side creates the journey span and triggers screenshot + wireframe
+  // captures at start/end boundaries.
+
+  async startJourney(name: string): Promise<string | null> {
+    if (!started) return null;
+    const native = resolveNative();
+    if (!native) return null;
+    return native.startJourney(name);
+  },
+
+  async endJourney(journeyId: string): Promise<void> {
+    if (!started) return;
+    const native = resolveNative();
+    if (!native) return;
+    await native.endJourney(journeyId);
+  },
+
+  async captureScreenshot(trigger: string = 'manual'): Promise<void> {
+    if (!started) return;
+    const native = resolveNative();
+    if (!native) return;
+    await native.captureScreenshot(trigger);
+  },
+
+  async captureWireframe(trigger: string = 'manual'): Promise<void> {
+    if (!started) return;
+    const native = resolveNative();
+    if (!native) return;
+    await native.captureWireframe(trigger);
+  },
+
   async shutdown(): Promise<void> {
     for (const uninstall of autoInstrUninstallers) {
       try {
@@ -383,6 +416,8 @@ const NATIVE_AUTO_CAPTURE_FLAGS: ReadonlyArray<[AutoCaptureFlag, string]> = [
   ['freeze', 'freeze'],
   ['vitals', 'vitals'],
   ['deviceStats', 'deviceStats'],
+  ['screenshot', 'screenshot'],
+  ['wireframe', 'wireframe'],
 ];
 function buildNativeAutoCaptureTokens(ac: StartConfig['autoCapture']): string[] {
   if (!ac) return [];
