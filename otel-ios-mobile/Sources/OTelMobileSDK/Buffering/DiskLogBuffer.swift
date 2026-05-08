@@ -206,6 +206,76 @@ public actor DiskLogBuffer {
         pruneBySizeInternal(maxBytes: maxBytes)
     }
 
+    // MARK: - Offline budget enforcement
+
+    /// Enforces the offline disk budget by evicting events until the db file
+    /// size is at or below `config.maxOfflineDiskBytes`. Mirrors Android's
+    /// `DiskLogBuffer.enforceOfflineBudget()`.
+    ///
+    /// After deletion, runs VACUUM to reclaim disk space — SQLite doesn't
+    /// shrink the file on DELETE alone.
+    public func enforceOfflineBudget(_ config: OfflineBudgetConfig) async {
+        guard config.enabled, !closed, db != nil else { return }
+        let currentSize = fileSizeBytes()
+        guard currentSize > config.maxOfflineDiskBytes else { return }
+
+        let rowTotal = scalarInt(sql: "SELECT COUNT(*) FROM buffered_events;")
+        guard rowTotal > 0 else { return }
+
+        let excessRatio = Double(currentSize - config.maxOfflineDiskBytes) / Double(currentSize)
+        let evictCount = max(1, Int(Double(rowTotal) * excessRatio))
+
+        switch config.evictionStrategy {
+        case .oldestFirst:
+            deleteOldest(count: evictCount)
+        case .lowestSeverityFirst:
+            deleteLowestSeverity(count: evictCount)
+        }
+
+        execSQL("VACUUM;")
+    }
+
+    /// Returns the actual file size on disk in bytes. 0 on error.
+    public nonisolated func fileSizeBytes() -> Int {
+        let path = dbPath.path
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? Int else { return 0 }
+        return size
+    }
+
+    private func deleteOldest(count: Int) {
+        let sql = "DELETE FROM buffered_events WHERE id IN (SELECT id FROM buffered_events ORDER BY seq_id ASC, id ASC LIMIT ?);"
+        var stmt: OpaquePointer?
+        guard prepare(sql, &stmt) else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt, 1, Int32(count))
+        step(stmt)
+    }
+
+    private func deleteLowestSeverity(count: Int) {
+        let sql = """
+        DELETE FROM buffered_events WHERE id IN (
+            SELECT id FROM buffered_events ORDER BY
+                CASE json_extract(record_json, '$.severity')
+                    WHEN 'trace' THEN 0 WHEN 'debug' THEN 1 WHEN 'info' THEN 2
+                    WHEN 'warn' THEN 3 WHEN 'error' THEN 4 WHEN 'fatal' THEN 5
+                    WHEN 'TRACE' THEN 0 WHEN 'DEBUG' THEN 1 WHEN 'INFO' THEN 2
+                    WHEN 'WARN' THEN 3 WHEN 'ERROR' THEN 4 WHEN 'FATAL' THEN 5
+                    ELSE 1 END ASC,
+                timestamp_ms ASC
+            LIMIT ?
+        );
+        """
+        var stmt: OpaquePointer?
+        guard prepare(sql, &stmt) else {
+            deleteOldest(count: count)
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt, 1, Int32(count))
+        step(stmt)
+    }
+
     // MARK: - Private: open / prepare
 
     private nonisolated static func resolveDbPath(preferred: URL?) throws -> URL {

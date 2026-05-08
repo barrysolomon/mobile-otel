@@ -26,23 +26,30 @@ public final class PredictiveExportPolicy: @unchecked Sendable {
         /// (tighter than the crash path — loss is imminent, not happened).
         public var networkRiskFlushWindowMinutes: UInt64
 
+        /// When true, suppress the networkLossRisk → flushWindow action.
+        /// Set when OfflinePolicy is handling offline scenarios (e.g. errorOnly, dropAll).
+        public var suppressNetworkLossFlush: Bool
+
         public static let `default` = Config(
             intervalSeconds: 30,
             highRiskThreshold: 0.7,
             crashRiskFlushWindowMinutes: 5,
-            networkRiskFlushWindowMinutes: 2
+            networkRiskFlushWindowMinutes: 2,
+            suppressNetworkLossFlush: false
         )
 
         public init(
             intervalSeconds: UInt64 = 30,
             highRiskThreshold: Double = 0.7,
             crashRiskFlushWindowMinutes: UInt64 = 5,
-            networkRiskFlushWindowMinutes: UInt64 = 2
+            networkRiskFlushWindowMinutes: UInt64 = 2,
+            suppressNetworkLossFlush: Bool = false
         ) {
             self.intervalSeconds = intervalSeconds
             self.highRiskThreshold = highRiskThreshold
             self.crashRiskFlushWindowMinutes = crashRiskFlushWindowMinutes
             self.networkRiskFlushWindowMinutes = networkRiskFlushWindowMinutes
+            self.suppressNetworkLossFlush = suppressNetworkLossFlush
         }
     }
 
@@ -108,11 +115,21 @@ public final class PredictiveExportPolicy: @unchecked Sendable {
 
     // MARK: - Cycle
 
+    /// Test-seam: runs the prediction-action logic with an externally provided
+    /// prediction, bypassing the predictor + monitor. Enables unit tests to
+    /// verify gating without touching the shared singleton.
+    internal func runCycle(with prediction: Prediction) {
+        applyPrediction(prediction)
+    }
+
     private func tick() {
         let snapshot = monitor.updateSnapshot()
         predictor.record(snapshot: snapshot)
         let prediction = predictor.predict(using: snapshot)
+        applyPrediction(prediction)
+    }
 
+    private func applyPrediction(_ prediction: Prediction) {
         stateLock.lock()
         latest = prediction
         stateLock.unlock()
@@ -138,7 +155,8 @@ public final class PredictiveExportPolicy: @unchecked Sendable {
         if prediction.crashRisk >= config.highRiskThreshold {
             flushMinutes = max(flushMinutes, config.crashRiskFlushWindowMinutes)
         }
-        if prediction.networkLossRisk >= config.highRiskThreshold {
+        if prediction.networkLossRisk >= config.highRiskThreshold,
+           !config.suppressNetworkLossFlush {
             flushMinutes = max(flushMinutes, config.networkRiskFlushWindowMinutes)
         }
 

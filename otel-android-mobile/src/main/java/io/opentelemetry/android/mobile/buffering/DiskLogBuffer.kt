@@ -431,6 +431,54 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Enforces the offline budget by evicting events until disk usage is within budget.
+     *
+     * @param maxBytes Maximum disk bytes allowed during offline
+     * @param strategy Eviction strategy when over budget
+     * @return Number of events evicted
+     */
+    suspend fun enforceOfflineBudget(
+        maxBytes: Long,
+        strategy: io.opentelemetry.android.mobile.config.EvictionStrategy
+    ): Int = withContext(Dispatchers.IO) {
+        try {
+            val dbFile = context.getDatabasePath("otel_log_buffer.db")
+            if (!dbFile.exists()) return@withContext 0
+
+            val currentSizeBytes = dbFile.length()
+            if (currentSizeBytes <= maxBytes) return@withContext 0
+
+            val totalCount = logDao.getCount()
+            if (totalCount == 0) return@withContext 0
+
+            val excessRatio = (currentSizeBytes - maxBytes).toDouble() / currentSizeBytes
+            val deleteCount = (totalCount * excessRatio).toInt() + 1
+
+            val deleted = when (strategy) {
+                io.opentelemetry.android.mobile.config.EvictionStrategy.OLDEST_FIRST ->
+                    logDao.deleteOldest(deleteCount)
+                io.opentelemetry.android.mobile.config.EvictionStrategy.LOWEST_SEVERITY_FIRST ->
+                    logDao.deleteLowestSeverity(deleteCount)
+            }
+
+            adjustCachedCount(-deleted)
+            Log.i(TAG, "Offline budget enforcement: evicted $deleted events " +
+                "(was ${currentSizeBytes / 1024}KB, budget ${maxBytes / 1024}KB, strategy=$strategy)")
+
+            try {
+                database.openHelper.writableDatabase.execSQL("VACUUM")
+            } catch (e: Exception) {
+                Log.w(TAG, "VACUUM after budget enforcement failed (non-fatal)", e)
+            }
+
+            deleted
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enforcing offline budget", e)
+            0
+        }
+    }
+
+    /**
      * Enforces the maximum size limit by removing oldest events.
      */
     private suspend fun enforceSizeLimit() {
@@ -559,6 +607,25 @@ interface LogDao {
 
     @Query("DELETE FROM log_records WHERE traceId = :traceId")
     suspend fun deleteEventsByTraceId(traceId: String): Int
+
+    @Query("""
+        DELETE FROM log_records WHERE id IN (
+            SELECT id FROM log_records
+            ORDER BY
+                CASE severityText
+                    WHEN 'TRACE' THEN 0
+                    WHEN 'DEBUG' THEN 1
+                    WHEN 'INFO' THEN 2
+                    WHEN 'WARN' THEN 3
+                    WHEN 'ERROR' THEN 4
+                    WHEN 'FATAL' THEN 5
+                    ELSE 1
+                END ASC,
+                timestampMs ASC
+            LIMIT :count
+        )
+    """)
+    suspend fun deleteLowestSeverity(count: Int): Int
 
     /**
      * Dual-clock query: uses monotonic time for same-boot events (clock-skew-safe)

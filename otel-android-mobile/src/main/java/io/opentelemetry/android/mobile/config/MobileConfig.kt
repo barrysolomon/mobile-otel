@@ -133,7 +133,11 @@ data class MobileConfig(
     /** Incubating — screenshot capture is not part of the OTel spec. Disabled by default. */
     @Incubating val screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false),
     /** Incubating — wireframe capture is not part of the OTel spec. Disabled by default. */
-    @Incubating val wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
+    @Incubating val wireframeConfig: WireframeConfig = WireframeConfig(enabled = false),
+    /** Incubating — offline disk budget management. Controls max disk usage when offline. */
+    @Incubating val offlineBudgetConfig: OfflineBudgetConfig = OfflineBudgetConfig.default(),
+    /** Incubating — controls what gets buffered when offline. */
+    @Incubating val offlinePolicy: OfflinePolicy = OfflinePolicy.BUFFER_ALL
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }

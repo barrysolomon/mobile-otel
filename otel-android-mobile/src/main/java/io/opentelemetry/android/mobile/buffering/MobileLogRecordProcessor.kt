@@ -29,6 +29,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import io.opentelemetry.android.mobile.config.dropsAll
+import io.opentelemetry.android.mobile.config.minBufferSeverity
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -132,6 +134,9 @@ class MobileLogRecordProcessor private constructor(
     // Guards against concurrent flushWindow() calls (e.g. ui.freeze + app.anr emitted ms apart).
     // CAS from false→true to start a flush; reset to false when the export completes/fails.
     private val flushInProgress = AtomicBoolean(false)
+
+    // Error coalescer for grouping identical errors (Phase 3 of Offline Flush Budget)
+    private val errorCoalescer = ErrorCoalescer()
 
     // Tracks RAM events that have already been mirrored to disk for crash safety.
     // Uses object identity so we only persist each event once, avoiding disk duplicates.
@@ -308,6 +313,29 @@ class MobileLogRecordProcessor private constructor(
         val logRecordData = logRecord.toLogRecordData().ensureTimestamp()
 
         val body = logRecordData.body.asString()
+
+        // Offline policy filtering: when offline and policy is not BUFFER_ALL,
+        // drop events below the configured severity threshold.
+        if (config.offlinePolicy != io.opentelemetry.android.mobile.config.OfflinePolicy.BUFFER_ALL) {
+            if (isDeviceOffline()) {
+                if (config.offlinePolicy.dropsAll()) {
+                    Log.d(TAG, "Offline DROP_ALL: dropping $body")
+                    return
+                }
+                val minSeverity = config.offlinePolicy.minBufferSeverity()
+                if (minSeverity != null &&
+                    logRecordData.severity.ordinal < minSeverity.ordinal) {
+                    Log.d(TAG, "Offline ${config.offlinePolicy}: dropping $body (severity=${logRecordData.severity})")
+                    return
+                }
+            }
+        }
+
+        // Error coalescing: suppress duplicate errors within the coalescing window
+        if (errorCoalescer.tryCoalesce(logRecordData)) {
+            Log.d(TAG, "Error coalesced: $body (count=${errorCoalescer.getCount(logRecordData)})")
+            return
+        }
 
         // HYBRID selective immediate export: heartbeat and prediction logs are the
         // lightweight periodic signal — export them directly without buffering so the
@@ -886,6 +914,26 @@ class MobileLogRecordProcessor private constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error during shutdown", e)
             return CompletableResultCode.ofFailure()
+        }
+    }
+
+    /**
+     * Checks whether the device currently has network connectivity.
+     * Uses ConnectivityManager to check for an active network.
+     */
+    internal fun isDeviceOffline(): Boolean {
+        return try {
+            val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager ?: return true
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                cm.activeNetwork == null
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.isConnected != true
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Connectivity check failed, assuming offline", e)
+            true
         }
     }
 

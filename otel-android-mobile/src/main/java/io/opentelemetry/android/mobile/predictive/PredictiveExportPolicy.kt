@@ -54,7 +54,10 @@ class PredictiveExportPolicy private constructor(
     private val highRiskThreshold: Double,
     // When false, the caller drives runPredictionCycle() externally (e.g. via HYBRID heartbeat).
     // Setting this true AND wiring predictionCycleHook would run prediction twice per tick.
-    private val startOwnScheduler: Boolean
+    private val startOwnScheduler: Boolean,
+    // When true, suppress the networkLossRisk → flushWindow(2) action. Set when the
+    // OfflinePolicy is handling offline scenarios (e.g., ERROR_ONLY, DROP_ALL).
+    private val suppressNetworkLossFlush: Boolean = false
 ) {
     private val TAG = "PredictiveExportPolicy"
 
@@ -128,9 +131,14 @@ class PredictiveExportPolicy private constructor(
 
         // Action 1: Pre-emptive flush if network loss imminent — export last 2 min before
         // connectivity drops. forceFlush() would dump the entire buffer unnecessarily.
+        // Suppressed when OfflinePolicy is handling offline scenarios (e.g., ERROR_ONLY).
         if (prediction.networkLossRisk >= highRiskThreshold) {
-            Log.i(TAG, "Network loss predicted (${prediction.networkLossRisk}), flushing last 2 min")
-            processor?.flushWindow(2)
+            if (suppressNetworkLossFlush) {
+                Log.i(TAG, "Network loss predicted (${prediction.networkLossRisk}), but flush suppressed by OfflinePolicy")
+            } else {
+                Log.i(TAG, "Network loss predicted (${prediction.networkLossRisk}), flushing last 2 min")
+                processor?.flushWindow(2)
+            }
         }
 
         // Action 2: If crash risk high, flush the last 5 min so pre-crash context is captured.
@@ -242,6 +250,7 @@ class PredictiveExportPolicy private constructor(
         private var predictionIntervalSeconds: Long = 30
         private var highRiskThreshold: Double = 0.7
         private var startOwnScheduler: Boolean = true
+        private var suppressNetworkLossFlush: Boolean = false
 
         fun setProcessor(processor: MobileLogRecordProcessor) = apply {
             this.processor = processor
@@ -277,6 +286,14 @@ class PredictiveExportPolicy private constructor(
             this.startOwnScheduler = start
         }
 
+        /**
+         * Suppress the networkLossRisk → flushWindow(2) action. Set when the
+         * OfflinePolicy is handling offline scenarios (e.g., ERROR_ONLY, DROP_ALL).
+         */
+        fun setSuppressNetworkLossFlush(suppress: Boolean) = apply {
+            this.suppressNetworkLossFlush = suppress
+        }
+
         fun build(): PredictiveExportPolicy {
             return PredictiveExportPolicy(
                 context = context,
@@ -286,7 +303,8 @@ class PredictiveExportPolicy private constructor(
                 healthMonitor = healthMonitor ?: DeviceHealthMonitor.getInstance(context),
                 predictionIntervalSeconds = predictionIntervalSeconds,
                 highRiskThreshold = highRiskThreshold,
-                startOwnScheduler = startOwnScheduler
+                startOwnScheduler = startOwnScheduler,
+                suppressNetworkLossFlush = suppressNetworkLossFlush
             )
         }
     }

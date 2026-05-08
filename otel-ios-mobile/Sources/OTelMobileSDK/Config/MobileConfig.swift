@@ -50,6 +50,14 @@ public struct MobileConfig: Sendable {
     /// `MobileConfig.extraResourceAttributes`.
     public let extraResourceAttributes: [String: String]
 
+    /// Offline disk budget configuration. Controls how much disk space the
+    /// buffer may consume during offline periods and which events to evict.
+    public let offlineBudgetConfig: OfflineBudgetConfig
+
+    /// Offline policy controlling what gets buffered when the device has
+    /// no network connectivity.
+    public let offlinePolicy: OfflinePolicy
+
     /// Cadence for the CONTINUOUS-mode periodic log flush. In CONTINUOUS
     /// mode the buffer processor drains its RAM ring through the OTLP
     /// exporter every N seconds so long-running apps don't rely on a
@@ -78,7 +86,9 @@ public struct MobileConfig: Sendable {
         predictiveExportIntervalSeconds: UInt64 = 30,
         samplingConfig: SamplingConfig = .dynamic(normalRate: 0.1, highPriorityRate: 1.0),
         extraResourceAttributes: [String: String] = [:],
-        logExportIntervalSeconds: UInt64 = 30
+        logExportIntervalSeconds: UInt64 = 30,
+        offlineBudgetConfig: OfflineBudgetConfig = .default,
+        offlinePolicy: OfflinePolicy = .bufferAll
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -97,5 +107,7 @@ public struct MobileConfig: Sendable {
         self.samplingConfig = samplingConfig
         self.extraResourceAttributes = extraResourceAttributes
         self.logExportIntervalSeconds = logExportIntervalSeconds
+        self.offlineBudgetConfig = offlineBudgetConfig
+        self.offlinePolicy = offlinePolicy
     }
 }

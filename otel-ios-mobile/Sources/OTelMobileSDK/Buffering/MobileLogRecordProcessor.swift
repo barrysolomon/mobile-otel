@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import OTelMobileCore
 import OpenTelemetryApi
 import OpenTelemetrySdk
@@ -39,6 +40,14 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// and export_mode must ride as record-level attributes.
     private let extraRecordAttributes: [String: String]
 
+    /// Offline policy controlling what gets buffered when the device is offline.
+    /// Default `.bufferAll` preserves existing behaviour.
+    private let offlinePolicy: OfflinePolicy
+
+    /// Coalesces identical error events within a time window. Reduces noise
+    /// in offline/degraded scenarios where the same error fires repeatedly.
+    private let errorCoalescer: ErrorCoalescer
+
     /// Optional policy evaluator. When non-nil, every `onEmit` runs the event's
     /// attributes through `evaluator.evaluate(...)`. A matching policy triggers
     /// a selective `flushWindow(minutes:)` for that window — this is the
@@ -77,7 +86,9 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
         policyEvaluator: PolicyEvaluator? = nil,
-        extraRecordAttributes: [String: String] = [:]
+        extraRecordAttributes: [String: String] = [:],
+        offlinePolicy: OfflinePolicy = .bufferAll,
+        errorCoalescer: ErrorCoalescer = ErrorCoalescer()
     ) {
         self.buffer = buffer
         self.legacyExporter = nil
@@ -87,6 +98,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
         self.extraRecordAttributes = extraRecordAttributes
+        self.offlinePolicy = offlinePolicy
+        self.errorCoalescer = errorCoalescer
     }
 
     /// Test-only constructor: delivers `[BufferedEvent]` batches to an
@@ -99,7 +112,9 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
         policyEvaluator: PolicyEvaluator? = nil,
-        extraRecordAttributes: [String: String] = [:]
+        extraRecordAttributes: [String: String] = [:],
+        offlinePolicy: OfflinePolicy = .bufferAll,
+        errorCoalescer: ErrorCoalescer = ErrorCoalescer()
     ) {
         self.buffer = buffer
         self.legacyExporter = exporter
@@ -109,6 +124,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
         self.extraRecordAttributes = extraRecordAttributes
+        self.offlinePolicy = offlinePolicy
+        self.errorCoalescer = errorCoalescer
     }
 
     // MARK: - LogRecordProcessor
@@ -118,6 +135,20 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         for (key, value) in extraRecordAttributes where !key.isEmpty {
             enriched.setAttribute(key: key, value: value)
         }
+
+        // Offline policy filtering: when the device is offline, drop events
+        // below the configured severity threshold.
+        if Self.isDeviceOffline() {
+            if offlinePolicy.dropsAll { return }
+            if let minSeverity = offlinePolicy.minBufferSeverity {
+                guard let recordSeverity = enriched.severity,
+                      recordSeverity.rawValue >= minSeverity.rawValue else { return }
+            }
+        }
+
+        // Error coalescing: suppress duplicate errors within the window.
+        if errorCoalescer.tryCoalesce(enriched) { return }
+
         let event = makeEvent(from: enriched)
         // Fire-and-forget append. `onEmit` is synchronous per the protocol
         // contract; the actor append completes asynchronously. Tests that need
@@ -378,6 +409,24 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         let count = await disk.rowCount()
         let bytes = await disk.totalSizeBytes()
         return (count, bytes)
+    }
+
+    // MARK: - Network reachability
+
+    /// Test-seam override. When non-nil, `isDeviceOffline()` returns this
+    /// value instead of querying `NWPathMonitor`. Only set from tests.
+    static var _offlineOverride: Bool?
+
+    /// Snapshot check for network reachability. Uses the `Network` framework's
+    /// `NWPathMonitor` current path. On macOS / Simulator this always returns
+    /// `.satisfied` — real offline testing requires a device or explicit
+    /// override via `_offlineOverride`.
+    static func isDeviceOffline() -> Bool {
+        if let override = _offlineOverride { return override }
+        let monitor = NWPathMonitor()
+        let path = monitor.currentPath
+        monitor.cancel()
+        return path.status != .satisfied
     }
 
     // MARK: - Internal export routing
