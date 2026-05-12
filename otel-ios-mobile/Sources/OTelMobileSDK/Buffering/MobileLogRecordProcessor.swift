@@ -77,6 +77,14 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     private let timerQueue = DispatchQueue(label: "io.dash0.mobile.MobileLogRecordProcessor.timer",
                                            qos: .utility)
 
+    /// NF-010: Active network-restored subscription, if any. The processor owns
+    /// the listener so it can be detached on re-attach / shutdown. Pure storage —
+    /// the watcher's `addListener` already holds a weak ref, so we hold strong
+    /// here to keep it alive for the processor's lifetime.
+    private let watcherLock = NSLock()
+    private var networkWatcher: NetworkAvailabilityWatcher?
+    private var networkListener: NetworkRestoredListener?
+
     /// Production constructor: drains buffered records through an upstream OTel
     /// `LogRecordExporter` on forceFlush/selective-flush.
     public init(
@@ -354,6 +362,46 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         return box.value
     }
 
+    // MARK: - NF-010: Network-restored flush hook
+
+    /// Subscribe this processor to a `NetworkAvailabilityWatcher`. On every
+    /// LOST → AVAILABLE transition the watcher emits, the processor invokes
+    /// `forceFlushBuffered()` so any RAM+disk buffered events drain immediately
+    /// on reconnection — no app restart, no unrelated policy trigger required.
+    ///
+    /// Re-attaching swaps the previous subscription. Pass `nil` to detach.
+    ///
+    /// **iOS note:** unlike Android which calls `flushWindow(minutes)`, iOS
+    /// uses `forceFlushBuffered()` because the iOS offline failure-persistence
+    /// contract drains RAM into disk on each failed flush — the right recovery
+    /// path is "drain RAM + disk", not a time-windowed slice. The `minutes`
+    /// parameter is preserved for API parity with Android but is reserved for
+    /// future use (e.g. honouring a flush window on long offline streaks).
+    public func attachNetworkWatcher(_ watcher: NetworkAvailabilityWatcher?, minutes _: UInt64) {
+        watcherLock.lock(); defer { watcherLock.unlock() }
+        if let prior = networkWatcher, let priorListener = networkListener {
+            prior.removeListener(priorListener)
+        }
+        networkWatcher = watcher
+        networkListener = nil
+
+        guard let watcher = watcher else { return }
+        let listener = NetworkRestoredListener(processor: self)
+        networkListener = listener
+        watcher.addListener(listener)
+    }
+
+    /// Invoked by the network-restored listener. Public-internal so the
+    /// listener (a private class declared in the same module) can call back
+    /// without breaking the actor isolation contract.
+    func onNetworkRestored() {
+        // forceFlushBuffered() is blocking (DispatchSemaphore). Hop onto a
+        // detached Task so the watcher's notify path doesn't stall.
+        Task.detached { [weak self] in
+            _ = self?.forceFlushBuffered()
+        }
+    }
+
     /// Drains the disk buffer (full or windowed) and merges with the provided
     /// RAM events, deduplicating by `sequenceId`. RAM events take priority —
     /// they are the authoritative copy when a crash-mirror was written to
@@ -508,5 +556,19 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             sessionId: sessionId,
             record: logRecord
         )
+    }
+}
+
+/// NF-010: Bridge between the watcher's `addListener` weak ref and the
+/// processor's `onNetworkRestored()` callback. Lives outside the main class
+/// because Swift class declarations can't be nested inside an open-ended
+/// `final class` and still satisfy the watcher's `AnyObject`-constrained
+/// `Listener` protocol cleanly.
+private final class NetworkRestoredListener: NetworkAvailabilityListener {
+    private weak var processor: MobileLogRecordProcessor?
+    init(processor: MobileLogRecordProcessor) { self.processor = processor }
+    func onTransition(_ transition: NetworkAvailabilityWatcher.Transition) {
+        guard case .restored = transition else { return }
+        processor?.onNetworkRestored()
     }
 }
