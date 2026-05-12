@@ -258,6 +258,7 @@ class PolicyEvaluatorV2ParseTest {
             "thermal_throttle" to "device.thermal_throttle",
             "storage_low" to "device.storage_low",
             "network_loss" to "network.loss",
+            "network_restored" to "network.restored",
             "anr" to "app.anr"
         )
 

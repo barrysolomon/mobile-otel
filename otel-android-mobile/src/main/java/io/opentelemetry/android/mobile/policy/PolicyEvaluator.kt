@@ -687,6 +687,7 @@ class PolicyEvaluator(
                     if (dropped > 0) attributes["dropped_frames"] = Condition(gt = dropped)
                 }
                 "network_loss" -> attributes["event.name"] = Condition(equals = "network.loss")
+                "network_restored" -> attributes["event.name"] = Condition(equals = "network.restored")
                 "slow_request" -> {
                     attributes["event.name"] = Condition(equals = "http.request")
                     val thresholdMs = config.optDouble("threshold_ms", 0.0)

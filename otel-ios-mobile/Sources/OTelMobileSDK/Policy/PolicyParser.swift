@@ -162,6 +162,8 @@ public enum PolicyParser {
             }
         case "network_loss":
             attributes["event.name"] = Condition(equals: "network.loss")
+        case "network_restored":
+            attributes["event.name"] = Condition(equals: "network.restored")
         case "slow_request":
             attributes["event.name"] = Condition(equals: "http.request")
             let thresholdMs = optDouble(config, "threshold_ms", default: 0.0)

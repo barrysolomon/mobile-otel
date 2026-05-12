@@ -126,6 +126,7 @@ public enum DSLMatcher: Codable, Sendable {
     case slowOperation(operationName: String, thresholdMs: Int)
     case frameDrop(droppedFrames: Int, windowMs: Int)
     case networkLoss(consecutiveFailures: Int?)
+    case networkRestored
     case lowMemory(availableMb: Int)
     case batteryDrain(drainRatePercPerMin: Double)
     case thermalThrottle(minLevel: Int)
@@ -264,6 +265,8 @@ public enum DSLMatcher: Codable, Sendable {
             self = .networkLoss(
                 consecutiveFailures: try fields.decodeIfPresent(Int.self, forKey: .consecutiveFailures)
             )
+        case "network_restored":
+            self = .networkRestored
         case "low_memory":
             self = .lowMemory(availableMb: try fields.decode(Int.self, forKey: .availableMb))
         case "battery_drain":

@@ -267,6 +267,7 @@ struct PolicyParserV2Tests {
             ("thermal_throttle", "device.thermal_throttle"),
             ("storage_low", "device.storage_low"),
             ("network_loss", "network.loss"),
+            ("network_restored", "network.restored"),
             ("anr", "app.anr"),
         ]
     )
