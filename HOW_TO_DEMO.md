@@ -288,6 +288,21 @@ Run `--status` first — it checks everything and offers to fix what's missing.
 
 Same as above, but airplane mode is enabled before Phase 1. The device has no network during the crash. After Phase 2 verifies recovery (with failed export), the script disables airplane mode, restarts the app, and waits for the recovery flush to export over the restored network. Proves zero data loss even with crash + no network combined.
 
+### Airplane mode toggle (no crash) — NF-001…NF-011
+
+A lighter variant that doesn't require a crash. Run the demo app, enable airplane mode, drive a failing operation (e.g. submit a booking — backend POST fails fast), then disable airplane mode. Buffered events arrive in Dash0 within ~3s **without** restarting the app and **without** needing any DSL policy configured.
+
+How it works: a `NetworkAvailabilityWatcher` on each platform observes `ConnectivityManager.NetworkCallback` (Android) or `NWPathMonitor` (iOS). On the genuine LOST → AVAILABLE transition it fires once; spurious `onAvailable` callbacks (Wi-Fi handoff, path validation) are filtered. The signal wires straight into `MobileLogRecordProcessor` which drains RAM (Android: `flushWindow(60)`; iOS: `forceFlushBuffered()` — RAM + disk failure-persistence).
+
+Default-on. To express it explicitly in DSL v2 (e.g. for fleet-wide policy), use the `network_restored` matcher:
+
+```json
+{
+  "type": "network_restored",
+  "config": { "debounce_ms": 500 }
+}
+```
+
 ### Narration guide
 
 - "Watch the emulator — real app, real user journey. 18 events buffered in RAM, mirrored to SQLite every 2 seconds."

@@ -1,10 +1,29 @@
 # Epic: Network-Restored Flush — Wake the Exporter When Connectivity Returns
 
-**Status:** SPEC
+**Status:** COMPLETE (2026-05-12)
 **Priority:** P1 (demo-blocker for offline storytelling, real customer gap for Innovapptive)
 **Owner:** Barry Solomon
 **Created:** 2026-05-12
 **Target:** Before Innovapptive beta deployment
+
+## Status summary
+
+All 19 NF tasks landed on `main` 2026-05-12.
+
+| Layer | Android | iOS | Notes |
+| --- | --- | --- | --- |
+| State machine | NF-001 ✅ | NF-008/009 ✅ | 5 tests each, identical contract |
+| OS adapter | NF-002 ✅ | NF-011 (adapter half) ✅ | `ConnectivityManager.NetworkCallback` / `NWPathMonitor` |
+| Processor flush hook | NF-003 ✅ | NF-010 ✅ | Android: `flushWindow(60)`. iOS: `forceFlushBuffered()` (RAM + disk) |
+| Production wiring | NF-004 ✅ | NF-011 (wiring half) ✅ | Defensive — falls through to "no flush on restore" if install fails |
+| DSL parser (v2) | NF-005/006 ✅ | NF-012 ✅ | `network_restored` matcher → `event.name=network.restored` |
+| Control plane UI | NF-015 ✅ | (n/a) | New `NetworkRestoredNode` in palette + types + producer |
+| Collector schema | NF-014 ✅ | (n/a) | Verified no-op — collector is matcher-type-agnostic |
+| RN bridge | NF-016 ✅ | (n/a) | Verified no-op — native-first design, RN inherits |
+| UAT validation | NF-007 ✅ | NF-013 ✅ | Covered by `NetworkRestoredFlushTest{,s}` Robolectric/Swift Testing integration tests |
+| Demo docs | NF-017/018 ✅ | (n/a) | `HOW_TO_DEMO.md` + `BARRY_STUDY_GUIDE.md` Part 3 updated |
+
+**Demo gap closed:** Booking failure in airplane mode → toggle airplane off → events arrive in Dash0 within ~3s. No app restart, no DSL config required.
 
 ## Motivation
 
