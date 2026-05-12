@@ -469,7 +469,10 @@ public final class OTelMobile: @unchecked Sendable {
         // App.init, .onAppear, or synchronous bootstrap — completed
         // through a non-swizzled URLSession and was silently uncaptured.
         if opts.contains(.network) {
-            NetworkInstrumentation.shared.install(tracer: tracer, config: networkConfig)
+            // Pass the logger so the URLProtocol can emit `http.error` log records
+            // on 4xx/5xx responses — the contract the DSL `http_match` matcher
+            // needs. See OTelURLProtocol urlSession(_:didReceive:completionHandler:).
+            NetworkInstrumentation.shared.install(tracer: tracer, logger: logger, config: networkConfig)
         }
         DispatchQueue.main.async {
             if opts.contains(.lifecycle) {

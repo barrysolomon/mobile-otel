@@ -144,11 +144,19 @@ class OTelNetworkInterceptor private constructor(
         if (response.code >= config.errorStatusThreshold) {
             span.setStatus(StatusCode.ERROR, "HTTP ${response.code}")
             // Emit a log record so the http-error-detector policy can trigger a conditional flush.
+            //
+            // `event.name = "http.error"` is the contract the DSL `http_match` matcher
+            // keys on (see PolicyEvaluator.matcherToMatch). Without this attribute the
+            // matcher never fires, and CONDITIONAL + HYBRID modes silently drop the
+            // window — the exact bug reported on 2026-05-12 ("hybrid failed to send
+            // on http error"). Same shape as the lifecycle event.name gap captured
+            // in memory/feedback_lifecycle_event_name_missing.md.
             logger?.logRecordBuilder()
                 ?.setBody("http.error")
                 ?.setSeverity(Severity.ERROR)
                 ?.setAllAttributes(
                     Attributes.builder()
+                        .put(AttributeKey.stringKey("event.name"), "http.error")
                         .put(AttributeKey.stringKey("url.full"), scrubUrl(request.url.toString()))
                         .put(AttributeKey.longKey("http.response.status_code"), response.code.toLong())
                         .put(AttributeKey.stringKey("http.request.method"), request.method)

@@ -151,6 +151,29 @@ final class OTelURLProtocol: URLProtocol, URLSessionDataDelegate {
             }
             if http.statusCode >= config.errorStatusThreshold {
                 span.status = .error(description: "HTTP \(http.statusCode)")
+                // Emit a log record so the DSL `http_match` matcher can trigger a
+                // conditional flush. `event.name = "http.error"` is the matcher's
+                // contract — without this attribute the matcher never fires and
+                // CONDITIONAL + HYBRID modes silently drop the window (the bug
+                // reported 2026-05-12 "hybrid failed to send on http error").
+                // Mirrors the Android OTelNetworkInterceptor http.error log shape.
+                if let logger = NetworkInstrumentation.shared.logger {
+                    var attrs: [String: AttributeValue] = [
+                        "event.name": AttributeValue.string("http.error"),
+                        "http.response.status_code": AttributeValue.int(http.statusCode),
+                    ]
+                    if let method = request.httpMethod {
+                        attrs["http.request.method"] = AttributeValue.string(method.uppercased())
+                    }
+                    if let urlString = request.url?.absoluteString {
+                        attrs["url.full"] = AttributeValue.string(urlString)
+                    }
+                    logger.logRecordBuilder()
+                        .setBody(AttributeValue.string("http.error"))
+                        .setSeverity(.error)
+                        .setAttributes(attrs)
+                        .emit()
+                }
             } else {
                 span.status = .ok
             }

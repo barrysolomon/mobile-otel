@@ -26,15 +26,16 @@ public final class NetworkInstrumentation: @unchecked Sendable {
     // storage without copying behind the lock — that would race with a
     // concurrent install/uninstall.
     private var _tracer: Tracer?
+    private var _logger: Logger?
     private var _config: NetworkConfig?
     private var _enabled = false
 
     /// Thread-safe snapshot of the current install state. Used by
     /// OTelURLProtocol.canInit / startLoading. Reads are O(1) behind the
     /// same NSLock that guards install/uninstall.
-    var snapshot: (tracer: Tracer?, config: NetworkConfig?, enabled: Bool) {
+    var snapshot: (tracer: Tracer?, logger: Logger?, config: NetworkConfig?, enabled: Bool) {
         lock.lock(); defer { lock.unlock() }
-        return (_tracer, _config, _enabled)
+        return (_tracer, _logger, _config, _enabled)
     }
 
     // Read-only accessors retained for backward compat; all route through
@@ -43,6 +44,11 @@ public final class NetworkInstrumentation: @unchecked Sendable {
     var tracer: Tracer? {
         lock.lock(); defer { lock.unlock() }
         return _tracer
+    }
+
+    var logger: Logger? {
+        lock.lock(); defer { lock.unlock() }
+        return _logger
     }
 
     var config: NetworkConfig? {
@@ -58,11 +64,19 @@ public final class NetworkInstrumentation: @unchecked Sendable {
     private init() {}
 
     /// Install the URLProtocol and protocol-class swizzle.
-    /// Safe to call multiple times — second call updates tracer/config in place.
-    public func install(tracer: Tracer, config: NetworkConfig = .default) {
+    /// Safe to call multiple times — second call updates tracer/logger/config in place.
+    ///
+    /// `logger` is optional. When set, HTTP error responses (status >=
+    /// `config.errorStatusThreshold`) emit a log record with body
+    /// `"http.error"` and `event.name = "http.error"` so the DSL v2
+    /// `http_match` matcher can trigger a conditional flush. Without a
+    /// logger the URLProtocol still records the span; CONDITIONAL +
+    /// HYBRID modes just won't get the flush trigger.
+    public func install(tracer: Tracer, logger: Logger? = nil, config: NetworkConfig = .default) {
         lock.lock()
         defer { lock.unlock() }
         _tracer = tracer
+        _logger = logger
         _config = config
         if !_enabled {
             URLProtocol.registerClass(OTelURLProtocol.self)
