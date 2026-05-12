@@ -420,6 +420,8 @@ show_menu() {
     _item "2" "Interactive crash demo ${_D}(step-by-step with prompts)${_R}"
     _item "3" "Airplane mode demo ${_D}(offline crash → reconnect → flush)${_R}"
     _item "4" "Full narrated demo ${_D}(2 then 3, for meetings)${_R}"
+    _item "5" "Network-restored toggle ${_D}(NF-001…NF-011 demo moment)${_R}"
+    _item "S" "Scenario library… ${_D}(journeys, UAT cells, iOS/RN smokes)${_R}"
 
     _section "INSPECT RESULTS"
     _item "v" "Validate telemetry ${_D}(auto-detect: local or Dash0)${_R}"
@@ -449,6 +451,8 @@ show_menu() {
       2) run_interactive_crash ;;
       3) run_airplane_mode_crash ;;
       4) run_full_demo ;;
+      5) run_network_restored_toggle ;;
+      S) show_scenario_library ;;
       v) smart_validate ;;
       V) "$SCRIPT_DIR/validate-dash0.sh" ;;
       d) dump_telemetry ;;
