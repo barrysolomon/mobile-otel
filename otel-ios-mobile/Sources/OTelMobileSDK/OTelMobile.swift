@@ -104,6 +104,11 @@ public final class OTelMobile: @unchecked Sendable {
     /// instance so they live as long as the SDK does.
     fileprivate var autoFlushObservers: [NSObjectProtocol] = []
 
+    /// NF-011: NWPathMonitor adapter retaining the network watcher. Held on
+    /// the instance so the monitor isn't deinit'd when start(config:) returns.
+    /// `nil` for test-overload paths that don't wire connectivity.
+    fileprivate var networkAvailabilityAdapter: NWPathMonitorAdapter?
+
     private init(
         config: MobileConfig,
         processor: MobileLogRecordProcessor,
@@ -619,6 +624,21 @@ public final class OTelMobile: @unchecked Sendable {
                     instance?.captureScreenshot(trigger: "error")
                     instance?.captureWireframe(trigger: "error")
                 }
+            }
+
+            // NF-011: Wake the exporter when iOS reports network restoration.
+            // Buffered events (RAM + disk failure-persistence) sit there during
+            // offline; without this hook the next drain only happens via app
+            // restart, an unrelated policy trigger, or manual forceFlush. The
+            // adapter is retained on the instance so the NWPathMonitor stays
+            // alive past start(config:). Defensive — any failure here logs and
+            // continues so SDK init never blocks on network observation.
+            do {
+                let watcher = NetworkAvailabilityWatcher()
+                let adapter = NWPathMonitorAdapter(watcher: watcher)
+                bufferProcessor.attachNetworkWatcher(watcher, minutes: 60)
+                adapter.start()
+                instance.networkAvailabilityAdapter = adapter
             }
 
             // Auto-forceFlush on backgrounding. Without this, a customer app
