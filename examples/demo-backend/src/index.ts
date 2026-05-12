@@ -26,6 +26,15 @@ export function createApp() {
   });
   app.use(healthRouter);
   app.use(adminRouter);
+  // Debug helper: any path under /api/force-500/* returns HTTP 503. Used
+  // by Schedulr's DebugToolbar HTTP 500 button (and Android's equivalent)
+  // to exercise the SDK's http.error emission path through a real
+  // 5xx response — the only reliable way to verify that
+  // OTelURLProtocol / OTelNetworkInterceptor emit `event.name=http.error`
+  // logs end-to-end on a simulator/emulator.
+  app.get(/^\/api\/force-500(\/.*)?$/, (_req, res) => {
+    res.status(503).json({ error: "Service Unavailable (forced for demo)" });
+  });
   app.use(simulateMiddleware);
   app.use(doctorsRouter);
   app.use(slotsRouter);

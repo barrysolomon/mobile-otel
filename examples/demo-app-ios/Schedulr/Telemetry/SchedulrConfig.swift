@@ -12,6 +12,10 @@ struct SchedulrConfig {
     let authToken: String?
     let dataset: String?
     let backendUrl: String
+    /// Optional override of the SDK's ExportMode. Accepts "continuous",
+    /// "conditional", "hybrid" (case-insensitive). Defaults to continuous
+    /// when unspecified so existing demos keep working.
+    let exportModeRaw: String
 
     static func load() -> SchedulrConfig {
         let bundle = Bundle.main
@@ -23,7 +27,8 @@ struct SchedulrConfig {
                 endpoint: (json["endpoint"] as? String) ?? "https://localhost",
                 authToken: json["authToken"] as? String,
                 dataset: json["dataset"] as? String,
-                backendUrl: (json["backendUrl"] as? String) ?? "http://localhost:3001"
+                backendUrl: (json["backendUrl"] as? String) ?? "http://localhost:3001",
+                exportModeRaw: (json["exportMode"] as? String) ?? "continuous"
             )
         }
         // Local-only fallback. Endpoint is bogus so OTLP exports fail —
@@ -34,7 +39,8 @@ struct SchedulrConfig {
             endpoint: "https://unconfigured.example.invalid",
             authToken: nil,
             dataset: nil,
-            backendUrl: "http://localhost:3001"
+            backendUrl: "http://localhost:3001",
+            exportModeRaw: "continuous"
         )
     }
 
@@ -45,11 +51,18 @@ struct SchedulrConfig {
         if let dataset = dataset {
             headers["Dash0-Dataset"] = dataset
         }
+        let mode: ExportMode = {
+            switch exportModeRaw.lowercased() {
+            case "conditional": return .conditional
+            case "hybrid": return .hybrid
+            default: return .continuous
+            }
+        }()
         return MobileConfig(
             serviceName: serviceName,
             endpoint: endpoint,
             authToken: authToken,
-            exportMode: .continuous,
+            exportMode: mode,
             extraHeaders: headers,
             samplingConfig: .alwaysOn(),
             logExportIntervalSeconds: 5

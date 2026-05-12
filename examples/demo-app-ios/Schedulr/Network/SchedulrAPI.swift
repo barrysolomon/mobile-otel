@@ -40,10 +40,17 @@ final class SchedulrAPI: ObservableObject {
     func fetchAppointments() async throws -> [Appointment] {
         if forceNextFetchError {
             forceNextFetchError = false
-            // Hit a real but non-existent path. Backend returns 404 → real
-            // URLSession round-trip → OTelURLProtocol observes 4xx →
-            // emits http.error log with event.name attribute.
-            let path = "/api/force-error-\(Int(Date().timeIntervalSince1970))"
+            // Hit a real backend path that returns HTTP 503 — backend has a
+            // `/api/force-500/*` debug route. Real URLSession round-trip →
+            // OTelURLProtocol observes 5xx (above the default
+            // errorStatusThreshold of 500) → emits http.error log with
+            // event.name attribute, which the DSL http_match matcher uses.
+            //
+            // Why not /api/force-error/* (which would 404): iOS's default
+            // errorStatusThreshold is 500, so a 404 wouldn't trigger the
+            // log emission path. Android's threshold is 400 — different
+            // defaults across platforms. Using 503 hits both.
+            let path = "/api/force-500/run-\(Int(Date().timeIntervalSince1970))"
             return try await get(path, as: [Appointment].self)
         }
         return try await get("/api/appointments", as: [Appointment].self)

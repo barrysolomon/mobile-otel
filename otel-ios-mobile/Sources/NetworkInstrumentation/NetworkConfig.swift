@@ -50,7 +50,7 @@ public struct NetworkConfig: Sendable {
         stripQueryStrings: true,
         capturedResponseHeaders: ["content-type"],
         capturedRequestHeaders: [],
-        errorStatusThreshold: 500,
+        errorStatusThreshold: 400,
         propagateTraceContext: false,
         scrubUrls: true,
         scrubPathSegments: true
@@ -62,7 +62,7 @@ public struct NetworkConfig: Sendable {
         stripQueryStrings: Bool = true,
         capturedResponseHeaders: Set<String> = ["content-type"],
         capturedRequestHeaders: Set<String> = [],
-        errorStatusThreshold: Int = 500,
+        errorStatusThreshold: Int = 400,
         propagateTraceContext: Bool = false,
         scrubUrls: Bool = true,
         scrubPathSegments: Bool = true

@@ -157,6 +157,8 @@ final class OTelURLProtocol: URLProtocol, URLSessionDataDelegate {
                 // CONDITIONAL + HYBRID modes silently drop the window (the bug
                 // reported 2026-05-12 "hybrid failed to send on http error").
                 // Mirrors the Android OTelNetworkInterceptor http.error log shape.
+                // Verified end-to-end on iPhone 17 simulator 2026-05-12: real
+                // 503 → log emitted → reached Dash0 with event.name=http.error.
                 if let logger = NetworkInstrumentation.shared.logger {
                     var attrs: [String: AttributeValue] = [
                         "event.name": AttributeValue.string("http.error"),

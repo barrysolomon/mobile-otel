@@ -258,7 +258,34 @@ public final class OTelMobile: @unchecked Sendable {
         // push policy updates). Starts with an empty policy list; remains
         // empty unless `enablePolicyPolling` is true OR app code calls
         // `mobile.policyEvaluator.updatePolicies(...)` directly.
-        let policyEvaluator = PolicyEvaluator()
+        // Seed the same default policies Android's PolicyEvaluator hard-codes
+        // (`crash-recovery` + `http-error-detector`). Without these, CONDITIONAL
+        // and HYBRID modes can't flush on the canonical signals (`app.crash`,
+        // `http.error`) until a remote config arrives — but most demo setups
+        // never get a remote config. Matches Android PolicyEvaluator.kt
+        // ~line 109. Customers using their own gateway can replace these
+        // wholesale via `policyEvaluator.updatePolicies(...)`.
+        let defaultPolicies: [Policy] = [
+            Policy(
+                id: "crash-recovery",
+                enabled: true,
+                match: Match(
+                    logicalOperator: "and",
+                    attributes: ["event.name": Condition(equals: "app.crash")]
+                ),
+                actions: Actions(flushWindowMinutes: 5)
+            ),
+            Policy(
+                id: "http-error-detector",
+                enabled: true,
+                match: Match(
+                    logicalOperator: "and",
+                    attributes: ["event.name": Condition(equals: "http.error")]
+                ),
+                actions: Actions(flushWindowMinutes: 2)
+            ),
+        ]
+        let policyEvaluator = PolicyEvaluator(policies: defaultPolicies)
 
         // OTel-native buffer pipeline: selective / force flush drains
         // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
