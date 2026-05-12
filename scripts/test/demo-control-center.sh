@@ -52,8 +52,11 @@ export REPO_ROOT
 
 START_EMU=false
 MODE=""
+# DCC_SERIAL allows TUI fan-out to target a specific device per spawned child.
+# If unset (e.g. interactive bash run) the script falls back to find_emulator.
 for arg in "$@"; do
   case "$arg" in
+    --serial=*)     export SERIAL="${arg#*=}" ;;
     --start-emu)    START_EMU=true ;;
     --ci)           MODE="ci" ;;
     --interactive)  MODE="interactive" ;;

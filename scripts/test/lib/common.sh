@@ -22,6 +22,15 @@ PACKAGE="io.opentelemetry.android.demo"
 # ── Emulator ──────────────────────────────────────────────────────────────────
 
 find_emulator() {
+  # If SERIAL is already set (e.g. by TUI fan-out via --serial= or env), keep it
+  # — but verify it's actually a known adb device. This lets multiple instances
+  # of this script run in parallel, each pinned to a different emulator.
+  if [ -n "${SERIAL:-}" ]; then
+    if adb devices 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$SERIAL"; then
+      return 0
+    fi
+    warn "SERIAL=$SERIAL not visible in 'adb devices' — falling back to auto-pick"
+  fi
   SERIAL=$(adb devices 2>/dev/null | grep "emulator" | head -1 | awk '{print $1}')
   if [ -z "$SERIAL" ]; then
     err "No emulator found. Start one first."
