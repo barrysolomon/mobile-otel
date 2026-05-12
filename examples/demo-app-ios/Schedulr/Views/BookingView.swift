@@ -1,16 +1,7 @@
 import SwiftUI
 import OpenTelemetryApi
+import OTelMobileSDK
 
-/// Booking form. Mirrors Android's `BookFragment` end-to-end:
-/// - Loads providers from `GET /api/doctors` on appear (auto-traced
-///   via NetworkInstrumentation).
-/// - When provider + date are picked, loads time slots via
-///   `GET /api/slots?doctor_id=&date=`.
-/// - On submit, opens an explicit `booking.submit` span (Android-
-///   parity name) that wraps the `POST /api/appointments` HTTP call.
-///   Span carries `provider`, `appointment.type`, `time_slot`,
-///   `transaction.id`, `demo_run_id` attributes — same keys Android
-///   sets — so a Dash0 dashboard joins the two platforms unchanged.
 struct BookingView: View {
     @EnvironmentObject private var bootstrap: SchedulrBootstrap
     @EnvironmentObject private var api: SchedulrAPI
@@ -28,6 +19,10 @@ struct BookingView: View {
     @State private var isSubmitting = false
     @State private var lastError: String?
     @State private var lastBookedTitle: String?
+
+    @State private var screenOpenedAt: Date = Date()
+    @State private var retryCount: Int = 0
+    @State private var journeySpan: Span?
 
     private var selectedDate: Date {
         Date(timeIntervalSince1970: selectedDateMs / 1000)
@@ -114,6 +109,20 @@ struct BookingView: View {
                 }
             }
             .navigationTitle("Book")
+            .onAppear {
+                screenOpenedAt = Date()
+                retryCount = 0
+                if let mobile = bootstrap.mobile {
+                    journeySpan = SchedulrTelemetry.startJourney(name: "booking_flow", mobile: mobile)
+                }
+            }
+            .onDisappear {
+                if let journey = journeySpan {
+                    journey.setAttribute(key: "journey.outcome", value: lastBookedTitle != nil ? "completed" : "abandoned")
+                    journey.end()
+                    journeySpan = nil
+                }
+            }
             .task { await loadProviders() }
             .onChange(of: selectedProvider?.id) { _ in Task { await loadSlots() } }
             .onChange(of: dateString) { _ in Task { await loadSlots() } }
@@ -156,10 +165,14 @@ struct BookingView: View {
         defer { isSubmitting = false }
         lastError = nil
         let transactionId = UUID().uuidString
-        // booking.submit span — Android-parity name. Wraps the HTTP
-        // POST so the network span nests under it in the trace
-        // waterfall.
-        let tracer = mobile.tracer
+        let formFillMs = Int(Date().timeIntervalSince(screenOpenedAt) * 1000)
+        let currentRetry = retryCount
+        retryCount += 1
+
+        guard let tracer = mobile.tracer else {
+            lastError = "Tracer not available."
+            return
+        }
         let span = tracer.spanBuilder(spanName: "booking.submit")
             .setSpanKind(spanKind: .internal)
             .startSpan()
@@ -172,10 +185,14 @@ struct BookingView: View {
         span.setAttribute(key: "transaction.id", value: transactionId)
         span.setAttribute(key: "transaction.type", value: "booking")
         span.setAttribute(key: "booking.notes_provided", value: !notes.isEmpty)
+        span.setAttribute(key: "booking.form_fill_time_ms", value: formFillMs)
+        span.setAttribute(key: "booking.retry_count", value: currentRetry)
         span.setAttribute(
             key: "booking.date_days_ahead",
             value: max(0, Calendar.current.dateComponents([.day], from: Date(), to: selectedDate).day ?? 0)
         )
+
+        span.addEvent(name: "booking.device_context", attributes: SchedulrTelemetry.deviceContextAttributes())
 
         let appointment = Appointment(
             title: "\(selectedType.displayName) with \(provider.name)",
@@ -189,11 +206,11 @@ struct BookingView: View {
             let saved = try await api.bookAppointment(appointment)
             span.setAttribute(key: "transaction.outcome", value: "PASS")
             span.setAttribute(key: "appointment.id", value: saved.id)
+            span.addEvent(name: "booking.success")
             span.status = .ok
             span.end()
 
-            // appointment.booked log — Android-parity body.
-            mobile.logger?.logRecordBuilder()
+            mobile.logger.logRecordBuilder()
                 .setBody(AttributeValue.string("appointment.booked"))
                 .setSeverity(.info)
                 .setAttributes([
@@ -206,13 +223,13 @@ struct BookingView: View {
                 ])
                 .emit()
             lastBookedTitle = saved.title
-            // Reset the form for the next booking.
             notes = ""
             selectedSlot = nil
         } catch {
             span.setAttribute(key: "transaction.outcome", value: "FAIL")
             span.setAttribute(key: "error.type", value: String(describing: type(of: error)))
             span.setAttribute(key: "error.message", value: error.localizedDescription)
+            span.addEvent(name: "booking.error")
             span.status = .error(description: error.localizedDescription)
             span.end()
             lastError = "Booking failed: \(error.localizedDescription)"

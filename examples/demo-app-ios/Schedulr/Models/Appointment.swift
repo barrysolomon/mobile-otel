@@ -62,13 +62,13 @@ enum AppointmentStatus: String, Codable {
 /// Provider listing returned by `GET /api/doctors`. Keeping a thin
 /// struct rather than a full Doctor mirror — the booking flow only
 /// needs the displayable name + id.
-struct Provider: Identifiable, Codable, Equatable {
+struct Provider: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let name: String
 }
 
 /// Time-slot listing returned by `GET /api/slots?doctor_id=&date=`.
-struct TimeSlot: Identifiable, Codable, Equatable {
+struct TimeSlot: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let label: String
 }

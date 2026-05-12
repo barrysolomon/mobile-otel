@@ -14,11 +14,24 @@ struct AppointmentsView: View {
         NavigationStack {
             Group {
                 if appointments.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No appointments yet",
-                        systemImage: "calendar.badge.exclamationmark",
-                        description: Text("Use the Book tab to create your first appointment.")
-                    )
+                    if #available(iOS 17.0, *) {
+                        ContentUnavailableView(
+                            "No appointments yet",
+                            systemImage: "calendar.badge.exclamationmark",
+                            description: Text("Use the Book tab to create your first appointment.")
+                        )
+                    } else {
+                        VStack(spacing: 12) {
+                            Image(systemName: "calendar.badge.exclamationmark")
+                                .font(.largeTitle)
+                                .foregroundColor(.secondary)
+                            Text("No appointments yet")
+                                .font(.headline)
+                            Text("Use the Book tab to create your first appointment.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 } else {
                     List {
                         ForEach(appointments) { appt in

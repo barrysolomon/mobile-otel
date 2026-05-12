@@ -49,7 +49,10 @@ struct SchedulrConfig {
             serviceName: serviceName,
             endpoint: endpoint,
             authToken: authToken,
-            extraHeaders: headers
+            exportMode: .continuous,
+            extraHeaders: headers,
+            samplingConfig: .alwaysOn(),
+            logExportIntervalSeconds: 5
         )
     }
 }
