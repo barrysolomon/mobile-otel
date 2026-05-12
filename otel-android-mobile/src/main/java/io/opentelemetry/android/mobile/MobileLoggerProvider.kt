@@ -268,6 +268,26 @@ class MobileLoggerProvider private constructor(
                 openTelemetrySdk.sdkTracerProvider.forceFlush()
             }
         }
+
+        // NF-004: Wake the exporter when the OS reports network restoration.
+        // Buffered events sit on disk during offline; without this hook the next
+        // flush only happens via app restart, an unrelated policy trigger, or
+        // manual forceFlush(). Defensive — any failure here logs and continues
+        // so the SDK still starts. The watcher only fires on genuine
+        // LOST → AVAILABLE transitions, not on every onAvailable callback.
+        try {
+            val connectivityManager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager
+            if (connectivityManager != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                val watcher = io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher()
+                val adapter = io.opentelemetry.android.mobile.network.NetworkAvailabilityCallbackAdapter(watcher)
+                connectivityManager.registerDefaultNetworkCallback(adapter)
+                mobileProcessor.attachNetworkWatcher(watcher, windowMinutes = 60)
+                android.util.Log.i("MobileLoggerProvider", "Network-restored flush hook installed")
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("MobileLoggerProvider", "Failed to install network-restored flush hook", t)
+        }
     }
 
     override fun get(instrumentationScopeName: String): Logger {
