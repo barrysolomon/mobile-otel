@@ -139,11 +139,17 @@ object AppointmentRepository {
             try {
                 val forceError = forceNextFetchError
                 if (forceError) forceNextFetchError = false
-                if (forceError) throw ApiException(503, "Forced error from debug toolbar")
 
                 ensureDoctorCache(context)
                 val client = SchedulingApiClient.getInstance(context)
-                val json = client.get("${backendUrl(context)}/api/appointments")
+                // When the DebugToolbar HTTP500 button is armed, hit a 404 path
+                // through OkHttp instead of throwing synthetically — this is the
+                // ONLY way to exercise the OTelNetworkInterceptor's http.error
+                // emission path (which the DSL http_match matcher keys on).
+                // Falls through to the catch (e: HttpException) below.
+                val url = if (forceError) "${backendUrl(context)}/api/force-error-${System.currentTimeMillis()}"
+                          else "${backendUrl(context)}/api/appointments"
+                val json = client.get(url)
                 val backendAppointments = parseAppointments(json)
                 allAppointments.clear()
                 allAppointments.addAll(backendAppointments)
