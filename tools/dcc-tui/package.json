@@ -1,0 +1,29 @@
+{
+  "name": "@dash0/dcc-tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ink+React terminal UI for the Demo Control Center. Stack-routed, alt-screen-buffer, two-layer hotkeys.",
+  "bin": {
+    "dcc-tui": "dist/tui/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/tui/index.tsx",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/tui/index.js"
+  },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
