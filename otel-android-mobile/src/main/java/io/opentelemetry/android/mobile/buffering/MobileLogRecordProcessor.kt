@@ -135,6 +135,13 @@ class MobileLogRecordProcessor private constructor(
     // CAS from false→true to start a flush; reset to false when the export completes/fails.
     private val flushInProgress = AtomicBoolean(false)
 
+    // NF-003: Holds the active network-restored listener so [shutdown] can detach it.
+    // Null when no watcher is attached. Only one attachment at a time — re-attaching swaps.
+    @Volatile
+    private var networkWatcher: io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher? = null
+    @Volatile
+    private var networkListener: io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher.Listener? = null
+
     // Error coalescer for grouping identical errors (Phase 3 of Offline Flush Budget)
     private val errorCoalescer = ErrorCoalescer()
 
@@ -773,6 +780,41 @@ class MobileLogRecordProcessor private constructor(
      *
      * @return CompletableResultCode indicating success/failure
      */
+    /**
+     * NF-003: Subscribe this processor to a [io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher].
+     *
+     * On every LOST → AVAILABLE transition the watcher emits, the processor
+     * runs [flushWindow] with [windowMinutes]. This closes the offline →
+     * online gap where buffered events sat on disk after airplane mode
+     * was toggled off, because nothing was waking the exporter.
+     *
+     * Re-attaching swaps the previous subscription. Pass `null` to detach.
+     * See: `docs/epics/NETWORK_RESTORED_FLUSH_EPIC.md`.
+     */
+    fun attachNetworkWatcher(
+        watcher: io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher?,
+        windowMinutes: Int
+    ) {
+        // Detach any prior subscription first so the swap is atomic from the
+        // caller's perspective.
+        networkWatcher?.let { prior ->
+            networkListener?.let(prior::removeListener)
+        }
+        networkListener = null
+        networkWatcher = watcher
+
+        if (watcher != null) {
+            val listener = io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher.Listener { transition ->
+                if (transition == io.opentelemetry.android.mobile.network.NetworkAvailabilityWatcher.Transition.Restored) {
+                    Log.i(TAG, "Network restored — flushing $windowMinutes-minute window")
+                    flushWindow(windowMinutes)
+                }
+            }
+            networkListener = listener
+            watcher.addListener(listener)
+        }
+    }
+
     override fun forceFlush(): CompletableResultCode {
         // Block any concurrent flushWindow() calls — forceFlush exports everything so
         // a simultaneous policy-triggered window flush would double-export the same events.
@@ -880,6 +922,10 @@ class MobileLogRecordProcessor private constructor(
 
         try {
             Log.i(TAG, "Shutting down processor")
+
+            // NF-003: Release any attached network-watcher listener so we don't leak
+            // a callback into a watcher that outlives this processor.
+            attachNetworkWatcher(null, 0)
 
             // Export and clear the RAM buffer only. Disk events are intentionally preserved
             // for crash-recovery: the next process start can find and re-export them.
