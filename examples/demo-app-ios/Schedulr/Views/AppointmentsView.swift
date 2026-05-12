@@ -12,7 +12,30 @@ struct AppointmentsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                DebugToolbar(onTriggerRefresh: { Task { await reload() } })
+                content
+            }
+            .navigationTitle("Appointments")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await reload() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityIdentifier("appointments.reload")
+                }
+            }
+            .task { await reload() }
+            .refreshable { await reload() }
+        }
+    }
+
+    /// Hoisted from inline body — DebugToolbar mounts above the existing list.
+    @ViewBuilder
+    private var content: some View {
+        Group {
                 if appointments.isEmpty && !isLoading {
                     if #available(iOS 17.0, *) {
                         ContentUnavailableView(
@@ -58,20 +81,6 @@ struct AppointmentsView: View {
                     ProgressView("Loading appointments...")
                 }
             }
-            .navigationTitle("Appointments")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await reload() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityIdentifier("appointments.reload")
-                }
-            }
-            .task { await reload() }
-            .refreshable { await reload() }
-        }
     }
 
     private func reload() async {

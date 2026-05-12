@@ -15,6 +15,15 @@ import Foundation
 final class SchedulrAPI: ObservableObject {
     let baseURL: String
 
+    /// When true, the next `fetchAppointments()` hits a non-existent path
+    /// so the demo-backend returns 404. Drives the
+    /// `OTelURLProtocol → http.error log → http_match policy → flushWindow`
+    /// pipeline through a real URLSession round-trip — the only way to
+    /// exercise the SDK's http.error emission path end-to-end.
+    /// Set by `DebugToolbar`'s HTTP500 button. Auto-reset after use.
+    /// Mirrors Android's `AppointmentRepository.forceNextFetchError`.
+    @Published var forceNextFetchError: Bool = false
+
     init(baseURL: String) {
         self.baseURL = baseURL
     }
@@ -29,7 +38,15 @@ final class SchedulrAPI: ObservableObject {
     }
 
     func fetchAppointments() async throws -> [Appointment] {
-        try await get("/api/appointments", as: [Appointment].self)
+        if forceNextFetchError {
+            forceNextFetchError = false
+            // Hit a real but non-existent path. Backend returns 404 → real
+            // URLSession round-trip → OTelURLProtocol observes 4xx →
+            // emits http.error log with event.name attribute.
+            let path = "/api/force-error-\(Int(Date().timeIntervalSince1970))"
+            return try await get(path, as: [Appointment].self)
+        }
+        return try await get("/api/appointments", as: [Appointment].self)
     }
 
     func bookAppointment(_ appointment: Appointment) async throws -> Appointment {
