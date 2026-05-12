@@ -39,13 +39,19 @@ async function probeAll(): Promise<Probe[]> {
   const backend = await run('curl', ['-sfm', '2', 'http://localhost:3001/health']);
   results[1] = { ...results[1]!, state: backend.ok ? 'ok' : 'fail' };
 
-  const docker = await run('docker', ['compose', '-f', '../../k8s/docker-compose.yaml', 'ps']);
+  // Resolve all paths relative to the mobile-otel repo root, regardless of
+  // where the TUI was invoked from. tools/dcc-tui/ is two levels deep from root.
+  const repoRoot = `${process.cwd()}`.replace(/\/tools\/dcc-tui\/?$/, '');
+  const collectorCompose = `${repoRoot}/k8s/docker-compose.yaml`;
+  const dash0ConfigPath = `${repoRoot}/examples/demo-app/android/src/debug/assets/otel-config.json`;
+
+  const docker = await run('docker', ['compose', '-f', collectorCompose, 'ps']);
   const collectorUp = docker.ok && /Up/.test(docker.out);
   results[2] = { ...results[2]!, state: collectorUp ? 'ok' : 'fail' };
 
   // Cheap Dash0 reachability — we just check the credentials file exists.
   // The bash menu has a richer 200/401/403 probe; that lives in the script.
-  const dash0Config = await run('test', ['-f', '../../examples/demo-app/android/src/debug/assets/otel-config.json']);
+  const dash0Config = await run('test', ['-f', dash0ConfigPath]);
   results[3] = { ...results[3]!, state: dash0Config.ok ? 'ok' : 'fail', detail: dash0Config.ok ? 'config present' : 'config missing' };
 
   return results;

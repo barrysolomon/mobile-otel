@@ -21,8 +21,8 @@ export function Banner({ width, serial, exportTarget, exportMode }: BannerProps)
           </Text>
         </Text>
         <Box>
-          <Text color="gray" dimColor>emu </Text>
-          <Text color={serial ? 'green' : 'red'}>{serial ?? 'none'}</Text>
+          <Text color="gray" dimColor>devices </Text>
+          <Text color={serial && serial !== 'none' ? 'green' : 'yellow'}>{serial ?? 'none'}</Text>
           <Text color="gray" dimColor>  ·  target </Text>
           <Text color={exportTarget === 'dash0' ? 'green' : 'yellow'}>{exportTarget ?? 'unknown'}</Text>
           <Text color="gray" dimColor>  ·  mode </Text>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { spawn } from 'node:child_process';
 import { Box, Text, useInput } from 'ink';
 import { back, type ScreenProps } from '../types.js';
+import { resolveRepoRoot } from '../lib/parallelRunner.js';
 
 /**
  * Headline demo screen for NF-001…NF-011. Two paths:
@@ -24,7 +25,7 @@ export function NetworkRestoredScreen({ state, setState }: ScreenProps) {
   const run = (flag: '--network-restored' | '--network-restored-lite') => {
     setRunning(true);
     setOutput([`$ scripts/test/demo-control-center.sh ${flag}`, '']);
-    const child = spawn('bash', ['scripts/test/demo-control-center.sh', flag], { cwd: process.cwd() });
+    const child = spawn('bash', ['scripts/test/demo-control-center.sh', flag], { cwd: resolveRepoRoot() });
     child.stdout.on('data', (b) => setOutput((o) => [...o, ...b.toString().split('\n')]));
     child.stderr.on('data', (b) => setOutput((o) => [...o, ...b.toString().split('\n')]));
     child.on('exit', (code) => {

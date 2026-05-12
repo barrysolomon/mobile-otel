@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { spawn } from 'node:child_process';
 import { Box, Text, useInput } from 'ink';
 import { back, type ScreenProps } from '../types.js';
+import { resolveRepoRoot } from '../lib/parallelRunner.js';
 
 type Mode = 'cont' | 'cond' | 'hyb';
 type Conn = 'online' | 'offline';
@@ -18,7 +19,7 @@ export function UatCellScreen({ state, setState }: ScreenProps) {
     setRunning(true);
     const cmd = `scripts/test/uat/run-uat-cell.sh --platform=android-native --mode=${mode} --connectivity=${conn} --crash=${crash}`;
     setOutput([`$ ${cmd}`, '']);
-    const child = spawn('bash', ['-c', cmd], { cwd: process.cwd() });
+    const child = spawn('bash', ['-c', cmd], { cwd: resolveRepoRoot() });
     child.stdout.on('data', (b) => setOutput((o) => [...o, ...b.toString().split('\n')]));
     child.stderr.on('data', (b) => setOutput((o) => [...o, ...b.toString().split('\n')]));
     child.on('exit', (code) => {

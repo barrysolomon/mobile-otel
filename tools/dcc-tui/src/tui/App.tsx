@@ -10,6 +10,11 @@ import { ScenariosScreen } from './screens/ScenariosScreen.js';
 import { NetworkRestoredScreen } from './screens/NetworkRestoredScreen.js';
 import { UatCellScreen } from './screens/UatCellScreen.js';
 import { HelpScreen } from './screens/HelpScreen.js';
+import { DeviceScreen } from './screens/DeviceScreen.js';
+import { PlatformScreen } from './screens/PlatformScreen.js';
+import { ModeScreen } from './screens/ModeScreen.js';
+import { TargetScreen } from './screens/TargetScreen.js';
+import { OptionsScreen } from './screens/OptionsScreen.js';
 
 /** Big switch — see types.ts `Screen` for the full union. */
 function ScreenRouter(props: ScreenProps) {
@@ -19,6 +24,11 @@ function ScreenRouter(props: ScreenProps) {
     case 'scenarios':        return <ScenariosScreen {...props} />;
     case 'networkRestored':  return <NetworkRestoredScreen {...props} />;
     case 'uatCell':          return <UatCellScreen {...props} />;
+    case 'devices':          return <DeviceScreen {...props} />;
+    case 'platform':         return <PlatformScreen {...props} />;
+    case 'mode':             return <ModeScreen {...props} />;
+    case 'target':           return <TargetScreen {...props} />;
+    case 'options':          return <OptionsScreen {...props} />;
     case 'help':             return <HelpScreen {...props} />;
     case 'error':            return <HomeScreen {...props} />; // TODO: dedicated error screen
   }
@@ -39,9 +49,18 @@ export function App() {
 
   const contentHeight = Math.max(1, rows - BANNER_HEIGHT - FOOTER_HEIGHT);
 
+  const deviceSummary = state.runConfig.devices.length === 0
+    ? 'none'
+    : `${state.runConfig.devices.length}× ${state.runConfig.devices.slice(0, 2).join(',')}${state.runConfig.devices.length > 2 ? '…' : ''}`;
+
   return (
     <Box flexDirection="column" width={columns} height={rows}>
-      <Banner width={columns} serial={process.env.DCC_SERIAL} exportTarget={process.env.DCC_TARGET ?? 'dash0'} exportMode={process.env.DCC_MODE ?? 'CONDITIONAL'} />
+      <Banner
+        width={columns}
+        serial={deviceSummary}
+        exportTarget={state.runConfig.target === 'custom' ? (state.runConfig.customEndpoint || 'custom (unset)') : state.runConfig.target}
+        exportMode={state.runConfig.mode}
+      />
       <Box width={columns} height={contentHeight} overflow="hidden">
         <ScreenRouter state={state} setState={setState} />
       </Box>

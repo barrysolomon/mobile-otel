@@ -15,8 +15,63 @@ export type Screen =
   | 'scenarios'
   | 'networkRestored'
   | 'uatCell'
+  | 'devices'
+  | 'platform'
+  | 'mode'
+  | 'target'
+  | 'options'
   | 'help'
   | 'error';
+
+/** Platform a scenario will run against. */
+export type Platform = 'android' | 'ios' | 'rn-android' | 'rn-ios';
+
+/** Export mode the demo app should run in. Mirrors SDK's ExportMode enum. */
+export type ExportMode = 'CONTINUOUS' | 'CONDITIONAL' | 'HYBRID';
+
+/** Export target — where telemetry goes. */
+export type ExportTarget = 'dash0' | 'local' | 'custom';
+
+/** A device the user might run a scenario against. */
+export interface Device {
+  /** `serial` is the adb serial when booted (e.g. `emulator-5554`). Empty for AVDs not yet booted. */
+  serial: string;
+  /** `avd` is the AVD name (e.g. `Pixel_7`). Empty for physical devices. */
+  avd: string;
+  /** model + API level for the display row. */
+  model: string;
+  api: string;
+  /** `booted` is whether sys.boot_completed=1 right now. */
+  booted: boolean;
+}
+
+/**
+ * RunConfig is the bundle of selections every scenario inherits.
+ * Lives on AppState so all screens read/write the same thing.
+ */
+export interface RunConfig {
+  platform: Platform;
+  mode: ExportMode;
+  target: ExportTarget;
+  /** Selected device serials (or AVD names for not-yet-booted ones, prefixed `avd:`). */
+  devices: string[];
+  /** Custom endpoint when target === 'custom'. */
+  customEndpoint: string;
+  /** Run scenarios in parallel across all selected devices. */
+  parallel: boolean;
+  /** Keep app installed after run (suppresses teardown). */
+  keepApp: boolean;
+}
+
+export const defaultRunConfig: RunConfig = {
+  platform: 'android',
+  mode: 'CONDITIONAL',
+  target: 'dash0',
+  devices: [],
+  customEndpoint: '',
+  parallel: true,
+  keepApp: false,
+};
 
 export interface StatusLine {
   text: string;
@@ -37,6 +92,8 @@ export interface AppState {
   /** Suppress automatic redirects (e.g. if an env probe wants to bounce
    *  the user to the error screen). */
   suppressAutoRoute: boolean;
+  /** Persistent run configuration inherited by every scenario. */
+  runConfig: RunConfig;
 }
 
 export interface ScreenProps {
@@ -50,6 +107,7 @@ export const initialState: AppState = {
   selected: new Set(),
   status: { text: 'ready', tone: 'info' },
   suppressAutoRoute: false,
+  runConfig: defaultRunConfig,
 };
 
 /** Push current screen onto the history and switch. Used by every nav callsite. */

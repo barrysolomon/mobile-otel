@@ -14,24 +14,58 @@ npm run build && node dist/tui/index.js
 
 `npm run typecheck` is a non-emitting `tsc` for CI.
 
+## Workflow
+
+The whole point of the TUI is to assemble a **RunConfig** (platform × mode × target × devices × options) once, then have every scenario inherit it. The Home screen is mostly nav-into-pickers.
+
+1. `D` — **Devices**. Multi-select. Lists every booted adb emulator plus every AVD known to `emulator -list-avds`. Space/↵ toggles; `a` selects all booted; `c` clears.
+2. `P` — **Platform**. Android native / iOS native / RN-Android / RN-iOS.
+3. `M` — **Mode**. CONTINUOUS / CONDITIONAL / HYBRID.
+4. `T` — **Target**. Dash0 / local collector / custom endpoint.
+5. `O` — **Options**. Parallel runs, keep-app, custom endpoint editor.
+6. `L` — **Scenario Library**. ↵ runs the highlighted scenario across every selected device. When `parallel: on`, all devices run concurrently; each gets its own bordered output card.
+
+The Banner (top, every screen) shows a compact one-liner of the current RunConfig so you don't have to dig back to the picker to remember what's set.
+
+## Parallel runs
+
+`parallelRunner.fanOut()` spawns one bash child per device. Each child inherits:
+
+- `SERIAL=<adb-serial>` — for booted devices. `find_emulator` in `lib/common.sh` respects it.
+- `AVD=<name>` — for AVD entries (prefixed `avd:` in `runConfig.devices`).
+- `DCC_MODE`, `DCC_TARGET`, `DCC_PLATFORM`, `DCC_KEEP_APP`, `DCC_CUSTOM_ENDPOINT` — surfaced so scenarios can react.
+- `DCC_RUN_KEY` — the device key for logging.
+
+Each child's stdout/stderr is captured into a ring buffer (`lines: string[]`, capped at 500) and rendered in a per-device card. `k` kills all children; `esc` kills + navigates back.
+
 ## Architecture
 
-```
+```text
 src/tui/
-├── index.tsx            entry — alt-screen-buffer + render(<App />)
-├── App.tsx              banner / router / footer + global hotkeys
-├── types.ts             Screen union, AppState, navigate / back
-├── Banner.tsx           persistent top band (3 rows)
-├── Footer.tsx           persistent bottom band + per-screen hotkey hints
+├── index.tsx                    entry — alt-screen-buffer + render(<App />)
+├── App.tsx                      banner / router / footer + global hotkeys
+├── types.ts                     Screen union, AppState, RunConfig, navigate / back
+├── Banner.tsx                   persistent top band — shows RunConfig summary
+├── Footer.tsx                   persistent bottom band + per-screen hotkey hints
+├── RunConfigPanel.tsx           full + compact renderers for the RunConfig
 ├── hooks/
-│   └── useTerminalSize.ts  re-render on stdout resize
+│   └── useTerminalSize.ts       re-render on stdout resize
+├── lib/
+│   ├── adb.ts                   enumerateDevices, deviceKey, deviceRow
+│   ├── ListPicker.tsx           single-select keyboard list (used by Mode/Target/Platform)
+│   └── parallelRunner.ts        fanOut, killAll, resolveRepoRoot
 └── screens/
-    ├── HomeScreen.tsx        ↑↓ menu, opens other screens
-    ├── StatusScreen.tsx      pre-flight probes (emu/backend/collector/dash0)
-    ├── ScenariosScreen.tsx   library — every demo + smoke + UAT cell
+    ├── HomeScreen.tsx           RunConfig panel + nav menu
+    ├── StatusScreen.tsx         pre-flight probes (emu/backend/collector/dash0)
+    ├── DeviceScreen.tsx         multi-select emulators + AVDs
+    ├── PlatformScreen.tsx       Android / iOS / RN-Android / RN-iOS
+    ├── ModeScreen.tsx           CONTINUOUS / CONDITIONAL / HYBRID
+    ├── TargetScreen.tsx         Dash0 / local / custom
+    ├── OptionsScreen.tsx        parallel + keep-app + custom endpoint editor
+    ├── ScenariosScreen.tsx      library + parallel runner output cards
     ├── NetworkRestoredScreen.tsx  NF-001…NF-011 demo moment
-    ├── UatCellScreen.tsx     pick mode × connectivity × crash
-    └── HelpScreen.tsx        in-app cheat sheet
+    ├── UatCellScreen.tsx        pick mode × connectivity × crash
+    └── HelpScreen.tsx           in-app cheat sheet + architecture notes
 ```
 
 ### Stack routing
