@@ -83,20 +83,20 @@ object MobileOtel {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Initialize the Mobile OpenTelemetry SDK.
+     * SDK-internal core initializer. Customers call [io.opentelemetry.android.mobile.OTelMobile.start]
+     * instead — it's the single public entry point and routes here.
      *
-     * This must be called before any other MobileOtel methods, typically in
-     * Application.onCreate(). Automatically wires all instrumentation modules:
-     * - Error capture (uncaught exceptions, coroutines, RxJava)
-     * - Vitals monitoring (app start, jank, memory, thermal)
-     * - Predictive export (crash risk, network loss → pre-emptive flush)
-     * - Health metrics (device state → OTel metrics)
+     * The two-entry-point shape (`OTelMobile.start` + `MobileOtel.initialize`)
+     * caused real production confusion (memory: `feedback_sdk_two_entry_points`).
+     * Architecture-hardening epic Track 5 narrows the public initialization
+     * surface to `OTelMobile.start`; other `MobileOtel` methods (identify,
+     * forceFlush, sendEvent, etc.) remain public — they're orthogonal singletons.
      *
      * @param context Application context
      * @param config Mobile configuration
      * @return The initialized MobileLoggerProvider
      */
-    fun initialize(
+    internal fun initialize(
         context: Context,
         config: MobileConfig,
         customizers: ExporterCustomizers = ExporterCustomizers()
@@ -182,10 +182,18 @@ object MobileOtel {
     }
 
     /**
-     * Initialize the Mobile OpenTelemetry SDK using a Kotlin DSL.
+     * Initialize the SDK with a Kotlin DSL block.
      *
-     * This is the primary entry point, matching upstream's
-     * `OpenTelemetryRumInitializer.initialize(context) { }` pattern.
+     * This is the canonical DSL entry point used by all demo apps and
+     * customers wanting an idiomatic Kotlin configuration shape. The
+     * imperative form ([initialize] with positional `MobileConfig`) is
+     * internal — customers needing imperative configuration call
+     * [io.opentelemetry.android.mobile.OTelMobile.start] instead.
+     *
+     * Pre-architecture-hardening this object exposed BOTH initialization
+     * entries publicly, which produced the "two entry points" footgun
+     * documented in `feedback_sdk_two_entry_points`. Track 5 narrows the
+     * surface to one per call style.
      */
     fun initialize(
         context: Context,

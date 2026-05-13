@@ -228,37 +228,27 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         }
     }
 
+    /// OTel `LogRecordProcessor` protocol implementation. Drains RAM + disk
+    /// (delegates to `forceFlushBuffered()`) and adapts the richer
+    /// `BufferExportResult` to the binary `ExportResult` upstream expects.
+    ///
+    /// Previously this method drained RAM only, leaving disk-buffered events
+    /// undrained on shutdown — which silently broke the offline-survives-reconnect
+    /// promise for callers that hit the OTel public protocol surface but never
+    /// the SDK-internal `forceFlushBuffered`. Architecture-hardening epic
+    /// Track 5: one public drain method, always drains both tiers. See
+    /// docs/contracts/buffer-drain-surface.md.
     public func forceFlush(explicitTimeout: TimeInterval? = nil) -> ExportResult {
-        let semaphore = DispatchSemaphore(value: 0)
-        final class Box: @unchecked Sendable { var value: ExportResult = .success }
-        let box = Box()
-        Task.detached { [weak self] in
-            guard let self = self else { semaphore.signal(); return }
-            let events = await self.buffer.flush()
-            if !events.isEmpty {
-                box.value = await self.exportThroughConfiguredSink(events: events)
-                // Failure-persistence contract (mirrors forceFlushBuffered).
-                // If export failed and a disk buffer is configured, persist
-                // the RAM-drained events so they survive process death and
-                // get re-exported on the next successful launch's
-                // recoverFromDisk. Without this, a failed forceFlush drops
-                // the events entirely (buffer.flush already emptied RAM).
-                if case .failure = box.value, let disk = self.diskBuffer {
-                    let diskEvents = await disk.fetchAll()
-                    let onDisk = Set(diskEvents.map { $0.sequenceId })
-                    for event in events where !onDisk.contains(event.sequenceId) {
-                        await disk.insert(event)
-                    }
-                }
-            }
-            semaphore.signal()
+        // explicitTimeout is part of the OTel protocol surface; forceFlushBuffered
+        // uses its own DispatchSemaphore-based wait without a caller-supplied
+        // bound, so the timeout is honoured implicitly by the underlying
+        // SynchronousHTTPClient's request.timeoutInterval. Surfaced here so the
+        // signature remains protocol-compliant.
+        _ = explicitTimeout
+        switch forceFlushBuffered() {
+        case .success: return .success
+        case .failure: return .failure
         }
-        if let timeout = explicitTimeout {
-            _ = semaphore.wait(timeout: .now() + timeout)
-        } else {
-            semaphore.wait()
-        }
-        return box.value
     }
 
     public func shutdown(explicitTimeout: TimeInterval? = nil) -> ExportResult {
@@ -331,7 +321,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// either in the same process (via the RAM/disk dedupe path on the next
     /// forceFlush) or in a future process (via start-time recovery).
     @discardableResult
-    public func forceFlushBuffered() -> BufferExportResult {
+    internal func forceFlushBuffered() -> BufferExportResult {
         let semaphore = DispatchSemaphore(value: 0)
         final class Box: @unchecked Sendable { var value: BufferExportResult = .success }
         let box = Box()

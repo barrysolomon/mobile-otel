@@ -4,21 +4,21 @@ Every public method on `MobileLogRecordProcessor` that drains the buffer. Each r
 
 ## Method catalogue
 
-| Platform / Method | Drains | Return | Used by |
-|---|---|---|---|
-| Android `forceFlush()` | RAM + disk | `CompletableResultCode` | shutdown; explicit caller flush |
-| Android `flushWindow(windowMinutes)` | RAM, last N min | `CompletableResultCode` | policy-triggered selective flush; network-restored hook |
-| iOS `forceFlush(explicitTimeout?)` | RAM + disk, synchronous | `ExportResult` (OTel protocol) | shutdown |
-| iOS `forceFlushBuffered()` | RAM + disk, synchronous | `BufferExportResult` (richer) | network-restored hook; offline failure-persistence path |
-| iOS `flushWindow(minutes:)` | RAM + disk, last N min | `BufferExportResult` | policy-triggered selective flush |
+| Platform / Method | Visibility | Drains | Return | Used by |
+|---|---|---|---|---|
+| Android `forceFlush()` | public | RAM + disk | `CompletableResultCode` | shutdown; explicit caller flush |
+| Android `flushWindow(windowMinutes)` | public | RAM, last N min | `CompletableResultCode` | policy-triggered selective flush; network-restored hook |
+| iOS `forceFlush(explicitTimeout?)` | public (OTel protocol) | RAM + disk, synchronous | `ExportResult` | shutdown; explicit caller flush |
+| iOS `forceFlushBuffered()` | **internal** | RAM + disk, synchronous | `BufferExportResult` (richer) | network-restored hook; offline failure-persistence path; SDK-internal callers |
+| iOS `flushWindow(minutes:)` | public | RAM + disk, last N min | `BufferExportResult` | policy-triggered selective flush |
 
 Source line refs: Android [MobileLogRecordProcessor.kt:503](../../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt#L503), [:818](../../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt#L818); iOS [MobileLogRecordProcessor.swift:230](../../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift#L230), [:306](../../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift#L306), [:333](../../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift#L333).
 
-## Why iOS has two `forceFlush` variants
+## Why iOS still has two `forceFlush` variants (one public, one internal)
 
-`forceFlush(explicitTimeout:)` implements the upstream OTel `LogRecordProcessor` protocol — its return type is the binary `ExportResult` upstream defines. `forceFlushBuffered()` is the SDK-internal API that returns the richer `BufferExportResult` (which carries a failure reason). Both drain RAM + disk; they differ only in return type.
+`forceFlush(explicitTimeout:)` implements the upstream OTel `LogRecordProcessor` protocol — its return type is the binary `ExportResult` upstream defines. It's the only public drain method. `forceFlushBuffered()` is SDK-internal and returns the richer `BufferExportResult` (which carries a failure reason) for callers that need it (network-restored hook, offline failure-persistence path).
 
-The two-method shape is historical and the architecture-hardening epic collapses it: post-fix, `forceFlush(explicitTimeout:)` is the OTel-protocol public surface and the richer variant is internal. See the epic spec for details.
+Both drain RAM + disk; they differ only in return type. Pre-Track-5, `forceFlush` drained RAM only and `forceFlushBuffered` was public — customers picking the wrong method silently lost disk-buffered events on shutdown. The architecture-hardening epic made the protocol method drain both tiers via a thin adapter over the internal `forceFlushBuffered`.
 
 ## Cross-platform invariants
 
