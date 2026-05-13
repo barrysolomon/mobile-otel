@@ -13,9 +13,12 @@ struct NetworkConfigTests {
         #expect(NetworkConfig.default.capturedResponseHeaders.contains("content-type"))
     }
 
-    @Test("default error threshold is 500")
-    func defaultErrorThreshold500() {
-        #expect(NetworkConfig.default.errorStatusThreshold == 500)
+    @Test("default error threshold is 400 (Android parity)")
+    func defaultErrorThreshold400() {
+        // 2026-05-12 (b7ae239): iOS threshold lowered from 500 to 400 to match
+        // Android. A 404 must emit `http.error` on both platforms or HYBRID
+        // mode silently misses an entire class of failures.
+        #expect(NetworkConfig.default.errorStatusThreshold == 400)
     }
 
     @Test("default does not capture request headers or propagate context")

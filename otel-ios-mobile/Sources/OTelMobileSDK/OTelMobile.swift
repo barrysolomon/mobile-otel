@@ -150,7 +150,7 @@ public final class OTelMobile: @unchecked Sendable {
     /// Traces and metrics are NOT wired on this path — the exporter here is a
     /// log/event adapter. Callers that need traces or metrics should use the
     /// production `start(config:)` entry point.
-    public static func start(
+    internal static func start(
         config: MobileConfig,
         exporter: BufferedEventExporter
     ) throws -> OTelMobile {

@@ -110,10 +110,11 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.errorCoalescer = errorCoalescer
     }
 
-    /// Test-only constructor: delivers `[BufferedEvent]` batches to an
-    /// inspector that doesn't need to implement the full OTel exporter
-    /// contract. Use `init(buffer:otelExporter:...)` in production.
-    public init(
+    /// SDK-internal test constructor. Delivers `[BufferedEvent]` batches so
+    /// tests can introspect seqId / payload — fields the public OTel path
+    /// doesn't surface. Internal-scoped intentionally; production callers use
+    /// `init(buffer:otelExporter:...)`.
+    internal init(
         buffer: RAMEventBuffer,
         exporter: BufferedEventExporter,
         sessionProvider: SessionProvider,
