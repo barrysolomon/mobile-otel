@@ -245,6 +245,102 @@ class ErrorCoalescerTest {
         assertTrue("Same body should coalesce", coalescer.tryCoalesce(record2))
     }
 
+    // ==================== Tuple keying (architecture-hardening epic) ====================
+    //
+    // Locked in after the 2026-05-12 misdiagnosis. The previous body|<body>
+    // fallback collapsed two http.error records to different URLs as if they
+    // were duplicates. The new key shape distinguishes signal class +
+    // identifying attributes. See docs/contracts/error-coalescer.md.
+
+    @Test
+    fun `http_error to DIFFERENT status codes are NOT coalesced`() {
+        val r503 = TestUtils.createTestLogRecord(
+            body = "http.error",
+            attributes = mapOf(
+                "event.name" to "http.error",
+                "http.response.status_code" to 503L,
+                "url.full" to "http://a/api"
+            ),
+            severity = Severity.ERROR
+        )
+        val r500 = TestUtils.createTestLogRecord(
+            body = "http.error",
+            attributes = mapOf(
+                "event.name" to "http.error",
+                "http.response.status_code" to 500L,
+                "url.full" to "http://a/api"
+            ),
+            severity = Severity.ERROR
+        )
+        assertFalse(coalescer.tryCoalesce(r503))
+        assertFalse(
+            "different status on same URL must not collapse",
+            coalescer.tryCoalesce(r500)
+        )
+    }
+
+    @Test
+    fun `http_error to DIFFERENT URLs are NOT coalesced`() {
+        val rA = TestUtils.createTestLogRecord(
+            body = "http.error",
+            attributes = mapOf(
+                "event.name" to "http.error",
+                "http.response.status_code" to 503L,
+                "url.full" to "http://a/api"
+            ),
+            severity = Severity.ERROR
+        )
+        val rB = TestUtils.createTestLogRecord(
+            body = "http.error",
+            attributes = mapOf(
+                "event.name" to "http.error",
+                "http.response.status_code" to 503L,
+                "url.full" to "http://b/api"
+            ),
+            severity = Severity.ERROR
+        )
+        assertFalse(coalescer.tryCoalesce(rA))
+        assertFalse(
+            "different URL on same status must not collapse",
+            coalescer.tryCoalesce(rB)
+        )
+    }
+
+    @Test
+    fun `identical http_error tuple IS coalesced`() {
+        val attrs = mapOf(
+            "event.name" to "http.error",
+            "http.response.status_code" to 503L,
+            "url.full" to "http://a/api"
+        )
+        val r1 = TestUtils.createTestLogRecord(body = "http.error", attributes = attrs, severity = Severity.ERROR)
+        val r2 = TestUtils.createTestLogRecord(body = "http.error", attributes = attrs, severity = Severity.ERROR)
+        assertFalse(coalescer.tryCoalesce(r1))
+        assertTrue(
+            "genuine duplicate (same status, same URL) should still collapse",
+            coalescer.tryCoalesce(r2)
+        )
+    }
+
+    @Test
+    fun `structured event with event_name but no exception bypasses coalescer`() {
+        val r1 = TestUtils.createTestLogRecord(
+            body = "ui.tap",
+            attributes = mapOf("event.name" to "ui.tap", "x" to "10"),
+            severity = Severity.ERROR
+        )
+        val r2 = TestUtils.createTestLogRecord(
+            body = "ui.tap",
+            attributes = mapOf("event.name" to "ui.tap", "x" to "200"),
+            severity = Severity.ERROR
+        )
+        assertFalse(coalescer.tryCoalesce(r1))
+        assertFalse(
+            "structured signals must not collapse on body alone",
+            coalescer.tryCoalesce(r2)
+        )
+    }
+
     // ==================== Clear ====================
 
     @Test

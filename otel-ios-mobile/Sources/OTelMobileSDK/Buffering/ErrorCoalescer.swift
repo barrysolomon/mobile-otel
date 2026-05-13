@@ -98,6 +98,18 @@ public final class ErrorCoalescer: @unchecked Sendable {
 
     // MARK: - Private
 
+    /// Build the dedup key for a record. Order of precedence:
+    ///   1. Exception tuple (`exception.type|exception.message`) when present.
+    ///      Genuine crash duplicates (same exception in tight loop) collapse.
+    ///   2. Structured signal with distinguishing attrs: `http.error` keys on
+    ///      `http.response.status_code|url.full` so two different 4xx requests
+    ///      do NOT collapse. Documented in docs/contracts/error-coalescer.md.
+    ///   3. Any other record with `event.name` set: NOT coalesced. Structured
+    ///      events are intentional signals, not error noise — returning nil
+    ///      bypasses the coalescer entirely. This is the 2026-05-12 footgun fix.
+    ///   4. Raw body fallback (`body|<body>`): preserves the old behaviour for
+    ///      genuine error storms with no event.name (legacy uncaught exceptions
+    ///      that emit a body but no structured attrs).
     private func coalescingKey(_ record: ReadableLogRecord) -> String? {
         let exType = record.attributes["exception.type"]
         let exMsg = record.attributes["exception.message"]
@@ -106,6 +118,22 @@ public final class ErrorCoalescer: @unchecked Sendable {
             let msgStr = exMsg.map { Self.stringValue($0) } ?? ""
             return "\(typeStr)|\(msgStr)"
         }
+
+        if let eventName = record.attributes["event.name"] {
+            let eventNameStr = Self.stringValue(eventName)
+            if eventNameStr == "http.error" {
+                let status = record.attributes["http.response.status_code"]
+                    .map { Self.stringValue($0) } ?? ""
+                let url = record.attributes["url.full"]
+                    .map { Self.stringValue($0) } ?? ""
+                return "http.error|\(status)|\(url)"
+            }
+            // Other structured signals (event.name set, no exception): not
+            // coalesced. Two ui.tap events with different x/y are not
+            // duplicates; the previous body|<body> behaviour collapsed them.
+            return nil
+        }
+
         if let body = record.body {
             let bodyStr = Self.stringValue(body)
             if !bodyStr.isEmpty {

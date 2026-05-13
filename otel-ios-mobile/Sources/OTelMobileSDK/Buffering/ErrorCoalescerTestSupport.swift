@@ -10,11 +10,15 @@ extension ErrorCoalescer {
         body: String = "error",
         severity: Severity = .error,
         exceptionType: String? = nil,
-        exceptionMessage: String? = nil
+        exceptionMessage: String? = nil,
+        eventName: String? = nil,
+        attributes extra: [String: String] = [:]
     ) -> ReadableLogRecord {
         var attrs: [String: AttributeValue] = [:]
         if let t = exceptionType { attrs["exception.type"] = .string(t) }
         if let m = exceptionMessage { attrs["exception.message"] = .string(m) }
+        if let e = eventName { attrs["event.name"] = .string(e) }
+        for (k, v) in extra { attrs[k] = .string(v) }
         return ReadableLogRecord(
             resource: Resource(),
             instrumentationScopeInfo: InstrumentationScopeInfo(name: "test"),

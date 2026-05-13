@@ -110,14 +110,43 @@ class ErrorCoalescer(
         active.clear()
     }
 
+    /**
+     * Build the dedup key for a record. Order of precedence:
+     *   1. Exception tuple (`exception.type|exception.message`) when present.
+     *      Genuine crash duplicates (same exception in tight loop) collapse.
+     *   2. Structured signal with distinguishing attrs: `http.error` keys on
+     *      `http.response.status_code|url.full` so two different 4xx requests
+     *      do NOT collapse. Documented in docs/contracts/error-coalescer.md.
+     *   3. Any other record with `event.name` set: NOT coalesced. Structured
+     *      events are intentional signals, not error noise — returning null
+     *      bypasses the coalescer entirely. This is the 2026-05-12 footgun fix.
+     *   4. Raw body fallback (`body|<body>`): preserves the old behaviour for
+     *      genuine error storms with no event.name (legacy uncaught exceptions
+     *      that emit a body but no structured attrs).
+     */
     private fun coalescingKey(record: LogRecordData): String? {
         val exceptionType = record.attributes.get(AttributeKey.stringKey("exception.type"))
         val exceptionMsg = record.attributes.get(AttributeKey.stringKey("exception.message"))
-        val body = record.body.asString()
-
         if (exceptionType != null) {
             return "$exceptionType|${exceptionMsg ?: ""}"
         }
+
+        val eventName = record.attributes.get(AttributeKey.stringKey("event.name"))
+        if (eventName != null) {
+            if (eventName == "http.error") {
+                val statusLong = record.attributes.get(AttributeKey.longKey("http.response.status_code"))
+                val statusStr = record.attributes.get(AttributeKey.stringKey("http.response.status_code"))
+                val status = statusLong?.toString() ?: statusStr ?: ""
+                val url = record.attributes.get(AttributeKey.stringKey("url.full")) ?: ""
+                return "http.error|$status|$url"
+            }
+            // Other structured signals (event.name set, no exception): not
+            // coalesced. Two ui.tap events at different (x,y) are not
+            // duplicates; the previous body|<body> behaviour collapsed them.
+            return null
+        }
+
+        val body = record.body.asString()
         if (body.isNotBlank()) {
             return "body|$body"
         }

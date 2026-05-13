@@ -1,5 +1,6 @@
 import Testing
 @testable import OTelMobileSDK
+import OpenTelemetryApi
 
 /// End-to-end test of the policy pipeline:
 ///   onEmit -> buffer append -> evaluator.evaluate -> flushWindow -> exporter
@@ -101,8 +102,14 @@ struct PolicyPipelineIntegrationTests {
             policyEvaluator: evaluator
         )
 
+        // event.name attribute mirrors what real `app.crash` emissions carry —
+        // without it, the ErrorCoalescer body-fallback path would collapse two
+        // identical-body emits and the second would never reach the policy
+        // evaluator. See docs/contracts/error-coalescer.md.
+        let crashAttrs: [String: AttributeValue] = ["event.name": .string("app.crash")]
+
         // Empty policy set: crash doesn't flush.
-        await processor.emitForTesting(body: "app.crash", severity: .fatal)
+        await processor.emitForTesting(body: "app.crash", severity: .fatal, attributes: crashAttrs)
         try? await MobileLogRecordProcessor.waitForBufferedAppends(timeoutMs: 200)
         let beforeCount = await captured.count
         #expect(beforeCount == 0)
@@ -122,7 +129,7 @@ struct PolicyPipelineIntegrationTests {
         ])
 
         // Now the same event should trigger a flush.
-        await processor.emitForTesting(body: "app.crash", severity: .fatal)
+        await processor.emitForTesting(body: "app.crash", severity: .fatal, attributes: crashAttrs)
         try? await MobileLogRecordProcessor.waitForBufferedAppends(timeoutMs: 200)
         let afterCount = await captured.count
         #expect(afterCount >= 1, "updatePolicies should enable flush on next emit")

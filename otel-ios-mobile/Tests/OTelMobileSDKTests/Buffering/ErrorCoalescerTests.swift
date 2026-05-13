@@ -137,6 +137,100 @@ struct ErrorCoalescerTests {
     }
 }
 
+// MARK: - Tuple-keying regression suite
+//
+// Locked in after the 2026-05-12 misdiagnosis: the previous `body|<body>` fallback
+// coalesced two `http.error` records to different URLs as duplicates, so HYBRID
+// flushed one and silently lost the others. The new key shape distinguishes
+// signal class + identifying attributes. See docs/contracts/error-coalescer.md.
+
+extension ErrorCoalescerTests {
+
+    @Test("http.error to DIFFERENT status codes are NOT coalesced (tuple key)")
+    func httpErrorDifferentStatusNotCoalesced() {
+        let coalescer = ErrorCoalescer()
+        let r503 = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "503", "url.full": "http://a/api"]
+        )
+        let r500 = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "500", "url.full": "http://a/api"]
+        )
+        #expect(coalescer.tryCoalesce(r503) == false)
+        #expect(coalescer.tryCoalesce(r500) == false,
+                "different status_code on same URL must not collapse")
+    }
+
+    @Test("http.error to DIFFERENT URLs are NOT coalesced (tuple key)")
+    func httpErrorDifferentUrlNotCoalesced() {
+        let coalescer = ErrorCoalescer()
+        let rA = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "503", "url.full": "http://a/api"]
+        )
+        let rB = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "503", "url.full": "http://b/api"]
+        )
+        #expect(coalescer.tryCoalesce(rA) == false)
+        #expect(coalescer.tryCoalesce(rB) == false,
+                "different URL on same status_code must not collapse")
+    }
+
+    @Test("identical http.error tuple IS coalesced")
+    func httpErrorIdenticalTupleCoalesced() {
+        let coalescer = ErrorCoalescer()
+        let rA = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "503", "url.full": "http://a/api"]
+        )
+        let rB = ErrorCoalescer.makeTestRecord(
+            body: "http.error", severity: .error,
+            eventName: "http.error",
+            attributes: ["http.response.status_code": "503", "url.full": "http://a/api"]
+        )
+        #expect(coalescer.tryCoalesce(rA) == false)
+        #expect(coalescer.tryCoalesce(rB) == true,
+                "genuine duplicate http.error (same status, same URL) should collapse")
+    }
+
+    @Test("structured event with event.name but no exception bypasses coalescer")
+    func structuredEventBypassesCoalescer() {
+        let coalescer = ErrorCoalescer()
+        // Two ui.tap records would have collapsed under the old body|<body> rule.
+        let r1 = ErrorCoalescer.makeTestRecord(
+            body: "ui.tap", severity: .error,
+            eventName: "ui.tap",
+            attributes: ["x": "10"]
+        )
+        let r2 = ErrorCoalescer.makeTestRecord(
+            body: "ui.tap", severity: .error,
+            eventName: "ui.tap",
+            attributes: ["x": "200"]
+        )
+        #expect(coalescer.tryCoalesce(r1) == false)
+        #expect(coalescer.tryCoalesce(r2) == false,
+                "structured signals must not collapse on body alone")
+    }
+
+    @Test("raw body fallback still collapses when no event.name + no exception")
+    func bodyFallbackStillCollapses() {
+        let coalescer = ErrorCoalescer()
+        // Legacy uncaught exception path: body present, no structured attrs.
+        let r1 = ErrorCoalescer.makeTestRecord(body: "raw error msg", severity: .error)
+        let r2 = ErrorCoalescer.makeTestRecord(body: "raw error msg", severity: .error)
+        #expect(coalescer.tryCoalesce(r1) == false)
+        #expect(coalescer.tryCoalesce(r2) == true,
+                "legacy body-only records still collapse for genuine error storms")
+    }
+}
+
 // MARK: - Test helpers
 
 fileprivate final class CoalescerStubSession: SessionProvider, @unchecked Sendable {

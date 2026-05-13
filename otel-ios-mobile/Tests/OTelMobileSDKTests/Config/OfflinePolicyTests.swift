@@ -2,7 +2,12 @@ import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
 
-@Suite("OfflinePolicy")
+/// Serialized because every test mutates the static `MobileLogRecordProcessor._offlineOverride`
+/// test seam. Swift Testing runs `@Test` cases in parallel by default — without
+/// `.serialized`, two tests can clobber each other's override, and the surviving
+/// state leaks into whichever test reads it next. See `feedback_ios_nwpathmonitor_test_seam`
+/// for why the static-override pattern exists in the first place.
+@Suite("OfflinePolicy", .serialized)
 struct OfflinePolicyTests {
 
     @Test("bufferAll has no min severity and does not drop all")
