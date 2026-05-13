@@ -106,6 +106,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Contract drift check — always runs; cheap and platform-agnostic.
+# Verifies docs/contracts/*.md file:line refs still resolve.
+print_section "Cross-platform contract drift check"
+if "$REPO_ROOT/scripts/ci/check-contract-drift.sh"; then
+    echo -e "${GREEN}\xE2\x9C\x93 contract docs in sync${NC}"
+else
+    handle_error "contract drift check"
+fi
+
 # Android Unit Tests
 if [ "$RUN_ANDROID" = true ]; then
     print_section "Running Android Unit Tests"
