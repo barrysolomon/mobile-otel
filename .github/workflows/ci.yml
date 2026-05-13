@@ -1,9 +1,17 @@
 name: CI
+# Triggers: push to main/iPhone/uat-matrix only. The pull_request trigger
+# was removed 2026-05-13 because every PR on a tracked branch fired CI
+# twice (push + PR), doubling minute consumption. The push run on the PR
+# head commit already validates the same code.
+#
+# The iOS job was also removed 2026-05-13. macos-15 runners bill at 10x
+# the ubuntu rate; a single failed iOS run consumed hundreds of
+# ubuntu-minute equivalents. `swift test` is validated locally on every
+# SDK change (407/407 green as of the architecture-hardening epic). CI
+# now covers the free-tier jobs: Android JVM unit tests + Go + React Native.
 on:
   push:
     branches: [main, iPhone, uat-matrix]
-  pull_request:
-    branches: [main]
 
 jobs:
   android:
@@ -52,13 +60,3 @@ jobs:
           npm install
           npm test
           npx tsc --noEmit
-
-  ios:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - name: iOS SDK tests
-        working-directory: otel-ios-mobile
-        run: |
-          swift build
-          swift test
