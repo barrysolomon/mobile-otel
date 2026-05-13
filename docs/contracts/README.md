@@ -14,6 +14,7 @@ These are not aspirational specs — they describe the code as it is today, on `
 6. [Offline policy](offline-policy.md) — what gets buffered when the device is offline.
 7. [Network-restored flush](network-restored-flush.md) — what fires on LOST→AVAILABLE transitions.
 8. [Buffer drain surface](buffer-drain-surface.md) — every public method that drains the buffer, what it drains, what it returns.
+9. [Parity test inventory](parity-test-inventory.md) — which cross-cutting behaviors have E2E coverage on each platform, and the visible gaps.
 
 ## Why these exist
 

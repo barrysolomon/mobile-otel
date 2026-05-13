@@ -115,6 +115,16 @@ else
     handle_error "contract drift check"
 fi
 
+# dash0 CLI smoke check — skips cleanly when the CLI isn't installed or
+# the user isn't authed. When it runs, fails loudly if the filter syntax
+# returns zero (the 2026-05-12 misdiagnosis trap).
+print_section "dash0 CLI smoke check"
+if "$REPO_ROOT/scripts/ci/dash0-cli-smoke.sh"; then
+    echo -e "${GREEN}\xE2\x9C\x93 dash0 CLI smoke check passed${NC}"
+else
+    handle_error "dash0 CLI smoke check"
+fi
+
 # Android Unit Tests
 if [ "$RUN_ANDROID" = true ]; then
     print_section "Running Android Unit Tests"
