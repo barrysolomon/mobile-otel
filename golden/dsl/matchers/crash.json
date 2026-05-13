@@ -1,0 +1,38 @@
+{
+  "name": "crash matcher (default policy: crash-recovery)",
+  "description": "exact app.crash event.name fires the default crash-recovery policy",
+  "policies": [
+    {
+      "id": "crash-recovery",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "event.name": { "equals": "app.crash" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 5 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "app.crash fires the policy",
+      "attributes": { "event.name": "app.crash" },
+      "expectedMatch": "crash-recovery"
+    },
+    {
+      "name": "app.crash with exception attrs still fires (extra attrs ignored unless conditions present)",
+      "attributes": {
+        "event.name": "app.crash",
+        "exception.type": "NullPointerException",
+        "exception.message": "boom"
+      },
+      "expectedMatch": "crash-recovery"
+    },
+    {
+      "name": "different event.name no-match",
+      "attributes": { "event.name": "app.recovery_start" },
+      "expectedMatch": null
+    }
+  ]
+}

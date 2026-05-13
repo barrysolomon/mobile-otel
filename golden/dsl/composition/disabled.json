@@ -1,0 +1,40 @@
+{
+  "name": "disabled policy is skipped",
+  "description": "policies with enabled=false never fire even if matchers would match",
+  "policies": [
+    {
+      "id": "disabled-policy",
+      "enabled": false,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "event.name": { "equals": "app.crash" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 5 }
+    },
+    {
+      "id": "enabled-policy",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "event.name": { "equals": "http.error" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "would match disabled policy but skipped",
+      "attributes": { "event.name": "app.crash" },
+      "expectedMatch": null
+    },
+    {
+      "name": "matches enabled policy after skipping disabled",
+      "attributes": { "event.name": "http.error" },
+      "expectedMatch": "enabled-policy"
+    }
+  ]
+}

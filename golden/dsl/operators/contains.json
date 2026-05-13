@@ -1,0 +1,39 @@
+{
+  "name": "contains operator",
+  "description": "substring match; case-sensitive; missing attribute is no-match",
+  "policies": [
+    {
+      "id": "contains-test",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "url.full": { "contains": "force-error" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "substring present matches",
+      "attributes": { "url.full": "http://localhost:3001/api/force-error/abc" },
+      "expectedMatch": "contains-test"
+    },
+    {
+      "name": "substring absent no-match",
+      "attributes": { "url.full": "http://localhost:3001/api/appointments" },
+      "expectedMatch": null
+    },
+    {
+      "name": "case-sensitive: differing case no-match",
+      "attributes": { "url.full": "http://localhost:3001/api/Force-Error/abc" },
+      "expectedMatch": null
+    },
+    {
+      "name": "missing attribute no-match",
+      "attributes": { "event.name": "http.request" },
+      "expectedMatch": null
+    }
+  ]
+}

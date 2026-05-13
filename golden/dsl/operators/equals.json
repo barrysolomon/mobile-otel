@@ -1,0 +1,39 @@
+{
+  "name": "equals operator",
+  "description": "exact string match; missing attribute is never a match",
+  "policies": [
+    {
+      "id": "equals-test",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "event.name": { "equals": "http.error" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "exact match fires",
+      "attributes": { "event.name": "http.error" },
+      "expectedMatch": "equals-test"
+    },
+    {
+      "name": "different value no-match",
+      "attributes": { "event.name": "ui.tap" },
+      "expectedMatch": null
+    },
+    {
+      "name": "missing attribute no-match",
+      "attributes": { "severity": "error" },
+      "expectedMatch": null
+    },
+    {
+      "name": "case-sensitive: differing case no-match",
+      "attributes": { "event.name": "HTTP.ERROR" },
+      "expectedMatch": null
+    }
+  ]
+}

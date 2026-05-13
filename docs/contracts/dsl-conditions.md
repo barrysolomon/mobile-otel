@@ -26,6 +26,14 @@ These properties of `evaluateCondition` must hold identically on all three platf
 - **Regex pattern length is capped.** Android and iOS both enforce a 200-character limit on remote-config regex patterns to mitigate ReDoS. Go does not.
 - **And/or composition.** A `Match` with `logicalOperator: "or"` returns true if any condition matches. Default and "and" require every condition to match.
 
+## Known platform drift: `or` semantics with no geo/device
+
+Android's `matchesPolicy` composes attribute + geo + device match results: `attributeMatch || geoMatch || deviceMatch`. Because `matchGeo(null)` and `matchDevice(null)` both return `true` (a missing constraint can't disqualify), an `or` policy with only attribute conditions evaluates as `attributeMatch || true || true` — **always true, regardless of whether any attribute matched**.
+
+iOS doesn't have geo/device matchers at all, so `or` with no matching attributes returns false. This is real drift: the same `or` policy produces opposite verdicts on the two platforms when no attribute condition fires.
+
+The architecture-hardening epic does NOT fix this — fixing it requires a decision on the right semantics (the Android behaviour looks accidental; the iOS behaviour matches what the fixture comments expect). For now: avoid `or` policies that depend on a single attribute condition. The `golden/dsl/composition/and_or.json` fixture exposes the divergence in its "or: neither condition no-match" case, which will fail Android until the semantics are aligned.
+
 ## Observability gap: Go silently drops malformed conditions
 
 Android logs a warning when regex compilation fails; iOS caches the failure and silently no-matches subsequent events; **Go silently no-matches with no log at all**. Customers shipping a Go collector cannot tell from logs that a remote config's regex is malformed — only that policy matches dropped to zero. Tracked under the architecture-hardening epic.

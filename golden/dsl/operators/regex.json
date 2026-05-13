@@ -1,0 +1,39 @@
+{
+  "name": "regex operator",
+  "description": "full-string regex match (anchored on all platforms); compile failure is silently no-match",
+  "policies": [
+    {
+      "id": "regex-test",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "exception.message": { "regex": "NullPointer.*at line [0-9]+" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "full-string match fires",
+      "attributes": { "exception.message": "NullPointerException at line 42" },
+      "expectedMatch": "regex-test"
+    },
+    {
+      "name": "full-string anchor: trailing extra text no-match",
+      "attributes": { "exception.message": "NullPointerException at line 42 in foo.kt" },
+      "expectedMatch": null
+    },
+    {
+      "name": "partial-string no-match (substring matching disabled)",
+      "attributes": { "exception.message": "Caused by: NullPointerException at line 42" },
+      "expectedMatch": null
+    },
+    {
+      "name": "non-matching pattern no-match",
+      "attributes": { "exception.message": "IllegalStateException" },
+      "expectedMatch": null
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "name": "http_match matcher",
+  "description": "http.error event with status_code filter; reproduces the 2026-05-12 HYBRID flush bug at the DSL level",
+  "policies": [
+    {
+      "id": "http-error-detector",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "event.name": { "equals": "http.error" },
+          "http.status_code": { "gte": 500 }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "503 fires the http-error-detector",
+      "attributes": {
+        "event.name": "http.error",
+        "http.status_code": "503",
+        "http.request.method": "GET",
+        "url.full": "http://localhost:3001/api/force-500/run-1"
+      },
+      "expectedMatch": "http-error-detector"
+    },
+    {
+      "name": "500 (boundary, gte) fires the http-error-detector",
+      "attributes": {
+        "event.name": "http.error",
+        "http.status_code": "500"
+      },
+      "expectedMatch": "http-error-detector"
+    },
+    {
+      "name": "404 below threshold no-match",
+      "attributes": {
+        "event.name": "http.error",
+        "http.status_code": "404"
+      },
+      "expectedMatch": null
+    },
+    {
+      "name": "missing event.name no-match (HTTP success span without error log)",
+      "attributes": {
+        "http.status_code": "503"
+      },
+      "expectedMatch": null
+    },
+    {
+      "name": "missing status_code no-match (truncated record)",
+      "attributes": {
+        "event.name": "http.error"
+      },
+      "expectedMatch": null
+    }
+  ]
+}

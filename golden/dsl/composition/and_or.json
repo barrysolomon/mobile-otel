@@ -1,0 +1,41 @@
+{
+  "name": "or logical composition",
+  "description": "or operator with no geo/device constraints. Known drift: see docs/contracts/dsl-conditions.md — Android's matchGeo(null)=true makes 'or' always match. Every case in this fixture has a knownDrift entry covering Android's actual verdict.",
+  "policies": [
+    {
+      "id": "or-policy",
+      "enabled": true,
+      "match": {
+        "operator": "or",
+        "attributes": {
+          "event.name": { "equals": "app.crash" },
+          "severity": { "equals": "FATAL" }
+        }
+      },
+      "actions": { "flushWindowMinutes": 5 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "or: first condition matches",
+      "attributes": { "event.name": "app.crash" },
+      "expectedMatch": "or-policy"
+    },
+    {
+      "name": "or: second condition matches",
+      "attributes": { "severity": "FATAL", "event.name": "system.oom" },
+      "expectedMatch": "or-policy"
+    },
+    {
+      "name": "or: neither condition no-match (iOS); always-match (Android, known drift)",
+      "attributes": { "event.name": "ui.tap" },
+      "expectedMatch": null,
+      "knownDrift": {
+        "android": {
+          "actual": "or-policy",
+          "reason": "Android matchesPolicy composes attributeMatch || matchGeo(null)=true || matchDevice(null)=true, so OR with no geo/device matches every event. iOS has no geo/device matchers and returns false correctly. Documented in docs/contracts/dsl-conditions.md."
+        }
+      }
+    }
+  ]
+}

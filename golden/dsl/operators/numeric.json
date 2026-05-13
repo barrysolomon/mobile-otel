@@ -1,0 +1,65 @@
+{
+  "name": "numeric operators (gt/lt/gte/lte)",
+  "description": "numeric compare after Double parse; parse failure is no-match",
+  "policies": [
+    {
+      "id": "gt-test",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "duration_ms": { "gt": 1000 }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    },
+    {
+      "id": "gte-test",
+      "enabled": true,
+      "match": {
+        "operator": "and",
+        "attributes": {
+          "http.status_code": { "gte": 500 }
+        }
+      },
+      "actions": { "flushWindowMinutes": 2 }
+    }
+  ],
+  "cases": [
+    {
+      "name": "gt: above threshold matches",
+      "attributes": { "duration_ms": "1500" },
+      "expectedMatch": "gt-test"
+    },
+    {
+      "name": "gt: equal-to-threshold does NOT match (strict)",
+      "attributes": { "duration_ms": "1000" },
+      "expectedMatch": null
+    },
+    {
+      "name": "gte: equal-to-threshold matches",
+      "attributes": { "http.status_code": "500" },
+      "expectedMatch": "gte-test"
+    },
+    {
+      "name": "gte: above threshold matches",
+      "attributes": { "http.status_code": "503" },
+      "expectedMatch": "gte-test"
+    },
+    {
+      "name": "gte: below threshold no-match",
+      "attributes": { "http.status_code": "404" },
+      "expectedMatch": null
+    },
+    {
+      "name": "gt: non-numeric value no-match",
+      "attributes": { "duration_ms": "fast" },
+      "expectedMatch": null
+    },
+    {
+      "name": "gt: missing attribute no-match",
+      "attributes": { "event.name": "http.request" },
+      "expectedMatch": null
+    }
+  ]
+}
