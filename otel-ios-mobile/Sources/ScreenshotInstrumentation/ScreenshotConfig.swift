@@ -11,6 +11,12 @@ public struct ScreenshotConfig: Sendable {
     public var redactTextFields: Bool
     public var captureOnScreenView: Bool
     public var captureOnError: Bool
+    /// Capture a screenshot whenever a buffered-export policy fires
+    /// (crash-recovery, ui-freeze, http-error, etc.). Default `true` — every
+    /// server-side incident gets an attached visual artifact. Rate limited
+    /// via `maxCapturesPerMinute`. Mirrors Android's
+    /// `ScreenshotConfig.captureOnPolicyMatch`.
+    public var captureOnPolicyMatch: Bool
     public var screenViewDelayMs: Int
 
     public init(
@@ -24,6 +30,7 @@ public struct ScreenshotConfig: Sendable {
         redactTextFields: Bool = true,
         captureOnScreenView: Bool = false,
         captureOnError: Bool = true,
+        captureOnPolicyMatch: Bool = true,
         screenViewDelayMs: Int = 300
     ) {
         self.enabled = enabled
@@ -36,6 +43,7 @@ public struct ScreenshotConfig: Sendable {
         self.redactTextFields = redactTextFields
         self.captureOnScreenView = captureOnScreenView
         self.captureOnError = captureOnError
+        self.captureOnPolicyMatch = captureOnPolicyMatch
         self.screenViewDelayMs = screenViewDelayMs
     }
 }

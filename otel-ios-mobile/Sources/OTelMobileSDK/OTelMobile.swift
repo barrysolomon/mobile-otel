@@ -656,6 +656,17 @@ public final class OTelMobile: @unchecked Sendable {
                 }
             }
 
+            // Journey-replay capture on every policy match. Mirrors Android's
+            // `processor.policyMatchHook = { ... }` wiring in
+            // `MobileOtel.initialize`. The screenshot + wireframe modules
+            // each gate-check their own `captureOnPolicyMatch` flag inside
+            // `capture(trigger:)`, so this hook is unconditional — the
+            // modules decide whether to act.
+            bufferProcessor.policyMatchHook = { [weak instance] policyId in
+                instance?.captureScreenshot(trigger: "policy_\(policyId)")
+                instance?.captureWireframe(trigger: "policy_\(policyId)")
+            }
+
             // NF-011: Wake the exporter when iOS reports network restoration.
             // Buffered events (RAM + disk failure-persistence) sit there during
             // offline; without this hook the next drain only happens via app

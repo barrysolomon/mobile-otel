@@ -73,6 +73,12 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
 
     public func capture(trigger: String = "manual") {
         guard config.enabled else { return }
+        // Trigger-specific gates: policy-match captures default-on but
+        // configurable via ScreenshotConfig.captureOnPolicyMatch. Mirrors the
+        // Android-side gate in `ScreenshotInstrumentation.captureScreenshot`.
+        if trigger.hasPrefix("policy_") && !config.captureOnPolicyMatch {
+            return
+        }
         guard rateLimiter.tryAcquire() else { return }
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))

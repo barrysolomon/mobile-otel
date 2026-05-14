@@ -58,6 +58,16 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// processor behaves exactly like the earlier no-policy implementation.
     private let policyEvaluator: PolicyEvaluator?
 
+    /// Optional hook invoked once per policy match with the policy id (e.g.
+    /// `"crash-recovery"`). Mirrors Android's `policyMatchHook`. Wired by
+    /// `OTelMobile.start` to capture a screenshot + wireframe for journey-
+    /// replay context alongside every flush trigger.
+    ///
+    /// Best-effort — must not throw; silent no-op if the screenshot/wireframe
+    /// modules aren't installed. Always invoked BEFORE the flush so the
+    /// captures land in the same flush window.
+    public var policyMatchHook: ((String) -> Void)?
+
     /// Periodic flush timer used in CONTINUOUS export mode. When running,
     /// every `intervalSeconds` the timer calls `forceFlushBuffered()` so
     /// long-lived apps in CONTINUOUS mode don't depend on backgrounding
@@ -180,6 +190,10 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             if let evaluator = policyEvaluator, let self = self {
                 let attrs = Self.attributesForEval(logRecord)
                 if let match = await evaluator.evaluate(attributes: attrs) {
+                    // Capture journey-replay artifacts BEFORE the flush so they
+                    // land in the same flush window. Wrapped so a capture failure
+                    // can't derail the flush.
+                    self.policyMatchHook?(match.policyId)
                     _ = await self.flushWindow(minutes: UInt64(match.flushWindowMinutes))
                 }
             }

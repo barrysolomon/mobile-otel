@@ -91,6 +91,11 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
 
     public func capture(trigger: String = "manual") {
         guard config.enabled else { return }
+        // Trigger-specific gates: policy-match captures default-on but
+        // configurable via WireframeConfig.captureOnPolicyMatch.
+        if trigger.hasPrefix("policy_") && !config.captureOnPolicyMatch {
+            return
+        }
         guard rateLimiter.tryAcquire() else { return }
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
