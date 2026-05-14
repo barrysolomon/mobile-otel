@@ -57,7 +57,7 @@ Memory entries `feedback_no_platform_drift` and `feedback_otel_native_nonnegotia
 
 1. Create the JSON under the appropriate subdirectory.
 2. Add at least three cases: positive match, no-match-on-different-value, missing-attribute.
-3. Run each platform's test (`./run-tests.sh --android-only`, `--ios`, `--go-only`) and confirm green.
+3. Run each platform's test (`./scripts/ci/run-tests.sh --android-only`, `--ios`, `--go-only`) and confirm green.
 4. If any platform doesn't honor it, that's the parity gap the fixture is meant to surface — either fix the platform or update the contract doc to declare the matcher unsupported there.
 
 ## Platform coverage

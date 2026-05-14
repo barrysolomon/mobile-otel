@@ -1,1 +1,0 @@
-scripts/demo/demo-control-center-ios.sh

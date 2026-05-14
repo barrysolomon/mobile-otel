@@ -189,13 +189,13 @@ Node.js + Express + SQLite (better-sqlite3) backend that serves the demo app's a
 ### Cross-Project
 
 ```bash
-./run-tests.sh                        # All tests (Android + Go)
-./run-tests.sh --android-only         # Android only
-./run-tests.sh --go-only              # Go only
-./run-tests.sh --integration          # Include emulator tests
+./scripts/ci/run-tests.sh                        # All tests (Android + Go)
+./scripts/ci/run-tests.sh --android-only         # Android only
+./scripts/ci/run-tests.sh --go-only              # Go only
+./scripts/ci/run-tests.sh --integration          # Include emulator tests
 ```
 
-> **Note:** All scripts live canonically in `scripts/` (organized into `demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`). The root-level `./run-*.sh` and `./verify-setup.sh` are thin forwarders -- both invocation styles work.
+> **Note:** All scripts live canonically in `scripts/` (organized into `demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`). All scripts are bash 3.2 compatible (macOS default).
 
 ## Architecture
 
@@ -211,7 +211,7 @@ Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
 
 3. **Demo Backend** (`examples/demo-backend/`) — Express.js/TypeScript API server with SQLite, OTel-instrumented. Serves the demo app's appointment booking flow.
 
-4. **Control Plane UI** (`control-plane-ui/`) — React UI for managing export policies. The Go gateway lives in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
+4. **Control Plane UI + Gateway** — React UI and Go gateway for managing export policies. Both live in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane). No control-plane code lives in this repo.
 
 ### Android SDK Internal Architecture
 
@@ -268,7 +268,7 @@ InstrumentationRegistry.getInstrumentation().runOnMainSync {
 No GitHub Actions test workflows are currently configured. Earlier `test.yml`,
 `ios-tests.yml`, and `rn-tests.yml` workflows were removed on 2026-05-05
 because they were consistently failing and need a redesign. Run tests
-locally via `./run-tests.sh` (see "Build & Test Commands" above).
+locally via `./scripts/ci/run-tests.sh` (see "Build & Test Commands" above).
 
 ## Key Dependencies
 

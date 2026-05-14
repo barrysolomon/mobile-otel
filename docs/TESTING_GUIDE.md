@@ -6,14 +6,14 @@ Quick reference for all test commands.
 
 | Script | What | Emulator? | Dash0? |
 |--------|------|-----------|--------|
-| `./run-unit-tests.sh` | All unit tests (Android + Go) | No | No |
-| `./run-unit-tests.sh --android` | Android unit tests only | No | No |
-| `./run-unit-tests.sh --go` | Go processor tests only | No | No |
-| `./run-integration-tests.sh` | SDK integration tests on emulator | Yes | No |
-| `./run-dash0-tests.sh` | All 18 Dash0 scenarios | Yes | Yes |
-| `./run-dash0-tests.sh --journeys` | UserJourney suite only | Yes | Yes |
-| `./run-validated-tests.sh` | Scenarios + local collector + validation | Yes | No (local) |
-| `./run-demo-full.sh` | Full demo (emulators + build + Dash0 scenarios) | Starts 2 | Yes |
+| `./scripts/test/run-unit-tests.sh` | All unit tests (Android + Go) | No | No |
+| `./scripts/test/run-unit-tests.sh --android` | Android unit tests only | No | No |
+| `./scripts/test/run-unit-tests.sh --go` | Go processor tests only | No | No |
+| `./scripts/test/run-integration-tests.sh` | SDK integration tests on emulator | Yes | No |
+| `./scripts/test/run-dash0-tests.sh` | All 18 Dash0 scenarios | Yes | Yes |
+| `./scripts/test/run-dash0-tests.sh --journeys` | UserJourney suite only | Yes | Yes |
+| `./scripts/test/run-validated-tests.sh` | Scenarios + local collector + validation | Yes | No (local) |
+| `./scripts/demo/run-demo-full.sh` | Full demo (emulators + build + Dash0 scenarios) | Starts 2 | Yes |
 
 ---
 
@@ -22,9 +22,9 @@ Quick reference for all test commands.
 The gold standard: runs scenarios against a local OTel Collector (Docker), then validates that all expected signals were received. **No Dash0 account required.**
 
 ```bash
-./run-validated-tests.sh              # emulator must be running
-./run-validated-tests.sh --start-emu  # starts emulator for you
-./run-validated-tests.sh --skip-scenarios  # just validate (data already collected)
+./scripts/test/run-validated-tests.sh              # emulator must be running
+./scripts/test/run-validated-tests.sh --start-emu  # starts emulator for you
+./scripts/test/run-validated-tests.sh --skip-scenarios  # just validate (data already collected)
 ```
 
 What it does:
@@ -79,7 +79,7 @@ cd examples/demo-app
 
 Or use the root script:
 ```bash
-./run-tests.sh --android-only
+./scripts/ci/run-tests.sh --android-only
 ```
 
 ### Run a single module
@@ -168,9 +168,9 @@ This runs 18 tests across 4 suites:
 Starts 2 emulators, backend, runs all tests, installs and launches the demo app. **This is what you run before a demo.**
 
 ```bash
-./run-demo-full.sh              # windowed (for live demos)
-./run-demo-full.sh --headless   # headless (for CI)
-./run-demo-full.sh --skip-emu   # emulators already running
+./scripts/demo/run-demo-full.sh              # windowed (for live demos)
+./scripts/demo/run-demo-full.sh --headless   # headless (for CI)
+./scripts/demo/run-demo-full.sh --skip-emu   # emulators already running
 ```
 
 What it does:
@@ -209,9 +209,9 @@ Both APKs install side-by-side. Run the same flow in each, compare telemetry in 
 
 | What | Command | Emulator? | Dash0? | Time |
 |------|---------|-----------|--------|------|
-| Unit tests (all) | `./run-tests.sh --android-only` | No | No | ~2 min |
+| Unit tests (all) | `./scripts/ci/run-tests.sh --android-only` | No | No | ~2 min |
 | Go tests | `go test -v -race ./...` | No | No | ~5 sec |
 | SDK integration | `./gradlew :otel-android-mobile:connectedDebugAndroidTest` | Yes | No | ~1 min |
 | Dash0 scenarios | `./gradlew :android:connectedDebugAndroidTest` | Yes | Yes | ~8 min |
-| Full demo | `./run-demo-full.sh` | Starts 2 | Yes | ~12 min |
+| Full demo | `./scripts/demo/run-demo-full.sh` | Starts 2 | Yes | ~12 min |
 | Comparison demo | Build both flavors, install, manual | Yes | Optional | ~5 min |

@@ -76,13 +76,13 @@ Run on connected emulators/devices. Generate live telemetry to Dash0.
 
 ```bash
 # All suites, both emulators
-./run-dash0-scenarios.sh --all
+./scripts/demo/run-dash0-scenarios.sh --all
 
 # One suite
-./run-dash0-scenarios.sh --stress --verbose
+./scripts/demo/run-dash0-scenarios.sh --stress --verbose
 
 # One test on one device
-./run-dash0-scenarios.sh --stress --test batteryDrain --device emulator-5554
+./scripts/demo/run-dash0-scenarios.sh --stress --test batteryDrain --device emulator-5554
 ```
 
 ### Suite: UserJourneyScenarios
@@ -139,26 +139,26 @@ Each stress test:
 
 ## Test Runners
 
-### `./run-tests.sh` — unit tests only
+### `./scripts/ci/run-tests.sh` — unit tests only
 
 ```bash
-./run-tests.sh               # Android unit tests + Go unit tests
-./run-tests.sh --android-only
-./run-tests.sh --go-only
-./run-tests.sh --integration  # Adds connectedDebugAndroidTest (requires emulator)
+./scripts/ci/run-tests.sh               # Android unit tests + Go unit tests
+./scripts/ci/run-tests.sh --android-only
+./scripts/ci/run-tests.sh --go-only
+./scripts/ci/run-tests.sh --integration  # Adds connectedDebugAndroidTest (requires emulator)
 ```
 
-### `./run-dash0-scenarios.sh` — Dash0 telemetry scenarios
+### `./scripts/demo/run-dash0-scenarios.sh` — Dash0 telemetry scenarios
 
 ```bash
-./run-dash0-scenarios.sh --all                          # All 4 suites, all connected devices
-./run-dash0-scenarios.sh --journeys --faults            # Specific suites
-./run-dash0-scenarios.sh --stress --test batteryDrain   # Single test
-./run-dash0-scenarios.sh --all --run-id "sprint42"      # Custom Dash0 run ID
-./run-dash0-scenarios.sh --all --repeat 3               # Soak/load run
-./run-dash0-scenarios.sh --dry-run                      # Build only
-./run-dash0-scenarios.sh --list-devices                 # Show connected devices
-./run-dash0-scenarios.sh --all --report                 # Open HTML report after run
+./scripts/demo/run-dash0-scenarios.sh --all                          # All 4 suites, all connected devices
+./scripts/demo/run-dash0-scenarios.sh --journeys --faults            # Specific suites
+./scripts/demo/run-dash0-scenarios.sh --stress --test batteryDrain   # Single test
+./scripts/demo/run-dash0-scenarios.sh --all --run-id "sprint42"      # Custom Dash0 run ID
+./scripts/demo/run-dash0-scenarios.sh --all --repeat 3               # Soak/load run
+./scripts/demo/run-dash0-scenarios.sh --dry-run                      # Build only
+./scripts/demo/run-dash0-scenarios.sh --list-devices                 # Show connected devices
+./scripts/demo/run-dash0-scenarios.sh --all --report                 # Open HTML report after run
 ```
 
 All scenario runs print a Dash0 filter at the end: `demo.run_id = "<run_id>"`.

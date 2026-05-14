@@ -5,7 +5,7 @@ Snapshot of the `iPhone` branch at end of the 2026-04-17 session. Read this when
 ## Where we left off
 
 - **Branch:** `iPhone`, 26 commits ahead of `main`, pushed to `origin/iPhone`.
-- **Tests:** 107 passing on macOS via `./run-tests.sh`; iOS simulator build verified on iPhone 17 simulator (iOS 26.4) in an earlier run.
+- **Tests:** 107 passing on macOS via `./scripts/ci/run-tests.sh`; iOS simulator build verified on iPhone 17 simulator (iOS 26.4) in an earlier run.
 - **Last action attempted:** running `validate-ios-end-to-end.sh` to send a full batch of telemetry to Dash0 and verify arrival. **Interrupted by a path bug** (fixed in-session — next run will use the real path resolution).
 - **Next action:** rerun `scripts/test/validate-ios-end-to-end.sh` and query Dash0 (filter `os.name=iOS`, `service.name=otel-ios-demo-starter`) to confirm the full stack works end-to-end.
 
@@ -14,13 +14,13 @@ Snapshot of the `iPhone` branch at end of the 2026-04-17 session. Read this when
 ```bash
 cd "/Users/barrysolomon/Projects/Dash0/Mobile Observability/mobile-otel"
 git checkout iPhone   # if not already there
-./validate-ios-end-to-end.sh   # symlink path now works after the realpath fix
+./scripts/test/validate-ios-end-to-end.sh   # symlink path now works after the realpath fix
 ```
 
 Or the dual-platform demo for side-by-side Android+iOS validation:
 
 ```bash
-./run-dual-platform-demo.sh   # boots both simulators, auto-emits for ~indefinite
+./scripts/demo/run-dual-platform-demo.sh   # boots both simulators, auto-emits for ~indefinite
 ```
 
 ## Architectural map (1-minute read)

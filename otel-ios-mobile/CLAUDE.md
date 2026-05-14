@@ -13,7 +13,7 @@ Parallel to `otel-android-mobile/` — both repos share the same policy DSL v2 s
 ```bash
 # Host tests (macOS target, fast — ~1-2s):
 cd otel-ios-mobile
-./run-tests.sh
+./scripts/ci/run-tests.sh
 
 # iOS simulator tests (requires Xcode + iOS 26 runtime installed — first run ~5 min, subsequent ~20s):
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
@@ -22,7 +22,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
 
 # Full cross-platform run:
 cd /Users/barrysolomon/Projects/Dash0/Mobile\ Observability/mobile-otel
-./run-tests.sh --all   # Android + Go + iOS
+./scripts/ci/run-tests.sh --all   # Android + Go + iOS
 ```
 
 ## Key toolchain gotchas (from experience)

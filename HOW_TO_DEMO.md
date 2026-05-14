@@ -10,36 +10,37 @@ Full demo for showing the SDK to an OTel audience. Runs on 2 Android emulators, 
 
 For quick setup, use the automation scripts instead of following the manual steps below:
 
-| Script (canonical path) | Root forwarder | What it does | Time |
-|-------------------------|---------------|-------------|------|
-| `scripts/demo/run-demo-full.sh` | `./run-demo-full.sh` | 2 emulators, backend, all tests, screenshots + wireframes | ~12 min |
-| `scripts/demo/run-demo-quick.sh` | `./run-demo-quick.sh` | 1 emulator, backend, build + launch, no tests | ~5 min |
-| `scripts/demo/run-demo-scenarios.sh` | `./run-demo-scenarios.sh` | Run Espresso scenario suites (app must be installed) | ~8 min |
-| `scripts/demo/run-demo-single.sh <name>` | `./run-demo-single.sh` | Run one scenario by short name (e.g. `crashFlush`, `jank`) | ~1 min |
-| `scripts/demo/run-dash0-scenarios.sh` | — | Run suites with Dash0 run-id tagging and reporting | ~8 min |
-| `scripts/ci/run-demo-ci.sh` | `./run-demo-ci.sh` | Headless CI: unit + lint + build + instrumented + Go tests | ~15 min |
-| `scripts/demo/run-demo-backend.sh` | `./run-demo-backend.sh` | Start/stop/status for the demo backend | instant |
-| `scripts/test/demo-control-center.sh` | — | **Crash Demo Control Center** — interactive menu for crash + airplane mode demos | ~3-5 min |
+| Script | What it does | Time |
+|--------|--------------|------|
+| `scripts/demo/run-demo-full.sh` | 2 emulators, backend, all tests, screenshots + wireframes | ~12 min |
+| `scripts/demo/run-demo-quick.sh` | 1 emulator, backend, build + launch, no tests | ~5 min |
+| `scripts/demo/run-demo-scenarios.sh` | Run Espresso scenario suites (app must be installed) | ~8 min |
+| `scripts/demo/run-demo-single.sh <name>` | Run one scenario by short name (e.g. `crashFlush`, `jank`) | ~1 min |
+| `scripts/demo/run-dash0-scenarios.sh` | Run suites with Dash0 run-id tagging and reporting | ~8 min |
+| `scripts/ci/run-demo-ci.sh` | Headless CI: unit + lint + build + instrumented + Go tests | ~15 min |
+| `scripts/demo/run-demo-backend.sh` | Start/stop/status for the demo backend | instant |
+| `scripts/test/demo-control-center.sh` | **Crash Demo Control Center** — interactive menu for crash + airplane mode demos | ~3-5 min |
+| `tools/dcc-tui/` (`npm run dev`) | Ink+React TUI wrapping demo-control-center — multi-device parallel runs | interactive |
 
 Common flags: `--skip-emu` (emulators already running), `--headless` (no window), `--incubating` (enable screenshot + wireframe).
 
-> All scripts now live canonically in `scripts/` — organized into `demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`. The root-level `./run-*.sh` commands are thin forwarders — both invocation styles work. All scripts are bash 3.2 compatible (macOS default).
+> All scripts live canonically in `scripts/` — organized into `demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`. All scripts are bash 3.2 compatible (macOS default).
 
 ```bash
 # Full demo with screenshots + wireframes (the "showstopper" run)
-./run-demo-full.sh
+./scripts/demo/run-demo-full.sh
 
 # Already have emulators running? Skip boot:
-./run-demo-full.sh --skip-emu
+./scripts/demo/run-demo-full.sh --skip-emu
 
 # Quick launch for manual poking around:
-./run-demo-quick.sh --incubating
+./scripts/demo/run-demo-quick.sh --incubating
 
 # Run just the crash-flush scenario:
-./run-demo-single.sh crashFlush
+./scripts/demo/run-demo-single.sh crashFlush
 
 # List all available scenario short names:
-./run-demo-single.sh --list
+./scripts/demo/run-demo-single.sh --list
 ```
 
 ---

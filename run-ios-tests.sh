@@ -1,1 +1,0 @@
-scripts/test/run-ios-tests.sh

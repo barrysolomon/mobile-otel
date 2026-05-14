@@ -179,13 +179,13 @@ cd collector-processor/mobilepolicyprocessor && go build ./...
 cd examples/demo-backend && npm install && npm run dev
 
 # Run unit tests (Android + Go)
-./run-tests.sh
+./scripts/ci/run-tests.sh
 
 # Run Dash0 telemetry scenario tests (requires connected emulator/device)
-./run-dash0-scenarios.sh --all                        # All 4 suites
-./run-dash0-scenarios.sh --journeys --faults          # Specific suites
-./run-dash0-scenarios.sh --stress --test batteryDrain # Single test
-./run-dash0-scenarios.sh --all --run-id "sprint42"    # Tag telemetry with run ID
+./scripts/demo/run-dash0-scenarios.sh --all                        # All 4 suites
+./scripts/demo/run-dash0-scenarios.sh --journeys --faults          # Specific suites
+./scripts/demo/run-dash0-scenarios.sh --stress --test batteryDrain # Single test
+./scripts/demo/run-dash0-scenarios.sh --all --run-id "sprint42"    # Tag telemetry with run ID
 ```
 
 ## Documentation

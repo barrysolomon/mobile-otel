@@ -80,7 +80,7 @@ npm run dev         # Start with hot-reload
    go test ./... && go vet ./...
 
    # Or run everything at once from the project root
-   ./run-tests.sh   # forwarder to scripts/ci/run-tests.sh
+   ./scripts/ci/run-tests.sh   # forwarder to scripts/ci/run-tests.sh
    ```
 
    > Scripts are organized under `scripts/` (`demo/`, `ci/`, `e2e/`, `test/`, `setup/`, `lib/`). Root-level `./run-*.sh` are thin forwarders — both paths work.
