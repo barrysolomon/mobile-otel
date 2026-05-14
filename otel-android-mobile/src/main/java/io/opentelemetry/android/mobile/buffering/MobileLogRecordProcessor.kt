@@ -94,7 +94,12 @@ class MobileLogRecordProcessor private constructor(
     @Volatile var predictionCycleHook: (() -> Unit)? = null,
     // Optional hook invoked after every policy-triggered log flush to co-export buffered spans.
     // Wired by MobileLoggerProvider so HYBRID mode flushes spans and logs together on a trigger.
-    @Volatile var spanFlushHook: (() -> Unit)? = null
+    @Volatile var spanFlushHook: (() -> Unit)? = null,
+    // Optional hook invoked once per policy match with the policy id (e.g. "crash-recovery").
+    // Wired by OTelMobile to capture a screenshot + wireframe for journey-replay context
+    // alongside every flush trigger. Best-effort — must not throw; silent no-op if the
+    // screenshot/wireframe modules aren't installed.
+    @Volatile var policyMatchHook: ((policyId: String) -> Unit)? = null
 ) : LogRecordProcessor {
 
     private val TAG = "MobileLogRecordProcessor"
@@ -470,6 +475,11 @@ class MobileLogRecordProcessor private constructor(
                     "app-foreground" -> CaptureReason.APP_START
                     else -> CaptureReason.WORKFLOW_TRIGGER
                 })
+
+                // Capture journey-replay artifacts (screenshot + wireframe) BEFORE the
+                // flush so they land in the same flush window. Wrapped in try/catch so
+                // a capture failure can't derail the flush.
+                try { policyMatchHook?.invoke(matchResult.policyId) } catch (_: Throwable) {}
 
                 // Prefer trace-correlated flush for precise context; fall back to window
                 if (logRecord.spanContext.isValid) {

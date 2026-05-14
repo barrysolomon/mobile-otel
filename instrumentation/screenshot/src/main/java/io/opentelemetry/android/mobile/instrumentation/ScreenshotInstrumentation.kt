@@ -171,6 +171,11 @@ class ScreenshotInstrumentation(
      */
     fun captureScreenshot(trigger: String = "manual") {
         if (!config.enabled) return
+        // Trigger-specific gates: policy-match captures default-on but
+        // configurable via ScreenshotConfig.captureOnPolicyMatch.
+        if (trigger.startsWith("policy_") && !config.captureOnPolicyMatch) {
+            return
+        }
         if (!rateLimiter.tryAcquire()) {
             Log.d(TAG, "Screenshot rate limit exceeded, skipping capture")
             return

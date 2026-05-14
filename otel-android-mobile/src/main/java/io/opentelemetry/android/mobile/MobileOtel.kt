@@ -172,6 +172,19 @@ object MobileOtel {
             processor.predictionCycleHook = { predictivePolicy?.runPredictionCycle() }
         }
 
+        // Journey-replay capture on every policy match — screenshot and wireframe each
+        // gate-check their own captureOnPolicyMatch flag inside captureScreenshotSync /
+        // captureWireframeSync. This wire-up is unconditional; the modules themselves
+        // decide whether to act.
+        processor.policyMatchHook = { policyId ->
+            try {
+                OTelMobile.captureScreenshot("policy_$policyId")
+                OTelMobile.captureWireframe("policy_$policyId")
+            } catch (_: Throwable) {
+                // intentional swallow — capture failure must not break the flush
+            }
+        }
+
         // Wire HealthMetricsCollector — exposes device health & predictions as OTel metrics
         healthMetricsCollector = HealthMetricsCollector.builder(appContext)
             .setOpenTelemetry(otelSdk)

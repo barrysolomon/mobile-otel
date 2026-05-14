@@ -41,6 +41,9 @@ enum class ScreenshotFormat {
  * @property captureOnError Automatically capture a screenshot when an uncaught exception occurs.
  * @property captureOnScreenView Automatically capture a screenshot on each screen transition
  *   (activity resume). Off by default — produces significant payload volume when enabled.
+ * @property captureOnPolicyMatch Capture a screenshot whenever a buffered-export policy fires
+ *   (crash-recovery, ui-freeze, http-error, etc.). Default ON — every server-side incident
+ *   gets an attached visual artifact. Rate limited via [maxCapturesPerMinute].
  * @property screenViewDelayMs Delay in milliseconds after activity resume before capturing
  *   the screenshot. Allows the screen to finish rendering. Only used when [captureOnScreenView] is true.
  * @property maxCapturesPerMinute Rate limit to prevent excessive captures (e.g., in a crash loop).
@@ -56,6 +59,7 @@ data class ScreenshotConfig(
     val redactTextViews: Boolean = true,
     val captureOnError: Boolean = true,
     val captureOnScreenView: Boolean = false,
+    val captureOnPolicyMatch: Boolean = true,
     val screenViewDelayMs: Long = 500,
     val maxCapturesPerMinute: Int = 5
 ) {
