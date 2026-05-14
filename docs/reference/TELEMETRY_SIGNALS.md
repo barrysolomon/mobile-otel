@@ -132,7 +132,7 @@ All metrics are from [VitalsCollector.kt](../../instrumentation/vitals/src/main/
 
 | Key | Type | Description |
 |---|---|---|
-| `mobile.screenshot.trigger` | string | `manual`, `error`, `screen_view` (requires `captureOnScreenView=true`) |
+| `mobile.screenshot.trigger` | string | `manual`, `error`, `screen_view` (requires `captureOnScreenView=true`), `policy_<id>` (e.g. `policy_crash-recovery`) |
 | `mobile.screenshot.format` | string | `png` or `jpeg` |
 | `mobile.screenshot.width` | long | Scaled image width (px) |
 | `mobile.screenshot.height` | long | Scaled image height (px) |
@@ -142,13 +142,24 @@ All metrics are from [VitalsCollector.kt](../../instrumentation/vitals/src/main/
 
 ### Wireframe (incubating)
 
+Two event-name bodies, depending on whether dedup applied to the capture:
+
+- `ui.wireframe` — full wireframe JSON payload (first capture, or content
+  changed since the last emit). Carries all the attributes below including
+  `mobile.wireframe.data`.
+- `ui.wireframe.ref` — lightweight reference emitted when content-hash dedup
+  matches. Carries `mobile.wireframe.id` pointing at the previously emitted
+  full wireframe, plus `trigger` / `sequence` / `screen.name` / session id.
+  Omits `data` / `size_bytes` / `node_count`.
+
 | Key | Type | Description |
 |---|---|---|
-| `mobile.wireframe.trigger` | string | `manual`, `screen_view`, `tap`, `error` |
-| `mobile.wireframe.sequence` | long | Ordering sequence number |
-| `mobile.wireframe.size_bytes` | long | JSON payload size |
-| `mobile.wireframe.node_count` | long | Nodes in view tree |
-| `mobile.wireframe.data` | string | JSON wireframe structure |
+| `mobile.wireframe.id` | string | SHA-256 hex of the captured JSON. Stable across `ui.wireframe.ref` records that refer to the same payload. Use as the join key to reconstruct journey replays. |
+| `mobile.wireframe.trigger` | string | `manual`, `screen_view`, `tap`, `error`, `policy_<id>` (e.g. `policy_crash-recovery`) |
+| `mobile.wireframe.sequence` | long | Ordering sequence number (monotonic within a session, increments on every emit including refs) |
+| `mobile.wireframe.size_bytes` | long | JSON payload size — present only on `ui.wireframe` |
+| `mobile.wireframe.node_count` | long | Nodes in view tree — present only on `ui.wireframe` |
+| `mobile.wireframe.data` | string | JSON wireframe structure — present only on `ui.wireframe` |
 
 ### Network
 

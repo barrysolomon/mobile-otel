@@ -1,9 +1,9 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Updated: 2026-04-17 (post-UI-driven-XCUITest session)
-iOS branch: iPhone (28+ commits ahead of main, 139 tests)
-Android SDK module: `otel-android-mobile/` + 20 instrumentation submodules
-iOS SDK package: `otel-ios-mobile/` (SwiftPM, 8 products)
+Updated: 2026-05-14 (post-platform-parity sweep — policy-match captures, wireframe dedup, JSON config plumbing)
+iOS branch: merged to `main` (was `iPhone`)
+Android SDK module: `otel-android-mobile/` + 21 instrumentation submodules
+iOS SDK package: `otel-ios-mobile/` (SwiftPM, 9 library products)
 
 ## Current state
 
@@ -77,16 +77,24 @@ live under [`otel-ios-mobile/Sources/`](../otel-ios-mobile/Sources/).
 | network | &#9989; OkHttp interceptor + [NetworkConfig](../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/) | &#9989; [URLProtocol + URLSessionConfig swizzle](../otel-ios-mobile/Sources/NetworkInstrumentation/) | shipped | iOS: `OTelURLProtocol` + `URLSessionConfigurationSwizzle`; NetworkConfig parity tests |
 | screen | &#9989; module | &#9989; [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift) + [SwiftUIScreenModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScreenModifiers.swift) | shipped | iOS default: SwiftUI `.trackScreen("Name")` ViewModifier path auto-installed by `OTelMobile.start()`. UIKit `viewDidAppear`/`viewDidDisappear` swizzle is opt-in via `enableUIKitSwizzle: true` (races with SwiftUI hosting controllers otherwise) |
 | screen-orientation | &#9989; module | &#10060; | not-started | Android-specific config changes; iOS UIDevice orientation TBD |
-| screenshot | &#9989; module | &#10060; | not-started | PixelCopy equivalent would be CGRenderContext / UIGraphicsImageRenderer |
+| screenshot | &#9989; module | &#9989; [ScreenshotInstrumentation.swift](../otel-ios-mobile/Sources/ScreenshotInstrumentation/ScreenshotInstrumentation.swift) | shipped | iOS uses `UIGraphicsImageRenderer` + `layer.render(in:)` against the key window. `ScreenshotConfig` parity: `captureOnScreenView` / `captureOnError` / `captureOnPolicyMatch` flags all present. `OTelMobile.start` honors `MobileConfig.screenshotConfig` so consumers can override defaults via init or `otel-config.json` `incubating.screenshot`. |
 | scroll | &#9989; module | &#10060; | not-started | RecyclerView OnScrollListener; iOS UIScrollView delegate planned |
 | system-events | &#9989; module | &#10060; | not-started | BroadcastReceiver-based; maps to NotificationCenter on iOS |
 | tap | &#9989; module (18+ tests) | &#10060; | not-started | SwiftUI gesture capture via `.simultaneousGesture` or ViewModifier planned |
 | text-input | &#9989; module | &#10060; | not-started | EditText focus loss; iOS UITextField delegate planned |
 | timber | &#9989; module | N/A | N/A | Timber is a Kotlin/Android logging library; OSLog bridge would be the iOS analog |
 | vitals | &#9989; (app-start, jank, meter gauges) | &#9989; [VitalsInstrumentation.swift](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) + [DeviceStatsCollector](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | shipped | iOS: `CADisplayLink` frame-time watcher for `ui.jank`, `app.start` duration, `app.memory_warning` on UIApplication pressure. `DeviceStatsCollector` provides continuous gauges separately |
-| wireframe | &#9989; module | &#10060; | not-started | View-hierarchy JSON capture |
+| wireframe | &#9989; module | &#9989; [WireframeInstrumentation.swift](../otel-ios-mobile/Sources/WireframeInstrumentation/WireframeInstrumentation.swift) | shipped | iOS walks `UIView` tree → JSON, same shape as Android. `WireframeConfig` parity: all trigger flags + `dedupeByContentHash` (SHA-256, emits lightweight `ui.wireframe.ref` with `mobile.wireframe.id` on repeats). |
 
-**Module count:** Android 20 (incl. 2 N/A on iOS) &middot; iOS 7 targets all functional (errors, lifecycle, network, screen, freeze, vitals, + SwiftUI modifiers bundled with screen)
+**Module count:** Android 21 (incl. 2 N/A on iOS) &middot; iOS 9 library products (errors, lifecycle, network, screen, freeze, vitals, screenshot, wireframe + SwiftUI modifiers bundled with screen)
+
+**Cross-cutting capture features (added 2026-05-14):**
+
+| Feature | Android | iOS | Notes |
+|---|---|---|---|
+| Capture on policy match | &#9989; `policyMatchHook` on `MobileLogRecordProcessor` | &#9989; same field, mirrored in [`MobileLogRecordProcessor.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift) | Every buffered-export policy fire (crash-recovery, ui-freeze, http-error) triggers a screenshot + wireframe with `policy_<id>` trigger label. Each module gate-checks its own `captureOnPolicyMatch` flag. |
+| Wireframe content-hash dedup | &#9989; SHA-256 emit-path dedup | &#9989; same logic using `CryptoKit.SHA256` | Repeat captures with identical content emit `ui.wireframe.ref` carrying `mobile.wireframe.id` instead of the 1–5KB payload. |
+| `otel-config.json incubating.{screenshot,wireframe}` block | &#9989; `ConfigManager.kt` parses nested object | &#9989; `ShopBootstrap.swift` parses `IncubatingConfig` and constructs `MobileConfig.screenshotConfig` / `wireframeConfig` | Both platforms accept the same JSON shape with the same field names. |
 
 ## SDK core features
 
@@ -100,7 +108,7 @@ Sources: Android
 | Fluent builder / DSL | &#9989; `MobileOtelDsl`, `BufferingDsl`, `ExportDsl`, `InstrumentationsDsl`, etc. | &#128993; Flat `MobileConfig` init | partial | iOS has one-shot `MobileConfig(...)` init; no nested DSL |
 | RAM buffer | &#9989; `ConcurrentLinkedQueue` (5000 evts) | &#9989; [`RAMEventBuffer`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/RAMEventBuffer.swift) (`actor`, `Deque`) | shipped | |
 | Disk buffer (dual-tier) | &#9989; `DiskLogBuffer` Room/SQLite v4, 50MB, 24h TTL | &#9989; [`DiskLogBuffer.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/DiskLogBuffer.swift) | shipped | iOS: `sqlite3` actor, WAL mode, size + TTL caps, startup recovery path drains pending events |
-| Crash-safe flush / seqId dedup | &#9989; `BufferedEvent.seqId`, SR-017 crash-safe mirror | &#9989; [`SequenceCounter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/SequenceCounter.swift) + crash marker in `ErrorsInstrumentation` | shipped | iOS: monotonic `seqId` on every `BufferedEvent`; crash marker file persists buffer state across process death; next launch emits `app.crash` + drains |
+| Crash-safe flush / seqId dedup | &#9989; `BufferedEvent.seqId` + every-2s RAM→disk mirror task (`persistRamToDiskForCrashSafety`) + `persistForCrash()` writing only events not yet mirrored | &#9989; [`SequenceCounter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/SequenceCounter.swift) + crash marker in `ErrorsInstrumentation` + on-failure persist in `forceFlushBuffered` | shipped (intentionally divergent mechanisms) | **Architectural divergence**, not drift. Both platforms preserve buffered events across a crash, but the *when* differs: **Android** preemptively mirrors RAM to disk every 2 seconds (so a crash with zero time-to-react still survives) and `persistForCrash()` writes only un-mirrored events to avoid duplicate disk rows (fixed at `c0e305e`). **iOS** writes to disk only when an export *fails* (RAM-originated events survive via the on-failure persist branch in `forceFlushBuffered`); crash recovery relies on the crash marker file + next-launch drain. The iOS path has no analog of the Android dup-row bug because no preemptive mirror exists. RN inherits each platform's mechanism. |
 | MobileLogRecordProcessor | &#9989; | &#9989; [MobileLogRecordProcessor.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Buffering/MobileLogRecordProcessor.swift) | shipped | |
 | RetryableExporter | &#9989; | &#9989; [`RetryableExporter.swift`](../otel-ios-mobile/Sources/OTelMobileSDK/Export/RetryableExporter.swift) | shipped | iOS: wraps `LogRecordExporter`, exponential backoff (1s→60s, 3 retries), publishes via `ExportStatusManager`. Auth-error detection deferred (OTel-Swift's `ExportResult` is binary success/failure, no error type) |
 | ExportStatusManager | &#9989; | &#9989; [`ExportStatus.swift`](../otel-ios-mobile/Sources/OTelMobileCore/Export/ExportStatus.swift) | shipped | Per-instance + `.shared` singleton; snapshot-then-iterate fan-out; 4 status variants (`success`/`failed`/`authError`/`retrying`) with Android-equivalent payloads |

@@ -44,8 +44,11 @@ These live in the native SDK; the RN layer inherits them by construction.
 | Text input events | ✅ | ⬜ | ⬜ |
 | Back-press events | ✅ | — | ⬜ |
 | Vitals (memory, battery, jank, app-start) | ✅ | ✅ | ✅ (native) |
-| Screenshot capture | ✅ (incubating) | ⬜ (privacy-gated) | ⬜ (same gate) |
-| Wireframe capture | ✅ (incubating) | ⬜ | ⬜ |
+| Screenshot capture | ✅ (incubating) | ✅ `UIGraphicsImageRenderer` (text-redacted) | ✅ (native) |
+| Wireframe capture | ✅ (incubating) | ✅ (text-redacted) | ✅ (native) |
+| Capture on policy match | ✅ `policyMatchHook` | ✅ same hook | ✅ (native) |
+| Wireframe content-hash dedup → `ui.wireframe.ref` | ✅ SHA-256 emit-path | ✅ same logic via `CryptoKit.SHA256` | ✅ (native) |
+| Per-trigger `captureOn*` flags via `otel-config.json` | ✅ `ConfigManager.kt` | ✅ `ShopBootstrap.swift` parses `IncubatingConfig` | 🟡 TS types exist (`ScreenshotAutoCapture` / `WireframeAutoCapture`); bridge carries only `enabled` bit today |
 
 ## Policy DSL
 
@@ -105,7 +108,7 @@ These live in the native SDK; the RN layer inherits them by construction.
 - **EXPO-001** — Expo config plugin for no-eject integration
 - **REALM-001..N** — MongoDB Realm instrumentation (Innovapptive)
 - **AMPLIFY-RN-001..N** — Amplify DataStore RN port
-- **RN-SCREENSHOT-001** — screenshot/wireframe (blocked on cross-platform privacy design)
+- **RN-SCREENSHOT-001** — screenshot/wireframe per-trigger flags need a bridge contract change so JS-side `autoCapture.{screenshot,wireframe}: {captureOnPolicyMatch: ...}` flows through to native. **Unblocked:** privacy design done — both native SDKs already redact text by default. As of 2026-05-14 the JS `ScreenshotAutoCapture` / `WireframeAutoCapture` types exist (`packages/react-native/src/bridge/types.ts`) but the bridge protocol carries only the `enabled` bit. Per-trigger flags must be set natively (Android: `MobileConfig.screenshotConfig` / `wireframeConfig`; iOS: same) until the bridge grows per-module options.
 
 ## See also
 
