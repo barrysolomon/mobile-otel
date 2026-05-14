@@ -68,6 +68,16 @@ class WireframeInstrumentation(
     // Sequence number for ordering wireframes within a session.
     @Volatile private var sequenceNumber: Long = 0
 
+    // Content-hash dedup state. lastEmittedHash is the SHA-256 of the most-recently
+    // EMITTED wireframe JSON (not just the most recently captured). lastEmittedId is
+    // the public mobile.wireframe.id we attached to it, so dedup emits a lightweight
+    // ui.wireframe.ref pointing at that id instead of the full JSON payload.
+    @Volatile private var lastEmittedHash: String? = null
+    @Volatile private var lastEmittedId: String? = null
+
+    /** Current wireframe id, or null if no wireframe has been emitted yet in this session. */
+    fun currentWireframeId(): String? = lastEmittedId
+
     override fun install(application: Application, context: InstrumentationContext) {
         if (!config.enabled) return
 
@@ -163,6 +173,9 @@ class WireframeInstrumentation(
      */
     fun captureWireframe(trigger: String = "manual") {
         if (!config.enabled) return
+        if (trigger.startsWith("policy_") && !config.captureOnPolicyMatch) {
+            return
+        }
         val activity = currentActivity?.get() ?: run {
             Log.d(TAG, "No foreground activity, skipping wireframe capture")
             return
@@ -331,12 +344,35 @@ class WireframeInstrumentation(
         val sessionProvider = context.sessionProvider
 
         val json = node.toJson().toString()
+        val hash = sha256Hex(json)
         val seq = sequenceNumber++
+
+        // Content-hash dedup: if the wireframe hasn't changed, emit a lightweight ref log
+        // pointing at the previously emitted full wireframe instead of resending the JSON.
+        // Saves the 1–5 KB payload on no-op screen-resume / tap captures.
+        if (config.dedupeByContentHash && hash == lastEmittedHash && lastEmittedId != null) {
+            val refAttrs = Attributes.builder()
+                .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
+                .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
+                .put(MobileSemconv.SCREEN_NAME, screenName)
+                .put(MobileSemconv.WIREFRAME_TRIGGER, trigger)
+                .put(MobileSemconv.WIREFRAME_SEQUENCE, seq)
+                .put(MobileSemconv.WIREFRAME_ID, lastEmittedId!!)
+                .build()
+            emitUiTelemetry(MobileSemconv.UI_WIREFRAME_REF, refAttrs, parentContext)
+            return
+        }
+
+        // First emit or content changed — send the full payload. The id is the hash itself
+        // so consumers can correlate ref logs to the originating wireframe deterministically.
+        lastEmittedHash = hash
+        lastEmittedId = hash
 
         val attrs = Attributes.builder()
             .put(MobileSemconv.SESSION_ID, sessionProvider.getSessionId())
             .put(MobileSemconv.VIEW_ID, sessionProvider.getViewId())
             .put(MobileSemconv.SCREEN_NAME, screenName)
+            .put(MobileSemconv.WIREFRAME_ID, hash)
             .put(MobileSemconv.WIREFRAME_TRIGGER, trigger)
             .put(MobileSemconv.WIREFRAME_SEQUENCE, seq)
             .put(MobileSemconv.WIREFRAME_SIZE_BYTES, json.length.toLong())
@@ -345,6 +381,19 @@ class WireframeInstrumentation(
             .build()
 
         emitUiTelemetry(MobileSemconv.UI_WIREFRAME, attrs, parentContext)
+    }
+
+    private fun sha256Hex(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
+        // Hex-encode (lowercase). Short enough that we can pass it as an attribute
+        // value cheaply, long enough to make accidental collisions vanishingly rare.
+        val sb = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            sb.append(((b.toInt() shr 4) and 0xF).toString(16))
+            sb.append((b.toInt() and 0xF).toString(16))
+        }
+        return sb.toString()
     }
 
     private fun emitUiTelemetry(name: String, attrs: Attributes, parentContext: Context) {

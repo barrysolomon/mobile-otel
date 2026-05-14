@@ -63,8 +63,10 @@ object MobileSemconv {
     @JvmField val SCREENSHOT_REDACTED   = AttributeKey.booleanKey("mobile.screenshot.redacted")
 
     // ── Wireframe ─────────────────────────────────────────────────────────
-    const val UI_WIREFRAME = "ui.wireframe"
+    const val UI_WIREFRAME     = "ui.wireframe"      // Full wireframe payload
+    const val UI_WIREFRAME_REF = "ui.wireframe.ref"  // Reference to a prior wireframe by id
 
+    @JvmField val WIREFRAME_ID         = AttributeKey.stringKey("mobile.wireframe.id")
     @JvmField val WIREFRAME_TRIGGER    = AttributeKey.stringKey("mobile.wireframe.trigger")
     @JvmField val WIREFRAME_SEQUENCE   = AttributeKey.longKey("mobile.wireframe.sequence")
     @JvmField val WIREFRAME_SIZE_BYTES = AttributeKey.longKey("mobile.wireframe.size_bytes")
