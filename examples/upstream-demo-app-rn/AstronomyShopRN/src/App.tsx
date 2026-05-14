@@ -6,6 +6,7 @@ import {Dash0Mobile} from '@dash0/mobile-react-native';
 import {ProductListScreen} from './screens/ProductListScreen';
 import {ProductDetailScreen} from './screens/ProductDetailScreen';
 import {CartScreen} from './screens/CartScreen';
+import {ErrorTriggersScreen} from './screens/ErrorTriggersScreen';
 import {AutoDemoDriver} from './shop/AutoDemoDriver';
 import {useCartStore} from './shop/CartStore';
 import {ShopTelemetry} from './shop/ShopTelemetry';
@@ -81,6 +82,11 @@ export default function App(): React.ReactElement {
             name="Cart"
             component={CartScreen}
             options={{title: 'Cart'}}
+          />
+          <Stack.Screen
+            name="ErrorTriggers"
+            component={ErrorTriggersScreen}
+            options={{title: 'Errors'}}
           />
         </Stack.Navigator>
       </NavigationContainer>

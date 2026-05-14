@@ -4,6 +4,7 @@ import ScreenInstrumentation
 struct ProductListView: View {
     let products: [Product]
     @EnvironmentObject var cart: CartViewModel
+    @EnvironmentObject var root: RootState
 
     var body: some View {
         NavigationStack {
@@ -37,23 +38,34 @@ struct ProductListView: View {
                     .environmentObject(cart)
             }
             .toolbar {
-                NavigationLink {
-                    CartView().environmentObject(cart)
-                } label: {
-                    Image(systemName: "cart")
-                        .overlay(alignment: .topTrailing) {
-                            if cart.itemCount > 0 {
-                                Text("\(cart.itemCount)")
-                                    .font(.caption2).bold()
-                                    .foregroundColor(.white)
-                                    .padding(4)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                                    .offset(x: 8, y: -6)
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        CartView().environmentObject(cart)
+                    } label: {
+                        Image(systemName: "cart")
+                            .overlay(alignment: .topTrailing) {
+                                if cart.itemCount > 0 {
+                                    Text("\(cart.itemCount)")
+                                        .font(.caption2).bold()
+                                        .foregroundColor(.white)
+                                        .padding(4)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                        .offset(x: 8, y: -6)
+                                }
                             }
-                        }
+                    }
+                    .accessibilityIdentifier("nav.cart")
                 }
-                .accessibilityIdentifier("nav.cart")
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        ErrorTriggersView().environmentObject(root)
+                    } label: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                    }
+                    .accessibilityIdentifier("nav.errors")
+                }
             }
         }
     }

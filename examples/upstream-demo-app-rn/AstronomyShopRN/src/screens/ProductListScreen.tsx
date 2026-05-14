@@ -32,6 +32,15 @@ export function ProductListScreen({navigation}: Props): React.ReactElement {
   useEffect(() => {
     navigation.setOptions({
       title: 'Astronomy Shop',
+      headerLeft: () => (
+        <Pressable
+          accessibilityLabel="nav.errors"
+          testID="nav.errors"
+          onPress={() => navigation.navigate('ErrorTriggers')}
+          style={styles.errorsButton}>
+          <Text style={styles.errorsLabel}>⚠️ Errors</Text>
+        </Pressable>
+      ),
       headerRight: () => (
         <Pressable
           accessibilityLabel="nav.cart"
@@ -66,20 +75,13 @@ export function ProductListScreen({navigation}: Props): React.ReactElement {
         renderItem={renderItem}
         contentContainerStyle={styles.list}
       />
-      <Pressable
-        testID="dash0.crashNow"
-        accessibilityLabel="dash0.crashNow"
-        onPress={() => {
-          // Gate 3 trigger: unhandled JS throw flows through ErrorUtils global
-          // handler → errors.ts emits `app.error` (severity FATAL because
-          // isFatal=true for RN ErrorUtils uncaught path).
-          setTimeout(() => {
-            throw new Error('Dash0 RN iOS Gate 3 test crash');
-          }, 0);
-        }}
-        style={styles.crashButton}>
-        <Text style={styles.crashLabel}>Trigger Crash (Gate 3)</Text>
-      </Pressable>
+      {/*
+        Previously this screen carried a giant red "Trigger Crash (Gate 3)" button at
+        the bottom. It's been moved to a dedicated `ErrorTriggers` screen reachable
+        from the headerLeft button — same affordance as iOS's exclamation-triangle
+        and Android's Errors bottom-nav tab. The old test hook is preserved as a
+        button on that screen (testID="trigger.crash_throw").
+      */}
     </View>
   );
 }
@@ -104,6 +106,11 @@ const styles = StyleSheet.create({
   price: {fontSize: 14, color: '#6C6C70', marginTop: 4},
   cartButton: {paddingHorizontal: 8, paddingVertical: 4},
   cartLabel: {fontSize: 14, fontWeight: '600', color: '#007AFF'},
+  errorsButton: {paddingHorizontal: 8, paddingVertical: 4},
+  errorsLabel: {fontSize: 14, fontWeight: '600', color: '#FF6A00'},
+  // Retained for backward compat; ProductListScreen no longer uses these
+  // (the giant crash button moved to ErrorTriggersScreen). RN-host CI tests
+  // may still reference them — safe to remove in a follow-up.
   crashButton: {
     backgroundColor: '#D32F2F',
     paddingVertical: 14,
