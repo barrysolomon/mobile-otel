@@ -90,6 +90,13 @@ SERVICE_NAME=$(__uat_service_name_for_platform "$PLATFORM")
 
 # --- Trigger sequence ---
 
+# T0: capture wall-clock at the start of the trigger sequence.
+# `install`/`launch` are NOT included in the window because the app emits
+# its first events only after onCreate; install is a build/push step that
+# can take longer than the desired tolerance. T0 marks the earliest moment
+# an event could legitimately have fired.
+UAT_T0_EPOCH=$(date +%s)
+
 # t=0: install + launch with cell_id
 uat::install "$MODE"
 uat::launch "$MODE" "$ORIGINAL_CELL_ID"
@@ -186,6 +193,14 @@ fi
 # already read 0.
 sleep 40
 
+# T1: capture wall-clock AFTER the ingestion grace. We want to include
+# events the recovery process emits on its own timers (heartbeats fire
+# every 30s; if the recovery launches at trigger-end, the first heartbeat
+# fires ~30s later, during this grace period). Those events are legitimate
+# device telemetry for this cell. The gate is catching real device-clock
+# drift, not the SDK's normal scheduling tail.
+UAT_T1_EPOCH=$(date +%s)
+
 # --- Dash0 query batch ---
 # `--from now-Xm` filters by EVENT TIMESTAMP (device wall clock), not by
 # ingestion time. A cell that buffers events offline for 60s, then comes
@@ -233,6 +248,43 @@ print(n)
 '
 }
 
+# count_outside_window <t0_epoch> <t1_epoch> <tolerance_seconds> <filter…> —
+# returns the number of log records whose device timestamp falls outside
+# [T0 - tol, T1 + tol]. Used by the universal `must::within_window` gate
+# below. Tolerance covers normal SDK overhead (a span/log emitted right at
+# the edge of the trigger window).
+#
+# Reads `timeUnixNano` if set, falling back to `observedTimeUnixNano`
+# (which the OTel SDK always populates) — matching the ensureTimestamp()
+# logic in MobileLogRecordProcessor.
+count_outside_window() {
+    local t0="$1" t1="$2" tol="$3"
+    shift 3
+    local args=()
+    for clause in "$@"; do args+=(--filter "$clause"); done
+    dash0 -X logs query "${args[@]}" --from "$QUERY_FROM" -o json 2>/dev/null \
+        | T0="$t0" T1="$t1" TOL="$tol" python3 -c '
+import sys, os, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0); sys.exit(0)
+t0 = int(os.environ["T0"]); t1 = int(os.environ["T1"]); tol = int(os.environ["TOL"])
+lo = (t0 - tol) * 1_000_000_000
+hi = (t1 + tol) * 1_000_000_000
+outside = 0
+for r in d.get("resourceLogs", []):
+    for s in r.get("scopeLogs", []):
+        for rec in s.get("logRecords", []):
+            ts = int(rec.get("timeUnixNano") or rec.get("observedTimeUnixNano") or 0)
+            if ts == 0:
+                continue  # missing timestamp — separate concern, not a window violation
+            if ts < lo or ts > hi:
+                outside += 1
+print(outside)
+'
+}
+
 # Recovery query uses recovery_cell_id (per spec §7).
 RECOVERY_FOR_CELL="$ORIGINAL_CELL_ID"
 if [[ "$CRASH" == "yes" || "$CONNECTIVITY" == "offline" ]]; then
@@ -262,7 +314,34 @@ if [[ "$CRASH" == "yes" ]]; then
 fi
 HEARTBEAT_COUNT=$(run_logs_query "service.name is ${SERVICE_NAME}" "otel.scope.name is io.opentelemetry.android.mobile.heartbeat" "dash0.test.cell_id is ${HEARTBEAT_CELL_ID}")
 
+# Wall-clock window gate: count events whose device timestamp falls outside
+# [T0 - tolerance, T1 + tolerance]. Tolerance of 10s covers OS clock jitter,
+# emulator timekeeping quirks, and SDK queuing latency. Anything beyond
+# that points at a real regression: batch-stamping at flush time,
+# observedTimeUnixNano not being copied to timeUnixNano, or actual clock
+# drift on the device.
+#
+# Run for ORIGINAL cell always; also for RECOVERY cell when applicable
+# (crash or offline cells where the relaunch fires).
+WINDOW_TOL_SEC=10
+OUTSIDE_ORIG=$(count_outside_window "$UAT_T0_EPOCH" "$UAT_T1_EPOCH" "$WINDOW_TOL_SEC" \
+    "service.name is ${SERVICE_NAME}" \
+    "dash0.test.cell_id is ${ORIGINAL_CELL_ID}")
+OUTSIDE_RECOV=0
+if [[ "$RECOVERY_FOR_CELL" != "$ORIGINAL_CELL_ID" ]]; then
+    OUTSIDE_RECOV=$(count_outside_window "$UAT_T0_EPOCH" "$UAT_T1_EPOCH" "$WINDOW_TOL_SEC" \
+        "service.name is ${SERVICE_NAME}" \
+        "dash0.test.cell_id is ${RECOVERY_FOR_CELL}")
+fi
+
 EXIT=0
+
+# Universal wall-clock gate — every cell asserts that telemetry carries
+# the device time at which it actually fired, not some later flush time.
+must::within_window "timestamps_in_window" "$OUTSIDE_ORIG" || EXIT=1
+if [[ "$RECOVERY_FOR_CELL" != "$ORIGINAL_CELL_ID" ]]; then
+    must::within_window "timestamps_in_window_recovery" "$OUTSIDE_RECOV" || EXIT=1
+fi
 
 # Map (mode, connectivity, crash) to assertions.
 KEY="${MODE}-${CONNECTIVITY}-${CRASH}"

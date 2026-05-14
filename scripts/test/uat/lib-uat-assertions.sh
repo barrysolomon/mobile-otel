@@ -94,6 +94,32 @@ warn::eq() {
     return 0
 }
 
+# must::within_window <name> <outside_count> — exit 1 if any events fell
+# outside the cell's [T0, T1] wall-clock window. `outside_count` is the
+# number of events whose device timestamp lies before T0 - tolerance or
+# after T1 + tolerance. The caller computes this from OTLP records via
+# __uat_count_outside_window (run-uat-cell.sh).
+#
+# This gate catches: clock skew, batch-stamping at flush time, lost
+# observedTimeUnixNano, and any future regression where the SDK reports
+# a time other than when the event actually fired on-device.
+must::within_window() {
+    local name="$1" outside="$2"
+    if ! __uat_is_int "$outside"; then
+        __uat_emit "must" "$name" "outside_window == 0" "$outside" "false"
+        echo "[FAIL] must $name: non-numeric input (outside='$outside')" >&2
+        return 1
+    fi
+    if [[ "$outside" -eq 0 ]]; then
+        __uat_emit "must" "$name" "outside_window == 0" "$outside" "true"
+        echo "[PASS] must $name: 0 events outside [T0,T1]"
+    else
+        __uat_emit "must" "$name" "outside_window == 0" "$outside" "false"
+        echo "[FAIL] must $name: $outside events outside [T0,T1]" >&2
+        return 1
+    fi
+}
+
 # warn::within <name> <observed> <expected> <tolerance_pct> — log only.
 warn::within() {
     local name="$1" observed="$2" expected="$3" tol_pct="$4"
