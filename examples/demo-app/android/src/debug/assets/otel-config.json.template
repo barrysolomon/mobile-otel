@@ -20,6 +20,23 @@
   "buildChannel": "debug",
   "samplingRate": 1.0,
 
+  "incubating": {
+    "screenshot": {
+      "enabled": true,
+      "captureOnScreenView": false,
+      "captureOnError": true,
+      "captureOnPolicyMatch": true
+    },
+    "wireframe": {
+      "enabled": true,
+      "captureOnScreenView": true,
+      "captureOnTap": false,
+      "captureOnError": true,
+      "captureOnPolicyMatch": true,
+      "dedupeByContentHash": true
+    }
+  },
+
   "telemetrySettings": {
     "dataCollection": {
       "logs": true,

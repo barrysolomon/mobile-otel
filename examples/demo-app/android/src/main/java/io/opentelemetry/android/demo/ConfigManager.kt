@@ -138,10 +138,24 @@ object ConfigManager {
     private const val DEFAULT_SCREENSHOT_ENABLED = true
     private const val KEY_SCREENSHOT_ON_SCREEN_VIEW = "screenshot_on_screen_view"
     private const val DEFAULT_SCREENSHOT_ON_SCREEN_VIEW = false
+    private const val KEY_SCREENSHOT_ON_ERROR = "screenshot_on_error"
+    private const val DEFAULT_SCREENSHOT_ON_ERROR = true
+    private const val KEY_SCREENSHOT_ON_POLICY_MATCH = "screenshot_on_policy_match"
+    private const val DEFAULT_SCREENSHOT_ON_POLICY_MATCH = true
 
     // Wireframe defaults (incubating — non-OTel-native, off by default)
     private const val KEY_WIREFRAME_ENABLED = "wireframe_enabled"
     private const val DEFAULT_WIREFRAME_ENABLED = true
+    private const val KEY_WIREFRAME_ON_SCREEN_VIEW = "wireframe_on_screen_view"
+    private const val DEFAULT_WIREFRAME_ON_SCREEN_VIEW = true
+    private const val KEY_WIREFRAME_ON_TAP = "wireframe_on_tap"
+    private const val DEFAULT_WIREFRAME_ON_TAP = false
+    private const val KEY_WIREFRAME_ON_ERROR = "wireframe_on_error"
+    private const val DEFAULT_WIREFRAME_ON_ERROR = true
+    private const val KEY_WIREFRAME_ON_POLICY_MATCH = "wireframe_on_policy_match"
+    private const val DEFAULT_WIREFRAME_ON_POLICY_MATCH = true
+    private const val KEY_WIREFRAME_DEDUPE_BY_CONTENT_HASH = "wireframe_dedupe_by_content_hash"
+    private const val DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH = true
 
     // Error handling defaults
     private const val DEFAULT_ERROR_CAPTURE_UNCAUGHT = true
@@ -308,10 +322,17 @@ object ConfigManager {
             ),
             screenshotConfig = ScreenshotConfig(
                 enabled = prefs.getBoolean(KEY_SCREENSHOT_ENABLED, DEFAULT_SCREENSHOT_ENABLED),
-                captureOnScreenView = prefs.getBoolean(KEY_SCREENSHOT_ON_SCREEN_VIEW, DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
+                captureOnScreenView = prefs.getBoolean(KEY_SCREENSHOT_ON_SCREEN_VIEW, DEFAULT_SCREENSHOT_ON_SCREEN_VIEW),
+                captureOnError = prefs.getBoolean(KEY_SCREENSHOT_ON_ERROR, DEFAULT_SCREENSHOT_ON_ERROR),
+                captureOnPolicyMatch = prefs.getBoolean(KEY_SCREENSHOT_ON_POLICY_MATCH, DEFAULT_SCREENSHOT_ON_POLICY_MATCH)
             ),
             wireframeConfig = WireframeConfig(
-                enabled = prefs.getBoolean(KEY_WIREFRAME_ENABLED, DEFAULT_WIREFRAME_ENABLED)
+                enabled = prefs.getBoolean(KEY_WIREFRAME_ENABLED, DEFAULT_WIREFRAME_ENABLED),
+                captureOnScreenView = prefs.getBoolean(KEY_WIREFRAME_ON_SCREEN_VIEW, DEFAULT_WIREFRAME_ON_SCREEN_VIEW),
+                captureOnTap = prefs.getBoolean(KEY_WIREFRAME_ON_TAP, DEFAULT_WIREFRAME_ON_TAP),
+                captureOnError = prefs.getBoolean(KEY_WIREFRAME_ON_ERROR, DEFAULT_WIREFRAME_ON_ERROR),
+                captureOnPolicyMatch = prefs.getBoolean(KEY_WIREFRAME_ON_POLICY_MATCH, DEFAULT_WIREFRAME_ON_POLICY_MATCH),
+                dedupeByContentHash = prefs.getBoolean(KEY_WIREFRAME_DEDUPE_BY_CONTENT_HASH, DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH)
             )
         )
     }
@@ -512,7 +533,14 @@ object ConfigManager {
             // Screenshot & wireframe (incubating)
             putBoolean(KEY_SCREENSHOT_ENABLED, config.screenshotConfig.enabled)
             putBoolean(KEY_SCREENSHOT_ON_SCREEN_VIEW, config.screenshotConfig.captureOnScreenView)
+            putBoolean(KEY_SCREENSHOT_ON_ERROR, config.screenshotConfig.captureOnError)
+            putBoolean(KEY_SCREENSHOT_ON_POLICY_MATCH, config.screenshotConfig.captureOnPolicyMatch)
             putBoolean(KEY_WIREFRAME_ENABLED, config.wireframeConfig.enabled)
+            putBoolean(KEY_WIREFRAME_ON_SCREEN_VIEW, config.wireframeConfig.captureOnScreenView)
+            putBoolean(KEY_WIREFRAME_ON_TAP, config.wireframeConfig.captureOnTap)
+            putBoolean(KEY_WIREFRAME_ON_ERROR, config.wireframeConfig.captureOnError)
+            putBoolean(KEY_WIREFRAME_ON_POLICY_MATCH, config.wireframeConfig.captureOnPolicyMatch)
+            putBoolean(KEY_WIREFRAME_DEDUPE_BY_CONTENT_HASH, config.wireframeConfig.dedupeByContentHash)
 
             // Extract and save headers
             config.headers?.let { headers ->
@@ -631,13 +659,42 @@ object ConfigManager {
         // Incubating modules — parsed from the JSON if present, otherwise
         // fall through to ConfigManager defaults (which the demo flips to
         // true so the User Journey replay flow lights up out of the box).
+        //
+        // Two JSON shapes are accepted for backward compat:
+        //   "incubating": { "screenshot": true, "wireframe": true }  (flat)
+        //   "incubating": { "screenshot": { "enabled": ..., "captureOnPolicyMatch": ... },
+        //                   "wireframe":  { "enabled": ..., "captureOnTap": ..., ... } }
+        // The nested shape lets you flip per-trigger flags without a code change.
         val incubating = jsonObj.optJSONObject("incubating")
-        val screenshotEnabled = incubating?.optBoolean("screenshot", DEFAULT_SCREENSHOT_ENABLED)
+        val screenshotObj = incubating?.optJSONObject("screenshot")
+        val wireframeObj  = incubating?.optJSONObject("wireframe")
+
+        // Screenshot — flat boolean OR nested object
+        val screenshotEnabled = screenshotObj?.optBoolean("enabled", DEFAULT_SCREENSHOT_ENABLED)
+            ?: incubating?.optBoolean("screenshot", DEFAULT_SCREENSHOT_ENABLED)
             ?: DEFAULT_SCREENSHOT_ENABLED
-        val screenshotOnScreenView = incubating?.optBoolean("screenshotOnScreenView", DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
+        val screenshotOnScreenView = screenshotObj?.optBoolean("captureOnScreenView", DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
+            ?: incubating?.optBoolean("screenshotOnScreenView", DEFAULT_SCREENSHOT_ON_SCREEN_VIEW)
             ?: DEFAULT_SCREENSHOT_ON_SCREEN_VIEW
-        val wireframeEnabled = incubating?.optBoolean("wireframe", DEFAULT_WIREFRAME_ENABLED)
+        val screenshotOnError = screenshotObj?.optBoolean("captureOnError", DEFAULT_SCREENSHOT_ON_ERROR)
+            ?: DEFAULT_SCREENSHOT_ON_ERROR
+        val screenshotOnPolicyMatch = screenshotObj?.optBoolean("captureOnPolicyMatch", DEFAULT_SCREENSHOT_ON_POLICY_MATCH)
+            ?: DEFAULT_SCREENSHOT_ON_POLICY_MATCH
+
+        // Wireframe — flat boolean OR nested object
+        val wireframeEnabled = wireframeObj?.optBoolean("enabled", DEFAULT_WIREFRAME_ENABLED)
+            ?: incubating?.optBoolean("wireframe", DEFAULT_WIREFRAME_ENABLED)
             ?: DEFAULT_WIREFRAME_ENABLED
+        val wireframeOnScreenView = wireframeObj?.optBoolean("captureOnScreenView", DEFAULT_WIREFRAME_ON_SCREEN_VIEW)
+            ?: DEFAULT_WIREFRAME_ON_SCREEN_VIEW
+        val wireframeOnTap = wireframeObj?.optBoolean("captureOnTap", DEFAULT_WIREFRAME_ON_TAP)
+            ?: DEFAULT_WIREFRAME_ON_TAP
+        val wireframeOnError = wireframeObj?.optBoolean("captureOnError", DEFAULT_WIREFRAME_ON_ERROR)
+            ?: DEFAULT_WIREFRAME_ON_ERROR
+        val wireframeOnPolicyMatch = wireframeObj?.optBoolean("captureOnPolicyMatch", DEFAULT_WIREFRAME_ON_POLICY_MATCH)
+            ?: DEFAULT_WIREFRAME_ON_POLICY_MATCH
+        val wireframeDedupeByContentHash = wireframeObj?.optBoolean("dedupeByContentHash", DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH)
+            ?: DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH
 
         val config = MobileConfig(
             serviceName = jsonObj.optString("serviceName", DEFAULT_SERVICE_NAME),
@@ -664,10 +721,17 @@ object ConfigManager {
             deviceMetricsConfig = deviceMetricsConfig,
             screenshotConfig = ScreenshotConfig(
                 enabled = screenshotEnabled,
-                captureOnScreenView = screenshotOnScreenView
+                captureOnScreenView = screenshotOnScreenView,
+                captureOnError = screenshotOnError,
+                captureOnPolicyMatch = screenshotOnPolicyMatch
             ),
             wireframeConfig = WireframeConfig(
-                enabled = wireframeEnabled
+                enabled = wireframeEnabled,
+                captureOnScreenView = wireframeOnScreenView,
+                captureOnTap = wireframeOnTap,
+                captureOnError = wireframeOnError,
+                captureOnPolicyMatch = wireframeOnPolicyMatch,
+                dedupeByContentHash = wireframeDedupeByContentHash
             )
         )
 
