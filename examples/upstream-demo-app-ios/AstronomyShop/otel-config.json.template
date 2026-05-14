@@ -3,5 +3,22 @@
   "service_version": "1.0.0",
   "endpoint": "https://ingress.YOUR-DASH0-DOMAIN:4318",
   "auth_token": "YOUR_BEARER_TOKEN_HERE",
-  "dataset": "otel-mobile"
+  "dataset": "otel-mobile",
+
+  "incubating": {
+    "screenshot": {
+      "enabled": true,
+      "captureOnScreenView": false,
+      "captureOnError": true,
+      "captureOnPolicyMatch": true
+    },
+    "wireframe": {
+      "enabled": true,
+      "captureOnScreenView": true,
+      "captureOnTap": false,
+      "captureOnError": true,
+      "captureOnPolicyMatch": true,
+      "dedupeByContentHash": true
+    }
+  }
 }

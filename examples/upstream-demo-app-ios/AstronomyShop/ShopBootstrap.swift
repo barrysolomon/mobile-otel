@@ -1,6 +1,8 @@
 import Foundation
 import OTelMobileSDK
 import OTelMobileCore
+import ScreenshotInstrumentation
+import WireframeInstrumentation
 
 /// Reads credentials from bundled `otel-config.json` (or the committed
 /// `.template` fallback) and boots OTelMobile. Mirrors the Starter demo's
@@ -12,6 +14,7 @@ enum ShopBootstrap {
         let endpoint: String
         let authToken: String
         let dataset: String
+        let incubating: IncubatingConfig?
 
         enum CodingKeys: String, CodingKey {
             case serviceName = "service_name"
@@ -19,7 +22,31 @@ enum ShopBootstrap {
             case endpoint
             case authToken = "auth_token"
             case dataset
+            case incubating
         }
+    }
+
+    /// Mirrors Android's `incubating` section in otel-config.json. All fields
+    /// optional so the demo runs unchanged when the block is absent.
+    struct IncubatingConfig: Decodable {
+        let screenshot: ScreenshotJSON?
+        let wireframe: WireframeJSON?
+    }
+
+    struct ScreenshotJSON: Decodable {
+        let enabled: Bool?
+        let captureOnScreenView: Bool?
+        let captureOnError: Bool?
+        let captureOnPolicyMatch: Bool?
+    }
+
+    struct WireframeJSON: Decodable {
+        let enabled: Bool?
+        let captureOnScreenView: Bool?
+        let captureOnTap: Bool?
+        let captureOnError: Bool?
+        let captureOnPolicyMatch: Bool?
+        let dedupeByContentHash: Bool?
     }
 
     struct BootResult {
@@ -60,6 +87,25 @@ enum ShopBootstrap {
             extraAttrs["dash0.test.cell_id"] = cid
         }
 
+        // Build capture configs from the optional `incubating` JSON block.
+        // Absent block → default `ScreenshotConfig()` / `WireframeConfig()`.
+        let screenshotJSON = demo.incubating?.screenshot
+        let screenshotConfig = ScreenshotConfig(
+            enabled: screenshotJSON?.enabled ?? true,
+            captureOnScreenView: screenshotJSON?.captureOnScreenView ?? false,
+            captureOnError: screenshotJSON?.captureOnError ?? true,
+            captureOnPolicyMatch: screenshotJSON?.captureOnPolicyMatch ?? true
+        )
+        let wireframeJSON = demo.incubating?.wireframe
+        let wireframeConfig = WireframeConfig(
+            enabled: wireframeJSON?.enabled ?? true,
+            captureOnScreenView: wireframeJSON?.captureOnScreenView ?? true,
+            captureOnTap: wireframeJSON?.captureOnTap ?? false,
+            captureOnError: wireframeJSON?.captureOnError ?? true,
+            captureOnPolicyMatch: wireframeJSON?.captureOnPolicyMatch ?? true,
+            dedupeByContentHash: wireframeJSON?.dedupeByContentHash ?? true
+        )
+
         let config = MobileConfig(
             serviceName: demo.serviceName,
             serviceVersion: demo.serviceVersion,
@@ -69,7 +115,9 @@ enum ShopBootstrap {
             autoCaptureOptions: autoCapture,
             extraHeaders: ["Dash0-Dataset": demo.dataset],
             samplingConfig: .alwaysOn(),
-            extraResourceAttributes: extraAttrs
+            extraResourceAttributes: extraAttrs,
+            screenshotConfig: screenshotConfig,
+            wireframeConfig: wireframeConfig
         )
         // Initialise the disk buffer synchronously via a semaphore.
         // Required because @StateObject / RootState.init is sync, and

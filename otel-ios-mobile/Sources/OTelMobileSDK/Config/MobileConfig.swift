@@ -1,4 +1,6 @@
 import OTelMobileCore
+import ScreenshotInstrumentation
+import WireframeInstrumentation
 
 public struct MobileConfig: Sendable {
     public let serviceName: String
@@ -69,6 +71,16 @@ public struct MobileConfig: Sendable {
     /// platforms have the same observable latency characteristics.
     public let logExportIntervalSeconds: UInt64
 
+    /// Configuration for the optional screenshot instrumentation. Only used
+    /// when `AutoCaptureOptions.screenshot` is enabled. Mirrors Android's
+    /// `MobileConfig.screenshotConfig`.
+    public let screenshotConfig: ScreenshotConfig
+
+    /// Configuration for the optional wireframe instrumentation. Only used
+    /// when `AutoCaptureOptions.wireframe` is enabled. Mirrors Android's
+    /// `MobileConfig.wireframeConfig`.
+    public let wireframeConfig: WireframeConfig
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -88,7 +100,9 @@ public struct MobileConfig: Sendable {
         extraResourceAttributes: [String: String] = [:],
         logExportIntervalSeconds: UInt64 = 30,
         offlineBudgetConfig: OfflineBudgetConfig = .default,
-        offlinePolicy: OfflinePolicy = .bufferAll
+        offlinePolicy: OfflinePolicy = .bufferAll,
+        screenshotConfig: ScreenshotConfig = ScreenshotConfig(),
+        wireframeConfig: WireframeConfig = WireframeConfig()
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -109,5 +123,7 @@ public struct MobileConfig: Sendable {
         self.logExportIntervalSeconds = logExportIntervalSeconds
         self.offlineBudgetConfig = offlineBudgetConfig
         self.offlinePolicy = offlinePolicy
+        self.screenshotConfig = screenshotConfig
+        self.wireframeConfig = wireframeConfig
     }
 }

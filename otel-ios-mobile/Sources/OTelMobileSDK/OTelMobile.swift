@@ -637,12 +637,26 @@ public final class OTelMobile: @unchecked Sendable {
                 privacyConfig: config.privacyConfig
             )
             if opts.contains(.screenshot) {
-                let screenshotInst = ScreenshotInstrumentation.shared
+                // Use a fresh instance when the user passed a non-default
+                // config; fall back to `.shared` so legacy callers retain the
+                // existing global. `instance.screenshotInstrumentation` is the
+                // one all `OTelMobile.captureScreenshot(...)` calls reach.
+                let screenshotInst: ScreenshotInstrumentation
+                if Self.isDefaultScreenshotConfig(config.screenshotConfig) {
+                    screenshotInst = ScreenshotInstrumentation.shared
+                } else {
+                    screenshotInst = ScreenshotInstrumentation(config: config.screenshotConfig)
+                }
                 screenshotInst.install(context: captureContext)
                 instance.screenshotInstrumentation = screenshotInst
             }
             if opts.contains(.wireframe) {
-                let wireframeInst = WireframeInstrumentation.shared
+                let wireframeInst: WireframeInstrumentation
+                if Self.isDefaultWireframeConfig(config.wireframeConfig) {
+                    wireframeInst = WireframeInstrumentation.shared
+                } else {
+                    wireframeInst = WireframeInstrumentation(config: config.wireframeConfig)
+                }
                 wireframeInst.install(context: captureContext)
                 instance.wireframeInstrumentation = wireframeInst
             }
@@ -968,5 +982,45 @@ public final class OTelMobile: @unchecked Sendable {
             _ = semaphore.wait(timeout: .now() + timeout)
             cont.resume(returning: outcome)
         }
+    }
+
+    // MARK: - Default-config detection
+
+    /// Returns true when every field of `config` matches the `ScreenshotConfig()`
+    /// default-initialised values. Used by `start(config:)` to decide whether
+    /// to reuse the `.shared` singleton or instantiate a fresh module so the
+    /// user's overrides take effect. Field-by-field rather than `==` because
+    /// `ScreenshotConfig` is not `Equatable` and we don't want to widen its
+    /// public surface just for this check.
+    private static func isDefaultScreenshotConfig(_ config: ScreenshotConfig) -> Bool {
+        let d = ScreenshotConfig()
+        return config.enabled == d.enabled
+            && config.maxWidthPx == d.maxWidthPx
+            && config.maxHeightPx == d.maxHeightPx
+            && config.quality == d.quality
+            && config.format == d.format
+            && config.maxPayloadKb == d.maxPayloadKb
+            && config.maxCapturesPerMinute == d.maxCapturesPerMinute
+            && config.redactTextFields == d.redactTextFields
+            && config.captureOnScreenView == d.captureOnScreenView
+            && config.captureOnError == d.captureOnError
+            && config.captureOnPolicyMatch == d.captureOnPolicyMatch
+            && config.screenViewDelayMs == d.screenViewDelayMs
+    }
+
+    private static func isDefaultWireframeConfig(_ config: WireframeConfig) -> Bool {
+        let d = WireframeConfig()
+        return config.enabled == d.enabled
+            && config.maxCapturesPerMinute == d.maxCapturesPerMinute
+            && config.maxDepth == d.maxDepth
+            && config.captureOnScreenView == d.captureOnScreenView
+            && config.captureOnTap == d.captureOnTap
+            && config.captureOnError == d.captureOnError
+            && config.captureOnPolicyMatch == d.captureOnPolicyMatch
+            && config.dedupeByContentHash == d.dedupeByContentHash
+            && config.includeAccessibilityIdentifiers == d.includeAccessibilityIdentifiers
+            && config.includeTextHints == d.includeTextHints
+            && config.includeContentDescription == d.includeContentDescription
+            && config.includeInteractionState == d.includeInteractionState
     }
 }
