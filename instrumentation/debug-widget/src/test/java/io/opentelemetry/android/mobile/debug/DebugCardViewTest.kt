@@ -157,7 +157,9 @@ class DebugCardViewTest {
         memoryAvailableMb: Long = 1024,
         networkType: String = "wifi",
         lastExportTimeMs: Long = System.currentTimeMillis() - 10_000,
-        sessionId: String = "abc12345def67890"
+        sessionId: String = "abc12345def67890",
+        exportMode: String = "HYBRID",
+        airplaneMode: Boolean = false
     ) = DebugWidgetDataSource.WidgetState(
         ramEvents = ramEvents,
         ramCapacity = ramCapacity,
@@ -168,6 +170,8 @@ class DebugCardViewTest {
         memoryAvailableMb = memoryAvailableMb,
         networkType = networkType,
         lastExportTimeMs = lastExportTimeMs,
-        sessionId = sessionId
+        sessionId = sessionId,
+        exportMode = exportMode,
+        airplaneMode = airplaneMode
     )
 }
