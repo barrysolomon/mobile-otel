@@ -13,6 +13,12 @@ public struct WireframeConfig: Sendable {
     /// an attached "what was on screen" artifact. Default `true`. Mirrors
     /// Android's `WireframeConfig.captureOnPolicyMatch`.
     public var captureOnPolicyMatch: Bool
+    /// When `true` (default), the module hashes each captured wireframe JSON
+    /// and emits a lightweight `ui.wireframe.ref` log carrying only the
+    /// prior `mobile.wireframe.id` if the hash matches the previous capture.
+    /// Saves the 1–5 KB payload on no-op screen-resume / tap captures.
+    /// Mirrors Android's `WireframeConfig.dedupeByContentHash`.
+    public var dedupeByContentHash: Bool
     public var includeAccessibilityIdentifiers: Bool
     public var includeTextHints: Bool
     public var includeContentDescription: Bool
@@ -26,6 +32,7 @@ public struct WireframeConfig: Sendable {
         captureOnTap: Bool = false,
         captureOnError: Bool = true,
         captureOnPolicyMatch: Bool = true,
+        dedupeByContentHash: Bool = true,
         includeAccessibilityIdentifiers: Bool = true,
         includeTextHints: Bool = false,
         includeContentDescription: Bool = true,
@@ -38,6 +45,7 @@ public struct WireframeConfig: Sendable {
         self.captureOnTap = captureOnTap
         self.captureOnError = captureOnError
         self.captureOnPolicyMatch = captureOnPolicyMatch
+        self.dedupeByContentHash = dedupeByContentHash
         self.includeAccessibilityIdentifiers = includeAccessibilityIdentifiers
         self.includeTextHints = includeTextHints
         self.includeContentDescription = includeContentDescription

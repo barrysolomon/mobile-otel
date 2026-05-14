@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OpenTelemetryApi
 import OTelMobileCore
@@ -18,6 +19,23 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
     private var eventHub: TouchEventHub?
     private var rateLimiter: RateLimiter
     private var sequenceNumber: Int64 = 0
+
+    // Content-hash dedup state. `lastEmittedHash` is the SHA-256 of the most
+    // recently EMITTED full wireframe JSON (not just the most recently
+    // captured). `lastEmittedId` is the public `mobile.wireframe.id` we
+    // attached to it, so dedup emits a `ui.wireframe.ref` pointing at that
+    // id instead of the full payload. Both guarded by `lock`. Mirrors
+    // Android's WireframeInstrumentation dedup state.
+    private var lastEmittedHash: String?
+    private var lastEmittedId: String?
+
+    /// Current wireframe id, or `nil` if no wireframe has been emitted yet
+    /// in this session. Companion to Android's
+    /// `WireframeInstrumentation.currentWireframeId()`.
+    public func currentWireframeId() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return lastEmittedId
+    }
 
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private var observers: [NSObjectProtocol] = []
@@ -187,18 +205,53 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
     #endif
 
     private func emitWireframe(json: String, nodeCount: Int, screenName: String, trigger: String, sizeBytes: Int) {
+        let hash = Self.sha256Hex(json)
+
+        // Snapshot mutable state under the lock. If dedup is on and the hash
+        // matches the previously emitted wireframe, emit a `ui.wireframe.ref`
+        // log carrying the prior id only — no JSON payload.
         lock.lock()
         let logger = self.logger
         let session = self.sessionProvider
         let seq = sequenceNumber
         sequenceNumber += 1
+        let dedupHit = config.dedupeByContentHash
+            && hash == lastEmittedHash
+            && lastEmittedId != nil
+        let priorId = lastEmittedId
+        if !dedupHit {
+            lastEmittedHash = hash
+            lastEmittedId = hash
+        }
         lock.unlock()
 
         guard let logger = logger else { return }
 
+        if dedupHit, let priorId = priorId {
+            var attrs: [String: AttributeValue] = [
+                "mobile.wireframe.trigger": .string(trigger),
+                "mobile.wireframe.sequence": .int(Int(seq)),
+                "mobile.wireframe.id": .string(priorId),
+                "screen.name": .string(screenName),
+            ]
+            if let sid = session?.sessionId {
+                attrs["mobile.session.id"] = .string(sid)
+            }
+            logger.logRecordBuilder()
+                .setBody(AttributeValue.string("ui.wireframe.ref"))
+                .setSeverity(.info)
+                .setAttributes(attrs)
+                .emit()
+            return
+        }
+
+        // First emit or content changed — send the full payload. The id is
+        // the hash itself so consumers can correlate ref logs to the
+        // originating wireframe deterministically.
         var attrs: [String: AttributeValue] = [
             "mobile.wireframe.trigger": .string(trigger),
             "mobile.wireframe.sequence": .int(Int(seq)),
+            "mobile.wireframe.id": .string(hash),
             "mobile.wireframe.size_bytes": .int(sizeBytes),
             "mobile.wireframe.node_count": .int(nodeCount),
             "mobile.wireframe.data": .string(json),
@@ -213,6 +266,12 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
             .setSeverity(.info)
             .setAttributes(attrs)
             .emit()
+    }
+
+    private static func sha256Hex(_ input: String) -> String {
+        let data = Data(input.utf8)
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Test seam
