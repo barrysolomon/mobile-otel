@@ -897,10 +897,22 @@ class MobileLogRecordProcessor private constructor(
     fun persistForCrash() {
         isShutdown.set(true)
         try {
-            val events = ramBuffer.toList()
+            // Only write events not yet mirrored by the every-2s crash-safety task.
+            // Without this filter, persistForCrash() writes the entire RAM buffer
+            // again — including events already on disk — producing duplicate rows
+            // (LogRecordEntity has autoGenerate=true primary keys, so identical
+            // seqIds become separate rows). Recovery forceFlush() then re-exports
+            // both copies. Verified 2026-05-14 with HYBRID+crash UAT cells.
+            val events: List<BufferedEvent> = synchronized(persistedToDisk) {
+                ramBuffer.filter { !persistedToDisk.contains(it) }.also { newEvents ->
+                    persistedToDisk.addAll(newEvents)
+                }
+            }
             if (events.isNotEmpty()) {
                 diskBuffer.persistBufferedEvents(events)
-                Log.i(TAG, "Crash persist: wrote ${events.size} RAM events to disk")
+                Log.i(TAG, "Crash persist: wrote ${events.size} new RAM events to disk")
+            } else {
+                Log.i(TAG, "Crash persist: no new events (all already mirrored)")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Crash persist failed", e)
