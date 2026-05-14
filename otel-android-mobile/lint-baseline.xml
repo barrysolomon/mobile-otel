@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 9.0.0" type="baseline" client="gradle" dependencies="false" name="AGP (9.0.0)" variant="all" version="9.0.0">
+<issues format="6" by="lint 9.0.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.0.1)" variant="all" version="9.0.1">
 
     <issue
         id="MissingPermission"
@@ -25,35 +25,13 @@
 
     <issue
         id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getActiveNetwork: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="                val network = cm.activeNetwork ?: return ContextSnapshot.NETWORK_OFFLINE"
-        errorLine2="                              ~~~~~~~~~~~~~~~~">
+        message="Missing permissions required by DeviceMetricsCollector.captureMetrics: android.permission.ACCESS_NETWORK_STATE"
+        errorLine1="                        deviceMetricsCollector.captureMetrics(CaptureReason.SCHEDULED_FLUSH, force = true)"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/context/ContextSnapshot.kt"
-            line="281"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getNetworkCapabilities: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="                val capabilities = cm.getNetworkCapabilities(network)"
-        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/context/ContextSnapshot.kt"
-            line="282"
-            column="36"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getActiveNetworkInfo: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="                val activeNetwork = cm.activeNetworkInfo"
-        errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/context/ContextSnapshot.kt"
-            line="292"
-            column="37"/>
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="216"
+            column="25"/>
     </issue>
 
     <issue
@@ -63,52 +41,41 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
-            line="125"
+            line="256"
             column="25"/>
     </issue>
 
     <issue
         id="MissingPermission"
-        message="Missing permissions required by DeviceMetricsCollector.captureMetrics: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="                deviceMetricsCollector.captureMetrics(captureReason)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        message="Missing permissions required by ConnectivityManager.getActiveNetwork: android.permission.ACCESS_NETWORK_STATE"
+        errorLine1="                cm.activeNetwork == null"
+        errorLine2="                ~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
-            line="191"
+            line="997"
             column="17"/>
     </issue>
 
     <issue
         id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getActiveNetwork: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="            val network = cm.activeNetwork ?: return &quot;none&quot;"
-        errorLine2="                          ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/network/OTelNetworkInterceptor.kt"
-            line="221"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getNetworkCapabilities: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="            val capabilities = cm.getNetworkCapabilities(network) ?: return &quot;unknown&quot;"
-        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/network/OTelNetworkInterceptor.kt"
-            line="222"
-            column="32"/>
-    </issue>
-
-    <issue
-        id="MissingPermission"
         message="Missing permissions required by ConnectivityManager.getActiveNetworkInfo: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="            val networkInfo = cm.activeNetworkInfo ?: return &quot;none&quot;"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="                cm.activeNetworkInfo?.isConnected != true"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/network/OTelNetworkInterceptor.kt"
-            line="233"
-            column="31"/>
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="1000"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by ConnectivityManager.registerDefaultNetworkCallback: android.permission.ACCESS_NETWORK_STATE"
+        errorLine1="                connectivityManager.registerDefaultNetworkCallback(adapter)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/MobileLoggerProvider.kt"
+            line="284"
+            column="17"/>
     </issue>
 
     <issue
@@ -118,52 +85,30 @@
         errorLine2="            ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/OnDevicePredictor.kt"
-            line="61"
+            line="64"
             column="13"/>
     </issue>
 
     <issue
-        id="MissingPermission"
-        message="Missing permissions required by ConnectivityManager.getActiveNetwork: android.permission.ACCESS_NETWORK_STATE"
-        errorLine1="        val hasNetwork = connectivityManager.activeNetwork != null"
-        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="ApplySharedPref"
+        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
+        errorLine1="            prefs.edit().putBoolean(KEY_CRASH_MARKER, true).commit()"
+        errorLine2="                                                            ~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/predictive/OnDevicePredictor.kt"
-            line="166"
-            column="26"/>
+            file="src/main/java/io/opentelemetry/android/mobile/autocapture/RecoveryTracker.kt"
+            line="163"
+            column="61"/>
     </issue>
 
     <issue
-        id="SdCardPath"
-        message="Do not hardcode &quot;`/data/`&quot;; use `Context.getFilesDir().getPath()` instead"
-        errorLine1="        &quot;/data/user/\\d+/&quot;"
-        errorLine2="         ~~~~~~~~~~~">
+        id="GradleDependency"
+        message="A newer version of androidx.core:core-ktx than 1.17.0 is available: 1.18.0"
+        errorLine1="    implementation(&quot;androidx.core:core-ktx:1.17.0&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/core/PiiScrubber.kt"
-            line="55"
-            column="10"/>
-    </issue>
-
-    <issue
-        id="SdCardPath"
-        message="Do not hardcode &quot;`/data/`&quot;; use `Context.getFilesDir().getPath()` instead"
-        errorLine1="        scrubbed = USER_PATH_PATTERN.replace(scrubbed, &quot;/data/user/{uid}/&quot;)"
-        errorLine2="                                                        ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/core/PiiScrubber.kt"
-            line="144"
-            column="57"/>
-    </issue>
-
-    <issue
-        id="SdCardPath"
-        message="Do not hardcode &quot;`/data/`&quot;; use `Context.getFilesDir().getPath()` instead"
-        errorLine1="                    file.replace(USER_PATH_PATTERN, &quot;/data/user/{uid}/&quot;)"
-        errorLine2="                                                     ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/core/PiiScrubber.kt"
-            line="165"
-            column="54"/>
+            file="build.gradle.kts"
+            line="108"
+            column="20"/>
     </issue>
 
     <issue
@@ -173,7 +118,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="97"
+            line="113"
             column="20"/>
     </issue>
 
@@ -184,73 +129,106 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="109"
+            line="125"
             column="24"/>
     </issue>
 
     <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test:core than 1.6.1 is available: 1.7.0"
+        errorLine1="    androidTestImplementation(&quot;androidx.test:core:1.6.1&quot;)"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="136"
+            column="31"/>
+    </issue>
+
+    <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.opentelemetry:opentelemetry-api than 1.58.0 is available: 1.59.0"
+        message="A newer version of io.opentelemetry:opentelemetry-api than 1.58.0 is available: 1.62.0"
         errorLine1="    api(&quot;io.opentelemetry:opentelemetry-api:1.58.0&quot;)"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="66"
+            line="85"
             column="9"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.opentelemetry:opentelemetry-sdk than 1.58.0 is available: 1.59.0"
+        message="A newer version of io.opentelemetry:opentelemetry-sdk than 1.58.0 is available: 1.62.0"
         errorLine1="    api(&quot;io.opentelemetry:opentelemetry-sdk:1.58.0&quot;)"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="67"
+            line="86"
             column="9"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.opentelemetry:opentelemetry-sdk-logs than 1.58.0 is available: 1.59.0"
+        message="A newer version of io.opentelemetry:opentelemetry-sdk-logs than 1.58.0 is available: 1.62.0"
         errorLine1="    api(&quot;io.opentelemetry:opentelemetry-sdk-logs:1.58.0&quot;)"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="68"
+            line="87"
             column="9"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.opentelemetry:opentelemetry-exporter-otlp than 1.58.0 is available: 1.59.0"
+        message="A newer version of io.opentelemetry:opentelemetry-exporter-otlp than 1.58.0 is available: 1.62.0"
         errorLine1="    implementation(&quot;io.opentelemetry:opentelemetry-exporter-otlp:1.58.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="74"
+            line="90"
             column="20"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of io.opentelemetry.semconv:opentelemetry-semconv than 1.39.0 is available: 1.40.0"
+        message="A newer version of io.opentelemetry.semconv:opentelemetry-semconv than 1.39.0 is available: 1.41.1"
         errorLine1="    implementation(&quot;io.opentelemetry.semconv:opentelemetry-semconv:1.39.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="77"
+            line="93"
             column="20"/>
     </issue>
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of org.jetbrains.kotlinx:kotlinx-serialization-json than 1.6.0 is available: 1.10.0"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.10.2 is available: 1.11.0"
+        errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="101"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-core than 1.10.2 is available: 1.11.0"
+        errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="102"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-serialization-json than 1.6.0 is available: 1.11.0"
         errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0&quot;)"
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="89"
+            line="105"
             column="20"/>
     </issue>
 
@@ -261,8 +239,19 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="100"
+            line="116"
             column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
+        errorLine1="    testImplementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="121"
+            column="24"/>
     </issue>
 
     <issue
@@ -272,8 +261,30 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="106"
+            line="122"
             column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of io.opentelemetry:opentelemetry-sdk-testing than 1.58.0 is available: 1.62.0"
+        errorLine1="    testImplementation(&quot;io.opentelemetry:opentelemetry-sdk-testing:1.58.0&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="126"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
+        errorLine1="    androidTestImplementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2&quot;)"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="138"
+            column="31"/>
     </issue>
 
     <issue
@@ -294,7 +305,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/HealthMetricsCollector.kt"
-            line="60"
+            line="62"
             column="9"/>
     </issue>
 
@@ -305,7 +316,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
-            line="108"
+            line="188"
             column="9"/>
     </issue>
 
@@ -316,7 +327,18 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
-            line="114"
+            line="196"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="DiscouragedApi"
+        message="Use of `scheduleAtFixedRate` is strongly discouraged because it can lead to unexpected behavior when Android processes become cached (tasks may unexpectedly execute hundreds or thousands of times in quick succession when a process changes from cached to uncached); prefer using `scheduleWithFixedDelay`"
+        errorLine1="        executor.scheduleAtFixedRate("
+        errorLine2="        ^">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="202"
             column="9"/>
     </issue>
 
@@ -327,19 +349,52 @@
         errorLine2="            ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
-            line="122"
+            line="213"
             column="13"/>
     </issue>
 
     <issue
         id="DiscouragedApi"
         message="Use of `scheduleAtFixedRate` is strongly discouraged because it can lead to unexpected behavior when Android processes become cached (tasks may unexpectedly execute hundreds or thousands of times in quick succession when a process changes from cached to uncached); prefer using `scheduleWithFixedDelay`"
-        errorLine1="        executor.scheduleAtFixedRate("
-        errorLine2="        ^">
+        errorLine1="            executor.scheduleAtFixedRate("
+        errorLine2="            ^">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="227"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="DiscouragedApi"
+        message="Use of `scheduleAtFixedRate` is strongly discouraged because it can lead to unexpected behavior when Android processes become cached (tasks may unexpectedly execute hundreds or thousands of times in quick succession when a process changes from cached to uncached); prefer using `scheduleWithFixedDelay`"
+        errorLine1="            executor.scheduleAtFixedRate("
+        errorLine2="            ^">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="253"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="DiscouragedApi"
+        message="Use of `scheduleAtFixedRate` is strongly discouraged because it can lead to unexpected behavior when Android processes become cached (tasks may unexpectedly execute hundreds or thousands of times in quick succession when a process changes from cached to uncached); prefer using `scheduleWithFixedDelay`"
+        errorLine1="            executor.scheduleAtFixedRate("
+        errorLine2="            ^">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="276"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="DiscouragedApi"
+        message="Use of `scheduleAtFixedRate` is strongly discouraged because it can lead to unexpected behavior when Android processes become cached (tasks may unexpectedly execute hundreds or thousands of times in quick succession when a process changes from cached to uncached); prefer using `scheduleWithFixedDelay`"
+        errorLine1="            executor.scheduleAtFixedRate("
+        errorLine2="            ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/PredictiveExportPolicy.kt"
-            line="67"
-            column="9"/>
+            line="79"
+            column="13"/>
     </issue>
 
     <issue
@@ -349,7 +404,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/vitals/AppStartInstrumentation.kt"
-            line="175"
+            line="178"
             column="20"/>
     </issue>
 
@@ -360,7 +415,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/context/ContextSnapshot.kt"
-            line="214"
+            line="215"
             column="17"/>
     </issue>
 
@@ -371,19 +426,41 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/context/ContextSnapshot.kt"
-            line="280"
+            line="282"
             column="17"/>
     </issue>
 
     <issue
         id="ObsoleteSdkInt"
         message="Unnecessary; `SDK_INT` is always >= 26"
-        errorLine1="        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="        val networkType = if (cm != null &amp;&amp; android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/network/OTelNetworkInterceptor.kt"
-            line="220"
-            column="20"/>
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="426"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 26"
+        errorLine1="            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/buffering/MobileLogRecordProcessor.kt"
+            line="996"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 26"
+        errorLine1="            if (connectivityManager != null &amp;&amp; android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {"
+        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/MobileLoggerProvider.kt"
+            line="281"
+            column="48"/>
     </issue>
 
     <issue
@@ -393,19 +470,8 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/OnDevicePredictor.kt"
-            line="60"
+            line="63"
             column="13"/>
-    </issue>
-
-    <issue
-        id="ObsoleteSdkInt"
-        message="Unnecessary; `SDK_INT` is always >= 26"
-        errorLine1="    private val powerManager: PowerManager? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {"
-        errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/vitals/VitalsCollector.kt"
-            line="43"
-            column="51"/>
     </issue>
 
     <issue
@@ -426,7 +492,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/DeviceHealthMonitor.kt"
-            line="188"
+            line="190"
             column="9"/>
     </issue>
 
@@ -437,7 +503,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/buffering/DiskLogBuffer.kt"
-            line="254"
+            line="516"
             column="9"/>
     </issue>
 
@@ -448,7 +514,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/MobileLoggerProvider.kt"
-            line="348"
+            line="355"
             column="9"/>
     </issue>
 
@@ -459,7 +525,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/MobileOtel.kt"
-            line="61"
+            line="66"
             column="5"/>
     </issue>
 
@@ -470,7 +536,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/MobileOtel.kt"
-            line="63"
+            line="68"
             column="5"/>
     </issue>
 
@@ -481,7 +547,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/MobileOtel.kt"
-            line="64"
+            line="69"
             column="5"/>
     </issue>
 
@@ -492,19 +558,8 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/MobileOtel.kt"
-            line="65"
+            line="70"
             column="5"/>
-    </issue>
-
-    <issue
-        id="StaticFieldLeak"
-        message="Do not place Android context classes in static fields (static reference to `NavigationInstrumentation` which has field `context` pointing to `Context`); this is a memory leak"
-        errorLine1="        @Volatile"
-        errorLine2="        ^">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/navigation/NavigationInstrumentation.kt"
-            line="41"
-            column="9"/>
     </issue>
 
     <issue
@@ -514,7 +569,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/OTelMobile.kt"
-            line="44"
+            line="69"
             column="5"/>
     </issue>
 
@@ -525,7 +580,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/predictive/OnDevicePredictor.kt"
-            line="264"
+            line="268"
             column="9"/>
     </issue>
 
@@ -536,18 +591,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/core/SessionManager.kt"
-            line="85"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="StaticFieldLeak"
-        message="Do not place Android context classes in static fields (static reference to `VitalsCollector` which has field `context` pointing to `Context`); this is a memory leak"
-        errorLine1="        @Volatile"
-        errorLine2="        ^">
-        <location
-            file="src/main/java/io/opentelemetry/android/mobile/vitals/VitalsCollector.kt"
-            line="415"
+            line="81"
             column="9"/>
     </issue>
 
@@ -587,23 +631,45 @@
     <issue
         id="UseKtx"
         message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                prefs.edit().putString(KEY_DEVICE_ID, newId).apply()"
-        errorLine2="                ~~~~~~~~~~~~">
+        errorLine1="        prefs.edit().putString(alertId, System.currentTimeMillis().toString()).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/MobileLoggerProvider.kt"
-            line="389"
-            column="17"/>
+            file="src/main/java/io/opentelemetry/android/mobile/fleet/FleetAlertDeduplicator.kt"
+            line="14"
+            column="9"/>
     </issue>
 
     <issue
         id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="            val uri = Uri.parse(url)"
-        errorLine2="                      ~~~~~~~~~~~~~~">
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        val editor = prefs.edit()"
+        errorLine2="                     ~~~~~~~~~~~~">
         <location
-            file="src/main/java/io/opentelemetry/android/mobile/core/PiiScrubber.kt"
-            line="72"
-            column="23"/>
+            file="src/main/java/io/opentelemetry/android/mobile/fleet/FleetAlertDeduplicator.kt"
+            line="20"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().clear().apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/fleet/FleetAlertDeduplicator.kt"
+            line="31"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                prefs.edit().putString(KEY_DEVICE_ID, newId).apply()"
+        errorLine2="                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/io/opentelemetry/android/mobile/MobileLoggerProvider.kt"
+            line="382"
+            column="17"/>
     </issue>
 
     <issue
@@ -690,7 +756,7 @@
         errorLine2="        ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/autocapture/RecoveryTracker.kt"
-            line="150"
+            line="146"
             column="9"/>
     </issue>
 
@@ -701,18 +767,18 @@
         errorLine2="        ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/autocapture/RecoveryTracker.kt"
-            line="158"
+            line="154"
             column="9"/>
     </issue>
 
     <issue
         id="UseKtx"
         message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="            prefs.edit().putBoolean(KEY_CRASH_MARKER, true).apply()"
+        errorLine1="            prefs.edit().putBoolean(KEY_CRASH_MARKER, true).commit()"
         errorLine2="            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/autocapture/RecoveryTracker.kt"
-            line="167"
+            line="163"
             column="13"/>
     </issue>
 
@@ -723,7 +789,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/core/SessionManager.kt"
-            line="310"
+            line="324"
             column="9"/>
     </issue>
 
@@ -734,7 +800,7 @@
         errorLine2="            ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/core/SessionManager.kt"
-            line="418"
+            line="448"
             column="13"/>
     </issue>
 
@@ -745,7 +811,7 @@
         errorLine2="        ~~~~~~~~~~~~">
         <location
             file="src/main/java/io/opentelemetry/android/mobile/core/SessionManager.kt"
-            line="445"
+            line="475"
             column="9"/>
     </issue>
 
