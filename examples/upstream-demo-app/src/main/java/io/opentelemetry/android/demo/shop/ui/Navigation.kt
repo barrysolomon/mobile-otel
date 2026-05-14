@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -20,6 +21,10 @@ sealed class BottomNavItem(val route: String, val icon: ImageVector, val label: 
     data object Exit : BottomNavItem("home", Icons.AutoMirrored.Filled.ExitToApp, "Exit")
     data object List : BottomNavItem("prod-list", Icons.AutoMirrored.Filled.List, "List")
     data object Cart : BottomNavItem("cart", Icons.Filled.ShoppingCart, "Cart")
+    // Demo-only tab — surfaces a discoverable set of error/crash triggers so the
+    // SDK's error pipeline can be exercised without spelunking through hidden
+    // UI gestures (qty=10) or adb extras.
+    data object Errors : BottomNavItem("errors", Icons.Filled.Warning, "Errors")
 }
 
 object MainDestinations {

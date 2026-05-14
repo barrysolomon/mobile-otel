@@ -32,6 +32,7 @@ import io.opentelemetry.android.demo.shop.ui.cart.CartViewModel
 import io.opentelemetry.android.demo.shop.ui.cart.CheckoutConfirmationScreen
 import io.opentelemetry.android.demo.shop.ui.cart.CheckoutInfoViewModel
 import io.opentelemetry.android.demo.shop.ui.cart.InfoScreen
+import io.opentelemetry.android.demo.shop.ui.errors.ErrorTriggersScreen
 import io.opentelemetry.android.demo.shop.ui.products.ProductDetails
 import io.opentelemetry.android.demo.shop.ui.products.ProductList
 import io.opentelemetry.android.demo.theme.DemoAppTheme
@@ -67,7 +68,7 @@ fun AstronomyShopScreen() {
             Scaffold(
                 bottomBar = {
                     BottomNavigationBar(
-                        items = listOf(BottomNavItem.Exit, BottomNavItem.List, BottomNavItem.Cart),
+                        items = listOf(BottomNavItem.Exit, BottomNavItem.List, BottomNavItem.Cart, BottomNavItem.Errors),
                         currentRoute = astronomyShopNavController.currentRoute,
                         onItemClicked = { route ->
                             astronomyShopNavController.navController.navigate(route) {
@@ -95,6 +96,9 @@ fun AstronomyShopScreen() {
                         CartScreen(cartViewModel = cartViewModel, onCheckoutClick = {astronomyShopNavController.navigateToCheckoutInfo()},  onProductClick = { productId ->
                             astronomyShopNavController.navigateToProductDetail(productId)
                         })
+                    }
+                    composable(BottomNavItem.Errors.route) {
+                        ErrorTriggersScreen()
                     }
                     composable("${MainDestinations.PRODUCT_DETAIL_ROUTE}/{${MainDestinations.PRODUCT_ID_KEY}}") { backStackEntry ->
                         val productId = backStackEntry.arguments?.getString(MainDestinations.PRODUCT_ID_KEY)
