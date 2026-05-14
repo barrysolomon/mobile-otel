@@ -197,6 +197,31 @@ class DiskLogBuffer private constructor(
     }
 
     /**
+     * Synchronous variant of [persistBufferedEvents]. Used by the crash path
+     * where the calling thread is about to die (SIGKILL after the chained
+     * default UncaughtExceptionHandler runs). The async `scope.launch` form
+     * cannot be trusted to complete before process death — its coroutine
+     * may never get scheduled. Blocking the crash thread on a sqlite insert
+     * costs a few milliseconds and guarantees the buffer survives.
+     *
+     * Skips `enforceSizeLimit()` to keep the blocking section as short as
+     * possible; size enforcement runs on next normal launch via the existing
+     * `prune*` paths.
+     */
+    internal fun persistBufferedEventsBlocking(events: List<BufferedEvent>) {
+        if (events.isEmpty()) return
+        adjustCachedCount(events.size)
+        try {
+            val entities = events.map { it.toEntity() }
+            runBlocking { logDao.insertAll(entities) }
+            Log.d(TAG, "Persisted ${entities.size} buffered events to disk (blocking, crash path)")
+        } catch (e: Exception) {
+            adjustCachedCount(-events.size)
+            Log.e(TAG, "Error persisting buffered events (blocking)", e)
+        }
+    }
+
+    /**
      * Dual-clock window query: uses monotonic time for same-boot events (immune
      * to wall-clock changes) and wall-clock for cross-boot crash recovery events.
      */

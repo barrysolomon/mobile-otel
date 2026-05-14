@@ -919,8 +919,15 @@ class MobileLogRecordProcessor private constructor(
                 }
             }
             if (events.isNotEmpty()) {
-                diskBuffer.persistBufferedEvents(events)
-                Log.i(TAG, "Crash persist: wrote ${events.size} new RAM events to disk")
+                // SYNCHRONOUS write. The async `persistBufferedEvents` cannot be
+                // trusted on the crash path — its coroutine may never get
+                // scheduled before SIGKILL, which loses the most recent records
+                // including `app.crash` itself. Verified 2026-05-14 on a real
+                // Samsung A22: with the async variant, app.crash never landed
+                // in Dash0 despite the recovery flush succeeding. See memory
+                // `feedback_crash_handler_race.md`.
+                diskBuffer.persistBufferedEventsBlocking(events)
+                Log.i(TAG, "Crash persist: wrote ${events.size} new RAM events to disk (blocking)")
             } else {
                 Log.i(TAG, "Crash persist: no new events (all already mirrored)")
             }
