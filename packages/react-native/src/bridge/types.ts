@@ -23,6 +23,44 @@ export type SpanStatus = 'UNSET' | 'OK' | 'ERROR';
 export type AttrValue = string | number | boolean | null;
 export type Attributes = Record<string, AttrValue>;
 
+/**
+ * Per-trigger flags for the native screenshot module. Field names and
+ * defaults mirror Android's `ScreenshotConfig` and iOS's `ScreenshotConfig`
+ * one-to-one. All fields optional; absent fields fall through to native
+ * defaults.
+ */
+export interface ScreenshotAutoCapture {
+  /** Master on/off. Required when passing an object form. Default `true` when present. */
+  enabled?: boolean;
+  /** Capture on every screen transition. Default `false` (high payload volume). */
+  captureOnScreenView?: boolean;
+  /** Capture when an uncaught exception occurs. Default `true`. */
+  captureOnError?: boolean;
+  /** Capture whenever a buffered-export policy fires (crash-recovery, ui-freeze, http-error). Default `true`. */
+  captureOnPolicyMatch?: boolean;
+}
+
+/**
+ * Per-trigger flags for the native wireframe module. Field names and
+ * defaults mirror Android's `WireframeConfig` and iOS's `WireframeConfig`
+ * one-to-one. All fields optional; absent fields fall through to native
+ * defaults.
+ */
+export interface WireframeAutoCapture {
+  /** Master on/off. Required when passing an object form. Default `true` when present. */
+  enabled?: boolean;
+  /** Capture on every screen transition. Default `true` (primary journey trigger). */
+  captureOnScreenView?: boolean;
+  /** Capture on every tap. Default `false` — taps rarely change the view hierarchy; dedup absorbs the case anyway. */
+  captureOnTap?: boolean;
+  /** Capture when an uncaught exception occurs. Default `true`. */
+  captureOnError?: boolean;
+  /** Capture whenever a buffered-export policy fires. Default `true`. */
+  captureOnPolicyMatch?: boolean;
+  /** Emit `ui.wireframe.ref` with `mobile.wireframe.id` instead of the full JSON when content matches the last capture. Default `true`. */
+  dedupeByContentHash?: boolean;
+}
+
 export interface StartConfig {
   serviceName: string;
   serviceVersion?: string;
@@ -66,10 +104,25 @@ export interface StartConfig {
     vitals?: boolean;
     /** Native-only — periodic device health gauges (battery/thermal/network). Off by default on RN. */
     deviceStats?: boolean;
-    /** Native-only — screenshot capture at journey boundaries + errors. Off by default on RN. */
-    screenshot?: boolean;
-    /** Native-only — wireframe capture at journey boundaries + screen transitions. Off by default on RN. */
-    wireframe?: boolean;
+    /**
+     * Native-only — screenshot capture at journey boundaries + errors. Off
+     * by default on RN. Accepts either a bare boolean (`true` enables with
+     * native defaults) or an options object exposing the per-trigger flags
+     * mirrored from Android's `ScreenshotConfig` and iOS's `ScreenshotConfig`.
+     *
+     * NOTE: the per-trigger fields are forward-compatible. Today's bridge
+     * carries only the `enabled` bit through to native. Passing an object
+     * is equivalent to passing `true` until the bridge grows per-module
+     * options in a follow-up. Set the trigger flags natively (Android: in
+     * `MobileConfig.screenshotConfig`, iOS: in `MobileConfig`'s
+     * `screenshotConfig` param) until then.
+     */
+    screenshot?: boolean | ScreenshotAutoCapture;
+    /**
+     * Native-only — wireframe capture at screen transitions, optional taps,
+     * errors, and policy matches. Same shape rules as `screenshot` above.
+     */
+    wireframe?: boolean | WireframeAutoCapture;
   };
   /**
    * Extra resource attributes merged into the native SDK's resource. Used by

@@ -423,7 +423,18 @@ function buildNativeAutoCaptureTokens(ac: StartConfig['autoCapture']): string[] 
   if (!ac) return [];
   const out: string[] = [];
   for (const [flag, token] of NATIVE_AUTO_CAPTURE_FLAGS) {
-    if (ac[flag] === true) out.push(token);
+    const value = ac[flag];
+    // Object form (screenshot / wireframe per-trigger): treat as enabled
+    // unless `enabled` is explicitly `false`. The bridge protocol carries
+    // only this on/off bit today — per-trigger fields are forward-compatible
+    // and currently must be configured natively. See ScreenshotAutoCapture /
+    // WireframeAutoCapture doc comments in bridge/types.ts.
+    if (value === true) {
+      out.push(token);
+    } else if (typeof value === 'object' && value !== null) {
+      const enabled = (value as { enabled?: boolean }).enabled;
+      if (enabled !== false) out.push(token);
+    }
   }
   return out;
 }
