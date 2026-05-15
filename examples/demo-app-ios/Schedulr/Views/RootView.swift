@@ -26,6 +26,9 @@ struct RootView: View {
                 .environmentObject(api)
                 .tabItem { Label("Appointments", systemImage: "list.bullet") }
                 .accessibilityIdentifier("tab.appointments")
+            BufferDebugView()
+                .tabItem { Label("Buffer", systemImage: "internaldrive") }
+                .accessibilityIdentifier("tab.buffer")
         }
     }
 }

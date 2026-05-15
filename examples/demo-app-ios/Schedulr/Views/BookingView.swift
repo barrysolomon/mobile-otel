@@ -119,6 +119,7 @@ struct BookingView: View {
             .onDisappear {
                 if let journey = journeySpan {
                     journey.setAttribute(key: "journey.outcome", value: lastBookedTitle != nil ? "completed" : "abandoned")
+                    OpenTelemetry.instance.contextProvider.removeContextForSpan(journey)
                     journey.end()
                     journeySpan = nil
                 }

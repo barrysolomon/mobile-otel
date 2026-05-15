@@ -39,6 +39,7 @@ enum SchedulrTelemetry {
         for (k, v) in baseAttributes() {
             span.setAttribute(key: k, value: v)
         }
+        OpenTelemetry.instance.contextProvider.setActiveSpan(span)
         return span
     }
 }
