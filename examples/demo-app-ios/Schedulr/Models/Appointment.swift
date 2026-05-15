@@ -68,7 +68,14 @@ struct Provider: Identifiable, Codable, Equatable, Hashable {
 }
 
 /// Time-slot listing returned by `GET /api/slots?doctor_id=&date=`.
+/// Backend sends `{id, doctor_id, date, time, available}`; we only need
+/// `id` + `time` (rendered as the picker label).
 struct TimeSlot: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let label: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case label = "time"
+    }
 }
