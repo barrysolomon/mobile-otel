@@ -117,6 +117,41 @@ span — so you can reconstruct the order of interactions for free.
 - **Opt-out:** delete the `OTelMobile.start(...)` call. The dependency
   can stay; it does nothing without the start call
 
+### A note on sampling
+
+The SDK's default sampling rate is **5–10%** of traces. That default is
+sized for **high-volume mobile fleets** — a consumer app with millions
+of devices each producing thousands of events per day, where battery
+and bandwidth matter and you only need a representative sample.
+
+**A kiosk is the opposite environment:**
+
+- One device per store, not millions in customer pockets
+- Wall power and ethernet (battery and bandwidth are irrelevant)
+- An operator wants to see **every** order, not 1 in 20
+
+So in the kiosk reference app we override the default:
+
+```kotlin
+samplingConfig = SamplingConfig.alwaysOn(),
+```
+
+This captures 100% of traces. The trade-off is volume — every tap and
+order produces telemetry — but at kiosk scale that volume is trivial
+(a few hundred events per device per day, vs. millions for a phone fleet).
+
+If you need to dial it back later (e.g., a high-traffic drive-thru kiosk
+producing too much data), the same field accepts:
+
+| Preset                              | Use case                                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `SamplingConfig.alwaysOn()`         | Demos, single-store rollouts, anything where you want every event                              |
+| `SamplingConfig.production(0.5)`    | Multi-store rollout, 50% sample                                                                |
+| `SamplingConfig.dynamic(0.1, 1.0)`  | High volume; sample 10% of normal traces, 100% of high-priority traces (errors, payments)      |
+| `SamplingConfig.alwaysOff()`        | Quickly disable trace export without ripping out the SDK                                       |
+
+Full sampling reference: [docs/SAMPLING.md](../SAMPLING.md).
+
 ---
 
 ## Part 2 — Identify the journey
