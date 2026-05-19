@@ -22,6 +22,16 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     private let sequenceCounter: SequenceCounter
     private let sessionProvider: SessionProvider
 
+    /// Optional callback invoked after a policy match (with the matched
+    /// `policyId`) just before the selective `flushWindow` runs. Used by
+    /// `OTelMobile` to close any open journey span via
+    /// `JourneyTracker.onPolicyFlush()` so the parent span exports
+    /// alongside its children in the same flush batch — without this hook
+    /// the journey stays open while children flush, recreating the
+    /// orphan-parent symptom this whole feature is meant to fix. Mirrors
+    /// Android's `MobileLogRecordProcessor.policyMatchHook`.
+    public var policyMatchHook: (@Sendable (String) -> Void)?
+
     /// Optional disk buffer. When non-nil:
     /// - RAM evictions are spilled here (survives process death).
     /// - `forceFlushBuffered()` / `flushWindow(minutes:)` drain RAM first, then
@@ -126,6 +136,11 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             if let evaluator = policyEvaluator, let self = self {
                 let attrs = Self.attributesForEval(logRecord)
                 if let match = await evaluator.evaluate(attributes: attrs) {
+                    // Hook fires BEFORE flushWindow so the journey span can
+                    // end with outcome=flushed and be included in the same
+                    // flush batch as its children — see policyMatchHook
+                    // docs above.
+                    self.policyMatchHook?(match.policyId)
                     _ = await self.flushWindow(minutes: UInt64(match.flushWindowMinutes))
                 }
             }
