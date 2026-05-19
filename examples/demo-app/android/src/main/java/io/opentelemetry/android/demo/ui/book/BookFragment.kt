@@ -192,10 +192,23 @@ class BookFragment : Fragment() {
         btnBook.setOnClickListener { bookAppointment() }
     }
 
+    override fun onStop() {
+        // Close the journey when the fragment leaves the foreground — covers
+        // the case where the user backgrounds the app (lock screen, swipe up,
+        // recents) without `onDestroyView` ever firing. Without this, the
+        // journey span stays open, its already-ended child spans flush via the
+        // periodic batch (10s in CONTINUOUS mode), and Dash0 renders them as
+        // orphans with the parent reported as "Missing span". `onStop` is
+        // safe for in-fragment dialogs (date picker) — those don't trigger it.
+        endJourneyIfActive(outcome = "backgrounded")
+        super.onStop()
+    }
+
     override fun onDestroyView() {
-        // If the user navigated away without completing the booking, end the
-        // journey with an "abandoned" outcome so the replay timeline is still
-        // closed — no orphan journey spans.
+        // If the user navigated away without completing the booking and onStop
+        // didn't already close it, end the journey with an "abandoned"
+        // outcome so the replay timeline is still closed — no orphan
+        // journey spans.
         endJourneyIfActive(outcome = "abandoned")
         super.onDestroyView()
     }
