@@ -54,6 +54,12 @@
 - [Conditional Export for Mobile](OTEPs/OTEP-conditional-export-mobile.md)
 - [Predictive Telemetry](OTEPs/OTEP-PREDICTIVE-TELEMETRY.md)
 
+## Upstream Comparison
+
+- [Upstream vs Dash0](UPSTREAM_VS_DASH0.md) — Capability map: what `opentelemetry-android` ships vs what Dash0 fills in
+- [Comparison Tutorial](COMPARISON_TUTORIAL.md) — Runnable side-by-side demo (`upstream` vs `dash0` Gradle flavors)
+- [Upstream Supersession Epic](epics/UPSTREAM_SUPERSESSION_EPIC.md) — Convergence plan and phase tracker
+
 ## Other Resources
 
 - [Why Not a Fork](../WHY_NOT_A_FORK.md) — OTel alignment and composition-over-forking rationale
