@@ -90,6 +90,45 @@ const span = tracer.startSpan('work', { attributes: { 'code.function': 'sync' } 
 span.end();
 ```
 
+### User journeys (multi-episode, native-tracked)
+
+`Dash0Mobile.startJourney(name)` opens a long-running span representing
+a logical user task (e.g. `"checkout"`, `"book_appointment"`). All UI,
+tap, and network spans that fire while the journey is open nest under
+it automatically.
+
+```ts
+const journeyId = await Dash0Mobile.startJourney('checkout');
+// ... user interacts with the cart, payment, confirmation screens
+await Dash0Mobile.endJourney(journeyId);  // closes with outcome=ended
+```
+
+**You don't need to handle background/foreground or HTTP errors
+manually.** The native SDK (Android + iOS) takes care of it:
+
+| Lifecycle event | What lands in Dash0 |
+| --- | --- |
+| User backgrounds the app | Open journey ends with `journey.outcome=paused` and exports immediately |
+| User returns to foreground | A new linked episode starts in a fresh trace with the same `journey.id`, incremented `journey.episode`, and an OTel `Link` pointing at the previous episode |
+| HTTP error / policy match fires | Open journey ends with `journey.outcome=flushed` so the parent span exports alongside its children in the same flush batch (no orphan spans) |
+
+Every journey span carries:
+
+- `journey.name` — the name you passed in
+- `journey.id` — a UUID stable across all episodes of one logical journey
+- `journey.episode` — 1 for the first episode, incremented on each
+  background → foreground cycle
+- `journey.outcome` — `ended` (you called `endJourney`), `paused`
+  (backgrounded), or `flushed` (policy-triggered)
+
+To query a full multi-episode journey across traces:
+
+```bash
+dash0 traces get <trace_id> --follow-span-links
+```
+
+`Link`-walking stitches the episode chain back together at query time.
+
 ## What's captured automatically
 
 | Signal | Attributes | When |
