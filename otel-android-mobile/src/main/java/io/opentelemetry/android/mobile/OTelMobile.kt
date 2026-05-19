@@ -167,8 +167,21 @@ object OTelMobile {
                 // parent span exports alongside its children rather than
                 // staying open and orphaning them. No new episode is started
                 // — the user hasn't crossed a logical boundary.
+                //
+                // Also force-flush the TracerProvider so the now-closed
+                // journey span actually leaves the BatchSpanProcessor queue.
+                // HYBRID BSP schedule is 1 hour by default (see
+                // MobileLoggerProvider), so without this flush the parent
+                // would sit in-queue while the policy-flushed children land
+                // in Dash0, recreating the orphan-parent bug we just fixed.
                 instance.setPolicyMatchHook { _ ->
                     journeyTracker?.onPolicyFlush()
+                    try {
+                        instance.getOpenTelemetrySdk().sdkTracerProvider.forceFlush()
+                    } catch (t: Throwable) {
+                        android.util.Log.w("OTelMobile",
+                            "Trace forceFlush on policy match failed", t)
+                    }
                 }
             }
         }
