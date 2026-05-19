@@ -140,6 +140,36 @@ class JourneyTrackerTest {
     }
 
     @Test
+    fun `endJourneyBySpan finds the open journey by span identity and ends it`() {
+        val tracker = JourneyTracker(tracer)
+        val span = tracker.startJourney("book_appointment")
+
+        tracker.endJourneyBySpan(span, outcome = "success")
+
+        val data = onlySpan()
+        assertEquals("success", attr(data, "journey.outcome"))
+
+        // State cleared — backgrounding now must NOT emit a second span
+        tracker.onBackground()
+        tracker.onForeground()
+        assertEquals(1, otelRule.spans.size)
+    }
+
+    @Test
+    fun `endJourneyBySpan returns false for an unknown span`() {
+        val tracker = JourneyTracker(tracer)
+        val unknownSpan = tracer.spanBuilder("not_a_journey").startSpan()
+        try {
+            val ended = tracker.endJourneyBySpan(unknownSpan, outcome = "success")
+            // The tracker should NOT have ended the span and should report not-found.
+            // The caller (OTelMobile) is responsible for calling span.end() in that case.
+            kotlin.test.assertFalse(ended, "endJourneyBySpan must return false for unknown spans")
+        } finally {
+            unknownSpan.end()
+        }
+    }
+
+    @Test
     fun `endJourney before background ends the journey with the given outcome and clears state`() {
         val tracker = JourneyTracker(tracer)
         tracker.startJourney("book_appointment")

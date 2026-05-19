@@ -330,6 +330,18 @@ class MobileLoggerProvider private constructor(
         }
     }
 
+    /**
+     * Installs a hook invoked after every policy-triggered flush, with the
+     * matched policy id. Wired by [OTelMobile.start] so the journey tracker
+     * can close any open journey span (`outcome=flushed`) before the buffered
+     * children get exported, preventing orphan-parent traces. The hook is
+     * additive — if a callsite installs a hook, it replaces any previous one.
+     * Pass `null` to clear.
+     */
+    fun setPolicyMatchHook(hook: ((policyId: String) -> Unit)?) {
+        mobileProcessor.policyMatchHook = hook
+    }
+
     fun forceFlush(timeoutSeconds: Long = 30): CompletableResultCode {
         val logResult    = sdkLoggerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)
         val traceResult  = openTelemetrySdk.sdkTracerProvider.forceFlush().join(timeoutSeconds, TimeUnit.SECONDS)

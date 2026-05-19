@@ -108,6 +108,11 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
+    // ProcessLifecycleOwner — for JourneyLifecycleObserver to close open
+    // journey spans on app background and resume via cross-trace Link on
+    // foreground. Matches the version pinned by instrumentation-lifecycle.
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-common:2.8.7")
 
     // AndroidX Security for EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

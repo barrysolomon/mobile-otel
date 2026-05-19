@@ -82,6 +82,21 @@ class JourneyTracker(private val tracer: Tracer) {
     }
 
     /**
+     * Reverse-lookup variant of [endJourney] for callers that hold the [Span]
+     * returned by [startJourney] but not its name. Linear search over open
+     * journeys (typically a handful at a time) by `Span` identity.
+     *
+     * @return `true` if a matching open journey was found and ended;
+     *   `false` if the span is not tracked (caller should `Span.end()` it
+     *   themselves to avoid a leak).
+     */
+    fun endJourneyBySpan(span: Span, outcome: String): Boolean {
+        val match = openByName.entries.firstOrNull { it.value.span === span } ?: return false
+        endJourney(match.key, outcome)
+        return true
+    }
+
+    /**
      * Closes every open journey with `journey.outcome=paused` and stashes
      * each one's [SpanContext] so a subsequent [onForeground] can start a
      * linked next episode.

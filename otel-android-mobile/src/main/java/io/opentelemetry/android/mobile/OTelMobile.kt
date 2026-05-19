@@ -26,6 +26,8 @@ import io.opentelemetry.android.mobile.instrumentation.TextInputInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.VitalsInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.ScreenshotInstrumentation
 import io.opentelemetry.android.mobile.instrumentation.WireframeInstrumentation
+import io.opentelemetry.android.mobile.journey.JourneyLifecycleObserver
+import io.opentelemetry.android.mobile.journey.JourneyTracker
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -74,6 +76,12 @@ object OTelMobile {
 
     @Volatile
     private var recoveryTracker: RecoveryTracker? = null
+
+    @Volatile
+    private var journeyTracker: JourneyTracker? = null
+
+    @Volatile
+    private var journeyLifecycleObserver: JourneyLifecycleObserver? = null
 
     /**
      * Initializes the SDK and starts all auto-instrumentation.
@@ -127,6 +135,41 @@ object OTelMobile {
                 }
 
                 handle = builder.build()
+
+                // Journey tracking — survives bg/fg via cross-trace links and
+                // policy flushes via outcome=flushed. Uses the same tracer
+                // scope as the legacy inline startJourney path for continuity.
+                val tracker = JourneyTracker(
+                    instance.getOpenTelemetrySdk().getTracer("io.opentelemetry.android.mobile.journey")
+                )
+                journeyTracker = tracker
+
+                // Observe ProcessLifecycleOwner so any open journey closes on
+                // background (`outcome=paused`) and re-opens via cross-trace
+                // Link on foreground. addObserver must run on main thread —
+                // ProcessLifecycleOwner dispatches lifecycle events via its
+                // internal Handler and replays the current state on attach.
+                val observer = JourneyLifecycleObserver(tracker)
+                journeyLifecycleObserver = observer
+                val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                mainHandler.post {
+                    try {
+                        androidx.lifecycle.ProcessLifecycleOwner.get()
+                            .lifecycle.addObserver(observer)
+                    } catch (t: Throwable) {
+                        android.util.Log.w("OTelMobile",
+                            "Failed to register JourneyLifecycleObserver", t)
+                    }
+                }
+
+                // Policy-flush hook: when a policy (e.g. http-error-flush)
+                // fires, close any open journey with `outcome=flushed` so the
+                // parent span exports alongside its children rather than
+                // staying open and orphaning them. No new episode is started
+                // — the user hasn't crossed a logical boundary.
+                instance.setPolicyMatchHook { _ ->
+                    journeyTracker?.onPolicyFlush()
+                }
             }
         }
     }
@@ -137,10 +180,27 @@ object OTelMobile {
      * @param timeoutSeconds Maximum time in seconds to wait for in-flight exports to complete.
      */
     fun stop(timeoutSeconds: Long = 30) {
+        // Clear the policy hook before shutting down so a late-firing policy
+        // match can't invoke a torn-down tracker.
+        provider?.setPolicyMatchHook(null)
+
         handle?.stop(timeoutSeconds)
         handle = null
         recoveryTracker?.let { /* no stop() needed — it lives for app lifetime */ }
         recoveryTracker = null
+
+        // Detach the lifecycle observer on the main thread (mirror of attach).
+        journeyLifecycleObserver?.let { obs ->
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    androidx.lifecycle.ProcessLifecycleOwner.get()
+                        .lifecycle.removeObserver(obs)
+                } catch (_: Throwable) { /* best-effort */ }
+            }
+        }
+        journeyLifecycleObserver = null
+        journeyTracker = null
+
         MobileOtel.shutdown()
         provider = null
     }
@@ -233,6 +293,12 @@ object OTelMobile {
      */
     @Incubating
     fun startJourney(name: String): Span {
+        // Route through JourneyTracker if the SDK is started — gets journey.id,
+        // journey.episode, journey.name attribute stamping plus the bg/fg
+        // pause-resume and policy-flush safety nets. If start() hasn't been
+        // called yet (legacy callers, tests), fall back to the legacy inline
+        // tracer path so the caller still gets a valid span.
+        journeyTracker?.let { return it.startJourney(name) }
         return getTracer("io.opentelemetry.android.mobile.journey").spanBuilder(name)
             .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
             .startSpan()
@@ -248,6 +314,29 @@ object OTelMobile {
      */
     @Incubating
     fun endJourney(journey: Span) {
+        // Capture-then-end ordering matters (UJ-003): the screenshot and
+        // wireframe captures must emit BEFORE the span ends, so they inherit
+        // its Context.current() and carry the journey's trace_id. The handle
+        // does both captures + end() in the legacy path. Route through the
+        // tracker if it knows this span; otherwise fall back to the legacy
+        // path so we don't leak the span.
+        val tracker = journeyTracker
+        if (tracker != null) {
+            // Captures first — the span is still open and current at this moment.
+            handle?.let { h ->
+                try {
+                    h.captureScreenshot("journey_end")
+                    h.captureWireframe("journey_end")
+                } catch (_: Throwable) { /* capture is best-effort */ }
+            }
+            val ended = tracker.endJourneyBySpan(journey, outcome = "ended")
+            if (!ended) {
+                // Span wasn't created via the tracker (e.g. caller used the
+                // direct tracer API). End it directly so we don't leak.
+                journey.end()
+            }
+            return
+        }
         handle?.endJourney(journey) ?: journey.end()
     }
 
