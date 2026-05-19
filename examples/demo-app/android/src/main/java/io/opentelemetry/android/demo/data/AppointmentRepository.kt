@@ -199,8 +199,14 @@ object AppointmentRepository {
                 val slotsJson = JSONArray(client.get(
                     "${backendUrl(context)}/api/slots?doctor_id=$doctorId&date=$dateStr"
                 ))
+                // When no local slot matches, fall through with a bogus slot_id so the
+                // backend rejects with a real HTTP 404. This is the only way to exercise
+                // the OTelNetworkInterceptor's http.error emission path that the DSL
+                // `http_match` matcher keys on — the same trick `fetchAppointments` uses
+                // for its DebugToolbar HTTP500 button (see lines 145-149 above).
+                // Synthetic `throw ApiException(404, ...)` would never trigger the policy.
                 val slotId = findMatchingSlotId(slotsJson, timeSlot)
-                    ?: throw ApiException(404, "No available slot for $timeSlot")
+                    ?: "no-slot-$timeSlot"
 
                 val body = JSONObject().apply {
                     put("doctor_id", doctorId)
