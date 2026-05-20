@@ -1,6 +1,6 @@
 # Epic: Scale Readiness — Production Hardening for Fleet Deployment
 
-**Status:** Planned
+**Status:** In progress — 5/25 complete (SR-008, SR-009, SR-018, SR-021, SR-025)
 **Priority:** P0
 **Owner:** TBD
 **Created:** 2026-04-07
@@ -43,8 +43,8 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 |----|-------|---------|------------|
 | SR-006 | fallbackToDestructiveMigration silently drops data | DiskLogBuffer:59 | [SR-006](../design/sr-006-room-migrations.md) |
 | SR-007 | VACUUM on hot insert path blocks all DB writes | DiskLogBuffer:299 | [SR-007](../design/sr-007-deferred-vacuum.md) |
-| SR-008 | PolicyEvaluator creates own OkHttpClient | PolicyEvaluator:88 | Inline fix |
-| SR-009 | RetryableExporter has no jitter — thundering herd | RetryableExporter:172 | Inline fix |
+| SR-008 | ✅ PolicyEvaluator accepts injected OkHttpClient (2026-05-20). Wiring it through `OTelMobileBuilder` is the follow-on. | PolicyEvaluator:88 | Inline fix |
+| SR-009 | ✅ Full-jitter backoff on Android + iOS (2026-05-20). | RetryableExporter:172 (Android), RetryableExporter.swift:69 (iOS) | Inline fix |
 | SR-010 | LogTailBuffer holds read lock during user predicate | LogTailBuffer:100 | [SR-010](../design/sr-010-lock-free-trigger-eval.md) |
 | SR-011 | ContextSnapshot reads demo_app_prefs in SDK code | ContextSnapshot:119 | Inline fix |
 | SR-012 | Go processor recompiles regex on every call | processor.go:204 | Inline fix |
@@ -58,7 +58,7 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 | SR-015 | enforceSizeLimit reads filesystem size, over-deletes | DiskLogBuffer:283 | Covered by SR-007 |
 | SR-016 | markCleanShutdown on background misses OOM kills | AppLifecycleDetector:336 | [SR-016](../design/sr-016-crash-recovery-accuracy.md) |
 | SR-017 | ErrorInstrumentation forceFlush on crash thread | ErrorInstrumentation:78 | [SR-017](../design/sr-017-crash-safe-flush.md) |
-| SR-018 | getAttributeValue only checks stringKey — numeric conditions never match | PolicyEvaluator:228 | Inline fix |
+| SR-018 | ✅ getAttributeValue tries all 4 AttributeKey types (shipped 2026-04-14, see [Session 2026-04-14](../../../../.claude/projects/-Users-barrysolomon-Projects-Dash0-mobile-observability/memory/project_session_2026_04_14.md)). | PolicyEvaluator:230-235 | Inline fix |
 | SR-019 | flushWindow deletes by timestamp not row IDs — TOCTOU data loss | DiskLogBuffer:174, MobileLogRecordProcessor:553 | [SR-019](../design/sr-019-id-based-delete.md) |
 
 ### LOW (Fix opportunistically)
@@ -66,11 +66,11 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 | ID | Title | File(s) |
 |----|-------|---------|
 | SR-020 | regexCache synchronized LinkedHashMap serializes evals | PolicyEvaluator:83 |
-| SR-021 | isLocalhostEndpoint misses IPv6 [::1] | MobileConfig:151 |
+| SR-021 | ✅ isLocalhostEndpoint accepts IPv6 `[::1]` and full form (2026-05-20). | MobileConfig:166-185 |
 | SR-022 | JankDetector may construct Choreographer on wrong thread | JankDetector:35 |
 | SR-023 | DynamicSampler negative-Long bias — 50% always sampled | DynamicSampler:209 |
 | SR-024 | ContextSnapshot demographics may constitute PII | ContextSnapshot:72 |
-| SR-025 | Go processor type assertion on event.name can panic | processor.go:106 |
+| SR-025 | ✅ Comma-ok type assertion + body fall-back (2026-05-20). | processor.go:106 |
 
 ---
 

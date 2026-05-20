@@ -101,9 +101,18 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
 	// Evaluate policies (first match wins for policy.id annotation)
 	for _, policy := range mpp.policies {
 		if mpp.evaluatePolicy(policy, attrs) {
+			// SR-025: a log record may carry an attribute literally named
+			// "event.name" with a non-string value. That overwrites the
+			// string seeded from the body, so a bare `.(string)` would
+			// panic here and take down the whole batch. Comma-ok form,
+			// with the body as the always-string fallback for the log.
+			eventName, ok := attrs["event.name"].(string)
+			if !ok {
+				eventName = lr.Body().AsString()
+			}
 			mpp.logger.Debug("Policy matched",
 				zap.String("policy_id", policy.ID),
-				zap.String("event.name", attrs["event.name"].(string)))
+				zap.String("event.name", eventName))
 
 			// Annotate log record with policy match
 			mpp.annotateLogRecord(lr, policy)

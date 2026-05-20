@@ -13,6 +13,8 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.random.Random
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -187,6 +189,71 @@ class RetryableExporterTest {
         assertTrue(result.isSuccess, "Should succeed on second attempt")
         assertTrue(attemptCount.get() == 2,
             "Should have attempted exactly 2 times, got ${attemptCount.get()}")
+    }
+
+    // ── SR-009: backoff jitter (anti-thundering-herd) ────────────────────────
+
+    // Without jitter the formula min(initial * 2^attempt, cap) is deterministic,
+    // so a fleet of devices coming back online together retries in lockstep and
+    // re-DDoS's the collector. Full jitter: pick a uniform-random delay in
+    // [0, min(initial * 2^attempt, cap)].
+
+    private fun newExporterFor(delegate: LogRecordExporter, random: Random): RetryableExporter {
+        return RetryableExporter(
+            delegate = delegate,
+            maxRetries = 3,
+            initialDelayMs = 1000,
+            maxDelayMs = 60_000,
+            random = random,
+        )
+    }
+
+    @Test
+    fun `calculateBackoff stays within full-jitter envelope`() {
+        val noopDelegate = object : FakeExporter() {
+            override fun export(logs: Collection<LogRecordData>) = CompletableResultCode.ofSuccess()
+        }
+        exporter = newExporterFor(noopDelegate, Random(42))
+
+        // initial=1000, cap=60000. Attempt 0 ceiling=1000, attempt 3 ceiling=8000,
+        // attempt 6 saturates to cap=60000. All draws must land in [0, ceiling].
+        repeat(20) {
+            val attempt0 = exporter!!.calculateBackoffForTest(0)
+            val attempt3 = exporter!!.calculateBackoffForTest(3)
+            val attempt6 = exporter!!.calculateBackoffForTest(6)
+            assertTrue(attempt0 in 0L..1000L, "attempt 0 out of envelope: $attempt0")
+            assertTrue(attempt3 in 0L..8000L, "attempt 3 out of envelope: $attempt3")
+            assertTrue(attempt6 in 0L..60_000L, "attempt 6 out of envelope: $attempt6")
+        }
+    }
+
+    @Test
+    fun `calculateBackoff produces different delays across attempts`() {
+        // The contract we care about for thundering herd is non-determinism per
+        // call. With a fixed seed, drawing the same attempt-N many times must
+        // not produce the same value every time.
+        val noopDelegate = object : FakeExporter() {
+            override fun export(logs: Collection<LogRecordData>) = CompletableResultCode.ofSuccess()
+        }
+        exporter = newExporterFor(noopDelegate, Random(42))
+
+        val draws = (1..10).map { exporter!!.calculateBackoffForTest(3) }
+        assertTrue(draws.toSet().size > 1,
+            "Expected jittered backoff; all 10 draws identical: $draws")
+    }
+
+    @Test
+    fun `calculateBackoff with deterministic random returns predictable value`() {
+        // Sanity check the seam: a seeded Random produces a known first draw,
+        // proving the injected random is actually used.
+        val noopDelegate = object : FakeExporter() {
+            override fun export(logs: Collection<LogRecordData>) = CompletableResultCode.ofSuccess()
+        }
+        val seeded = Random(12345)
+        val expected = seeded.nextLong(0, 1001) // mirror the production call
+        exporter = newExporterFor(noopDelegate, Random(12345))
+
+        assertEquals(expected, exporter!!.calculateBackoffForTest(0))
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

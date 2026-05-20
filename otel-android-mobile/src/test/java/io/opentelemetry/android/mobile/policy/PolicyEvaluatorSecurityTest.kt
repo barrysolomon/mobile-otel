@@ -16,13 +16,17 @@ import io.opentelemetry.sdk.common.InstrumentationScopeInfo
 import io.opentelemetry.sdk.logs.data.Body
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.resources.Resource
+import okhttp3.OkHttpClient
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -227,6 +231,30 @@ class PolicyEvaluatorSecurityTest {
             """{"id": "policy-$i", "enabled": true, "trigger": {"any": [{"event": "event.$i"}]}, "actions": [{"type": "flush_window", "minutes": 2}]}"""
         }
         return """{"version": 1, "workflows": [$policies]}"""
+    }
+
+    // SR-008: PolicyEvaluator must accept an injected OkHttpClient so callers
+    // can share the SDK's connection pool / dispatcher pool instead of every
+    // PolicyEvaluator instance constructing its own (which wastes fds + threads
+    // at fleet scale).
+
+    @Test
+    fun `accepts injected OkHttpClient via constructor`() {
+        val sharedClient = OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .build()
+        val ev = PolicyEvaluator(context, config, httpClient = sharedClient)
+        assertNotNull(ev)
+    }
+
+    @Test
+    fun `exposes injected OkHttpClient via getHttpClientForTest`() {
+        val sharedClient = OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .build()
+        val ev = PolicyEvaluator(context, config, httpClient = sharedClient)
+        assertSame(sharedClient, ev.getHttpClientForTest(),
+            "Injected client must be used, not a freshly constructed one")
     }
 
     private fun createLogRecord(eventName: String): LogRecordData = object : LogRecordData {

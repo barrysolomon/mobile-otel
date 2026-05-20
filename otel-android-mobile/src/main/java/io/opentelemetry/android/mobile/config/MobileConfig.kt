@@ -163,11 +163,27 @@ data class MobileConfig(
     }
 
     companion object {
+        private val IPV6_LOOPBACK_HOSTS = setOf(
+            "::1",
+            "0:0:0:0:0:0:0:1",
+        )
+
         private fun isLocalhostEndpoint(endpoint: String): Boolean {
-            val host = endpoint.removePrefix("http://").substringBefore(":")
-                .substringBefore("/")
-            return host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
+            val authority = endpoint.removePrefix("http://").substringBefore("/")
+            val host = if (authority.startsWith("[")) {
+                authority.substringAfter("[").substringBefore("]")
+            } else {
+                authority.substringBefore(":")
+            }
+            return host == "localhost" ||
+                host == "127.0.0.1" ||
+                host == "10.0.2.2" ||
+                host in IPV6_LOOPBACK_HOSTS
         }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun isLocalhostEndpointForTest(endpoint: String): Boolean =
+            isLocalhostEndpoint(endpoint.lowercase())
 
         fun builder(): Builder = Builder()
     }

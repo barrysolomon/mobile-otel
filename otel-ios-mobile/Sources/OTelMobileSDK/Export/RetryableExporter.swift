@@ -7,10 +7,12 @@ import OTelMobileCore
 /// exponential backoff and publishes every transition to
 /// `ExportStatusManager`. Direct port of Android's `RetryableExporter`.
 ///
-/// Retry math (matches Android exactly):
-///     delay = min(initialDelayMs × 2^(attempt-1), maxDelayMs)
-/// First retry waits `initialDelayMs`, doubling each attempt up to
-/// `maxDelayMs`. Defaults: 3 retries, 1s initial, 60s ceiling.
+/// Retry math (matches Android exactly) — SR-009 full-jitter envelope:
+///     ceiling = min(initialDelayMs × 2^(attempt-1), maxDelayMs)
+///     delay   = uniform-random in [0, ceiling]
+/// First retry envelope is `initialDelayMs`, doubling each attempt up to
+/// `maxDelayMs`. Jitter prevents fleet-wide thundering-herd retries after
+/// a shared collector outage. Defaults: 3 retries, 1s initial, 60s ceiling.
 ///
 /// **Why blocking, not async:** the upstream `LogRecordExporter` protocol
 /// is synchronous — `BatchLogRecordProcessor` calls `export(...)` from a
@@ -30,6 +32,7 @@ import OTelMobileCore
 public final class RetryableExporter: LogRecordExporter, @unchecked Sendable {
     private let delegate: LogRecordExporter
     private let statusManager: ExportStatusManager
+    private let jitter: (Int) -> Int
     public let maxRetries: Int
     public let initialDelayMs: Int
     public let maxDelayMs: Int
@@ -39,13 +42,15 @@ public final class RetryableExporter: LogRecordExporter, @unchecked Sendable {
         maxRetries: Int = 3,
         initialDelayMs: Int = 1000,
         maxDelayMs: Int = 60000,
-        statusManager: ExportStatusManager = .shared
+        statusManager: ExportStatusManager = .shared,
+        jitter: @escaping (Int) -> Int = { ceiling in Int.random(in: 0...max(0, ceiling)) }
     ) {
         self.delegate = delegate
         self.statusManager = statusManager
         self.maxRetries = max(0, maxRetries)
         self.initialDelayMs = max(0, initialDelayMs)
         self.maxDelayMs = max(0, maxDelayMs)
+        self.jitter = jitter
     }
 
     public func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult {
@@ -66,7 +71,8 @@ public final class RetryableExporter: LogRecordExporter, @unchecked Sendable {
                 ))
                 return .failure
             }
-            let delayMs = min(initialDelayMs * (1 << (attempt - 1)), maxDelayMs)
+            let ceiling = min(initialDelayMs * (1 << (attempt - 1)), maxDelayMs)
+            let delayMs = jitter(ceiling)
             statusManager.notify(.retrying(
                 attempt: attempt,
                 maxAttempts: maxRetries,

@@ -75,7 +75,8 @@ class PolicyEvaluator(
     private val context: Context,
     private val config: MobileConfig,
     private val collectorEndpoint: String = config.collectorEndpoint,
-    private val configPollIntervalSeconds: Long = config.configPollIntervalSeconds
+    private val configPollIntervalSeconds: Long = config.configPollIntervalSeconds,
+    httpClient: OkHttpClient? = null,
 ) {
     private val TAG = "PolicyEvaluator"
 
@@ -85,10 +86,17 @@ class PolicyEvaluator(
             size > MAX_REGEX_CACHE
     }
 
-    private val httpClient = OkHttpClient.Builder()
+    // SR-008: prefer an injected OkHttpClient so callers can share the SDK's
+    // connection pool / dispatcher across components. Construct a private one
+    // only when nothing was injected (preserves the old default behaviour for
+    // existing call sites).
+    private val httpClient: OkHttpClient = httpClient ?: OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
+
+    @androidx.annotation.VisibleForTesting
+    internal fun getHttpClientForTest(): OkHttpClient = this.httpClient
 
     // Current policy configuration (thread-safe)
     private val policyConfig = AtomicReference<PolicyConfig?>(null)
