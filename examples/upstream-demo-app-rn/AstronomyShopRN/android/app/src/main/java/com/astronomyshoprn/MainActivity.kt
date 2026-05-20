@@ -25,6 +25,25 @@ class MainActivity : ReactActivity() {
 
     super.onCreate(savedInstanceState)
 
+    maybeScheduleGate3Crash(intent)
+  }
+
+  // The UAT runner triggers the crash via
+  //   `am start --activity-single-top ... --ez gate3_crash true`
+  // which delivers the intent to `onNewIntent` when MainActivity is already
+  // running (true in CONTINUOUS mode, where the SDK's periodic exporter keeps
+  // references alive between lifecycle cycles). Without this override the
+  // gate3 flag is silently dropped and the test crash never fires — manifests
+  // as `rn-android cell 2 (cont/online/yes)` failing recovery_present=0.
+  override fun onNewIntent(intent: android.content.Intent?) {
+    super.onNewIntent(intent)
+    if (intent != null) {
+      setIntent(intent)
+      maybeScheduleGate3Crash(intent)
+    }
+  }
+
+  private fun maybeScheduleGate3Crash(intent: android.content.Intent?) {
     if (intent?.getBooleanExtra("gate3_crash", false) == true) {
       intent.removeExtra("gate3_crash")
       android.util.Log.i("AstronomyShopRN", "Gate3: scheduling crash in 3s")
