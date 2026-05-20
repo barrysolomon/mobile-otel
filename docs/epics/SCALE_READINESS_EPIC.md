@@ -1,6 +1,6 @@
 # Epic: Scale Readiness — Production Hardening for Fleet Deployment
 
-**Status:** In progress — 10/25 complete (SR-008, SR-009, SR-011, SR-012, SR-018, SR-021, SR-022, SR-023, SR-024, SR-025)
+**Status:** In progress — 11/25 (10 fixed + 1 resolved-by-discovery): SR-008, SR-009, SR-011, SR-012, SR-013, SR-018, SR-021, SR-022, SR-023, SR-024, SR-025
 **Priority:** P0
 **Owner:** TBD
 **Created:** 2026-04-07
@@ -53,7 +53,7 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 
 | ID | Title | File(s) | Design Doc |
 |----|-------|---------|------------|
-| SR-013 | DynamicSampler non-atomic read→write lock upgrade | DynamicSampler:165 | Inline fix |
+| SR-013 | ✅ Resolved-by-discovery (2026-05-20): Kotlin stdlib's `lock.write { }` extension explicitly releases held read locks before acquiring write, then re-acquires them — so the pattern at DynamicSampler:165-177 is *not* deadlock-prone as originally claimed. Regression test pinned in DynamicSamplerTest. | DynamicSampler:165 | Inline fix |
 | SR-014 | MobileLoggerProvider singleton never reset on shutdown | MobileLoggerProvider:282 | Covered by SR-003 |
 | SR-015 | enforceSizeLimit reads filesystem size, over-deletes | DiskLogBuffer:283 | Covered by SR-007 |
 | SR-016 | markCleanShutdown on background misses OOM kills | AppLifecycleDetector:336 | [SR-016](../design/sr-016-crash-recovery-accuracy.md) |

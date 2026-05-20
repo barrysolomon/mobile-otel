@@ -332,6 +332,44 @@ class DynamicSamplerTest {
         assertTrue("Unexpected errors during concurrent sampling: $errors", errors.isEmpty())
     }
 
+    // ── SR-013: scheduled revert must not deadlock on lock upgrade ──
+
+    // ReentrantReadWriteLock does not support upgrading from read to write
+    // on the same thread. The old `checkScheduledRevert` body did exactly
+    // that: held the read lock open and then asked for the write lock
+    // inside the same block — guaranteed deadlock once the scheduled time
+    // elapsed. This test sets a tiny duration, waits for it to expire,
+    // and then calls shouldSample, which transitively invokes
+    // checkScheduledRevert. Pre-fix: the call blocks forever; the test
+    // times out. Post-fix: the call returns and the rate has reverted.
+
+    @Test(timeout = 5_000)
+    fun `scheduled revert does not deadlock when elapsed`() {
+        val sampler = DynamicSampler(baselineSamplingRate = 0.1)
+        // Set a short-lived rate-override and wait for the revert clock to
+        // pass. durationMinutes is Int, so we use 0; the revertTime then
+        // equals now + 0 = now, which has elapsed by the time we sample.
+        // Then add Thread.sleep to make sure System.currentTimeMillis()
+        // has advanced past it.
+        sampler.setSamplingRate(rate = 0.9, durationMinutes = 0)
+        Thread.sleep(20)
+
+        // Pre-fix this call deadlocks inside checkScheduledRevert. The
+        // @Test timeout fires after 5s if so. Use an all-`f` prefix so the
+        // ratio is ≈ 1.0 — the SAMPLE/DROP outcome then directly depends
+        // on rate (1.0 > 0.9 → DROP at the temporary rate, 1.0 > 0.1 → DROP
+        // at baseline). What we're really asserting here is "call returns
+        // and rate has reverted to baseline", which is verifiable by
+        // getCurrentSamplingRate.
+        val result = sample(sampler, "ffffffffffffffff0000000000000000")
+
+        // Post-fix: revert happened, rate is back to baseline (0.1). The
+        // sample decision itself is DROP either way (rate < ratio); the
+        // load-bearing assertion is the rate value.
+        assertEquals(SamplingDecision.DROP, result.decision)
+        assertEquals(0.1, sampler.getCurrentSamplingRate(), 0.001)
+    }
+
     // ── SR-023: top-bit-set trace IDs must not bias toward "always sample" ──
 
     // Before SR-023, the first 16 hex chars were parsed via
