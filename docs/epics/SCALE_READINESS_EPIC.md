@@ -1,6 +1,6 @@
 # Epic: Scale Readiness — Production Hardening for Fleet Deployment
 
-**Status:** In progress — 5/25 complete (SR-008, SR-009, SR-018, SR-021, SR-025)
+**Status:** In progress — 10/25 complete (SR-008, SR-009, SR-011, SR-012, SR-018, SR-021, SR-022, SR-023, SR-024, SR-025)
 **Priority:** P0
 **Owner:** TBD
 **Created:** 2026-04-07
@@ -46,8 +46,8 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 | SR-008 | ✅ PolicyEvaluator accepts injected OkHttpClient (2026-05-20). Wiring it through `OTelMobileBuilder` is the follow-on. | PolicyEvaluator:88 | Inline fix |
 | SR-009 | ✅ Full-jitter backoff on Android + iOS (2026-05-20). | RetryableExporter:172 (Android), RetryableExporter.swift:69 (iOS) | Inline fix |
 | SR-010 | LogTailBuffer holds read lock during user predicate | LogTailBuffer:100 | [SR-010](../design/sr-010-lock-free-trigger-eval.md) |
-| SR-011 | ContextSnapshot reads demo_app_prefs in SDK code | ContextSnapshot:119 | Inline fix |
-| SR-012 | Go processor recompiles regex on every call | processor.go:204 | Inline fix |
+| SR-011 | ✅ SDK no longer reads `demo_app_prefs` literally; demographics opt-in via `MobileConfig.userContextPrefsName` (2026-05-20). Demo app sets it explicitly. | ContextSnapshot:119 | Inline fix |
+| SR-012 | ✅ Per-processor compiled-regex cache bounded to 256 entries with RWMutex (2026-05-20). | processor.go:204 | Inline fix |
 
 ### MEDIUM (Fix before GA)
 
@@ -67,9 +67,9 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 |----|-------|---------|
 | SR-020 | regexCache synchronized LinkedHashMap serializes evals | PolicyEvaluator:83 |
 | SR-021 | ✅ isLocalhostEndpoint accepts IPv6 `[::1]` and full form (2026-05-20). | MobileConfig:166-185 |
-| SR-022 | JankDetector may construct Choreographer on wrong thread | JankDetector:35 |
-| SR-023 | DynamicSampler negative-Long bias — 50% always sampled | DynamicSampler:209 |
-| SR-024 | ContextSnapshot demographics may constitute PII | ContextSnapshot:72 |
+| SR-022 | ✅ Choreographer.getInstance() is now lazy — safe to construct off-main (2026-05-20). | JankDetector:35 |
+| SR-023 | ✅ Trace-ID ratio computed via ULong (2026-05-20) — fixes 50%-always-sampled bias on top-bit-set IDs. | DynamicSampler:209 |
+| SR-024 | ✅ Demographics opt-in via `MobileConfig.userContextPrefsName` (2026-05-20). Privacy note in field KDoc. | ContextSnapshot:72 |
 | SR-025 | ✅ Comma-ok type assertion + body fall-back (2026-05-20). | processor.go:106 |
 
 ---

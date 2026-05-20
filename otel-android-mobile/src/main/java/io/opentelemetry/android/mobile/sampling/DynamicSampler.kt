@@ -198,15 +198,19 @@ class DynamicSampler(
             traceId.padEnd(16, '0')
         }
 
-        val traceIdLong = try {
-            java.lang.Long.parseUnsignedLong(traceIdPrefix, 16)
+        val traceIdULong = try {
+            java.lang.Long.parseUnsignedLong(traceIdPrefix, 16).toULong()
         } catch (e: NumberFormatException) {
             // Invalid trace ID, default to sampling
             return true
         }
 
-        // Convert to 0.0-1.0 range
-        val traceIdRatio = traceIdLong.toDouble() / Long.MAX_VALUE.toDouble()
+        // SR-023: divide as unsigned. Previously this used signed Long math,
+        // so any trace ID whose top bit was set parsed to a negative Long,
+        // yielded a negative ratio, and `ratio < rate` evaluated true — so
+        // ~50% of all trace IDs sampled regardless of rate. Using ULong here
+        // gives a true [0.0, 1.0] ratio aligned with the OTel spec.
+        val traceIdRatio = traceIdULong.toDouble() / ULong.MAX_VALUE.toDouble()
 
         return traceIdRatio < rate
     }

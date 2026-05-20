@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"sync"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -16,12 +17,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// regexCacheMax bounds the per-processor compiled-regex cache. Aligned with
+// the Android SDK's MAX_REGEX_CACHE so both sides hold a comparable working
+// set under load.
+const regexCacheMax = 256
+
 // mobilePolicyProcessor implements policy-based annotation and filtering for mobile telemetry
 type mobilePolicyProcessor struct {
 	logger   *zap.Logger
 	config   *Config
 	policies []Policy
 	next     consumer.Logs
+
+	// SR-012: cache compiled regexes per pattern to avoid recompiling on
+	// every policy evaluation. Bounded to regexCacheMax entries; eviction
+	// is best-effort drop-all on overflow (simple and correct under
+	// concurrent load).
+	regexCacheMu sync.RWMutex
+	regexCache   map[string]*regexp.Regexp
 }
 
 // newMobilePolicyProcessor creates a new mobile policy processor
@@ -31,11 +44,45 @@ func newMobilePolicyProcessor(
 	next consumer.Logs,
 ) (*mobilePolicyProcessor, error) {
 	return &mobilePolicyProcessor{
-		logger:   logger,
-		config:   cfg,
-		policies: cfg.Policies,
-		next:     next,
+		logger:     logger,
+		config:     cfg,
+		policies:   cfg.Policies,
+		next:       next,
+		regexCache: make(map[string]*regexp.Regexp, regexCacheMax),
 	}, nil
+}
+
+// getOrCompileRegex returns the compiled regex for `pattern`, compiling and
+// caching on first use. Concurrency: many readers + occasional writers, so
+// RWMutex with a double-check under the write lock. Bounded to
+// regexCacheMax — on overflow we drop the cache (best-effort eviction); the
+// alternative is an LRU which adds dependency weight for negligible benefit
+// on a single config that's loaded a handful of times.
+func (mpp *mobilePolicyProcessor) getOrCompileRegex(pattern string) (*regexp.Regexp, error) {
+	mpp.regexCacheMu.RLock()
+	if cached, ok := mpp.regexCache[pattern]; ok {
+		mpp.regexCacheMu.RUnlock()
+		return cached, nil
+	}
+	mpp.regexCacheMu.RUnlock()
+
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	mpp.regexCacheMu.Lock()
+	defer mpp.regexCacheMu.Unlock()
+	// Double-check after acquiring the write lock — another goroutine may
+	// have populated the entry while we were compiling.
+	if existing, ok := mpp.regexCache[pattern]; ok {
+		return existing, nil
+	}
+	if len(mpp.regexCache) >= regexCacheMax {
+		mpp.regexCache = make(map[string]*regexp.Regexp, regexCacheMax)
+	}
+	mpp.regexCache[pattern] = compiled
+	return compiled, nil
 }
 
 // Start is called when the processor is started
@@ -209,15 +256,15 @@ func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition
 		return containsString(strValue, *condition.Contains)
 	}
 
-	// Regex
+	// Regex (compiled-once via cache — SR-012)
 	if condition.Regex != nil {
 		strValue := fmt.Sprintf("%v", value)
-		matched, err := regexp.MatchString(*condition.Regex, strValue)
+		compiled, err := mpp.getOrCompileRegex(*condition.Regex)
 		if err != nil {
 			mpp.logger.Warn("Invalid regex", zap.String("regex", *condition.Regex), zap.Error(err))
 			return false
 		}
-		return matched
+		return compiled.MatchString(strValue)
 	}
 
 	return false

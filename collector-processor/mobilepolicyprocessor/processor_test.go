@@ -657,6 +657,41 @@ func float64Ptr(f float64) *float64 {
 	return &f
 }
 
+// TestGetOrCompileRegex_CachesByPattern — SR-012
+//
+// regexp.MatchString recompiles the regex on every policy evaluation. At
+// fleet scale that's measurable waste. Verify same pattern returns the
+// same *regexp.Regexp pointer (cached), and different patterns return
+// different pointers (not pinning to a single cache slot).
+func TestGetOrCompileRegex_CachesByPattern(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, err := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+	require.NoError(t, err)
+
+	r1, err := processor.getOrCompileRegex(`^ui\..*`)
+	require.NoError(t, err)
+	r2, err := processor.getOrCompileRegex(`^ui\..*`)
+	require.NoError(t, err)
+	require.Same(t, r1, r2, "same pattern must return cached compiled regex")
+
+	r3, err := processor.getOrCompileRegex(`^app\..*`)
+	require.NoError(t, err)
+	require.NotSame(t, r1, r3, "different pattern must compile a new regex")
+}
+
+// TestGetOrCompileRegex_InvalidPatternReturnsError — SR-012
+//
+// Bad patterns must surface a compile error rather than panic or cache a
+// nil pointer that later derefs.
+func TestGetOrCompileRegex_InvalidPatternReturnsError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, err := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+	require.NoError(t, err)
+
+	_, err = processor.getOrCompileRegex(`[unclosed`)
+	require.Error(t, err, "invalid regex must return error")
+}
+
 // TestProcessLogRecord_EventNameOverridenByNonStringAttr — SR-025
 //
 // processLogRecord seeds attrs["event.name"] from the log body (always

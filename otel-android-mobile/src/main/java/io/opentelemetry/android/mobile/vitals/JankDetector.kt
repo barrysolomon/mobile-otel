@@ -32,7 +32,11 @@ class JankDetector private constructor(
     private val logger: Logger?
 ) : Choreographer.FrameCallback {
 
-    private val choreographer = Choreographer.getInstance()
+    // SR-022: Choreographer.getInstance() requires a thread with a Looper.
+    // Lazy-init pushes the requirement to startMonitoring/stopMonitoring,
+    // which the SDK already runs on main. Constructing JankDetector off-main
+    // (e.g. from a worker pool or a customization hook) no longer throws.
+    private val choreographer: Choreographer by lazy { Choreographer.getInstance() }
     private var lastFrameTimeNanos = AtomicLong(0)
     private var isMonitoring = false
     private val handler = Handler(Looper.getMainLooper())
@@ -188,6 +192,16 @@ class JankDetector private constructor(
          * Get jank detector instance.
          */
         fun getInstance(): JankDetector? = instance
+
+        /**
+         * Test-only constructor. Bypasses the singleton wiring and the
+         * automatic startMonitoring() that initialize() performs — used
+         * by SR-022's thread-safety test to exercise construction without
+         * triggering Choreographer access. Not for production use.
+         */
+        @androidx.annotation.VisibleForTesting
+        internal fun createForTest(config: VitalsConfig): JankDetector =
+            JankDetector(config, null, null)
 
         /**
          * Check if jank detector is initialized.
