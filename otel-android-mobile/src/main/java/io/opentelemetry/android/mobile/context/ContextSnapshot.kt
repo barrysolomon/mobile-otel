@@ -116,8 +116,13 @@ object ContextSnapshotProvider {
      * @return ContextSnapshot with current device/geo state
      */
     fun getSnapshot(context: Context, config: MobileConfig): ContextSnapshot {
-        // Read demographics from SharedPreferences if available
-        val prefs = context.getSharedPreferences("demo_app_prefs", Context.MODE_PRIVATE)
+        // SR-011 + SR-024: only read demographics when the app explicitly
+        // opts in via MobileConfig.userContextPrefsName. The SDK no longer
+        // bakes the demo app's prefs file name into library code, and apps
+        // that don't need demographics never touch SharedPreferences here.
+        val prefs = config.userContextPrefsName?.let {
+            context.getSharedPreferences(it, Context.MODE_PRIVATE)
+        }
 
         return ContextSnapshot(
             // Geo (coarse, privacy-safe)
@@ -134,11 +139,11 @@ object ContextSnapshotProvider {
             batteryState = getBatteryState(context),
             buildChannel = config.buildChannel ?: ContextSnapshot.CHANNEL_UNKNOWN,
 
-            // User demographics (optional, from SharedPreferences)
-            deviceType = prefs.getString("user_device_type", null),
-            userRegion = prefs.getString("user_region", null),
-            ageGroup = prefs.getString("user_age_group", null),
-            tier = prefs.getString("user_tier", null)
+            // User demographics — opt-in via MobileConfig.userContextPrefsName.
+            deviceType = prefs?.getString("user_device_type", null),
+            userRegion = prefs?.getString("user_region", null),
+            ageGroup = prefs?.getString("user_age_group", null),
+            tier = prefs?.getString("user_tier", null),
         )
     }
 

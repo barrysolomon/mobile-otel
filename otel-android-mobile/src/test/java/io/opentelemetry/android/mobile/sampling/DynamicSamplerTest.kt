@@ -332,6 +332,90 @@ class DynamicSamplerTest {
         assertTrue("Unexpected errors during concurrent sampling: $errors", errors.isEmpty())
     }
 
+    // ── SR-013: scheduled revert must not deadlock on lock upgrade ──
+
+    // ReentrantReadWriteLock does not support upgrading from read to write
+    // on the same thread. The old `checkScheduledRevert` body did exactly
+    // that: held the read lock open and then asked for the write lock
+    // inside the same block — guaranteed deadlock once the scheduled time
+    // elapsed. This test sets a tiny duration, waits for it to expire,
+    // and then calls shouldSample, which transitively invokes
+    // checkScheduledRevert. Pre-fix: the call blocks forever; the test
+    // times out. Post-fix: the call returns and the rate has reverted.
+
+    @Test(timeout = 5_000)
+    fun `scheduled revert does not deadlock when elapsed`() {
+        val sampler = DynamicSampler(baselineSamplingRate = 0.1)
+        // Set a short-lived rate-override and wait for the revert clock to
+        // pass. durationMinutes is Int, so we use 0; the revertTime then
+        // equals now + 0 = now, which has elapsed by the time we sample.
+        // Then add Thread.sleep to make sure System.currentTimeMillis()
+        // has advanced past it.
+        sampler.setSamplingRate(rate = 0.9, durationMinutes = 0)
+        Thread.sleep(20)
+
+        // Pre-fix this call deadlocks inside checkScheduledRevert. The
+        // @Test timeout fires after 5s if so. Use an all-`f` prefix so the
+        // ratio is ≈ 1.0 — the SAMPLE/DROP outcome then directly depends
+        // on rate (1.0 > 0.9 → DROP at the temporary rate, 1.0 > 0.1 → DROP
+        // at baseline). What we're really asserting here is "call returns
+        // and rate has reverted to baseline", which is verifiable by
+        // getCurrentSamplingRate.
+        val result = sample(sampler, "ffffffffffffffff0000000000000000")
+
+        // Post-fix: revert happened, rate is back to baseline (0.1). The
+        // sample decision itself is DROP either way (rate < ratio); the
+        // load-bearing assertion is the rate value.
+        assertEquals(SamplingDecision.DROP, result.decision)
+        assertEquals(0.1, sampler.getCurrentSamplingRate(), 0.001)
+    }
+
+    // ── SR-023: top-bit-set trace IDs must not bias toward "always sample" ──
+
+    // Before SR-023, the first 16 hex chars were parsed via
+    // parseUnsignedLong → toDouble() → / Long.MAX_VALUE. A trace ID with the
+    // top bit set parses to a negative Long; the ratio becomes negative, and
+    // negative < rate is *always* true, so ~50% of all trace IDs were sampled
+    // regardless of rate. These tests pin the post-fix behaviour:
+    // an all-`f` prefix should map to a ratio near 1.0, and a low-bit prefix
+    // should map to a ratio near 0.0.
+
+    @Test
+    fun `top-bit-set trace ID at low rate is dropped`() {
+        // ffff... → ratio ≈ 1.0, must be > rate 0.01 → DROP.
+        val sampler = DynamicSampler(baselineSamplingRate = 0.01)
+        val traceId = "ffffffffffffffff0000000000000000"
+        assertEquals(SamplingDecision.DROP, sample(sampler, traceId).decision)
+    }
+
+    @Test
+    fun `low-bit-set trace ID at low rate is sampled`() {
+        // 0000...0001 prefix → ratio ≈ 0.0, must be < rate 0.01 → SAMPLE.
+        val sampler = DynamicSampler(baselineSamplingRate = 0.01)
+        val traceId = "00000000000000010000000000000000"
+        assertEquals(SamplingDecision.RECORD_AND_SAMPLE, sample(sampler, traceId).decision)
+    }
+
+    @Test
+    fun `sampler honors rate across a full hex prefix distribution`() {
+        // 256 prefixes evenly spaced across the unsigned 64-bit range. At
+        // rate 0.5, ~half should sample. Pre-fix, every top-half prefix (128
+        // of 256) was sampled regardless plus the bottom half's natural
+        // sampling, biasing observed rate way above 0.5.
+        val sampler = DynamicSampler(baselineSamplingRate = 0.5)
+        var sampled = 0
+        for (i in 0..255) {
+            // Spread `i` across the high byte so the prefix's top bit
+            // toggles in lockstep with i >= 128.
+            val hi = "%02x".format(i)
+            val traceId = hi + "00000000000000" + "0".repeat(16)
+            if (sample(sampler, traceId).decision == SamplingDecision.RECORD_AND_SAMPLE) sampled++
+        }
+        // 256 prefixes uniformly across [0, 1]: expect 128 ± a small margin.
+        // Pre-fix this is 192-256 (top half always sampled + bottom half ~50%).
+        assertTrue("Expected sampled count near 128 of 256, got $sampled", sampled in 96..160)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private fun sample(

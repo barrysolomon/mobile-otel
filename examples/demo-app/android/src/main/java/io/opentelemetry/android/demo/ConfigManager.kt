@@ -293,6 +293,9 @@ object ConfigManager {
             headers = headers.ifEmpty { null },
             attachContextAttributes = prefs.getBoolean(KEY_ATTACH_CONTEXT_ATTRIBUTES, DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
             buildChannel = prefs.getString(KEY_BUILD_CHANNEL, DEFAULT_BUILD_CHANNEL),
+            // SR-011: demo app explicitly opts in to user-demographic prefs.
+            // SDK no longer reads this file unless the app sets it here.
+            userContextPrefsName = "demo_app_prefs",
             deviceMetricsConfig = loadDeviceMetricsConfig(context),
             sessionConfig = SessionConfig(
                 enabled = prefs.getBoolean(KEY_SESSION_ENABLED, DEFAULT_SESSION_ENABLED),
@@ -718,6 +721,8 @@ object ConfigManager {
             headers = headers,
             attachContextAttributes = jsonObj.optBoolean("attachContextAttributes", DEFAULT_ATTACH_CONTEXT_ATTRIBUTES),
             buildChannel = jsonObj.optString("buildChannel", DEFAULT_BUILD_CHANNEL),
+            // SR-011: demo app explicitly opts in (see also loadConfig).
+            userContextPrefsName = "demo_app_prefs",
             deviceMetricsConfig = deviceMetricsConfig,
             screenshotConfig = ScreenshotConfig(
                 enabled = screenshotEnabled,

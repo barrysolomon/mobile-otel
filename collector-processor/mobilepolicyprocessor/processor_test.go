@@ -656,3 +656,93 @@ func stringPtr(s string) *string {
 func float64Ptr(f float64) *float64 {
 	return &f
 }
+
+// TestGetOrCompileRegex_CachesByPattern — SR-012
+//
+// regexp.MatchString recompiles the regex on every policy evaluation. At
+// fleet scale that's measurable waste. Verify same pattern returns the
+// same *regexp.Regexp pointer (cached), and different patterns return
+// different pointers (not pinning to a single cache slot).
+func TestGetOrCompileRegex_CachesByPattern(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, err := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+	require.NoError(t, err)
+
+	r1, err := processor.getOrCompileRegex(`^ui\..*`)
+	require.NoError(t, err)
+	r2, err := processor.getOrCompileRegex(`^ui\..*`)
+	require.NoError(t, err)
+	require.Same(t, r1, r2, "same pattern must return cached compiled regex")
+
+	r3, err := processor.getOrCompileRegex(`^app\..*`)
+	require.NoError(t, err)
+	require.NotSame(t, r1, r3, "different pattern must compile a new regex")
+}
+
+// TestGetOrCompileRegex_InvalidPatternReturnsError — SR-012
+//
+// Bad patterns must surface a compile error rather than panic or cache a
+// nil pointer that later derefs.
+func TestGetOrCompileRegex_InvalidPatternReturnsError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	processor, err := newMobilePolicyProcessor(&Config{}, logger, consumertest.NewNop())
+	require.NoError(t, err)
+
+	_, err = processor.getOrCompileRegex(`[unclosed`)
+	require.Error(t, err, "invalid regex must return error")
+}
+
+// TestProcessLogRecord_EventNameOverridenByNonStringAttr — SR-025
+//
+// processLogRecord seeds attrs["event.name"] from the log body (always
+// a string) and then overwrites every attrs[k] with convertValue(v).
+// A log record whose attribute key is literally "event.name" with a
+// numeric value clobbers the seeded string. When *another* attribute
+// condition then matches the policy, the match-logger does a bare
+// `.(string)` type assertion on the now-int64 value and panics —
+// taking down the whole batch in the collector pipeline.
+//
+// Verifies: no panic, and the policy match annotation still lands.
+func TestProcessLogRecord_EventNameOverridenByNonStringAttr(t *testing.T) {
+	// Match on a different attribute (not event.name), so the panic
+	// path on the match-debug log line is exercised.
+	policy := Policy{
+		ID:      "event-name-poison",
+		Enabled: true,
+		Match: Match{
+			LogicalOperator: "and",
+			Attributes: map[string]Condition{
+				"trigger": {Equals: stringPtr("yes")},
+			},
+		},
+		Actions: []Action{
+			{Type: "annotate", Parameters: map[string]interface{}{"reason": "ok"}},
+		},
+	}
+
+	logger := zaptest.NewLogger(t)
+	processor, err := newMobilePolicyProcessor(
+		&Config{Policies: []Policy{policy}},
+		logger,
+		consumertest.NewNop(),
+	)
+	require.NoError(t, err)
+
+	// Body seeds event.name=ui.freeze; "event.name" attribute then
+	// overwrites it with int64. "trigger" attribute makes the policy
+	// match, so processLogRecord reaches the .(string) assertion.
+	logRecord := createTestLogRecord("ui.freeze", map[string]interface{}{
+		"event.name": int64(42),
+		"trigger":    "yes",
+	})
+	resourceAttrs := pcommon.NewMap()
+
+	require.NotPanics(t, func() {
+		processor.processLogRecord(logRecord, resourceAttrs)
+	})
+
+	// Annotation lands.
+	policyID, exists := logRecord.Attributes().Get("policy.id")
+	require.True(t, exists, "policy.id annotation should have landed")
+	require.Equal(t, "event-name-poison", policyID.Str())
+}

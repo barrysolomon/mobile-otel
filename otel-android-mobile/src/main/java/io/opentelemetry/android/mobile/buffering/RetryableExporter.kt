@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.random.Random
 
 /**
  * Wrapper around LogRecordExporter that adds retry logic with exponential backoff.
@@ -51,7 +52,8 @@ class RetryableExporter(
     private val delegate: LogRecordExporter,
     private val maxRetries: Int = 3,
     private val initialDelayMs: Long = 1000,
-    private val maxDelayMs: Long = 60000
+    private val maxDelayMs: Long = 60000,
+    private val random: Random = Random.Default,
 ) : LogRecordExporter {
 
     private val TAG = "RetryableExporter"
@@ -169,21 +171,24 @@ class RetryableExporter(
     }
 
     /**
-     * Calculates exponential backoff delay.
+     * Backoff with full jitter — SR-009. Without jitter every device in a fleet
+     * retries in lockstep after a shared outage and re-DDoS's the collector;
+     * see https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/.
      *
-     * Formula: min(initialDelay * 2^attempt, maxDelay)
-     *
-     * Examples (initialDelay=1s, maxDelay=60s):
-     * - Attempt 0: 1s
-     * - Attempt 1: 2s
-     * - Attempt 2: 4s
-     * - Attempt 3: 8s
-     * - Attempt 4+: 60s (capped)
+     * Envelope (initialDelayMs=1s, maxDelayMs=60s) — picked uniformly at random
+     * in [0, ceiling]:
+     * - Attempt 0: [0, 1s]
+     * - Attempt 3: [0, 8s]
+     * - Attempt 6+: [0, 60s] (capped)
      */
     private fun calculateBackoff(attempt: Int): Long {
         val exponentialDelay = initialDelayMs * (2.0.pow(attempt.toDouble())).toLong()
-        return min(exponentialDelay, maxDelayMs)
+        val ceiling = min(exponentialDelay, maxDelayMs)
+        return random.nextLong(0, ceiling + 1)
     }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun calculateBackoffForTest(attempt: Int): Long = calculateBackoff(attempt)
 
     override fun flush(): CompletableResultCode {
         return delegate.flush()

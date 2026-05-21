@@ -123,6 +123,28 @@ data class MobileConfig(
     val extraResourceAttributes: Map<String, String>? = null,
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
+    /**
+     * Name of the [android.content.SharedPreferences] file the SDK may read
+     * to populate the optional user-demographic fields on
+     * [io.opentelemetry.android.mobile.context.ContextSnapshot]
+     * (`deviceType`, `userRegion`, `ageGroup`, `tier`). When `null` (the
+     * default), the SDK reads no preferences and all four fields remain
+     * `null` — preferred for any app that does not need demographic
+     * segmentation.
+     *
+     * **Privacy note (SR-024):** age group and region in combination with
+     * other captured context can constitute quasi-PII under some
+     * regulatory regimes (GDPR, CPRA). Opt in only when you have a real
+     * use case and have considered consent / data-minimization.
+     *
+     * **Migration (SR-011):** earlier SDK versions hard-coded the demo
+     * app's preferences name (`demo_app_prefs`). Apps that relied on that
+     * implicit behavior must now set this explicitly.
+     *
+     * Expected key names inside the prefs file:
+     *   `user_device_type`, `user_region`, `user_age_group`, `user_tier`.
+     */
+    val userContextPrefsName: String? = null,
     val samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0),
     val deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default(),
     val sessionConfig: SessionConfig = SessionConfig(),
@@ -163,11 +185,27 @@ data class MobileConfig(
     }
 
     companion object {
+        private val IPV6_LOOPBACK_HOSTS = setOf(
+            "::1",
+            "0:0:0:0:0:0:0:1",
+        )
+
         private fun isLocalhostEndpoint(endpoint: String): Boolean {
-            val host = endpoint.removePrefix("http://").substringBefore(":")
-                .substringBefore("/")
-            return host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
+            val authority = endpoint.removePrefix("http://").substringBefore("/")
+            val host = if (authority.startsWith("[")) {
+                authority.substringAfter("[").substringBefore("]")
+            } else {
+                authority.substringBefore(":")
+            }
+            return host == "localhost" ||
+                host == "127.0.0.1" ||
+                host == "10.0.2.2" ||
+                host in IPV6_LOOPBACK_HOSTS
         }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun isLocalhostEndpointForTest(endpoint: String): Boolean =
+            isLocalhostEndpoint(endpoint.lowercase())
 
         fun builder(): Builder = Builder()
     }
@@ -195,6 +233,7 @@ data class MobileConfig(
         private var headers: Map<String, String>? = null
         private var attachContextAttributes: Boolean = false
         private var buildChannel: String? = null
+        private var userContextPrefsName: String? = null
         private var samplingConfig: SamplingConfig = SamplingConfig.dynamic(normalRate = 0.1, highPriorityRate = 1.0)
         private var deviceMetricsConfig: DeviceMetricsConfig = DeviceMetricsConfig.default()
         private var sessionConfig: SessionConfig = SessionConfig()
@@ -223,6 +262,8 @@ data class MobileConfig(
         fun setHeaders(headers: Map<String, String>) = apply { this.headers = headers }
         fun setAttachContextAttributes(enabled: Boolean) = apply { this.attachContextAttributes = enabled }
         fun setBuildChannel(channel: String) = apply { this.buildChannel = channel }
+        /** See [MobileConfig.userContextPrefsName]. */
+        fun setUserContextPrefsName(name: String?) = apply { this.userContextPrefsName = name }
         fun setSamplingConfig(config: SamplingConfig) = apply { this.samplingConfig = config }
         fun setDeviceMetricsConfig(config: DeviceMetricsConfig) = apply { this.deviceMetricsConfig = config }
         fun setSessionConfig(config: SessionConfig) = apply { this.sessionConfig = config }
@@ -263,6 +304,7 @@ data class MobileConfig(
                 headers = headers,
                 attachContextAttributes = attachContextAttributes,
                 buildChannel = buildChannel,
+                userContextPrefsName = userContextPrefsName,
                 samplingConfig = samplingConfig,
                 deviceMetricsConfig = deviceMetricsConfig,
                 sessionConfig = sessionConfig,

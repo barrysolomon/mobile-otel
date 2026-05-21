@@ -64,19 +64,32 @@ struct RetryableExporterTests {
         maxRetries: Int = 3,
         initialDelayMs: Int = 1,
         maxDelayMs: Int = 1,
+        jitter: ((Int) -> Int)? = nil,
         _ block: (RetryableExporter, ScriptedExporter) -> Void
     ) -> [ExportStatus] {
         let mgr = ExportStatusManager()
         let listener = TranscriptListener()
         mgr.addListener(listener)
         let inner = ScriptedExporter(script: script)
-        let exporter = RetryableExporter(
-            delegate: inner,
-            maxRetries: maxRetries,
-            initialDelayMs: initialDelayMs,
-            maxDelayMs: maxDelayMs,
-            statusManager: mgr
-        )
+        let exporter: RetryableExporter
+        if let jitter {
+            exporter = RetryableExporter(
+                delegate: inner,
+                maxRetries: maxRetries,
+                initialDelayMs: initialDelayMs,
+                maxDelayMs: maxDelayMs,
+                statusManager: mgr,
+                jitter: jitter
+            )
+        } else {
+            exporter = RetryableExporter(
+                delegate: inner,
+                maxRetries: maxRetries,
+                initialDelayMs: initialDelayMs,
+                maxDelayMs: maxDelayMs,
+                statusManager: mgr
+            )
+        }
         block(exporter, inner)
         return listener.events
     }
@@ -129,12 +142,17 @@ struct RetryableExporterTests {
         #expect(events[1] == .success(eventCount: 0))
     }
 
-    @Test("exponential backoff: delay doubles each attempt up to maxDelayMs")
+    @Test("exponential backoff: envelope ceiling doubles each attempt up to maxDelayMs")
     func backoffDoubles() {
+        // With identity-jitter (always returns the ceiling) the published
+        // delay equals the exponential envelope. This pins the pre-jitter
+        // formula independently of randomness — the next test pins the
+        // random behaviour itself.
         let events = capturing(
             script: [.failure, .failure, .failure, .failure],
             initialDelayMs: 4,
-            maxDelayMs: 1000
+            maxDelayMs: 1000,
+            jitter: { $0 }
         ) { exporter, _ in
             _ = exporter.export(logRecords: [], explicitTimeout: nil)
         }
@@ -145,12 +163,13 @@ struct RetryableExporterTests {
         #expect(delays == [4, 8, 16])
     }
 
-    @Test("exponential backoff clamps at maxDelayMs")
+    @Test("exponential backoff: envelope ceiling clamps at maxDelayMs")
     func backoffClamps() {
         let events = capturing(
             script: [.failure, .failure, .failure, .failure],
             initialDelayMs: 100,
-            maxDelayMs: 150
+            maxDelayMs: 150,
+            jitter: { $0 }
         ) { exporter, _ in
             _ = exporter.export(logRecords: [], explicitTimeout: nil)
         }
@@ -161,6 +180,37 @@ struct RetryableExporterTests {
         // attempt 3 → 400 → clamp to 150.
         #expect(delays == [100, 150, 150])
     }
+
+    // SR-009: full jitter prevents fleet-wide thundering herd after a
+    // shared outage. Verified two ways:
+    //   1. The jitter closure is consulted with the correct ceiling per
+    //      attempt (pinned via deterministic jitter that returns ceiling/2).
+    //   2. Different attempts can produce different delays even when the
+    //      envelope is identical (pinned via stateful jitter).
+
+    @Test("backoff consults jitter closure with the envelope ceiling")
+    func jitterCeilingPerAttempt() {
+        var ceilingsSeen: [Int] = []
+        let events = capturing(
+            script: [.failure, .failure, .failure, .failure],
+            initialDelayMs: 10,
+            maxDelayMs: 30,
+            jitter: { ceiling in
+                ceilingsSeen.append(ceiling)
+                return ceiling / 2
+            }
+        ) { exporter, _ in
+            _ = exporter.export(logRecords: [], explicitTimeout: nil)
+        }
+        // Envelope ceilings: attempt 1 → 10, attempt 2 → 20, attempt 3 → 30 (40 clamped).
+        #expect(ceilingsSeen == [10, 20, 30])
+        let delays: [Int] = events.compactMap {
+            if case .retrying(_, _, let d) = $0 { return d } else { return nil }
+        }
+        // Half of each ceiling.
+        #expect(delays == [5, 10, 15])
+    }
+
 
     @Test("shutdown delegates to inner exporter")
     func shutdownDelegates() {

@@ -26,6 +26,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.random.Random
 
 /**
  * PR-017: RetryableExporter end-to-end test.
@@ -51,11 +52,16 @@ class RetryableExporterE2ETest {
         context = ApplicationProvider.getApplicationContext()
         flakyExporter = FlakyExporter()
 
+        // SR-009: production now uses full-jitter backoff. For E2E timing
+        // assertions we pin a deterministic Random so the envelope contract
+        // (each ceiling roughly doubles up to maxDelayMs) is measurable.
+        // Real jitter is covered in RetryableExporterTest.
         retryableExporter = RetryableExporter(
             delegate = flakyExporter,
             maxRetries = 3,
             initialDelayMs = 50,
-            maxDelayMs = 200
+            maxDelayMs = 200,
+            random = MaxJitterRandom,
         )
 
         val config = MobileConfig(
@@ -233,5 +239,16 @@ class RetryableExporterE2ETest {
 
         override fun flush() = CompletableResultCode.ofSuccess()
         override fun shutdown() = CompletableResultCode.ofSuccess()
+    }
+
+    /**
+     * Identity-jitter Random for deterministic E2E backoff assertions:
+     * `nextLong(0, ceiling + 1)` always returns `ceiling`. Makes the realized
+     * delay equal the envelope ceiling, so the envelope-doubling contract is
+     * directly testable.
+     */
+    private object MaxJitterRandom : Random() {
+        override fun nextBits(bitCount: Int): Int = 0
+        override fun nextLong(from: Long, until: Long): Long = until - 1
     }
 }

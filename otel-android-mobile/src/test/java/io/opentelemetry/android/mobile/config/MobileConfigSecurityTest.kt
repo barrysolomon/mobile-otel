@@ -7,6 +7,8 @@ package io.opentelemetry.android.mobile.config
 
 import org.junit.Test
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Security validation tests for [MobileConfig].
@@ -176,6 +178,46 @@ class MobileConfigSecurityTest {
     fun `10_0_2_2 emulator HTTP endpoint is accepted without warning`() {
         // 10.0.2.2 is Android emulator's host loopback address
         baseConfig(collectorEndpoint = "http://10.0.2.2:4317")
+    }
+
+    // SR-021: IPv6 loopback variants. The bracketed form is the standards-correct
+    // way to write an IPv6 literal in a URL (RFC 3986); the bare form appears in
+    // some collector configs and emulator targets. Both must be recognized as
+    // local so the SDK's HTTPS warning does not fire during local dev.
+
+    @Test
+    fun `isLocalhostEndpoint accepts bracketed IPv6 loopback`() {
+        assertTrue(MobileConfig.isLocalhostEndpointForTest("http://[::1]:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint accepts bracketed IPv6 full loopback`() {
+        assertTrue(MobileConfig.isLocalhostEndpointForTest("http://[0:0:0:0:0:0:0:1]:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint accepts existing localhost form`() {
+        assertTrue(MobileConfig.isLocalhostEndpointForTest("http://localhost:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint accepts existing 127_0_0_1 form`() {
+        assertTrue(MobileConfig.isLocalhostEndpointForTest("http://127.0.0.1:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint accepts existing 10_0_2_2 form`() {
+        assertTrue(MobileConfig.isLocalhostEndpointForTest("http://10.0.2.2:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint rejects non-local host`() {
+        assertFalse(MobileConfig.isLocalhostEndpointForTest("http://collector.example.com:4317"))
+    }
+
+    @Test
+    fun `isLocalhostEndpoint rejects IPv6 non-loopback`() {
+        assertFalse(MobileConfig.isLocalhostEndpointForTest("http://[2001:db8::1]:4317"))
     }
 
     // ── Existing validations still work ───────────────────────────────────────
