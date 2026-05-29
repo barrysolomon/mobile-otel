@@ -9,9 +9,10 @@ import UIKit
 ///
 /// Emits OTel log records (plus spans for foreground/background windows) for:
 /// - `app.launch` — first install call
-/// - `app.foreground` — UIApplication.didBecomeActive
+/// - `app.foreground` — UIApplication.didBecomeActive (or synthesized if installed
+///   while app is already active; tagged via `app.foreground.type` attribute)
 /// - `app.background` — UIApplication.didEnterBackground
-/// - `app.will_terminate` — UIApplication.willTerminate (best-effort, iOS may not always deliver)
+/// - `app.will_terminate` — UIApplication.willTerminate (best-effort)
 /// - `app.memory_warning` — UIApplication.didReceiveMemoryWarning
 ///
 /// Usage:
@@ -24,6 +25,11 @@ import UIKit
 public final class LifecycleInstrumentation: @unchecked Sendable {
     public static let shared = LifecycleInstrumentation()
 
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+    typealias ApplicationStateProvider = @Sendable () -> UIApplication.State
+    private let applicationStateProvider: ApplicationStateProvider
+#endif
+
     private let lock = NSLock()
     private var installed = false
     private var tracer: Tracer?
@@ -31,15 +37,30 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
     private var observers: [NSObjectProtocol] = []
     private var foregroundSpan: Span?
     // Tracks whether we've already handled a foreground/background edge.
-    // Needed because we now observe both UIApplication.* and UIScene.*
-    // notifications; on non-scene apps both fire, on scene apps only
-    // UIScene.* fires, and on multi-scene apps UIScene.didActivate fires
-    // once per scene activation. Collapse all of that into a single edge.
+    // Needed because we observe both UIApplication.* and UIScene.* notifications,
+    // AND the late-init synthesis path; this flag dedups across all of them.
     private var foregroundActive = false
 
-    private init() {}
+    private init() {
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+        // Production callers always use this default. The closure dispatches
+        // to main inside install() before invoking it, so reading
+        // UIApplication.shared.applicationState here is main-thread-safe.
+        self.applicationStateProvider = { @Sendable in
+            UIApplication.shared.applicationState
+        }
+#endif
+    }
 
-    public func install(tracer: Tracer, logger: Logger) {
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+    /// Test-only init. Internal so it's accessible from `@testable import`
+    /// in test targets but not from external consumers.
+    internal init(applicationStateProvider: @escaping ApplicationStateProvider) {
+        self.applicationStateProvider = applicationStateProvider
+    }
+#endif
+
+    public func install(tracer: Tracer?, logger: Logger) {
         lock.lock()
         if installed {
             lock.unlock()
@@ -50,11 +71,8 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
         self.logger = logger
         lock.unlock()
 
-        // IMPORTANT: emit OUTSIDE the lock. `emit()` re-acquires `lock`
-        // to read `self.logger`, and NSLock is non-reentrant on Darwin —
-        // so calling emit while holding the install lock would deadlock,
-        // which silently swallowed `app.launch` and aborted observer
-        // registration below. See the comment on `foregroundActive`.
+        // IMPORTANT: emit OUTSIDE the lock. emit() re-acquires the lock to
+        // read self.logger; NSLock is non-reentrant on Darwin.
         emit(event: "app.launch")
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
@@ -94,6 +112,18 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil, queue: nil
         ) { [weak self] _ in self?.emit(event: "app.memory_warning", severity: .warn) })
+
+        // Late-init synthesis: NotificationCenter has no at-attach replay,
+        // so if the app is already foregrounded when install() runs (RN
+        // useEffect case, or any deferred init), we must synthesize the
+        // initial foreground event. Dispatched to main because
+        // UIApplication state must be read on the main thread.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.applicationStateProvider() == .active {
+                self.handleForeground(lateInstall: true)
+            }
+        }
         #endif
     }
 
@@ -110,7 +140,7 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
 
     // MARK: - Handlers
 
-    private func handleForeground() {
+    private func handleForeground(lateInstall: Bool = false) {
         lock.lock()
         if foregroundActive {
             lock.unlock()
@@ -119,7 +149,10 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
         foregroundActive = true
         let t = tracer
         lock.unlock()
-        emit(event: "app.foreground")
+        emit(
+            event: "app.foreground",
+            attributes: ["app.foreground.type": .string(lateInstall ? "instrumentation_late" : "natural")]
+        )
         if let tracer = t {
             // Open a span whose lifetime brackets the foreground session.
             let span = tracer.spanBuilder(spanName: "app.foreground_session")
@@ -146,16 +179,17 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
         span?.end()
     }
 
-    private func emit(event: String, severity: Severity = .info) {
+    private func emit(event: String, severity: Severity = .info, attributes: [String: AttributeValue] = [:]) {
         lock.lock()
         let logger = self.logger
         lock.unlock()
         guard let logger = logger else { return }
+        var attrs: [String: AttributeValue] = ["event.name": .string(event)]
+        for (k, v) in attributes { attrs[k] = v }
         logger.logRecordBuilder()
             .setBody(AttributeValue.string(event))
             .setSeverity(severity)
-            .setAttributes(["event.name": .string(event)])
+            .setAttributes(attrs)
             .emit()
     }
 }
-

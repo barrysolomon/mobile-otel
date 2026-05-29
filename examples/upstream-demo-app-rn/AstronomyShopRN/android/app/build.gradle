@@ -25,7 +25,9 @@ react {
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
-    // nodeExecutableAndArgs = ["node"]
+    //   Pinned to homebrew Node 25 because the system Node 18 lacks
+    //   `Array.prototype.toReversed` which Metro uses (see runbook §0).
+    nodeExecutableAndArgs = ["/opt/homebrew/bin/node"]
     //
     //   The command to run when bundling. By default is 'bundle'
     // bundleCommand = "ram-bundle"

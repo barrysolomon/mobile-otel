@@ -42,6 +42,7 @@ android {
 
 dependencies {
     api(project(":otel-android-mobile-core"))
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.20")

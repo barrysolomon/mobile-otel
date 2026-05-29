@@ -35,9 +35,16 @@ import androidx.core.content.ContextCompat
 import io.opentelemetry.android.demo.about.AboutActivity
 import io.opentelemetry.android.demo.theme.DemoAppTheme
 import io.opentelemetry.android.demo.shop.ui.AstronomyShopActivity
+import io.opentelemetry.android.demo.shop.ui.products.multiThreadCrashing
+import io.opentelemetry.android.mobile.network.NetworkConfig
+import io.opentelemetry.android.mobile.network.OTelNetworkInterceptor
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.IOException
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<DemoViewModel>()
+    private var gate2Fired: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,5 +117,69 @@ class MainActivity : ComponentActivity() {
                 100
             )
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Gate 2 (matchy-matchy): one-shot HTTP call so the four-gate
+        // runbook can observe a CLIENT span with `http.request.method=GET`
+        // and `server.address=httpbin.org`. Mirrors the iOS native +
+        // RN iOS demos which also fire httpbin.org/get from launch UI.
+        if (!gate2Fired) {
+            gate2Fired = true
+            fireGate2HttpProbe()
+        }
+        // Gate 3 (matchy-matchy): deterministic crash trigger via launch
+        // intent extra. Mirrors iOS native's -DASH0_CRASH_NOW launch arg.
+        // Use: adb shell am start -n .../MainActivity --ez gate3_crash true
+        if (intent?.getBooleanExtra("gate3_crash", false) == true) {
+            // Clear the extra so we don't re-crash on re-launch
+            intent.removeExtra("gate3_crash")
+            Log.i(TAG, "Gate3: scheduling crash in 3s (after telemetry buffer warms)")
+            android.os.Handler(mainLooper).postDelayed({
+                Log.w(TAG, "Gate3: crashing now")
+                multiThreadCrashing()
+            }, 3000)
+        }
+    }
+
+    private fun fireGate2HttpProbe() {
+        val otel = OtelDemoApplication.openTelemetry
+        if (otel == null) {
+            Log.w(TAG, "Gate2: openTelemetry is null, skipping HTTP probe")
+            return
+        }
+        Log.i(TAG, "Gate2: firing httpbin.org/get")
+        val tracer = otel.getTracer("io.opentelemetry.android.demo.gate2", "0.1.0")
+        val propagator = otel.propagators.textMapPropagator
+        val interceptor = OTelNetworkInterceptor.create(
+            applicationContext,
+            NetworkConfig(),
+            tracer,
+            propagator
+        )
+        val client = OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .build()
+        val request = Request.Builder()
+            .url("https://httpbin.org/get")
+            .get()
+            .build()
+        // Fire 30 in parallel to overcome the SDK's default 10% trace sampler
+        // (SamplingConfig.dynamic(normalRate=0.1)). 30x ≈ 95.8% chance one
+        // CLIENT span survives sampling and reaches Dash0. Single-shot was
+        // flaky for matchy-matchy validation.
+        Thread {
+            for (i in 1..30) {
+                try {
+                    val r = client.newCall(request).execute()
+                    if (i == 1) Log.i(TAG, "Gate2: httpbin response code=${r.code}")
+                    r.close()
+                } catch (e: IOException) {
+                    Log.w(TAG, "Gate2: httpbin call failed: ${e.message}")
+                }
+            }
+            Log.i(TAG, "Gate2: 30 probes complete")
+        }.start()
     }
 }

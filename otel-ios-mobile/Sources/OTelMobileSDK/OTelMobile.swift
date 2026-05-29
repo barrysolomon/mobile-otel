@@ -97,6 +97,20 @@ public final class OTelMobile: @unchecked Sendable {
     /// instance so they live as long as the SDK does.
     fileprivate var autoFlushObservers: [NSObjectProtocol] = []
 
+    /// Journey tracker — close-on-background + resume-on-foreground via
+    /// cross-trace OTel Links, and close-on-policy-flush. Set during
+    /// `start(config:)`; nil if the SDK isn't fully initialized.
+    /// Mirrors Android's `OTelMobile.journeyTracker`.
+    fileprivate var journeyTracker: JourneyTracker?
+
+    /// Lifecycle adapter that forwards UIApplication/UIScene
+    /// background/foreground notifications to the journey tracker.
+    /// Lives as long as the SDK does. Nil if SDK not started or on
+    /// non-UIKit platforms.
+    #if canImport(UIKit) && (os(iOS) || os(tvOS))
+    fileprivate var journeyLifecycleObserver: JourneyLifecycleObserver?
+    #endif
+
     private init(
         config: MobileConfig,
         processor: MobileLogRecordProcessor,
@@ -608,6 +622,43 @@ public final class OTelMobile: @unchecked Sendable {
                 object: nil, queue: nil
             ) { [weak instance] _ in _ = instance?.forceFlush() })
             #endif
+
+            // Journey tracking — survives bg/fg via cross-trace links and
+            // policy flushes via outcome=flushed. Mirrors Android's wiring
+            // in OTelMobile.start. The tracer scope matches the legacy
+            // inline startJourney path so existing trace queries still work.
+            let journeyTracer: Tracer
+            if let tp = instance.tracerProvider {
+                journeyTracer = tp.get(
+                    instrumentationName: "io.opentelemetry.android.mobile.journey"
+                )
+            } else {
+                journeyTracer = OpenTelemetry.instance.tracerProvider.get(
+                    instrumentationName: "io.opentelemetry.android.mobile.journey"
+                )
+            }
+            let tracker = JourneyTracker(tracer: journeyTracer)
+            instance.journeyTracker = tracker
+
+            #if canImport(UIKit) && (os(iOS) || os(tvOS))
+            let lifecycleObserver = JourneyLifecycleObserver(tracker: tracker)
+            // NotificationCenter delivers UIApplication/UIScene lifecycle
+            // events on the main thread; register from whatever thread
+            // we're on now — observers themselves are main-thread-bound.
+            lifecycleObserver.register()
+            instance.journeyLifecycleObserver = lifecycleObserver
+            #endif
+
+            // Policy-flush hook: when a policy fires, close any open
+            // journey with `outcome=flushed` so the parent span exports
+            // alongside its children in the same flush batch. Mirrors the
+            // Android wiring exactly. Force-flush the TracerProvider so
+            // the now-closed journey leaves the BatchSpanProcessor queue
+            // immediately rather than waiting for its scheduled flush.
+            instance.processor.policyMatchHook = { [weak instance] _ in
+                instance?.journeyTracker?.onPolicyFlush()
+                _ = instance?.tracerProvider?.forceFlush(timeout: nil)
+            }
         }
 
         return instance
@@ -652,6 +703,59 @@ public final class OTelMobile: @unchecked Sendable {
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
         await processor.flushWindow(minutes: minutes)
+    }
+
+    // MARK: - User Journey API
+    //
+    // Mirrors Android's `OTelMobile.startJourney/endJourney`. Routes through
+    // `JourneyTracker` to get `journey.id` / `journey.episode` /
+    // `journey.name` attribute stamping plus bg/fg pause-resume (via
+    // `JourneyLifecycleObserver`) and policy-flush close-out.
+
+    /// Starts a journey span — a long-running parent span representing a
+    /// logical user task (e.g. `"checkout"`, `"book_appointment"`). Make the
+    /// returned span active so subsequent UI spans nest under it.
+    ///
+    /// The returned span carries:
+    /// - `journey.name` — the name passed in
+    /// - `journey.id` — a fresh UUID (stable across `bg/fg` episodes)
+    /// - `journey.episode` — 1 for the first episode; auto-incremented
+    ///   each time the user backgrounds and returns
+    ///
+    /// On background, the open span ends with `journey.outcome=paused`.
+    /// On foreground, a new sibling span starts in a fresh trace with the
+    /// same `journey.id`, incremented `journey.episode`, and an OTel `Link`
+    /// to the previous span. Each foreground episode is a clean, bounded
+    /// trace; `dash0 traces get <id> --follow-span-links` walks the chain.
+    @discardableResult
+    public func startJourney(name: String) -> Span {
+        if let tracker = journeyTracker {
+            return tracker.startJourney(name: name)
+        }
+        // Fallback: SDK started without a tracker (test injection paths).
+        // Emit a bare span so the caller still gets something usable.
+        let tracer = self.tracer ?? OpenTelemetry.instance.tracerProvider.get(
+            instrumentationName: "io.opentelemetry.android.mobile.journey"
+        )
+        return tracer.spanBuilder(spanName: name)
+            .setSpanKind(spanKind: .internal)
+            .startSpan()
+    }
+
+    /// Ends a journey span with `journey.outcome=ended`. On Android this
+    /// also triggers a final screenshot + wireframe capture; iOS captures
+    /// land in a follow-up (USER_JOURNEY_CAPTURES_EPIC Phase 2 iOS).
+    public func endJourney(_ journey: Span) {
+        if let tracker = journeyTracker {
+            let ended = tracker.endJourneyBySpan(journey, outcome: JourneyTracker.Outcome.ended)
+            if !ended {
+                // Caller used the direct tracer API — end it ourselves so
+                // we don't leak the span.
+                journey.end()
+            }
+        } else {
+            journey.end()
+        }
     }
 
     // MARK: - Internal helpers (testable)

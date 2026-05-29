@@ -18,6 +18,8 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [33])
 class LifecycleInstrumentationTest {
 
     @get:Rule val otelRule = OpenTelemetryRule.create()
@@ -73,35 +75,41 @@ class LifecycleInstrumentationTest {
         assertEquals(1, startLogs.size, "app.start should only be emitted once")
     }
 
-    @Test fun `app foreground log emitted when first activity starts`() {
-        val app = mockk<Application>(relaxed = true)
-        val callbackSlot = slot<Application.ActivityLifecycleCallbacks>()
-        every { app.registerActivityLifecycleCallbacks(capture(callbackSlot)) } just runs
+    @Test fun `process foreground emits app foreground`() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val processLifecycle = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle as androidx.lifecycle.LifecycleRegistry
+        // Start in CREATED so addObserver doesn't replay onStart.
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.CREATED
 
         val inst = LifecycleInstrumentation()
         inst.install(app, makeContext(app))
-        callbackSlot.captured.onActivityStarted(mockk(relaxed = true))
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        // Drain any logs emitted by install (none expected — process is CREATED, not STARTED).
+        otelRule.logRecords.clear()
 
-        val logs = otelRule.logRecords
-        assertTrue(logs.any { it.bodyValue?.asString() == MobileSemconv.APP_FOREGROUND },
-            "Expected app.foreground log")
+        // Drive the foreground transition.
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val fgLogs = otelRule.logRecords.filter { it.bodyValue?.asString() == MobileSemconv.APP_FOREGROUND }
+        assertEquals(1, fgLogs.size, "Expected exactly 1 app.foreground")
     }
 
-    @Test fun `app background log emitted when last activity stops`() {
-        val app = mockk<Application>(relaxed = true)
-        val callbackSlot = slot<Application.ActivityLifecycleCallbacks>()
-        every { app.registerActivityLifecycleCallbacks(capture(callbackSlot)) } just runs
+    @Test fun `process background emits app background`() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val processLifecycle = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle as androidx.lifecycle.LifecycleRegistry
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.STARTED
 
         val inst = LifecycleInstrumentation()
         inst.install(app, makeContext(app))
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        otelRule.logRecords.clear()
 
-        val cb = callbackSlot.captured
-        cb.onActivityStarted(mockk(relaxed = true))    // activeActivities = 1
-        cb.onActivityStopped(mockk(relaxed = true))   // activeActivities = 0 → background
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.CREATED
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
-        val logs = otelRule.logRecords
-        assertTrue(logs.any { it.bodyValue?.asString() == MobileSemconv.APP_BACKGROUND },
-            "Expected app.background log")
+        val bgLogs = otelRule.logRecords.filter { it.bodyValue?.asString() == MobileSemconv.APP_BACKGROUND }
+        assertEquals(1, bgLogs.size, "Expected exactly 1 app.background")
     }
 
     @Test fun `uninstall unregisters callbacks`() {
@@ -110,5 +118,54 @@ class LifecycleInstrumentationTest {
         inst.install(app, makeContext(app))
         inst.uninstall()
         verify { app.unregisterActivityLifecycleCallbacks(any()) }
+    }
+
+    @Test fun `install when process already started emits app start late and foreground`() {
+        // Bring ProcessLifecycleOwner to STARTED before install — simulates the
+        // RN useEffect / deferred-init scenario where SDK initialization runs
+        // after the host Activity is already foregrounded.
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val processLifecycle = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle as androidx.lifecycle.LifecycleRegistry
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+
+        val inst = LifecycleInstrumentation()
+        inst.install(app, makeContext(app))
+
+        // Drain any pending main-thread work so observer at-attach replays land.
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val bodies = otelRule.logRecords.map { it.bodyValue?.asString() }
+        assertEquals(
+            listOf(MobileSemconv.APP_START, MobileSemconv.APP_FOREGROUND),
+            bodies.filter { it == MobileSemconv.APP_START || it == MobileSemconv.APP_FOREGROUND },
+            "Expected app.start (late) followed by app.foreground (at-attach replay), got: $bodies"
+        )
+
+        val startLog = otelRule.logRecords.first { it.bodyValue?.asString() == MobileSemconv.APP_START }
+        val typeAttr = startLog.attributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("app.start.type"))
+        assertEquals("instrumentation_late", typeAttr)
+
+        val durationAttr = startLog.attributes.get(io.opentelemetry.api.common.AttributeKey.longKey("app.start.duration_ms"))
+        assertTrue(durationAttr != null && durationAttr >= 0L,
+            "Expected non-negative app.start.duration_ms, got $durationAttr")
+    }
+
+    @Test fun `uninstall removes ProcessLifecycleOwner observer`() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val processLifecycle = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle as androidx.lifecycle.LifecycleRegistry
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.CREATED
+
+        val inst = LifecycleInstrumentation()
+        inst.install(app, makeContext(app))
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        inst.uninstall()
+        otelRule.logRecords.clear()
+
+        // Driving lifecycle after uninstall should produce no logs.
+        processLifecycle.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val fgLogs = otelRule.logRecords.filter { it.bodyValue?.asString() == MobileSemconv.APP_FOREGROUND }
+        assertEquals(0, fgLogs.size, "uninstall() should remove the observer; got $fgLogs")
     }
 }

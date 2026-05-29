@@ -25,6 +25,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     NSLog("[Dash0Mobile AppDelegate] installSink { OTelMobileCallSink() }")
     Dash0MobileModule.installSink { OTelMobileCallSink() }
 
+    // Test hook: if launched with -DASH0_CRASH_NOW, schedule a fatal crash
+    // ~3s after boot. Mirrors the native iOS demo's hook so the matchy-matchy
+    // Gate 3 runbook can drive a real signal-handler crash on RN iOS without
+    // a human tap. 3s (vs. native's 1.5s) gives the RN bridge + JS bundle
+    // extra warmup time. Signal handler writes a marker; next launch's
+    // ErrorsInstrumentation.install emits app.crash.
+    if CommandLine.arguments.contains("-DASH0_CRASH_NOW") {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+        let arr: [Int] = []
+        _ = arr[42]   // triggers EXC_BREAKPOINT / SIGTRAP
+      }
+    }
+
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
