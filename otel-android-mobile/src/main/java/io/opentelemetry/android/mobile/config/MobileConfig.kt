@@ -110,6 +110,13 @@ data class MobileConfig(
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
     val exportTimeoutSeconds: Long = 30,
+    /**
+     * Enables polling the collector/control-plane `/config` endpoint for
+     * mobile policy DSL updates. Set this to false when `collectorEndpoint`
+     * points directly at a plain OTLP ingest endpoint, since OTLP receivers do
+     * not serve policy config and will usually return 4xx responses.
+     */
+    val remoteConfigEnabled: Boolean = true,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
     val headers: Map<String, String>? = null,
@@ -159,7 +166,16 @@ data class MobileConfig(
     /** Incubating — offline disk budget management. Controls max disk usage when offline. */
     @Incubating val offlineBudgetConfig: OfflineBudgetConfig = OfflineBudgetConfig.default(),
     /** Incubating — controls what gets buffered when offline. */
-    @Incubating val offlinePolicy: OfflinePolicy = OfflinePolicy.BUFFER_ALL
+    @Incubating val offlinePolicy: OfflinePolicy = OfflinePolicy.BUFFER_ALL,
+    /**
+     * Incubating — when true, the app is the authority for screen identity: it
+     * calls [io.opentelemetry.android.mobile.OTelMobile.screenView] per logical
+     * (e.g. Compose) screen, and the SDK suppresses host-Activity screen-views
+     * and filters out `screen.render` spans that would carry only the Activity
+     * name (e.g. the cold-launch first frame). Default `false` keeps that render
+     * as legitimate startup telemetry. Intended for single-Activity Compose apps.
+     */
+    @Incubating val appManagedScreens: Boolean = false
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -228,6 +244,7 @@ data class MobileConfig(
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
         private var exportTimeoutSeconds: Long = 30
+        private var remoteConfigEnabled: Boolean = true
         private var configPollIntervalSeconds: Long = 300
         private var maxExportRetries: Int = 3
         private var headers: Map<String, String>? = null
@@ -257,6 +274,7 @@ data class MobileConfig(
         fun setDiskBufferMb(diskBufferMb: Int) = apply { this.diskBufferMb = diskBufferMb }
         fun setDiskBufferTtlHours(diskBufferTtlHours: Int) = apply { this.diskBufferTtlHours = diskBufferTtlHours }
         fun setExportTimeoutSeconds(exportTimeoutSeconds: Long) = apply { this.exportTimeoutSeconds = exportTimeoutSeconds }
+        fun setRemoteConfigEnabled(enabled: Boolean) = apply { this.remoteConfigEnabled = enabled }
         fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long) = apply { this.configPollIntervalSeconds = configPollIntervalSeconds }
         fun setMaxExportRetries(maxExportRetries: Int) = apply { this.maxExportRetries = maxExportRetries }
         fun setHeaders(headers: Map<String, String>) = apply { this.headers = headers }
@@ -299,6 +317,7 @@ data class MobileConfig(
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours,
                 exportTimeoutSeconds = exportTimeoutSeconds,
+                remoteConfigEnabled = remoteConfigEnabled,
                 configPollIntervalSeconds = configPollIntervalSeconds,
                 maxExportRetries = maxExportRetries,
                 headers = headers,

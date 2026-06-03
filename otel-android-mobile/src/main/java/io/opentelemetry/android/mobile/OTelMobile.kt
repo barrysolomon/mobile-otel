@@ -100,7 +100,7 @@ object OTelMobile {
                 recoveryTracker = rt
                 rt.start()
 
-                val screenInstr = ScreenViewInstrumentation().also { screenInstrumentation = it }
+                val screenInstr = ScreenViewInstrumentation(config.appManagedScreens).also { screenInstrumentation = it }
                 val builder = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
                     .setUiTelemetryMode(config.uiTelemetryMode.toCore())
                     .addInstrumentation(LifecycleInstrumentation())
