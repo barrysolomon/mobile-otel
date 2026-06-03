@@ -173,13 +173,18 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         val span = tracer?.spanBuilder(MobileSemconv.SCREEN_RENDER)
             ?.setSpanKind(SpanKind.INTERNAL)
             ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
-            ?.setAttribute(MobileSemconv.SCREEN_NAME.key, screenName)
             ?.startSpan() ?: return
 
         val observer = root.viewTreeObserver
         val listener = object : ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 if (observer.isAlive) observer.removeOnPreDrawListener(this)
+                // Resolve the screen name at DRAW time, not resume time. In a
+                // single-Activity Compose app the app reports its logical screen
+                // (via reportScreen) during composition — before the first frame
+                // draws — so the live current-screen wins over the host Activity
+                // name captured at resume ("MainActivity").
+                span.setAttribute(MobileSemconv.SCREEN_NAME.key, sp.getCurrentScreenName() ?: screenName)
                 span.setStatus(StatusCode.OK)
                 span.end()
                 return true
