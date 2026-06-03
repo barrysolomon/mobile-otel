@@ -130,6 +130,21 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         pageSpan = null
     }
 
+    /**
+     * Reports a logical, app-defined screen view — e.g. a Jetpack Compose
+     * destination in a single-Activity app, where Activity-based detection only
+     * ever sees the host Activity (`MainActivity`). Sets the current screen (so
+     * subsequent taps / freezes are tagged with it via the session provider),
+     * emits a [MobileSemconv.UI_SCREEN_VIEW] log, and starts a `page.<name>` span
+     * that nests later interactions. Call this on each navigation in apps that
+     * don't map screens to Activities/Fragments.
+     */
+    fun reportScreen(screenName: String) {
+        sessionProvider?.onScreenView(screenName)
+        logScreenView(screenName)
+        startPageSpan(screenName)
+    }
+
     private fun logScreenView(screenName: String) {
         val sp = sessionProvider ?: return
         val attrs = Attributes.builder()

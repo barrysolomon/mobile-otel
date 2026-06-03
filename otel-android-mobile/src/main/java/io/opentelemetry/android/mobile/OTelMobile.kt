@@ -71,6 +71,7 @@ object OTelMobile {
 
     @Volatile
     private var handle: OTelMobileHandle? = null
+    private var screenInstrumentation: ScreenViewInstrumentation? = null
 
     @Volatile
     private var recoveryTracker: RecoveryTracker? = null
@@ -99,10 +100,11 @@ object OTelMobile {
                 recoveryTracker = rt
                 rt.start()
 
+                val screenInstr = ScreenViewInstrumentation().also { screenInstrumentation = it }
                 val builder = OTelMobileBuilder(application, instance.getOpenTelemetrySdk())
                     .setUiTelemetryMode(config.uiTelemetryMode.toCore())
                     .addInstrumentation(LifecycleInstrumentation())
-                    .addInstrumentation(ScreenViewInstrumentation())
+                    .addInstrumentation(screenInstr)
                     .addInstrumentation(TapInstrumentation())
                     .addInstrumentation(ScrollInstrumentation())
                     .addInstrumentation(TextInputInstrumentation(config.textInputConfig))
@@ -139,6 +141,7 @@ object OTelMobile {
     fun stop(timeoutSeconds: Long = 30) {
         handle?.stop(timeoutSeconds)
         handle = null
+        screenInstrumentation = null
         recoveryTracker?.let { /* no stop() needed — it lives for app lifetime */ }
         recoveryTracker = null
         MobileOtel.shutdown()
@@ -208,12 +211,21 @@ object OTelMobile {
     }
 
     /**
-     * Ends the current page span and starts a fresh one for the same screen.
-     * Page spans are now managed by ScreenViewInstrumentation; this is a no-op kept for API
-     * compatibility and will be removed in the cleanup pass (Task 7).
+     * Reports a logical (app-defined) screen view — the screen-tracking hook for
+     * single-Activity Compose apps, where Activity-based detection only ever sees
+     * the host Activity. Tags subsequent taps/freezes with [screenName], emits a
+     * screen-view log, and (re)starts a `page.<screenName>` span. Call on each
+     * navigation. No-op until the SDK has started.
+     */
+    fun screenView(screenName: String) {
+        screenInstrumentation?.reportScreen(screenName)
+    }
+
+    /**
+     * @deprecated Renamed to [screenView]. Delegates for API compatibility.
      */
     fun restartPageSpan(screenName: String) {
-        // Page spans are managed by ScreenViewInstrumentation — no-op here
+        screenView(screenName)
     }
 
     /**
