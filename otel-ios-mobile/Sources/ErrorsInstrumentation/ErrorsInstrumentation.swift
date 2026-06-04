@@ -150,7 +150,14 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
 
     static let fatalSignals: [Int32] = [SIGABRT, SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGPIPE, SIGTRAP]
 
+    /// Test seam: when set via a `@TaskLocal` scope (see the test target's
+    /// `.isolatedCrashMarker` trait), redirects the crash-marker file to a
+    /// per-test path so parallel test suites don't contend on the
+    /// process-global marker. Always `nil` in production.
+    @TaskLocal static var crashMarkerURLOverrideForTesting: URL?
+
     static func crashMarkerURL() -> URL? {
+        if let override = crashMarkerURLOverrideForTesting { return override }
         guard let cacheDir = FileManager.default.urls(
             for: .cachesDirectory, in: .userDomainMask
         ).first else {
