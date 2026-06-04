@@ -66,3 +66,33 @@ Once this epic lands:
 1. Re-run `./gradlew :app:assembleDebug` in `examples/upstream-demo-app-rn/AstronomyShopRN/android/` — should produce a real APK
 2. Add a similar `OTelMobile.podspec` for iOS SDK Swift Package
 3. Flesh out `scripts/test/validate-rn-end-to-end.sh --mode=device` with real boot + Dash0 MCP assertions
+
+## Local consumer checklist
+
+External demo apps such as `../kiosk-demo` consume the Android SDK from
+Maven Local until the artifacts are published to a remote repository. On a
+fresh machine or a fresh checkout:
+
+1. Ensure `examples/demo-app/local.properties` exists and points at the local
+   Android SDK, for example:
+   ```properties
+   sdk.dir=/Users/<you>/Library/Android/sdk
+   ```
+   This file is intentionally ignored by git.
+
+2. Publish the SDK and all instrumentation modules:
+   ```bash
+   cd examples/demo-app
+   ./gradlew publishToMavenLocal
+   ```
+
+3. Build the external consumer after publishing. For the kiosk demo:
+   ```bash
+   cd ../../../kiosk-demo
+   ./gradlew :app:assembleInstrumentedDebug
+   ```
+
+If `publishToMavenLocal` fails on Java 25 during Javadoc/Dokka generation, do
+not downgrade the Gradle wrapper. Gradle 9.1.0 is the wrapper expected by this
+checkout. The main SDK publication skips the Javadoc jar on Java 25 so the AAR,
+POM, and sources jar can still publish for local demo consumers.

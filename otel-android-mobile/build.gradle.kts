@@ -54,7 +54,11 @@ android {
     publishing {
         singleVariant("release") {
             withSourcesJar()
-            withJavadocJar()
+            // AGP's Dokka-backed Javadoc generation in this stack cannot parse Java 25
+            // version strings. Keep local Java 25 publishing usable for demo consumers.
+            if (Runtime.version().feature() < 25) {
+                withJavadocJar()
+            }
         }
     }
 }
