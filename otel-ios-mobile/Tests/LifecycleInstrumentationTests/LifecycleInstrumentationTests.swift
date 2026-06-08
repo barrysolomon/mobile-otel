@@ -59,7 +59,10 @@ struct LifecycleInstrumentationLateInitTests {
     @Test("install when app already active emits late foreground")
     func installWhenAppAlreadyActiveEmitsLateForeground() async throws {
         let logger = RecordingLogger()
-        let inst = LifecycleInstrumentation(applicationStateProvider: { .active })
+        let inst = LifecycleInstrumentation(
+            applicationStateProvider: { .active },
+            notificationCenter: NotificationCenter()
+        )
         inst.install(tracer: nil, logger: logger)
 
         // Allow the DispatchQueue.main.async synthesis path to run.
@@ -74,16 +77,18 @@ struct LifecycleInstrumentationLateInitTests {
 
     @Test("late install does not double-emit when natural didBecomeActive arrives")
     func lateInstallDoesNotDoubleEmitOnNaturalDidBecomeActive() async throws {
+        let nc = NotificationCenter()
         let logger = RecordingLogger()
-        let inst = LifecycleInstrumentation(applicationStateProvider: { .active })
+        let inst = LifecycleInstrumentation(
+            applicationStateProvider: { .active },
+            notificationCenter: nc
+        )
         inst.install(tracer: nil, logger: logger)
         try await Task.sleep(nanoseconds: 50_000_000)
 
         // Synthesis already emitted. Now post a natural didBecomeActive.
         await MainActor.run {
-            NotificationCenter.default.post(
-                name: UIApplication.didBecomeActiveNotification, object: nil
-            )
+            nc.post(name: UIApplication.didBecomeActiveNotification, object: nil)
         }
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -92,12 +97,8 @@ struct LifecycleInstrumentationLateInitTests {
 
         // Now do a real bg → fg cycle and confirm one more foreground (natural).
         await MainActor.run {
-            NotificationCenter.default.post(
-                name: UIApplication.didEnterBackgroundNotification, object: nil
-            )
-            NotificationCenter.default.post(
-                name: UIApplication.didBecomeActiveNotification, object: nil
-            )
+            nc.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+            nc.post(name: UIApplication.didBecomeActiveNotification, object: nil)
         }
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -108,10 +109,53 @@ struct LifecycleInstrumentationLateInitTests {
         inst.uninstall()
     }
 
+    // MARK: - NotificationCenter isolation
+
+    /// Deterministic regression test for the cross-test notification pollution
+    /// that caused "install when app inactive" to flake under concurrent
+    /// test execution. Two LifecycleInstrumentation instances on separate
+    /// NotificationCenter instances must not receive each other's notifications.
+    @Test("notifications on one NotificationCenter do not reach a different instance's observers")
+    func notificationCenterIsolation() async throws {
+        let nc1 = NotificationCenter()
+        let nc2 = NotificationCenter()
+        let logger1 = RecordingLogger()
+        let logger2 = RecordingLogger()
+
+        // inst1: inactive state, listening on nc1
+        let inst1 = LifecycleInstrumentation(
+            applicationStateProvider: { .inactive },
+            notificationCenter: nc1
+        )
+        inst1.install(tracer: nil, logger: logger1)
+
+        // inst2: posts a foreground on nc2 — must not bleed into inst1
+        let inst2 = LifecycleInstrumentation(
+            applicationStateProvider: { .inactive },
+            notificationCenter: nc2
+        )
+        inst2.install(tracer: nil, logger: logger2)
+
+        await MainActor.run {
+            nc2.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let foregrounds1 = logger1.records.filter { $0.body == "app.foreground" }
+        #expect(foregrounds1.count == 0,
+                "nc2's didBecomeActive must not reach inst1 registered on nc1; got \(foregrounds1.count)")
+
+        inst1.uninstall()
+        inst2.uninstall()
+    }
+
     @Test("install when app inactive does not emit foreground", arguments: [UIApplication.State.inactive, UIApplication.State.background])
     func installWhenAppInactiveDoesNotEmitForeground(state: UIApplication.State) async throws {
         let logger = RecordingLogger()
-        let inst = LifecycleInstrumentation(applicationStateProvider: { state })
+        let inst = LifecycleInstrumentation(
+            applicationStateProvider: { state },
+            notificationCenter: NotificationCenter()
+        )
         inst.install(tracer: nil, logger: logger)
         try await Task.sleep(nanoseconds: 50_000_000)
 

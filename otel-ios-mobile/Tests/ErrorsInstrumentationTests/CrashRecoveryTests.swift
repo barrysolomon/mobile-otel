@@ -14,7 +14,7 @@ import OpenTelemetrySdk
 /// singleton. Without serialization Swift Testing's parallel execution
 /// would race writes against reads and tests would observe each other's
 /// markers.
-@Suite("CrashRecovery", .serialized)
+@Suite("CrashRecovery", .serialized, .isolatedCrashMarker)
 struct CrashRecoveryTests {
     @Test("NSException-style marker round-trips through emitAnyPendingCrash")
     func nsExceptionMarker() throws {

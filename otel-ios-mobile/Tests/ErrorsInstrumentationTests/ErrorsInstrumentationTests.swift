@@ -12,7 +12,7 @@ import OpenTelemetrySdk
 ///
 /// `.serialized` because `ErrorsInstrumentation.shared` and the on-disk
 /// crash-marker file are process-wide singletons.
-@Suite("ErrorsInstrumentation", .serialized)
+@Suite("ErrorsInstrumentation", .serialized, .isolatedCrashMarker)
 struct ErrorsInstrumentationTests {
 
     // MARK: - recordError

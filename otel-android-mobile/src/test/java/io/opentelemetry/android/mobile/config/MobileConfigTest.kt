@@ -45,6 +45,7 @@ class MobileConfigTest {
         assertEquals(50, config.diskBufferMb)
         assertEquals(24, config.diskBufferTtlHours)
         assertEquals(30L, config.exportTimeoutSeconds)
+        assertEquals(true, config.remoteConfigEnabled)
         assertEquals(300L, config.configPollIntervalSeconds)
         assertEquals(null, config.headers)
     }
@@ -79,6 +80,7 @@ class MobileConfigTest {
             diskBufferMb = 100,
             diskBufferTtlHours = 48,
             exportTimeoutSeconds = 60L,
+            remoteConfigEnabled = false,
             configPollIntervalSeconds = 600L,
             headers = mapOf("Authorization" to "Bearer token")
         )
@@ -87,6 +89,7 @@ class MobileConfigTest {
         assertEquals(100, config.diskBufferMb)
         assertEquals(48, config.diskBufferTtlHours)
         assertEquals(60L, config.exportTimeoutSeconds)
+        assertEquals(false, config.remoteConfigEnabled)
         assertEquals(600L, config.configPollIntervalSeconds)
         assertEquals(mapOf("Authorization" to "Bearer token"), config.headers)
     }

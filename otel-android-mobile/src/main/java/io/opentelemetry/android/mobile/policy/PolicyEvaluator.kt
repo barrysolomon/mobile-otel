@@ -139,15 +139,19 @@ class PolicyEvaluator(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     init {
-        // Initial config fetch
-        fetchConfig()
+        if (config.remoteConfigEnabled) {
+            // Initial config fetch
+            fetchConfig()
 
-        // Schedule periodic config refresh
-        scope.launch {
-            while (isActive) {
-                delay(configPollIntervalSeconds * 1000)
-                fetchConfig()
+            // Schedule periodic config refresh
+            scope.launch {
+                while (isActive) {
+                    delay(configPollIntervalSeconds * 1000)
+                    fetchConfig()
+                }
             }
+        } else {
+            Log.i(TAG, "Remote policy config polling disabled; using built-in default policies")
         }
     }
 

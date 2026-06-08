@@ -30,8 +30,19 @@ import java.util.WeakHashMap
  * active while the screen is visible — all taps and other interactions
  * on the same screen appear as children of this span.
  */
+/**
+ * @param appManagedScreens When true, the app is the authority for screen
+ *   identity (it calls [reportScreen] per logical/Compose screen). The SDK then
+ *   does NOT emit Activity-named screen-views, and filters out `screen.render`
+ *   spans that would carry only the host Activity name (e.g. the cold-launch
+ *   first frame, before the app has reported a screen). Default `false` keeps
+ *   that cold-launch render — it is legitimate startup telemetry — and only
+ *   relabels it lazily when the app reports a screen in time.
+ */
 @Incubating
-class ScreenViewInstrumentation : MobileInstrumentation {
+class ScreenViewInstrumentation(
+    private val appManagedScreens: Boolean = false,
+) : MobileInstrumentation {
 
     override val instrumentationName = "io.opentelemetry.android.mobile.screen"
 
@@ -64,8 +75,12 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         val cb = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 val screenName = activity.javaClass.simpleName
-                context.sessionProvider.onScreenView(screenName)
-                logScreenView(screenName)
+                // In app-managed mode the app owns screen identity (via reportScreen),
+                // so don't emit the host-Activity screen-view or set it as current.
+                if (!appManagedScreens) {
+                    context.sessionProvider.onScreenView(screenName)
+                    logScreenView(screenName)
+                }
                 startScreenRenderSpan(activity, screenName)
                 attachFragmentCallbacks(activity, context)
             }
@@ -130,6 +145,21 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         pageSpan = null
     }
 
+    /**
+     * Reports a logical, app-defined screen view — e.g. a Jetpack Compose
+     * destination in a single-Activity app, where Activity-based detection only
+     * ever sees the host Activity (`MainActivity`). Sets the current screen (so
+     * subsequent taps / freezes are tagged with it via the session provider),
+     * emits a [MobileSemconv.UI_SCREEN_VIEW] log, and starts a `page.<name>` span
+     * that nests later interactions. Call this on each navigation in apps that
+     * don't map screens to Activities/Fragments.
+     */
+    fun reportScreen(screenName: String) {
+        sessionProvider?.onScreenView(screenName)
+        logScreenView(screenName)
+        startPageSpan(screenName)
+    }
+
     private fun logScreenView(screenName: String) {
         val sp = sessionProvider ?: return
         val attrs = Attributes.builder()
@@ -152,21 +182,32 @@ class ScreenViewInstrumentation : MobileInstrumentation {
         }
     }
 
-    private fun startScreenRenderSpan(activity: Activity, screenName: String) {
+    private fun startScreenRenderSpan(activity: Activity, activityScreenName: String) {
         val root = activity.window?.decorView ?: return
         val sp = sessionProvider ?: return
-        val span = tracer?.spanBuilder(MobileSemconv.SCREEN_RENDER)
-            ?.setSpanKind(SpanKind.INTERNAL)
-            ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
-            ?.setAttribute(MobileSemconv.SCREEN_NAME.key, screenName)
-            ?.startSpan() ?: return
+        // Capture the resume instant now; create the span at DRAW time so the
+        // resolved screen name is known (and so app-managed mode can skip it).
+        val startedAt = java.time.Instant.now()
 
         val observer = root.viewTreeObserver
         val listener = object : ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 if (observer.isAlive) observer.removeOnPreDrawListener(this)
-                span.setStatus(StatusCode.OK)
-                span.end()
+                // Resolve at DRAW time: a logical screen the app reported during
+                // composition (via reportScreen) wins over the host Activity name
+                // captured at resume ("MainActivity").
+                val resolved = sp.getCurrentScreenName() ?: activityScreenName
+                // app-managed mode: drop renders still carrying only the host
+                // Activity name (e.g. the cold-launch first frame, before the app
+                // reported a screen). Default mode keeps them as legit telemetry.
+                if (appManagedScreens && resolved == activityScreenName) return true
+                tracer?.spanBuilder(MobileSemconv.SCREEN_RENDER)
+                    ?.setSpanKind(SpanKind.INTERNAL)
+                    ?.setStartTimestamp(startedAt)
+                    ?.setAttribute(MobileSemconv.SESSION_ID.key, sp.getSessionId())
+                    ?.setAttribute(MobileSemconv.SCREEN_NAME.key, resolved)
+                    ?.startSpan()
+                    ?.apply { setStatus(StatusCode.OK); end() }
                 return true
             }
         }
