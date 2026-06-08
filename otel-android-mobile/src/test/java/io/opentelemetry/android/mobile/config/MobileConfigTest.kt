@@ -46,6 +46,7 @@ class MobileConfigTest {
         assertEquals(24, config.diskBufferTtlHours)
         assertEquals(30L, config.exportTimeoutSeconds)
         assertEquals(true, config.remoteConfigEnabled)
+        assertEquals(false, config.appManagedScreens)
         assertEquals(300L, config.configPollIntervalSeconds)
         assertEquals(null, config.headers)
     }
@@ -278,6 +279,17 @@ class MobileConfigTest {
         )
 
         assertEquals(config1.hashCode(), config2.hashCode())
+    }
+
+    @Test
+    fun `setAppManagedScreens round-trips through builder`() {
+        val config = MobileConfig.builder()
+            .setServiceName("test")
+            .setServiceVersion("1.0")
+            .setCollectorEndpoint("https://example.com:4317")
+            .setAppManagedScreens(true)
+            .build()
+        assertEquals(true, config.appManagedScreens)
     }
 
     @Test

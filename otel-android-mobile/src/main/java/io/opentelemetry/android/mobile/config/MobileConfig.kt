@@ -116,7 +116,7 @@ data class MobileConfig(
      * points directly at a plain OTLP ingest endpoint, since OTLP receivers do
      * not serve policy config and will usually return 4xx responses.
      */
-    val remoteConfigEnabled: Boolean = true,
+    @Incubating val remoteConfigEnabled: Boolean = true,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
     val headers: Map<String, String>? = null,
@@ -260,6 +260,7 @@ data class MobileConfig(
         private var errorConfig: ErrorConfig = ErrorConfig.default()
         private var screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false)
         private var wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
+        private var appManagedScreens: Boolean = false
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -291,6 +292,7 @@ data class MobileConfig(
         fun setErrorConfig(config: ErrorConfig) = apply { this.errorConfig = config }
         fun setScreenshotConfig(config: ScreenshotConfig) = apply { this.screenshotConfig = config }
         fun setWireframeConfig(config: WireframeConfig) = apply { this.wireframeConfig = config }
+        fun setAppManagedScreens(enabled: Boolean) = apply { this.appManagedScreens = enabled }
 
         fun addLogExporterCustomizer(customizer: (LogRecordExporter) -> LogRecordExporter) = apply {
             exporterCustomizers.addLog(customizer)
@@ -332,7 +334,8 @@ data class MobileConfig(
                 networkConfig = networkConfig,
                 errorConfig = errorConfig,
                 screenshotConfig = screenshotConfig,
-                wireframeConfig = wireframeConfig
+                wireframeConfig = wireframeConfig,
+                appManagedScreens = appManagedScreens
             )
         }
 
