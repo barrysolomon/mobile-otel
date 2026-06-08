@@ -1,5 +1,5 @@
 {
-  "name": "@dash0/mobile-react-native",
+  "name": "@barrysolomon/mobile-react-native",
   "version": "0.1.0-alpha",
   "description": "Dash0 Mobile Observability SDK for React Native — bridges JS into the native Android and iOS SDKs",
   "main": "lib/commonjs/index.js",
@@ -23,7 +23,12 @@
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "keywords": [
     "react-native",
