@@ -104,6 +104,17 @@ public final class OTelMobile: @unchecked Sendable {
     /// instance so they live as long as the SDK does.
     fileprivate var autoFlushObservers: [NSObjectProtocol] = []
 
+    /// Dedicated queue for auto-flush work dispatched from lifecycle observers.
+    /// Using a named utility-QoS queue instead of a bare `Task.detached` gives
+    /// predictable scheduling and keeps it off the main thread, eliminating the
+    /// priority inversion that caused watchdog terminations on backgrounding
+    /// with no network. See `triggerAutoFlush()`.
+    internal static let autoFlushQueueLabel = "io.dash0.mobile.auto-flush"
+    private static let autoFlushQueue = DispatchQueue(
+        label: autoFlushQueueLabel,
+        qos: .utility
+    )
+
     /// NF-011: NWPathMonitor adapter retaining the network watcher. Held on
     /// the instance so the monitor isn't deinit'd when start(config:) returns.
     /// `nil` for test-overload paths that don't wire connectivity.
@@ -707,18 +718,24 @@ public final class OTelMobile: @unchecked Sendable {
             // so scene-based SwiftUI apps get coverage too.
             #if canImport(UIKit) && (os(iOS) || os(tvOS))
             let nc = NotificationCenter.default
+            // Dispatch flush onto autoFlushQueue so these handlers return
+            // immediately. Calling forceFlush() directly here blocks the main
+            // thread (UIKit posts on the main thread when queue: nil) via
+            // MobileLogRecordProcessor.forceFlushBuffered's DispatchSemaphore,
+            // which triggers a priority inversion and, on slow/offline
+            // networks, watchdog termination (0x8BADF00D).
             instance.autoFlushObservers.append(nc.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification,
                 object: nil, queue: nil
-            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            ) { [weak instance] _ in instance?.triggerAutoFlush() })
             instance.autoFlushObservers.append(nc.addObserver(
                 forName: UIScene.didEnterBackgroundNotification,
                 object: nil, queue: nil
-            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            ) { [weak instance] _ in instance?.triggerAutoFlush() })
             instance.autoFlushObservers.append(nc.addObserver(
                 forName: UIApplication.willTerminateNotification,
                 object: nil, queue: nil
-            ) { [weak instance] _ in _ = instance?.forceFlush() })
+            ) { [weak instance] _ in instance?.triggerAutoFlush() })
             #endif
         }
 
@@ -821,6 +838,20 @@ public final class OTelMobile: @unchecked Sendable {
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
         await processor.flushWindow(minutes: minutes)
+    }
+
+    /// Dispatch a `forceFlush()` onto `autoFlushQueue` (utility QoS) and
+    /// return immediately. Used by UIKit lifecycle observers so the
+    /// notification handler never blocks the main thread.
+    ///
+    /// Mirrors `MobileLogRecordProcessor.onNetworkRestored()`, which already
+    /// uses the same async-hop pattern for the same reason: `forceFlushBuffered`
+    /// blocks on a `DispatchSemaphore` and must not be called from a
+    /// user-interactive thread.
+    internal func triggerAutoFlush() {
+        OTelMobile.autoFlushQueue.async { [weak self] in
+            _ = self?.forceFlush()
+        }
     }
 
     // MARK: - Internal helpers (testable)
