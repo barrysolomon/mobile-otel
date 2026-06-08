@@ -1,7 +1,7 @@
 {
   "name": "@barrysolomon/mobile-react-native",
   "version": "0.1.0-alpha",
-  "description": "Dash0 Mobile Observability SDK for React Native — bridges JS into the native Android and iOS SDKs",
+  "description": "Dash0 Mobile Observability SDK for React Native (JS/TS bridge). For native iOS use the Swift Package at https://github.com/barrysolomon/mobile-otel. For native Android use io.opentelemetry.android:mobile on GitHub Packages.",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
   "types": "lib/typescript/src/index.d.ts",
@@ -23,8 +23,9 @@
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "build": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "npm run build"
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
+    "publish:alpha": "npm publish --tag alpha"
   },
   "publishConfig": {
     "access": "public",
