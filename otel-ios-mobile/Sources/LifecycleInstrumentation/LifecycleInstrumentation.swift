@@ -30,6 +30,10 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
     private let applicationStateProvider: ApplicationStateProvider
 #endif
 
+    // Injected so tests can use a private NotificationCenter per instance,
+    // preventing cross-test notification pollution when tests run concurrently.
+    private let notificationCenter: NotificationCenter
+
     private let lock = NSLock()
     private var installed = false
     private var tracer: Tracer?
@@ -50,13 +54,23 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
             UIApplication.shared.applicationState
         }
 #endif
+        self.notificationCenter = .default
     }
 
 #if canImport(UIKit) && (os(iOS) || os(tvOS))
     /// Test-only init. Internal so it's accessible from `@testable import`
     /// in test targets but not from external consumers.
-    internal init(applicationStateProvider: @escaping ApplicationStateProvider) {
+    ///
+    /// `notificationCenter` defaults to `.default` so existing call-sites
+    /// without the argument are unaffected. Pass a fresh `NotificationCenter()`
+    /// in tests to prevent cross-test notification pollution when Swift Testing
+    /// runs cases concurrently.
+    internal init(
+        applicationStateProvider: @escaping ApplicationStateProvider,
+        notificationCenter: NotificationCenter = .default
+    ) {
         self.applicationStateProvider = applicationStateProvider
+        self.notificationCenter = notificationCenter
     }
 #endif
 
@@ -76,7 +90,7 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
         emit(event: "app.launch")
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
-        let nc = NotificationCenter.default
+        let nc = self.notificationCenter
         // Scene-based apps (Info.plist has UIApplicationSceneManifest — which
         // is every modern SwiftUI app and most UIKit apps from iOS 13+) do
         // NOT post UIApplication.didBecomeActiveNotification. Observe both
@@ -130,7 +144,7 @@ public final class LifecycleInstrumentation: @unchecked Sendable {
     public func uninstall() {
         lock.lock(); defer { lock.unlock() }
         installed = false
-        let nc = NotificationCenter.default
+        let nc = self.notificationCenter
         for o in observers { nc.removeObserver(o) }
         observers.removeAll()
         foregroundSpan?.end()
