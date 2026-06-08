@@ -5,10 +5,12 @@ existing native Android (`otel-android-mobile`) and iOS (`otel-ios-mobile`)
 SDKs — native owns buffering, policy evaluation, OTLP export, and crash
 recovery. JS stays thin.
 
-**Status:** Phase 19a.0 — scaffold + failing-first tests only. Nothing works
-end-to-end yet. See [../../docs/epics/REACT_NATIVE_EPIC.md](../../docs/epics/REACT_NATIVE_EPIC.md).
+**Status:** Complete and validated end-to-end in Dash0. Both Android and iOS
+builds produce real binaries (140 MB APK, 239 MB .app) and telemetry lands in
+Dash0 within ~3 s. All 4 platforms (Android native, iOS native, RN Android,
+RN iOS) have a UAT matrix of 12/12 cells green. 83 Jest tests pass.
 
-## Quickstart (planned — not functional yet)
+## Quickstart
 
 ```ts
 import { Dash0Mobile } from '@dash0/mobile-react-native';
@@ -27,24 +29,89 @@ await Dash0Mobile.span('checkout', async () => {
 });
 ```
 
+## Build & test
+
+```bash
+# Install dependencies (first time)
+npm install
+
+# Jest — bridge contract + auto-instrumentation (83 tests)
+npm test
+
+# Type-check
+npx tsc --noEmit
+
+# End-to-end (package + AstronomyShopRN demo, Jest mode — no simulator)
+../../scripts/test/validate-rn-end-to-end.sh --mode=jest
+```
+
 ## Layout
 
-```
+```text
 src/
   bridge/
     types.ts           # cross-repo seam — DO NOT change without coordinating
-    NativeBridge.ts    # (pending) debounced batching marshaller
-  instrumentation/     # (pending) fetch / errors / AppState / navigation
+    NativeBridge.ts    # debounced batching marshaller (50 ms batch window)
+  instrumentation/
+    fetch.ts           # fetch/XHR span auto-capture
+    xhr.ts             # XHR span auto-capture
+    errors.ts          # JS error log auto-capture
+    unhandledRejection.ts  # unhandled promise rejection capture
+    navigation.ts      # React Navigation screen-view auto-capture
+    touch.ts           # tap event auto-capture
+  otel-compat.ts       # OTel-API shim (third-party JS libs flow through bridge)
   index.ts             # public API
-android/               # (pending) Kotlin ReactContextBaseJavaModule
-ios/                   # (pending) Swift/ObjC RCTDash0MobileModule
-__tests__/             # Jest — failing-first per TDD discipline
+android/               # Kotlin ReactContextBaseJavaModule + BridgeCallSink
+ios/                   # Swift RCTDash0MobileModule + BridgeCallSink
+__tests__/             # Jest — 83 tests across bridge + instrumentation
 ```
+
+## Auto-instrumentation
+
+Enabled by default when `Dash0Mobile.start()` is called. Opt out per signal:
+
+```ts
+await Dash0Mobile.start({
+  // ...
+  autoCapture: {
+    network: false,   // disable fetch/XHR spans
+    errors: false,    // disable JS error + rejection logs
+    lifecycle: false, // disable AppState fg/bg
+  },
+});
+```
+
+## Architecture
+
+The JS layer is a thin marshaller with a 50 ms batching window. All buffering,
+policy evaluation, export scheduling, and crash recovery happen inside the
+native SDK on each platform:
+
+```text
+JS (fetch/XHR/errors/nav/tap)
+  ↓  50 ms batch window
+NativeBridge.ts  →  NativeDash0Mobile  →  Android: OTelMobile (gRPC :4317)
+                                      →  iOS:     OTelMobile (HTTP :4318)
+                                                ↓
+                                          OTLP Collector → Dash0
+```
+
+**Transport note:** Android uses OTLP/gRPC on port 4317; iOS uses OTLP/HTTP on
+port 4318. The shared `otel-config.json` uses a per-platform port rewrite at
+startup — do not assume a single endpoint works for both.
 
 ## Test strategy
 
-Three layers, all must pass on every PR (see epic §"TDD Discipline"):
+Three layers, all must pass on every PR:
 
-1. **Jest** — `npm test` in this dir; contract + bridge + instrumentation tests
-2. **Native unit** — `./gradlew :android:test` + `swift test` in `android/` and `ios/` respectively
-3. **Real-app E2E** — `scripts/test/validate-rn-end-to-end.sh` boots RN AstronomyShop on sim+emulator, queries Dash0 MCP after 75s
+1. **Jest** — `npm test` in this directory; contract + bridge + instrumentation
+2. **Native unit** — `./gradlew :android:test` (Android) + `swift test` (iOS)
+3. **Real-app E2E** — `scripts/test/validate-rn-end-to-end.sh` boots
+   AstronomyShopRN on iOS Simulator + Android emulator, queries Dash0 after 75 s
+
+## Known limitations
+
+- **Expo** — not supported without eject (bare workflow only). An Expo config
+  plugin is planned as a follow-up.
+- **Realm / Amplify DataStore** — scoped in a separate epic.
+- **Web / desktop RN targets** — not supported.
