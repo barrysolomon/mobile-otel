@@ -107,6 +107,19 @@ data class MobileConfig(
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
     val ramBufferSize: Int = 5000,
+    /**
+     * Hard cap on the total estimated bytes held in the RAM buffer (SDK_SAFETY.md
+     * non-negotiable #3 — the RAM tier must be byte-bounded, not just count-bounded).
+     * Mirrors the iOS default of 10 MB. New events that would push the buffer past
+     * this cap are dropped (and counted) until the buffer drains.
+     */
+    val ramBufferMaxBytes: Long = 10L * 1024 * 1024,
+    /**
+     * Per-event cap on estimated serialized size (body + attributes). Mirrors the
+     * iOS default of 256 KB. Events larger than this are dropped and counted —
+     * a single oversized event can otherwise blow the buffer budget.
+     */
+    val ramBufferMaxEventBytes: Long = 256L * 1024,
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
     val exportTimeoutSeconds: Long = 30,
@@ -185,18 +198,28 @@ data class MobileConfig(
         require(metricExportIntervalSeconds > 0) { "metricExportIntervalSeconds must be positive" }
         require(predictionIntervalSeconds > 0) { "predictionIntervalSeconds must be positive" }
         require(ramBufferSize in 1..100_000) { "ramBufferSize must be between 1 and 100,000" }
+        require(ramBufferMaxBytes > 0) { "ramBufferMaxBytes must be positive" }
+        require(ramBufferMaxEventBytes in 1..ramBufferMaxBytes) { "ramBufferMaxEventBytes must be between 1 and ramBufferMaxBytes" }
         require(diskBufferMb in 1..500) { "diskBufferMb must be between 1 and 500" }
         require(diskBufferTtlHours in 1..168) { "diskBufferTtlHours must be between 1 and 168 (7 days)" }
         require(exportTimeoutSeconds > 0) { "exportTimeoutSeconds must be positive" }
         require(configPollIntervalSeconds > 0) { "configPollIntervalSeconds must be positive" }
         require(maxExportRetries in 0..10) { "maxExportRetries must be between 0 and 10" }
 
-        // Warn if collector endpoint is not using TLS (allow localhost for development)
+        // Enforce HTTPS for the collector endpoint. localhost / emulator-loopback
+        // (10.0.2.2) stay exempt for local development. For any other cleartext
+        // http:// endpoint, log a PROMINENT ERROR — telemetry (including the auth
+        // token in headers) would otherwise travel in plaintext over the network.
+        //
+        // Prime directive: we do NOT hard-crash the host on misconfiguration; we
+        // log loudly and continue. (Cert pinning is intentionally out of scope —
+        // that's a feature, not a config-validation fix.)
         val endpoint = collectorEndpoint.lowercase()
         if (!endpoint.startsWith("https://") && !isLocalhostEndpoint(endpoint)) {
-            Log.w("MobileConfig", "collectorEndpoint is not using HTTPS. " +
-                "Telemetry data will be transmitted in plaintext. " +
-                "Use https:// in production to protect data in transit.")
+            Log.e("MobileConfig", "SECURITY: collectorEndpoint '$collectorEndpoint' uses cleartext " +
+                "(non-HTTPS) transport to a non-localhost host. Telemetry AND the ingest auth " +
+                "token will be sent in PLAINTEXT and can be intercepted. Use https:// in production. " +
+                "Continuing with insecure transport — fix this before shipping.")
         }
     }
 

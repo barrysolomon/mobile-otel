@@ -377,6 +377,24 @@ class ScreenshotInstrumentation(
             ))
         }
 
+        // Jetpack Compose renders all text inside a single AndroidComposeView whose
+        // children are NOT View/TextView instances, so the legacy walk below can't
+        // see Compose password/card text. Treat the whole Compose surface as a
+        // sensitive region and redact its full bounds. Detected by class name to
+        // avoid adding a Compose dependency to this module.
+        if (view.javaClass.name == COMPOSE_VIEW_CLASS) {
+            val location = IntArray(2)
+            view.getLocationInWindow(location)
+            bounds.add(Rect(
+                location[0],
+                location[1],
+                location[0] + view.width,
+                location[1] + view.height
+            ))
+            // Don't recurse into Compose internals — the whole region is redacted.
+            return
+        }
+
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) {
                 collectTextViewBounds(view.getChildAt(i), bounds)
@@ -488,5 +506,8 @@ class ScreenshotInstrumentation(
 
     companion object {
         private const val TAG = "OTel-Screenshot"
+        // Fully-qualified name of the Compose interop View. Matched by name so this
+        // module needs no compile-time dependency on Jetpack Compose.
+        private const val COMPOSE_VIEW_CLASS = "androidx.compose.ui.platform.AndroidComposeView"
     }
 }

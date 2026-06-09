@@ -28,6 +28,20 @@ internal data class BufferedEvent(
     val monotonicMs: Long = SystemClock.elapsedRealtime(),
     val seqId: Long = nextSeqId()
 ) {
+    /**
+     * Cheap estimate of this event's serialized footprint in bytes (body length
+     * plus each attribute key + stringified value). Used by the RAM buffer to
+     * enforce byte caps (SDK_SAFETY.md non-negotiable #3) without serializing.
+     * Computed once and cached — [LogRecordData] is effectively immutable here.
+     */
+    val estimatedBytes: Long by lazy {
+        var total = logRecord.body.asString().length.toLong()
+        logRecord.attributes.forEach { key, value ->
+            total += key.key.length + value.toString().length
+        }
+        total
+    }
+
     companion object {
         private val counter = AtomicLong(0)
         private fun nextSeqId(): Long = counter.incrementAndGet()

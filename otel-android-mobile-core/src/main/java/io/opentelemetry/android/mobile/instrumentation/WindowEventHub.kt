@@ -3,6 +3,7 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Window
@@ -48,7 +49,15 @@ class WindowEventHub {
      * Called by the Window.Callback wrapper on the main thread.
      */
     fun dispatchTouchEvent(event: MotionEvent, window: Window) {
-        listeners.forEach { it.onTouchEvent(event, window) }
+        // Isolate each listener: an SDK instrumentation fault must never
+        // propagate into the host's input dispatch. Swallow + log and continue.
+        listeners.forEach {
+            try {
+                it.onTouchEvent(event, window)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Touch event listener threw; swallowing", t)
+            }
+        }
     }
 
     /**
@@ -56,6 +65,17 @@ class WindowEventHub {
      * Called by the Window.Callback wrapper on the main thread.
      */
     fun dispatchKeyEvent(event: KeyEvent, window: Window) {
-        listeners.forEach { it.onKeyEvent(event, window) }
+        // Isolate each listener (see dispatchTouchEvent).
+        listeners.forEach {
+            try {
+                it.onKeyEvent(event, window)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Key event listener threw; swallowing", t)
+            }
+        }
+    }
+
+    private companion object {
+        private const val TAG = "WindowEventHub"
     }
 }

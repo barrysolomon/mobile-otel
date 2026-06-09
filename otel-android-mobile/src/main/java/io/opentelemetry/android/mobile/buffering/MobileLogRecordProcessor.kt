@@ -108,6 +108,25 @@ class MobileLogRecordProcessor private constructor(
     private val ramBuffer = ConcurrentLinkedQueue<BufferedEvent>()
     private val ramBufferCount = AtomicInteger(0)
 
+    // SDK_SAFETY.md non-negotiable #3: the RAM tier must be byte-bounded, not just
+    // count-bounded. Tracks the estimated total bytes currently held in RAM, kept in
+    // sync with [ramBuffer] at every mutation site via [recomputeRamBytes].
+    private val ramBufferBytes = AtomicLong(0L)
+    // Counters for observability into what the byte caps reject.
+    private val droppedOversizeEvents = AtomicLong(0L)
+    private val droppedBufferFullEvents = AtomicLong(0L)
+
+    /**
+     * Recomputes [ramBufferBytes] from the live buffer. Called after bulk removals
+     * (overflow/flush/clear) which are already O(n); the hot path ([onEmit]) instead
+     * increments cheaply. Cheap enough given those paths walk the buffer anyway.
+     */
+    private fun recomputeRamBytes() {
+        var total = 0L
+        ramBuffer.forEach { total += it.estimatedBytes }
+        ramBufferBytes.set(total)
+    }
+
     // Disk buffer: persistent storage with Room
     private val diskBuffer: DiskLogBuffer = DiskLogBuffer.getInstance(
         context,
@@ -368,7 +387,25 @@ class MobileLogRecordProcessor private constructor(
 
         // Add to RAM buffer wrapped with monotonic timestamp
         val bufferedEvent = BufferedEvent(logRecordData)
+
+        // SDK_SAFETY.md non-negotiable #3: enforce RAM byte caps before buffering.
+        // Per-event cap: a single oversized event is dropped + counted, never buffered.
+        val eventBytes = bufferedEvent.estimatedBytes
+        if (eventBytes > config.ramBufferMaxEventBytes) {
+            val dropped = droppedOversizeEvents.incrementAndGet()
+            Log.w(TAG, "Dropping oversize event ($eventBytes B > ${config.ramBufferMaxEventBytes} B cap): $body (total oversize drops=$dropped)")
+            return
+        }
+        // Total-bytes cap: if this event would exceed the RAM budget, drop + count it.
+        // Overflow-to-disk is driven by the count cap below; we never let RAM exceed bytes.
+        if (ramBufferBytes.get() + eventBytes > config.ramBufferMaxBytes) {
+            val dropped = droppedBufferFullEvents.incrementAndGet()
+            Log.w(TAG, "RAM buffer byte cap reached (${ramBufferBytes.get()} B + $eventBytes B > ${config.ramBufferMaxBytes} B); dropping $body (total full drops=$dropped)")
+            return
+        }
+
         ramBuffer.offer(bufferedEvent)
+        ramBufferBytes.addAndGet(eventBytes)
         val count = ramBufferCount.incrementAndGet()
 
         // Track screen start for window extension (monotonic time)
@@ -623,6 +660,7 @@ class MobileLogRecordProcessor private constructor(
                                     }
                                 }
                                 ramBufferCount.addAndGet(-removed)
+                                recomputeRamBytes()
                                 synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
 
                                 runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
@@ -702,6 +740,7 @@ class MobileLogRecordProcessor private constructor(
                             exportedIds.contains(event).also { matched -> if (matched) removed++ }
                         }
                         ramBufferCount.addAndGet(-removed)
+                        recomputeRamBytes()
                         synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                         runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
                         Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
@@ -774,6 +813,7 @@ class MobileLogRecordProcessor private constructor(
                 synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
                 diskBuffer.persistBufferedEvents(eventsToMove)
                 ramBufferCount.addAndGet(-eventsToMove.size)
+                recomputeRamBytes()
                 Log.d(TAG, "Overflowed ${eventsToMove.size} events to disk")
             }
 
@@ -876,6 +916,7 @@ class MobileLogRecordProcessor private constructor(
                                 exportedIds.contains(event).also { matched -> if (matched) removed++ }
                             }
                             ramBufferCount.addAndGet(-removed)
+                            recomputeRamBytes()
                             synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                             runBlocking { diskBuffer.clearAll() }
                             Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
@@ -961,6 +1002,7 @@ class MobileLogRecordProcessor private constructor(
             val ramEvents = ramBuffer.toList()
             ramBuffer.clear()
             ramBufferCount.set(0)
+            ramBufferBytes.set(0L)
             synchronized(persistedToDisk) { persistedToDisk.clear() }
 
             val flushResult = if (ramEvents.isNotEmpty()) {

@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.breadcrumb
 
+import io.opentelemetry.android.mobile.core.PiiScrubber
 import kotlinx.serialization.Serializable
 
 /**
@@ -118,7 +119,9 @@ data class JourneyBreadcrumb(
         ): JourneyBreadcrumb {
             val attrs = mutableMapOf<String, String>()
             attrs["exception.type"] = errorType
-            message?.let { attrs["exception.message"] = it }
+            // Scrub PII out of the raw throwable message before it is stored in
+            // a breadcrumb (mirrors ErrorInstrumentation.scrubExceptionMessage).
+            message?.let { attrs["exception.message"] = PiiScrubber.scrubExceptionMessage(it) }
             attrs.putAll(attributes)
 
             return JourneyBreadcrumb(

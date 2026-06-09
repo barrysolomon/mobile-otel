@@ -101,7 +101,11 @@ class OTelNetworkInterceptor private constructor(
         // Capture request body if enabled
         if (config.captureRequestBody) {
             captureRequestBody(request)?.let { body ->
-                spanBuilder.setAttribute("http.request.body", body)
+                // Scrub PII (emails/phones/cards/SSNs) out of captured bodies.
+                spanBuilder.setAttribute(
+                    "http.request.body",
+                    io.opentelemetry.android.mobile.core.PiiScrubber.scrubText(body)
+                )
             }
         }
 
@@ -195,7 +199,11 @@ class OTelNetworkInterceptor private constructor(
         // Capture response body if enabled
         if (config.captureResponseBody) {
             captureResponseBody(response)?.let { body ->
-                span.setAttribute("http.response.body", body)
+                // Scrub PII (emails/phones/cards/SSNs) out of captured bodies.
+                span.setAttribute(
+                    "http.response.body",
+                    io.opentelemetry.android.mobile.core.PiiScrubber.scrubText(body)
+                )
             }
         }
 

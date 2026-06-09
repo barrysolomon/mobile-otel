@@ -108,6 +108,11 @@ object MobileOtel {
         val appContext = context.applicationContext
         currentExportMode = config.exportMode
 
+        // Fault-isolate the whole init sequence. An initialization failure must
+        // log and surface to the caller (OTelMobile.start), which leaves the host
+        // running degraded/no-op rather than letting the throwable reach
+        // Application.onCreate. Prime directive: the SDK never crashes the host.
+        try {
         // Initialize SessionManager FIRST (early init strategy)
         SessionManager.initialize(
             appContext,
@@ -192,6 +197,14 @@ object MobileOtel {
             .build()
 
         return loggerProvider
+        } catch (t: Throwable) {
+            android.util.Log.e(
+                "MobileOtel",
+                "SDK initialization failed; host continues running with telemetry degraded/disabled",
+                t
+            )
+            throw t
+        }
     }
 
     /**

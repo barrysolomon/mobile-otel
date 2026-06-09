@@ -6,6 +6,7 @@ package io.opentelemetry.android.mobile.instrumentation
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import android.util.Log
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
@@ -70,12 +71,22 @@ internal class WindowEventHubInstaller(
     ) : Window.Callback {
 
         override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-            hub.dispatchTouchEvent(event, window)
+            // Hub dispatch is best-effort instrumentation: an SDK fault must never
+            // break the host's input delegation. Always delegate to the host.
+            try {
+                hub.dispatchTouchEvent(event, window)
+            } catch (t: Throwable) {
+                Log.w(TAG, "hub.dispatchTouchEvent threw; swallowing", t)
+            }
             return delegate.dispatchTouchEvent(event)
         }
 
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-            hub.dispatchKeyEvent(event, window)
+            try {
+                hub.dispatchKeyEvent(event, window)
+            } catch (t: Throwable) {
+                Log.w(TAG, "hub.dispatchKeyEvent threw; swallowing", t)
+            }
             return delegate.dispatchKeyEvent(event)
         }
 
@@ -102,5 +113,9 @@ internal class WindowEventHubInstaller(
         override fun onWindowStartingActionMode(callback: ActionMode.Callback, type: Int): ActionMode? = delegate.onWindowStartingActionMode(callback, type)
         override fun onActionModeStarted(mode: ActionMode) = delegate.onActionModeStarted(mode)
         override fun onActionModeFinished(mode: ActionMode) = delegate.onActionModeFinished(mode)
+
+        private companion object {
+            private const val TAG = "HubDispatcher"
+        }
     }
 }

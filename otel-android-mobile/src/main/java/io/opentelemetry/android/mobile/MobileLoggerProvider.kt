@@ -115,7 +115,8 @@ class MobileLoggerProvider private constructor(
             .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
             .apply {
                 config.headers?.forEach { (key, value) ->
-                    android.util.Log.d("MobileLoggerProvider", "Adding header: $key = $value")
+                    // SECURITY: never log header values — they include the Dash0 ingest
+                    // Bearer token. Do not reintroduce any logging of key/value here.
                     addHeader(key, value)
                 }
             }
