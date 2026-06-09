@@ -127,10 +127,39 @@ describe('fetch auto-instrumentation', () => {
   });
 
   it('restores original fetch on uninstall', () => {
-    const before = global.fetch;
+    // Establish a clean, un-instrumented baseline: beforeEach's start() may
+    // already have installed (and tagged) fetch, so capturing global.fetch
+    // directly would not be the true original.
+    const baseline = jest.fn(async () => ({} as Response)) as unknown as typeof global.fetch;
+    global.fetch = baseline;
+
     const unwrap = installFetchInstrumentation();
-    expect(global.fetch).not.toBe(before);
+    expect(global.fetch).not.toBe(baseline);
+    expect(
+      (global.fetch as { __dash0_installed?: boolean }).__dash0_installed,
+    ).toBe(true);
+
     unwrap();
-    expect(global.fetch).toBe(before);
+    expect(global.fetch).toBe(baseline);
+  });
+
+  it('is idempotent: a second install does not stack wrappers or leak the original', () => {
+    const baseline = jest.fn(async () => ({} as Response)) as unknown as typeof global.fetch;
+    global.fetch = baseline;
+
+    const unwrap1 = installFetchInstrumentation();
+    const wrapped = global.fetch;
+    expect(wrapped).not.toBe(baseline);
+
+    // The double-install guard must no-op: the global stays the single
+    // wrapper (no second layer), so the original can never be lost.
+    const unwrap2 = installFetchInstrumentation();
+    expect(global.fetch).toBe(wrapped);
+
+    unwrap2(); // no-op handle — must not restore prematurely
+    expect(global.fetch).toBe(wrapped);
+
+    unwrap1();
+    expect(global.fetch).toBe(baseline);
   });
 });

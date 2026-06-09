@@ -140,8 +140,10 @@ describe('XMLHttpRequest auto-instrumentation', () => {
     expect(starts[0].spanKind).toBe('CLIENT');
     expect(starts[0].name).toBe('GET api.example.com');
     expect(starts[0].attributes['http.request.method']).toBe('GET');
+    // url.full is sanitized: the query string is stripped before export to
+    // avoid leaking secrets (?token=, ?api_key=, OAuth codes) into telemetry.
     expect(starts[0].attributes['url.full']).toBe(
-      'https://api.example.com/items?q=1',
+      'https://api.example.com/items',
     );
     expect(starts[0].attributes['server.address']).toBe('api.example.com');
     expect(ends).toHaveLength(1);
