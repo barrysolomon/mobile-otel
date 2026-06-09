@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import OpenTelemetrySdk
 import OpenTelemetryProtocolExporterCommon
 import OpenTelemetryProtocolExporterHttp
@@ -51,6 +52,24 @@ public final class GrpcExporterBundle<ExporterT>: @unchecked Sendable {
 /// that future work (gRPC exporter, mTLS, custom HTTP clients) only needs to
 /// extend one file.
 public enum OTLPExporterFactory {
+    private static let diagnosticLog = OSLog(subsystem: "com.dash0.otel-mobile", category: "exporter")
+
+    /// Warn (loudly, but never crash) when an endpoint uses a cleartext
+    /// transport. Telemetry can carry PII; shipping it over plain HTTP exposes
+    /// it to network attackers. We allow localhost/loopback for local collector
+    /// development. No cert pinning here — that's a feature-sized change.
+    static func warnIfInsecureEndpoint(_ url: URL) {
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard scheme == "http" else { return }
+        let host = url.host?.lowercased() ?? ""
+        let isLocal = host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
+        if isLocal { return }
+        os_log(
+            "Dash0 OTel: endpoint '%{public}@' uses cleartext http:// to a non-localhost host. Telemetry (and any PII it carries) will be sent UNENCRYPTED. Use https://.",
+            log: diagnosticLog, type: .error, url.absoluteString
+        )
+    }
+
     /// Build an OTLP/HTTP log exporter.
     ///
     /// The exporter follows standard OTLP/HTTP convention: if the caller
@@ -157,6 +176,8 @@ public enum OTLPExporterFactory {
             throw OTLPExporterFactoryError.invalidEndpoint(endpoint)
         }
 
+        warnIfInsecureEndpoint(base)
+
         // If caller already supplied the full /v1/<signal> URL, use it as-is.
         if base.path.hasSuffix(signalPath) || base.path.hasSuffix(signalPath + "/") {
             return base
@@ -233,12 +254,23 @@ public enum OTLPExporterFactory {
         let port = url.port ?? (url.scheme?.lowercased() == "https" ? 4317 : 4317)
         let useTLS = (url.scheme?.lowercased() ?? "https") == "https"
 
+        warnIfInsecureEndpoint(url)
+
         // Single-thread event loop is plenty for a mobile exporter — the SDK
         // batches small payloads, not high-throughput streaming.
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let builder: ClientConnection.Builder = useTLS
-            ? ClientConnection.usingPlatformAppropriateTLS(for: group)
-            : ClientConnection.insecure(group: group)
+        let builder: ClientConnection.Builder
+        if useTLS {
+            builder = ClientConnection.usingPlatformAppropriateTLS(for: group)
+        } else {
+            // Log the cleartext gRPC downgrade — .insecure disables TLS, so the
+            // OTLP stream (and any PII) travels unencrypted.
+            os_log(
+                "Dash0 OTel: gRPC endpoint '%{public}@' is using an INSECURE (no-TLS) channel. Telemetry will be sent unencrypted. Use an https:// endpoint for TLS.",
+                log: diagnosticLog, type: .error, url.absoluteString
+            )
+            builder = ClientConnection.insecure(group: group)
+        }
         let channel = builder.connect(host: host, port: port)
         return (channel, group)
     }

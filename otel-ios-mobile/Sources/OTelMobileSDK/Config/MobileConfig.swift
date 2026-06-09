@@ -89,7 +89,7 @@ public struct MobileConfig: Sendable {
         exportMode: ExportMode = .hybrid,
         bufferConfig: BufferConfig = .default,
         privacyConfig: PrivacyConfig = .default,
-        autoCaptureOptions: AutoCaptureOptions = .all,
+        autoCaptureOptions: AutoCaptureOptions = .default,
         pollingIntervalSeconds: Int = 300,
         extraHeaders: [String: String] = [:],
         enablePolicyPolling: Bool = false,

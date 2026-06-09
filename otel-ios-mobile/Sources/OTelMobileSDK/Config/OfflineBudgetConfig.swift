@@ -16,13 +16,22 @@ public struct OfflineBudgetConfig: Sendable {
     /// Master switch. When false, no offline budget enforcement occurs.
     public let enabled: Bool
 
+    /// Floor applied to `maxOfflineDiskBytes` so a misconfigured (zero/negative)
+    /// value can't disable persistence or crash init. 64 KB is enough to hold
+    /// a handful of events while still being effectively "tiny".
+    static let minOfflineDiskBytes = 64 * 1024
+
     public init(
         maxOfflineDiskBytes: Int = 10 * 1024 * 1024,
         evictionStrategy: EvictionStrategy = .oldestFirst,
         enabled: Bool = true
     ) {
-        precondition(maxOfflineDiskBytes > 0, "maxOfflineDiskBytes must be positive")
-        self.maxOfflineDiskBytes = maxOfflineDiskBytes
+        // Clamp instead of trapping. The SDK safety audit forbids
+        // `precondition` / `fatalError` in config init — a bad dev-supplied
+        // value must never crash the host app. A non-positive budget is
+        // floored to a sane minimum (mirrors SamplingConfig / RetryableExporter
+        // clamping).
+        self.maxOfflineDiskBytes = max(maxOfflineDiskBytes, OfflineBudgetConfig.minOfflineDiskBytes)
         self.evictionStrategy = evictionStrategy
         self.enabled = enabled
     }

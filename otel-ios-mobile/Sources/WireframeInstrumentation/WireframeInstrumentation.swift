@@ -117,7 +117,19 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
         guard rateLimiter.tryAcquire() else { return }
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
-        captureFromKeyWindow(trigger: trigger)
+        // captureFromKeyWindow walks UIApplication/UIWindow/UIView, which are
+        // main-thread-only. The tap / screen_view triggers already arrive on
+        // main, but the error / policy-match / public-API paths can call
+        // capture() from a background Task.detached (see
+        // MobileLogRecordProcessor). Hop to main for those to avoid off-main
+        // UIKit access (undefined behavior / host crash).
+        if Thread.isMainThread {
+            captureFromKeyWindow(trigger: trigger)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.captureFromKeyWindow(trigger: trigger)
+            }
+        }
         #endif
     }
 

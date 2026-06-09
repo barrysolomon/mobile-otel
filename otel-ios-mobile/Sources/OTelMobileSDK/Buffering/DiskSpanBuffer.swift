@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import OTelMobileCore
 
 /// Disk-backed buffer of failed OTLP trace requests. Actor-isolated, raw
 /// `sqlite3` C API. Mirrors `DiskLogBuffer` but stores serialized OTLP
@@ -34,6 +35,11 @@ public actor DiskSpanBuffer {
         self.maxTotalBytes = maxTotalBytes
         self.retentionSeconds = retentionSeconds
         self.openAndPrepare()
+        // At-rest protection: persisted spans can carry PII. Protect the DB
+        // file (WAL/SHM inherit the directory's class) and exclude the
+        // directory from backups. Crash-safe: helper logs + continues.
+        FileProtectionHelper.protectDirectory(self.dbPath.deletingLastPathComponent())
+        FileProtectionHelper.applyProtection(toFile: self.dbPath)
     }
 
     public func shutdown() async {
