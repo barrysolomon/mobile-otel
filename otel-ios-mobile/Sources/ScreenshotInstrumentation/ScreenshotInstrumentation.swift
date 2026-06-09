@@ -225,12 +225,11 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         guard view.isHidden == false else { return }
 
         // UIKit text-bearing views. A secure UITextField (isSecureTextEntry)
-        // is still a UITextField, so it's already covered here — but we check
-        // explicitly so the intent is clear and so a future narrowing of the
-        // UITextField branch can't silently drop secure fields.
+        // is itself a UITextField, so it is already covered by this branch —
+        // there is no separate `isSecureTextEntry` branch because it would be
+        // unreachable. If this branch is ever narrowed, secure fields MUST be
+        // re-added explicitly.
         if view is UITextField || view is UITextView {
-            rects.append(view.convert(view.bounds, to: rootView))
-        } else if let tf = view as? UITextField, tf.isSecureTextEntry {
             rects.append(view.convert(view.bounds, to: rootView))
         } else if Self.isSwiftUITextRendering(view) {
             // SwiftUI LIMITATION: SwiftUI's SecureField / TextField do NOT
