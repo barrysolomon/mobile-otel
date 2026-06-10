@@ -20,4 +20,12 @@ public struct AutoCaptureOptions: OptionSet, Sendable {
 
     public static let all: AutoCaptureOptions = [.tap, .scroll, .lifecycle, .screen, .network, .errors, .freeze, .vitals, .textInput, .screenshot, .wireframe, .deviceStats]
     public static let none: AutoCaptureOptions = []
+
+    /// The default auto-capture set: everything in `.all` EXCEPT the
+    /// privacy-sensitive `.screenshot` and `.wireframe` modules. Per the
+    /// screenshot/wireframe privacy design, those capture screen pixels /
+    /// view-hierarchy content and MUST be opt-in — customers who want them
+    /// pass `.all` or add the options explicitly. This is the value
+    /// `MobileConfig` uses when the caller doesn't specify `autoCaptureOptions`.
+    public static let `default`: AutoCaptureOptions = all.subtracting([.screenshot, .wireframe])
 }

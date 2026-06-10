@@ -84,10 +84,14 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
         // on this fd — no Foundation, no allocations, no locks. See the
         // handler comment in signalHandler(_:).
         if ErrorsInstrumentation.crashMarkerFd < 0 {
-            if let path = ErrorsInstrumentation.crashMarkerURL()?.path {
-                let fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+            if let url = ErrorsInstrumentation.crashMarkerURL() {
+                let fd = open(url.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
                 if fd >= 0 {
                     ErrorsInstrumentation.crashMarkerFd = fd
+                    // Apply at-rest protection now, on the happy path, so even
+                    // the signal-handler-written marker (which can't safely
+                    // touch Foundation) is protected. Crash-safe helper.
+                    FileProtectionHelper.applyProtection(toFile: url)
                 }
             }
         }
@@ -168,14 +172,25 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
 
     static func writeMarker(kind: String, name: String, reason: String, frames: [String]) {
         guard let url = crashMarkerURL() else { return }
-        // Async-signal-safe-ish payload: use String joining + Data write.
-        // In a true signal handler we'd avoid allocations, but Swift can't
-        // express that cleanly. This works reliably on iOS.
+        // NOTE: this is the NSException trampoline path, NOT the
+        // async-signal-safe signal handler (that one writes only the fixed
+        // 3-byte marker via write(2) and is left untouched). Because we are
+        // NOT in a signal context here, NSRegularExpression-based scrubbing is
+        // safe. Scrub `reason` BEFORE it touches disk — `NSException.reason`
+        // is the highest-PII-risk field (often interpolates user input like
+        // "validation failed for alice@example.com"). Previously scrubbing
+        // happened only on the next-launch READ path, leaving raw PII in a
+        // cleartext cache file in between. `name` is class-like and low risk
+        // but cheap to scrub too.
+        let scrubbedReason = PiiScrubber.scrubExceptionMessage(reason)
+        let scrubbedName = PiiScrubber.scrubExceptionMessage(name)
         let ts = String(Int(Date().timeIntervalSince1970))
-        let lines = ["kind=\(kind)", "name=\(name)", "reason=\(reason)", "timestamp=\(ts)"]
+        let lines = ["kind=\(kind)", "name=\(scrubbedName)", "reason=\(scrubbedReason)", "timestamp=\(ts)"]
             + frames.prefix(50).enumerated().map { "frame\($0.offset)=\($0.element)" }
         let payload = lines.joined(separator: "\n") + "\n"
         try? payload.data(using: .utf8)?.write(to: url, options: .atomic)
+        // At-rest protection for the marker file (crash-safe: logs + continues).
+        FileProtectionHelper.applyProtection(toFile: url)
     }
 
     static func emitAnyPendingCrash(logger: Logger) {

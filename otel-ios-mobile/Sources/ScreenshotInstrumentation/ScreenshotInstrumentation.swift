@@ -20,6 +20,14 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
 
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private var observers: [NSObjectProtocol] = []
+    // Off-main queue for screenshot post-processing (scale / redaction
+    // compositing / PNG-or-JPEG encode / base64). The window-layer render
+    // MUST stay on main (UIKit), but the CPU-heavy encoding does not touch
+    // UIView state and would otherwise hitch the main thread / trip the
+    // 0x8BADF00D watchdog under error bursts. See captureFromKeyWindow.
+    private let postProcessQueue = DispatchQueue(
+        label: "com.dash0.screenshot.postprocess", qos: .utility
+    )
     #endif
 
     public init(config: ScreenshotConfig = ScreenshotConfig()) {
@@ -82,23 +90,65 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         guard rateLimiter.tryAcquire() else { return }
 
         #if canImport(UIKit) && (os(iOS) || os(tvOS))
-        captureFromKeyWindow(trigger: trigger)
+        // captureFromKeyWindow touches UIApplication/UIWindow/CALayer, which
+        // are main-thread-only. The screen_view trigger already arrives on
+        // main (NotificationCenter queue: .main), but the error / policy-match
+        // / public-API paths can call capture() from a background
+        // Task.detached (see MobileLogRecordProcessor). Hop to main for those
+        // to avoid off-main UIKit access (undefined behavior / host crash).
+        if Thread.isMainThread {
+            captureFromKeyWindow(trigger: trigger)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.captureFromKeyWindow(trigger: trigger)
+            }
+        }
         #endif
     }
 
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private func captureFromKeyWindow(trigger: String) {
+        // MAIN THREAD ONLY below this point until the postProcessQueue hop:
+        // UIApplication/UIWindow/UIView/CALayer access requires the main
+        // thread. capture(trigger:) guarantees we're on main here.
         guard let window = Self.findKeyWindow() else { return }
-        let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
+        let originalSize = window.bounds.size
+        let renderer = UIGraphicsImageRenderer(size: originalSize)
         let image = renderer.image { ctx in
             window.layer.render(in: ctx.cgContext)
         }
 
+        // Collect redaction rects while still on main — this walks the live
+        // UIView tree (UIView access). Everything after this hop touches only
+        // the already-rendered UIImage and plain value types, so it is safe
+        // off-main.
+        let redactRects: [CGRect] = config.redactTextFields
+            ? collectTextFieldRects(in: window)
+            : []
+
+        // Hand the rendered image off to a background queue for the heavy
+        // scale / redaction-compositing / encode / base64 work so the main
+        // thread is freed immediately (avoids hitch / watchdog under bursts).
+        postProcessQueue.async { [weak self] in
+            self?.postProcessAndEmit(
+                image: image,
+                originalSize: originalSize,
+                redactRects: redactRects,
+                trigger: trigger
+            )
+        }
+    }
+
+    /// Off-main post-processing. Operates only on the already-rendered
+    /// `UIImage` and value types — no UIView/UIWindow access — so it is safe
+    /// to run on a background queue. UIGraphicsImageRenderer drawing into a
+    /// bitmap context is thread-safe.
+    private func postProcessAndEmit(image: UIImage, originalSize: CGSize, redactRects: [CGRect], trigger: String) {
         guard let scaled = scaleImage(image) else { return }
 
         var finalImage = scaled
-        if config.redactTextFields {
-            finalImage = redactTextFields(in: window, image: scaled, originalSize: window.bounds.size)
+        if !redactRects.isEmpty {
+            finalImage = redact(rects: redactRects, in: scaled, originalSize: originalSize)
         }
 
         guard let data = compressImage(finalImage) else { return }
@@ -142,8 +192,9 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         }
     }
 
-    internal func redactTextFields(in view: UIView, image: UIImage, originalSize: CGSize) -> UIImage {
-        let rects = collectTextFieldRects(in: view)
+    /// Composites opaque blocks over the given (unscaled-coordinate) rects on
+    /// top of `image`. Pure image work — no UIView access — safe off-main.
+    internal func redact(rects: [CGRect], in image: UIImage, originalSize: CGSize) -> UIImage {
         if rects.isEmpty { return image }
 
         let renderer = UIGraphicsImageRenderer(size: image.size)
@@ -173,14 +224,47 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
     private func collectTextFieldRectsRecursive(view: UIView, rootView: UIView, rects: inout [CGRect]) {
         guard view.isHidden == false else { return }
 
+        // UIKit text-bearing views. A secure UITextField (isSecureTextEntry)
+        // is itself a UITextField, so it is already covered by this branch —
+        // there is no separate `isSecureTextEntry` branch because it would be
+        // unreachable. If this branch is ever narrowed, secure fields MUST be
+        // re-added explicitly.
         if view is UITextField || view is UITextView {
-            let frame = view.convert(view.bounds, to: rootView)
-            rects.append(frame)
+            rects.append(view.convert(view.bounds, to: rootView))
+        } else if Self.isSwiftUITextRendering(view) {
+            // SwiftUI LIMITATION: SwiftUI's SecureField / TextField do NOT
+            // render as UIKit UITextField/UITextView. They draw into private
+            // host views (e.g. _UIGraphicsView / CGDrawingView / SwiftUI text
+            // renderers) whose class names are not public API. The recursive
+            // collector above therefore misses them entirely, which would
+            // capture a SwiftUI SecureField's contents as PLAINTEXT PIXELS.
+            // As a safety net, when redaction is enabled we also redact any
+            // view whose class name matches SwiftUI's text-rendering host
+            // views. This is heuristic (private class names can change across
+            // OS versions); it errs on the side of over-redaction rather than
+            // leaking a password. Callers that need stronger guarantees should
+            // disable screenshot capture on screens with sensitive SwiftUI
+            // input until a first-class SwiftUI redaction API exists.
+            rects.append(view.convert(view.bounds, to: rootView))
         }
 
         for sub in view.subviews {
             collectTextFieldRectsRecursive(view: sub, rootView: rootView, rects: &rects)
         }
+    }
+
+    /// Heuristic detection of SwiftUI text-rendering host views by class name.
+    /// SwiftUI does not expose its text host views as public types, so we
+    /// match on the private class-name substrings SwiftUI uses to draw text
+    /// (including SecureField/TextField content). See the comment in
+    /// `collectTextFieldRectsRecursive` for the privacy rationale.
+    private static func isSwiftUITextRendering(_ view: UIView) -> Bool {
+        let name = String(describing: Swift.type(of: view))
+        guard name.contains("SwiftUI") || name.hasPrefix("_UI") || name.hasPrefix("CG") else {
+            return false
+        }
+        let lower = name.lowercased()
+        return lower.contains("text") || lower.contains("secure") || lower.contains("graphicsview")
     }
 
     private func compressImage(_ image: UIImage) -> Data? {

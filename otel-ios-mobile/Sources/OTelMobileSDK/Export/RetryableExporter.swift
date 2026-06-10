@@ -71,7 +71,14 @@ public final class RetryableExporter: LogRecordExporter, @unchecked Sendable {
                 ))
                 return .failure
             }
-            let ceiling = min(initialDelayMs * (1 << (attempt - 1)), maxDelayMs)
+            // Integer-overflow-safe exponential backoff. With a large
+            // maxRetries, `1 << (attempt - 1)` overflows Int and the
+            // subsequent multiply traps. Clamp the shift exponent and use an
+            // overflow-checked multiply, then clamp to maxDelayMs.
+            let shift = min(attempt - 1, 30)
+            let factor = 1 << shift
+            let (product, overflow) = initialDelayMs.multipliedReportingOverflow(by: factor)
+            let ceiling = overflow ? maxDelayMs : min(product, maxDelayMs)
             let delayMs = jitter(ceiling)
             statusManager.notify(.retrying(
                 attempt: attempt,

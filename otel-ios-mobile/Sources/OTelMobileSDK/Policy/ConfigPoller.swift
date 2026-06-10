@@ -51,6 +51,16 @@ public final class ConfigPoller: @unchecked Sendable {
         guard let base = URL(string: gatewayEndpoint) else {
             throw PollerError.invalidEndpoint(gatewayEndpoint)
         }
+        // Warn (never crash) on cleartext config polling to a non-localhost
+        // host. Policy config is fetched over this transport; http:// exposes
+        // it to tampering / interception. localhost is allowed for local dev.
+        if (base.scheme?.lowercased() ?? "") == "http" {
+            let host = base.host?.lowercased() ?? ""
+            let isLocal = host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
+            if !isLocal {
+                NSLog("[Dash0] policy config endpoint '%@' uses cleartext http:// to a non-localhost host. Config will be fetched UNENCRYPTED. Use https://.", gatewayEndpoint)
+            }
+        }
         // Normalize to `<base>/config?dsl_version=2`, adding /config if not
         // already present.
         let configURL: URL = {
