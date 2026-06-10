@@ -25,8 +25,13 @@ public enum PolicyParser {
             let version = optInt(root, "version", default: 1)
             if version != 2 { return nil }
 
+            // Root `sdk` block — remote kill switch + global sampling.
+            // Absent ⇒ nil (caller treats as "no restriction"); malformed
+            // fields fall back to per-field defaults; never throws.
+            let sdkConfig = parseSDKConfig(root)
+
             guard let workflowsArray = root["workflows"] as? [Any] else {
-                return PolicyConfig(policies: [])
+                return PolicyConfig(policies: [], sdkConfig: sdkConfig)
             }
 
             var policies: [Policy] = []
@@ -68,7 +73,7 @@ public enum PolicyParser {
                 }
             }
 
-            return PolicyConfig(policies: policies)
+            return PolicyConfig(policies: policies, sdkConfig: sdkConfig)
         } catch {
             print("⚠️ PolicyParser: Failed to parse v2 config: \(error)")
             return nil
@@ -76,6 +81,23 @@ public enum PolicyParser {
     }
 
     // MARK: - Private helpers
+
+    /// Parse the root `sdk` block into `SDKRemoteConfig`.
+    ///
+    /// - Absent block ⇒ `nil` (caller treats as "no restriction").
+    /// - Present but malformed (`sdk` not an object) ⇒ `nil` (defaults apply).
+    /// - Present with malformed individual fields ⇒ that field falls back to
+    ///   its default (`enabled = true`, `sample_rate = 1.0`).
+    /// - `sample_rate` out of `[0,1]` ⇒ clamped by `SDKRemoteConfig.init`.
+    ///
+    /// Never throws; the `optBool`/`optDouble` accessors are forgiving by
+    /// design (org.json-style coercion).
+    private static func parseSDKConfig(_ root: [String: Any]) -> SDKRemoteConfig? {
+        guard let sdk = root["sdk"] as? [String: Any] else { return nil }
+        let enabled = optBool(sdk, "enabled", default: true)
+        let sampleRate = optDouble(sdk, "sample_rate", default: 1.0)
+        return SDKRemoteConfig(enabled: enabled, sampleRate: sampleRate)
+    }
 
     /// Map a v2 matcher type to the internal `Match` model.
     /// Returns `nil` for `timeout` and `field_absence` (state-machine constructs
@@ -317,9 +339,26 @@ public enum PolicyParser {
     }
 
     private static func optBool(_ obj: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
-        if let b = obj[key] as? Bool { return b }
-        if let n = obj[key] as? NSNumber { return n.boolValue }
-        if let s = obj[key] as? String { return (s as NSString).boolValue }
+        // Mirror org.json `JSONObject.optBoolean`: only an actual boolean or a
+        // "true"/"false" string is coerced — a numeric value (e.g. `0`/`1`) is
+        // NOT a boolean and falls through to the default. JSONSerialization
+        // bridges every JSON number AND every JSON boolean to `NSNumber`, and a
+        // boolean NSNumber satisfies `as? Bool`. We therefore must distinguish a
+        // genuinely-boolean NSNumber (CFBoolean) from a numeric one, otherwise
+        // `{"enabled": 0}` would wrongly bridge to `false` and disable the SDK
+        // while Android keeps the default.
+        if let n = obj[key] as? NSNumber {
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue }
+            // Numeric NSNumber — not a boolean per org.json. Fall through.
+        } else if let b = obj[key] as? Bool {
+            // Non-NSNumber path (e.g. a raw Swift Bool): treat as boolean.
+            return b
+        }
+        if let s = obj[key] as? String {
+            let lower = s.lowercased()
+            if lower == "true" { return true }
+            if lower == "false" { return false }
+        }
         return defaultValue
     }
 

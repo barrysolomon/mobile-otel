@@ -69,6 +69,11 @@ import java.util.concurrent.atomic.AtomicReference
  * @property context Android application context
  * @property config Mobile configuration
  * @property collectorEndpoint Base URL for configuration endpoint
+ * @property remoteGate shared gate updated with the root `sdk` block on every
+ *   successful config apply. Optional so existing call sites (and tests) that do
+ *   not exercise the kill switch keep working; when `null` the SDK behaves exactly
+ *   as before. Wired by [io.opentelemetry.android.mobile.MobileLoggerProvider] so
+ *   the log processor and the span sampler observe the same instance.
  */
 @Incubating
 class PolicyEvaluator(
@@ -77,6 +82,7 @@ class PolicyEvaluator(
     private val collectorEndpoint: String = config.collectorEndpoint,
     private val configPollIntervalSeconds: Long = config.configPollIntervalSeconds,
     httpClient: OkHttpClient? = null,
+    private val remoteGate: RemoteGate? = null,
 ) {
     private val TAG = "PolicyEvaluator"
 
@@ -435,7 +441,20 @@ class PolicyEvaluator(
                         val config = parseConfigAny(body)
                         if (config != null) {
                             policyConfig.set(config)
-                            Log.i(TAG, "Fetched policy config: ${config.policies.size} policies")
+                            // Push the root `sdk` block into the shared gate. Absent block
+                            // (null) re-opens the gate per the fail-open contract; a parse
+                            // failure (config == null) skips this entirely, preserving the
+                            // last-applied gate state. Guarded so a gate write can never
+                            // derail config application.
+                            remoteGate?.let { gate ->
+                                try {
+                                    gate.apply(config.sdk)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to apply sdk gate config", e)
+                                }
+                            }
+                            Log.i(TAG, "Fetched policy config: ${config.policies.size} policies, " +
+                                "sdk=${config.sdk?.let { "enabled=${it.enabled}, rate=${it.clampedSampleRate}" } ?: "absent"}")
                         } else {
                             Log.w(TAG, "Failed to parse config response")
                         }
@@ -497,6 +516,25 @@ class PolicyEvaluator(
         }
 
         /**
+         * Parse the optional root `sdk` block (remote kill switch + global sampling).
+         *
+         * Returns `null` when the block is absent — the caller treats absence as
+         * "no restriction" (see [RemoteGate.apply]). A present-but-malformed block
+         * never throws: each field falls back to its permissive default
+         * (`enabled = true`, `sample_rate = 1.0`) and `sample_rate` is clamped to
+         * `[0.0, 1.0]`. Wire key is snake_case `sample_rate`.
+         */
+        internal fun parseSdkConfig(root: JSONObject): SdkConfig? {
+            val sdk = root.optJSONObject("sdk") ?: return null
+            // optBoolean / optDouble already coerce wrong/missing types to the
+            // supplied fallback, so a malformed value degrades to the default
+            // rather than throwing. SdkConfig's constructor clamps the rate.
+            val enabled = sdk.optBoolean("enabled", true)
+            val sampleRate = sdk.optDouble("sample_rate", 1.0)
+            return SdkConfig(enabled = enabled, sampleRate = sampleRate)
+        }
+
+        /**
          * Parse DSL v2 (state-machine format) into PolicyConfig.
          * Maps v2 matcher types to attribute-based conditions that the existing
          * evaluation engine understands.
@@ -507,8 +545,10 @@ class PolicyEvaluator(
                 val version = root.optInt("version", 1)
                 if (version != 2) return null
 
+                val sdk = parseSdkConfig(root)
+
                 val workflowsArray = root.optJSONArray("workflows")
-                    ?: return PolicyConfig(emptyList())
+                    ?: return PolicyConfig(emptyList(), sdk = sdk)
                 val policies = mutableListOf<Policy>()
 
                 for (i in 0 until minOf(workflowsArray.length(), MAX_POLICIES)) {
@@ -544,7 +584,7 @@ class PolicyEvaluator(
                     }
                 }
 
-                PolicyConfig(policies)
+                PolicyConfig(policies, sdk = sdk)
             } catch (e: Exception) {
                 Log.e(TAG_STATIC, "Failed to parse v2 config", e)
                 null
@@ -558,8 +598,9 @@ class PolicyEvaluator(
         fun parseConfigV1Compiler(jsonString: String): PolicyConfig? {
             return try {
                 val root = JSONObject(jsonString)
+                val sdk = parseSdkConfig(root)
                 val workflowsArray = root.optJSONArray("workflows")
-                    ?: return PolicyConfig(emptyList())
+                    ?: return PolicyConfig(emptyList(), sdk = sdk)
                 val policies = mutableListOf<Policy>()
 
                 for (i in 0 until minOf(workflowsArray.length(), MAX_POLICIES)) {
@@ -620,7 +661,7 @@ class PolicyEvaluator(
                     }
                 }
 
-                PolicyConfig(policies)
+                PolicyConfig(policies, sdk = sdk)
             } catch (e: Exception) {
                 Log.e(TAG_STATIC, "Failed to parse v1 compiler config", e)
                 null
@@ -821,10 +862,54 @@ data class PolicyMatchResult(
 
 /**
  * Policy configuration container.
+ *
+ * @property policies the parsed flush policies.
+ * @property sdk the optional root `sdk` block carrying the remote kill switch and
+ *   global head-sampling override. `null` when the wire payload omitted the block;
+ *   absence is treated as "no restriction" (enabled, full rate) by [RemoteGate.apply].
  */
 data class PolicyConfig(
-    val policies: List<Policy>
+    val policies: List<Policy>,
+    val sdk: SdkConfig? = null
 )
+
+/**
+ * Parsed, validated representation of the remote-config root `sdk` block:
+ *
+ * ```json
+ * "sdk": { "enabled": true, "sample_rate": 1.0 }
+ * ```
+ *
+ * Drives the remote kill switch ([enabled]) and global head-sampling override
+ * ([sampleRate]) through [RemoteGate]. Both fields fail open: a payload that omits
+ * a field, or supplies the wrong type, yields the permissive default for that
+ * field rather than throwing.
+ *
+ * [sampleRate] is **clamped to `[0.0, 1.0]` on construction** — including when a
+ * caller bypasses the parser and constructs the value directly — so downstream
+ * consumers never observe an out-of-range fraction.
+ *
+ * @property enabled master kill switch; `false` drops all new telemetry. Default `true`.
+ * @property sampleRate global head-sampling fraction, clamped to `[0.0, 1.0]`. Default `1.0`.
+ */
+@Incubating
+data class SdkConfig(
+    val enabled: Boolean = true,
+    val sampleRate: Double = clampRate(SAMPLE_RATE_DEFAULT)
+) {
+    // Re-clamp in the constructor body so direct construction (e.g. from tests) and
+    // `copy()` can never install an out-of-range or NaN rate. The clamp is idempotent
+    // for already-valid values produced by the parser.
+    val clampedSampleRate: Double = clampRate(sampleRate)
+
+    companion object {
+        private const val SAMPLE_RATE_DEFAULT = 1.0
+
+        /** Clamp to `[0.0, 1.0]`; map NaN to the permissive default (fail-open). */
+        internal fun clampRate(rate: Double): Double =
+            if (rate.isNaN()) SAMPLE_RATE_DEFAULT else rate.coerceIn(0.0, 1.0)
+    }
+}
 
 /**
  * Individual policy definition.

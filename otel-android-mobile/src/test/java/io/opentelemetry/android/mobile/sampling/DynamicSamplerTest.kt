@@ -355,13 +355,13 @@ class DynamicSamplerTest {
         Thread.sleep(20)
 
         // Pre-fix this call deadlocks inside checkScheduledRevert. The
-        // @Test timeout fires after 5s if so. Use an all-`f` prefix so the
-        // ratio is ≈ 1.0 — the SAMPLE/DROP outcome then directly depends
-        // on rate (1.0 > 0.9 → DROP at the temporary rate, 1.0 > 0.1 → DROP
-        // at baseline). What we're really asserting here is "call returns
-        // and rate has reverted to baseline", which is verifiable by
-        // getCurrentSamplingRate.
-        val result = sample(sampler, "ffffffffffffffff0000000000000000")
+        // @Test timeout fires after 5s if so. Use an all-`f` LOWER half so the
+        // ratio is ≈ 1.0 — the sampler keys on the trailing 8 bytes — so the
+        // SAMPLE/DROP outcome then directly depends on rate (1.0 > 0.9 → DROP
+        // at the temporary rate, 1.0 > 0.1 → DROP at baseline). What we're
+        // really asserting here is "call returns and rate has reverted to
+        // baseline", which is verifiable by getCurrentSamplingRate.
+        val result = sample(sampler, "0000000000000000ffffffffffffffff")
 
         // Post-fix: revert happened, rate is back to baseline (0.1). The
         // sample decision itself is DROP either way (rate < ratio); the
@@ -372,46 +372,51 @@ class DynamicSamplerTest {
 
     // ── SR-023: top-bit-set trace IDs must not bias toward "always sample" ──
 
-    // Before SR-023, the first 16 hex chars were parsed via
-    // parseUnsignedLong → toDouble() → / Long.MAX_VALUE. A trace ID with the
-    // top bit set parses to a negative Long; the ratio becomes negative, and
+    // Before SR-023, the trace-id hex was parsed via parseUnsignedLong →
+    // toDouble() → / Long.MAX_VALUE. A trace ID whose keyed bytes have the top
+    // bit set parsed to a negative Long; the ratio became negative, and
     // negative < rate is *always* true, so ~50% of all trace IDs were sampled
-    // regardless of rate. These tests pin the post-fix behaviour:
-    // an all-`f` prefix should map to a ratio near 1.0, and a low-bit prefix
-    // should map to a ratio near 0.0.
+    // regardless of rate. The sampler keys on the LOWER 8 bytes (trailing 16
+    // hex chars) to match the OTel TraceIdRatioBased sampler and the iOS SDK,
+    // so these tests place the discriminating bits in the LOWER half:
+    // an all-`f` lower half maps to a ratio near 1.0, and a near-zero lower
+    // half maps to a ratio near 0.0.
 
     @Test
     fun `top-bit-set trace ID at low rate is dropped`() {
-        // ffff... → ratio ≈ 1.0, must be > rate 0.01 → DROP.
+        // Lower 8 bytes all-`f` → ratio ≈ 1.0, must be > rate 0.01 → DROP.
         val sampler = DynamicSampler(baselineSamplingRate = 0.01)
-        val traceId = "ffffffffffffffff0000000000000000"
+        val traceId = "0000000000000000ffffffffffffffff"
         assertEquals(SamplingDecision.DROP, sample(sampler, traceId).decision)
     }
 
     @Test
     fun `low-bit-set trace ID at low rate is sampled`() {
-        // 0000...0001 prefix → ratio ≈ 0.0, must be < rate 0.01 → SAMPLE.
+        // Lower 8 bytes ≈ 0 → ratio ≈ 0.0, must be < rate 0.01 → SAMPLE.
         val sampler = DynamicSampler(baselineSamplingRate = 0.01)
-        val traceId = "00000000000000010000000000000000"
+        val traceId = "ffffffffffffffff0000000000000001"
         assertEquals(SamplingDecision.RECORD_AND_SAMPLE, sample(sampler, traceId).decision)
     }
 
     @Test
-    fun `sampler honors rate across a full hex prefix distribution`() {
-        // 256 prefixes evenly spaced across the unsigned 64-bit range. At
-        // rate 0.5, ~half should sample. Pre-fix, every top-half prefix (128
-        // of 256) was sampled regardless plus the bottom half's natural
-        // sampling, biasing observed rate way above 0.5.
+    fun `sampler honors rate across a full hex distribution`() {
+        // 256 trace ids evenly spaced across the unsigned 64-bit range. At
+        // rate 0.5, ~half should sample. Pre-fix (SR-023), every top-bit-set
+        // key was sampled regardless plus the rest's natural sampling, biasing
+        // observed rate way above 0.5.
+        //
+        // The sampler keys on the LOWER 8 bytes (trailing 16 hex chars), so the
+        // varying byte must live in the LOWER half: upper 64 bits are zero and
+        // the high byte of the LOW half steps with `i`, toggling its top bit in
+        // lockstep with i >= 128.
         val sampler = DynamicSampler(baselineSamplingRate = 0.5)
         var sampled = 0
         for (i in 0..255) {
-            // Spread `i` across the high byte so the prefix's top bit
-            // toggles in lockstep with i >= 128.
-            val hi = "%02x".format(i)
-            val traceId = hi + "00000000000000" + "0".repeat(16)
+            val hiByteOfLowHalf = "%02x".format(i)
+            val traceId = "0".repeat(16) + hiByteOfLowHalf + "00000000000000"
             if (sample(sampler, traceId).decision == SamplingDecision.RECORD_AND_SAMPLE) sampled++
         }
-        // 256 prefixes uniformly across [0, 1]: expect 128 ± a small margin.
+        // 256 keys uniformly across [0, 1]: expect 128 ± a small margin.
         // Pre-fix this is 192-256 (top half always sampled + bottom half ~50%).
         assertTrue("Expected sampled count near 128 of 256, got $sampled", sampled in 96..160)
     }

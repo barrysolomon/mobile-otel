@@ -6,6 +6,7 @@
 package io.opentelemetry.android.mobile.sampling
 
 import io.opentelemetry.android.mobile.instrumentation.Incubating
+import io.opentelemetry.android.mobile.policy.RemoteGate
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.context.Context
@@ -56,7 +57,11 @@ import kotlin.concurrent.write
 @Incubating
 class DynamicSampler(
     private val baselineSamplingRate: Double = 0.1,
-    private val highPrioritySamplingRate: Double = 1.0
+    private val highPrioritySamplingRate: Double = 1.0,
+    // Shared remote kill-switch / global-sampling gate. The same instance is wired into
+    // the log processor so spans and logs gate coherently. Defaults to an open gate
+    // (enabled, full rate) so existing call sites behave exactly as before.
+    private val remoteGate: RemoteGate = RemoteGate()
 ) : Sampler {
 
     private val lock = ReentrantReadWriteLock()
@@ -79,18 +84,34 @@ class DynamicSampler(
         // Check if scheduled revert time has passed
         checkScheduledRevert()
 
+        // Remote kill switch — a single volatile read. When the SDK is remotely disabled
+        // every span is a hard DROP, including page/startup spans: the spec requires that a
+        // disabled SDK produce NO new telemetry, and a dropped page span only orphans child
+        // spans that are themselves being dropped. The gate snapshot is read once so the
+        // `enabled`/`sampleRate` pair used below is internally consistent.
+        val gate = remoteGate.snapshot()
+        if (!gate.enabled) {
+            return SamplingResult.create(SamplingDecision.DROP, GATE_DISABLED_ATTRIBUTES)
+        }
+
         // OTel-native: always sample page and startup spans by name.
         // page.* spans are the root of the trace waterfall for every screen; dropping them
         // breaks all child spans (taps, scrolls, API calls) for that screen session.
         val isPageSpan = name.startsWith("page.") || name == "app.startup"
         val isHighPriority = isPageSpan
 
-        // Determine sampling rate
-        val rate = if (isHighPriority) {
+        // Determine the local sampling rate, then fold in the remote global rate as a CAP.
+        // We take min(local, remote): the global head sample_rate can only ever REDUCE
+        // volume, never raise it above what the app configured. A remote rate of 1.0 (the
+        // default / "no restriction") leaves the local decision untouched, so page/startup
+        // spans keep their force-sample behaviour unless an operator explicitly throttles
+        // the whole fleet below 1.0.
+        val localRate = if (isHighPriority) {
             highPrioritySamplingRate
         } else {
             currentSamplingRate.get()
         }
+        val rate = minOf(localRate, gate.sampleRate)
 
         // Make sampling decision based on trace ID
         val decision = if (shouldSampleTraceId(traceId, rate)) {
@@ -160,6 +181,11 @@ class DynamicSampler(
     }
 
     /**
+     * Returns the shared remote kill-switch / global-sampling gate this sampler reads.
+     */
+    fun getRemoteGate(): RemoteGate = remoteGate
+
+    /**
      * Checks if scheduled revert time has passed and reverts if needed.
      */
     private fun checkScheduledRevert() {
@@ -180,26 +206,34 @@ class DynamicSampler(
      * Determines if a trace ID should be sampled based on rate.
      *
      * Uses OpenTelemetry's trace ID ratio-based sampling algorithm:
-     * - Takes the first 8 bytes of trace ID as a long
+     * - Takes the LOWER 8 bytes (trailing 64 bits) of the trace ID as a long
      * - Converts to a value between 0.0 and 1.0
      * - Samples if value < sampling rate
      *
-     * This ensures consistent sampling decisions across distributed systems.
+     * The OTel-spec `TraceIdRatioBasedSampler` keys on the trailing 8 bytes
+     * (hex chars 16-31), and the iOS SDK keys on `TraceId.idLo` (the low 64
+     * bits = the same trailing bytes). Keying on the lower 64 bits here keeps
+     * Android, iOS, and the OTel spec in lockstep so identical (traceId, rate)
+     * inputs yield identical keep/drop decisions across platforms.
      */
     private fun shouldSampleTraceId(traceId: String, rate: Double): Boolean {
         if (rate >= 1.0) return true
         if (rate <= 0.0) return false
 
-        // Convert first 16 hex chars (8 bytes) of trace ID to long
-        // This matches OpenTelemetry's TraceIdRatioBased sampler algorithm
-        val traceIdPrefix = if (traceId.length >= 16) {
-            traceId.substring(0, 16)
+        // Convert the LOWER 16 hex chars (low 8 bytes) of the trace ID to a
+        // long. This matches OpenTelemetry's TraceIdRatioBased sampler and the
+        // iOS SDK's `TraceId.idLo`, keeping cross-platform decisions identical.
+        val traceIdSuffix = if (traceId.length >= 32) {
+            traceId.substring(16, 32)
+        } else if (traceId.length >= 16) {
+            // Shorter-than-128-bit trace id: use its trailing 16 hex chars.
+            traceId.substring(traceId.length - 16)
         } else {
-            traceId.padEnd(16, '0')
+            traceId.padStart(16, '0')
         }
 
         val traceIdULong = try {
-            java.lang.Long.parseUnsignedLong(traceIdPrefix, 16).toULong()
+            java.lang.Long.parseUnsignedLong(traceIdSuffix, 16).toULong()
         } catch (e: NumberFormatException) {
             // Invalid trace ID, default to sampling
             return true
@@ -216,6 +250,16 @@ class DynamicSampler(
     }
 
     companion object {
+        /**
+         * Sampling attributes attached to spans dropped by the remote kill switch.
+         * Pre-built and shared since they never vary, keeping the disabled path
+         * allocation-free aside from the [SamplingResult] itself.
+         */
+        private val GATE_DISABLED_ATTRIBUTES: Attributes = Attributes.builder()
+            .put("sampling.strategy", "dynamic")
+            .put("sampling.sdk_disabled", true)
+            .build()
+
         /**
          * Creates a sampler with 100% sampling (development).
          */
