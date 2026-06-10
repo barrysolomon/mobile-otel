@@ -115,9 +115,15 @@ jobs:
         # io.opentelemetry.android:mobile is this repo's own artifact (source in
         # otel-android-mobile/) and is not on any public repo. The RN-android
         # harness resolves it from mavenLocal, so publish it first from the
-        # demo-app composite build that already includes the SDK modules.
+        # demo-app composite build that includes the SDK modules.
+        #
+        # UNQUALIFIED publishToMavenLocal (not :otel-android-mobile:...): the
+        # umbrella POM depends on mobile-core + 21 mobile-instrumentation-*
+        # siblings, so publishing only the umbrella leaves those transitive deps
+        # unresolvable in a clean .m2 (CI). The unqualified task publishes every
+        # module that has the publication (via the subprojects convention).
         working-directory: examples/demo-app
-        run: ./gradlew :otel-android-mobile:publishToMavenLocal
+        run: ./gradlew publishToMavenLocal
       - name: RN Android Kotlin unit tests
         working-directory: packages/react-native/android
         run: ./gradlew :testDebugUnitTest

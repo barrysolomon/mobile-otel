@@ -90,6 +90,15 @@ repositories {
 // build against the version this package's package.json devDepends on.
 ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion') ?: '+'
 
+// Version of the native Android SDK (io.opentelemetry.android:mobile) this RN
+// module depends on. Single source of truth — MUST track the published SDK
+// version (see the publishing convention in examples/demo-app/build.gradle.kts).
+// Kept as a property so a version bump updates one place, not N hardcoded
+// dependency strings (which silently drifted to 0.1.0-alpha vs the published
+// 0.2.0-alpha and broke clean-.m2 CI while passing on caches that still had the
+// old artifact).
+ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion') ?: '0.2.0-alpha'
+
 dependencies {
     implementation "com.facebook.react:react-android:$reactAndroidVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
@@ -105,7 +114,7 @@ dependencies {
     // (not `compileOnly`) so Kotlin can resolve transitive config classes
     // (TextInputConfig, BreadcrumbConfig, VitalsConfig, etc.) referenced
     // through MobileConfig's constructor signature.
-    implementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
+    implementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
     implementation 'io.opentelemetry:opentelemetry-api:1.58.0'
 
     testImplementation 'junit:junit:4.13.2'
@@ -114,7 +123,7 @@ dependencies {
     // on Java 25 ("Could not modify all classes ... ReactApplicationContext").
     testImplementation 'org.mockito:mockito-core:5.18.0'
     testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
-    testImplementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
+    testImplementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
     testImplementation 'io.opentelemetry:opentelemetry-api:1.58.0'
 
     // Network-interceptor unit tests: real OkHttp + the OTel SDK in-memory
