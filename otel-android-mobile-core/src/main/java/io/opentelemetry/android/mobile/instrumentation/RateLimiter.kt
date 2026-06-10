@@ -17,11 +17,15 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * @param maxPerWindow Maximum number of events allowed within the rolling window.
  * @param windowMs Length of the rolling window in milliseconds. Default: 60,000 (1 minute).
+ * @param clock Time source in epoch millis. Defaults to [System.currentTimeMillis];
+ *   injectable so tests can advance time deterministically instead of using
+ *   `Thread.sleep` with tight windows (which flakes on loaded CI runners).
  */
 @Incubating
 class RateLimiter(
     private val maxPerWindow: Int,
-    private val windowMs: Long = 60_000L
+    private val windowMs: Long = 60_000L,
+    private val clock: () -> Long = { System.currentTimeMillis() }
 ) {
     private val timestamps = CopyOnWriteArrayList<Long>()
 
@@ -30,7 +34,7 @@ class RateLimiter(
      * `false` if the rate limit has been reached.
      */
     fun tryAcquire(): Boolean {
-        val now = System.currentTimeMillis()
+        val now = clock()
         prune(now)
         if (timestamps.size >= maxPerWindow) return false
         timestamps.add(now)
@@ -54,7 +58,7 @@ class RateLimiter(
 
     /** Current count of events within the window. */
     val currentCount: Int get() {
-        prune(System.currentTimeMillis())
+        prune(clock())
         return timestamps.size
     }
 }

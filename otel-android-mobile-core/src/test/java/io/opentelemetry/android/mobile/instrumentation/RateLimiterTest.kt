@@ -36,11 +36,12 @@ class RateLimiterTest {
 
     @Test
     fun `window expiry allows new events after window passes`() {
-        val limiter = RateLimiter(maxPerWindow = 3, windowMs = 50)
+        var now = 1_000L
+        val limiter = RateLimiter(maxPerWindow = 3, windowMs = 50, clock = { now })
         repeat(3) { assertTrue(limiter.tryAcquire()) }
         assertFalse(limiter.tryAcquire(), "Should be at limit")
 
-        Thread.sleep(80)
+        now += 80 // advance past the 50ms window (deterministic; no Thread.sleep)
 
         assertTrue(limiter.tryAcquire(), "Should allow after window expires")
     }
@@ -49,19 +50,21 @@ class RateLimiterTest {
 
     @Test
     fun `rolling window does not expire all events at once`() {
-        val limiter = RateLimiter(maxPerWindow = 3, windowMs = 100)
+        var now = 1_000L
+        val limiter = RateLimiter(maxPerWindow = 3, windowMs = 100, clock = { now })
 
-        // Acquire first event
+        // Acquire first event at t=1000
         assertTrue(limiter.tryAcquire())
-        Thread.sleep(60)
+        now += 60 // t=1060
 
-        // Acquire second and third events at t+60ms
+        // Acquire second and third events at t=1060
         assertTrue(limiter.tryAcquire())
         assertTrue(limiter.tryAcquire())
         assertFalse(limiter.tryAcquire(), "At limit")
 
-        // Wait so first event expires (t+60 > 100ms window) but second/third don't
-        Thread.sleep(60)
+        // Advance so the first event expires (age 120 > 100ms window) but the
+        // second/third (age 60) do not.
+        now += 60 // t=1120
 
         // First event should have expired, freeing one slot
         assertTrue(limiter.tryAcquire(), "First event expired, one slot free")
@@ -111,11 +114,12 @@ class RateLimiterTest {
 
     @Test
     fun `currentCount returns 0 after window passes`() {
-        val limiter = RateLimiter(maxPerWindow = 5, windowMs = 50)
+        var now = 1_000L
+        val limiter = RateLimiter(maxPerWindow = 5, windowMs = 50, clock = { now })
         repeat(5) { limiter.tryAcquire() }
         assertEquals(5, limiter.currentCount)
 
-        Thread.sleep(80)
+        now += 80 // advance past the 50ms window
 
         assertEquals(0, limiter.currentCount, "All events should have expired")
     }
@@ -135,11 +139,16 @@ class RateLimiterTest {
 
     @Test
     fun `custom windowMs of 1ms expires almost immediately`() {
-        val limiter = RateLimiter(maxPerWindow = 100, windowMs = 1)
+        var now = 1_000L
+        // All 100 acquires happen at the SAME instant (now), so the limiter is
+        // genuinely at its cap — previously the real-clock version flaked on
+        // loaded CI runners where the repeat(100) loop itself took >1ms, so the
+        // earliest entries expired mid-loop and the limiter never reached 100.
+        val limiter = RateLimiter(maxPerWindow = 100, windowMs = 1, clock = { now })
         repeat(100) { limiter.tryAcquire() }
-        assertFalse(limiter.tryAcquire())
+        assertFalse(limiter.tryAcquire(), "At limit within the 1ms window")
 
-        Thread.sleep(5)
+        now += 5 // advance past the 1ms window
         assertTrue(limiter.tryAcquire(), "All events should have expired with 1ms window")
     }
 
