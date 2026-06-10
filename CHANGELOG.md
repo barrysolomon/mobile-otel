@@ -9,45 +9,61 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [0.2.0-alpha] — 2026-05-07
+## [0.2.0-alpha] — 2026-06-10
 
-Production readiness hardening release.
+First release hardened against a real production integration (Loper — Expo SDK 56 / RN 0.85, ~400k users, self-hosted OTel collector → Dash0). Thanks to Loper engineering for an exceptional teardown with reproductions and patches. This entry consolidates the earlier (never-published) production-readiness work with the Loper fixes and the security/reliability hardening pass.
 
-### Changed
+### BREAKING (behavior) — review before upgrading
 
-- **Default export mode is now HYBRID** (was CONDITIONAL). HYBRID provides periodic device
-  heartbeats + metrics out of the box while still supporting policy-triggered selective flush.
-  Existing users who explicitly set `exportMode = ExportMode.CONDITIONAL` are unaffected.
+- **Android default OTLP protocol is now HTTP/protobuf** (was gRPC). Both platforms now target one collector endpoint (`<endpoint>/v1/{logs,traces,metrics}`), and exports traverse HTTPS-terminating proxies / managed ingress that cannot forward HTTP/2 gRPC. Restore gRPC with `MobileConfig.protocol = OtlpProtocol.GRPC`. *(Loper #3)*
+- **React Native manual spans now default to always-on sampling.** Native auto-instrumentation keeps `dynamic(0.1)`; only the RN-bridged default changed. RN manual spans are root spans with arbitrary names, so the old default silently dropped ~90% of a user's first span (on iOS the dropped span was a non-recording `PropagatedSpan` whose `end()` was a silent no-op). Set `sampling` in `StartConfig` to override. *(Loper #4)*
+- **iOS screenshot & wireframe capture now default OFF** behind an explicit consent gate.
+- **iOS remote-config polling now defaults ON** so the remote kill switch works out of the box.
+- **Default export mode is HYBRID** (was CONDITIONAL) — periodic device heartbeats + metrics out of the box, still supporting policy-triggered selective flush. Explicit `ExportMode.CONDITIONAL` users unaffected.
+
+### Added — consumability & cross-platform parity (from Loper feedback)
+
+- **Android: the full module set now publishes to GitHub Packages** — `mobile-core` and all 21 `mobile-instrumentation-*` modules, not just the umbrella. Consumers can finally resolve `io.opentelemetry.android:mobile`'s dependency tree. *(Loper #1)*
+- **`OtlpProtocol` (HTTP_PROTOBUF | GRPC) + `protocol` on Android `MobileConfig`** with per-signal URL building (trailing-slash safe). *(Loper #3)*
+- **Sampling configurable via the RN `StartConfig`** — `sampling: { strategy: 'always_on' | 'always_off' | 'dynamic'; normalRate?; highPriorityRate? }`, threaded to both native sinks. *(Loper #4)*
+- **Native Android RN network instrumentation** — an OkHttp interceptor installed before JS runs (captures `expo/fetch`, which Expo SDK 52+ routes through OkHttp instead of XHR), recording native CLIENT spans and **injecting W3C `traceparent`** from the real native span context. Android mobile→backend distributed traces now stitch (iOS already did). JS XHR shim auto-gated off on Android to prevent double-counting. Host-safe by construction: telemetry failure never affects the host request. *(Loper #5)*
+
+### Added — features & hardening
+
+- **Remote kill switch + global sampling** over remote config (`sdk.enabled` / `sample_rate`), honored on all platforms; transitively covers React Native.
+- **Capture consent API** (`shouldCapture`) + deterministic SwiftUI/UIKit redaction (replaces a class-name heuristic).
+- **Transport security**: HTTPS enforcement (cleartext rejected unless `allowInsecureTransport`), optional certificate / public-key **pinning**, and **HMAC-signed remote config** so the kill switch can't be flipped by a MITM/OTA payload.
+- **Android disk-buffer encryption at rest** (SQLCipher + Android Keystore) — parity with iOS `NSFileProtection`.
+- **Android RAM byte caps** (10 MB total / 256 KB per event), **iOS error rate-limiter + dedup**, **O(1) RN-iOS live-span store** (was unbounded).
+- **iOS CI restored** (cost-bounded: path-filtered macOS job + nightly), a dependency-free **secret-scan** CI job, and the **RN-iOS production sink is now compiled and unit-tested** in CI.
 
 ### Fixed
 
-- **SDK shutdown now flushes all pending telemetry** before shutting down. Previously,
-  `OTelMobileHandle.stop()` called `shutdown()` without a preceding `forceFlush()`, which
-  could silently drop buffered logs, spans, and metrics on normal app termination.
-- **Disk event count no longer blocks the main thread**. The `DiskLogBuffer.getEventCount()`
-  method used `runBlocking` with a `COUNT(*)` query that could fire on OTel metric gauge
-  callbacks (any thread). Replaced with a cached `AtomicInteger` updated on insert/delete.
-- **FleetAlertHandler collections are now thread-safe**. `alertTimestamps` and `activeOverrides`
-  were plain `mutableListOf`/`mutableMapOf`; replaced with `CopyOnWriteArrayList` and
-  `ConcurrentHashMap`.
-- **persistedToDisk set no longer grows without bound**. Added periodic pruning in the
-  crash-safety mirror task to remove entries for events no longer in the RAM buffer.
-- **MobileLoggerProvider singleton clears on shutdown**. The `instance` field is now nulled
-  after `shutdown()`, allowing re-initialization in process-reuse scenarios.
+- **iOS compile failure against current Xcode/Swift** at the `v0.1.0-alpha` tag (async exporter signature) — resolved in current code; this tag builds on Xcode 26.x. *(Loper #2)*
+- **SDK shutdown now flushes all pending telemetry** before shutting down (was dropping buffered telemetry on normal termination).
+- **`DiskLogBuffer.getEventCount()` no longer blocks the main thread** — cached `AtomicInteger` instead of a `runBlocking` `COUNT(*)` reachable from gauge callbacks.
+- **`FleetAlertHandler` collections are now thread-safe** (`CopyOnWriteArrayList` / `ConcurrentHashMap`).
+- **`persistedToDisk` set no longer grows unbounded** — periodic pruning in the crash-safety mirror task.
+- **`MobileLoggerProvider` singleton clears on shutdown** — allows re-init in process-reuse scenarios.
+- Production-readiness review fixes: Android ingest-token Logcat leak, iOS off-main UIKit capture, RN network-interceptor fault isolation, Android touch-dispatch crash isolation, the RN-iOS sink compile defect, breadcrumb/URL PII scrubbing, and ~25 more.
+- Cross-platform kill-switch defects caught in adversarial review: span sampling keyed on opposite halves of the trace ID (aligned both to the OTel-standard lower bytes); JSON numeric `"enabled": 0/1` wrongly disabling iOS.
 
-### Infrastructure
+### Docs
 
-- **CI pipeline restored**. GitHub Actions workflow with 4 jobs: Android SDK tests + lint,
-  Go processor tests with race detection, React Native Jest + typecheck, iOS SwiftPM tests.
-- **Control plane CORS patterns derived from endpoint env var** instead of hardcoded regexes.
-- **CollectorConfig defaults**: Dash0 US enabled by default; exported configs use HYBRID mode.
+- Documented **Expo SDK 52+ `fetch` behavior** and why native Android network instrumentation is the default RN story.
+- `docs/PRODUCTION_READINESS_REVIEW.md`, `docs/design/remote-kill-switch.md`, updated screenshot/wireframe privacy design.
 
-### Platforms
+### Upgrading
 
-- Android native UAT matrix: 12/12 green
-- React Native Android UAT matrix: 12/12 green
-- React Native iOS UAT matrix: 12/12 green
-- iOS native: 4/4 gates green, 107 tests passing
+1. Bump `@barrysolomon/mobile-react-native` → `0.2.0-alpha`, `io.opentelemetry.android:mobile` → `0.2.0-alpha`, iOS SwiftPM tag → `v0.2.0-alpha`.
+2. gRPC-only collector? Set `MobileConfig.protocol = OtlpProtocol.GRPC` (Android).
+3. Relied on 10% RN sampling? Set `sampling: { strategy: 'dynamic', normalRate: 0.1 }` in `StartConfig` (or sample in the collector).
+4. Want iOS screenshot/wireframe capture? Opt in and provide a `shouldCapture` consent gate.
+
+### Platforms (UAT)
+
+- Android native, React Native Android, React Native iOS UAT matrices: 12/12 green
+- iOS native SwiftPM: green
 
 ## [0.1.0-alpha] — 2026-03-13
 
