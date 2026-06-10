@@ -32,7 +32,10 @@ final class BoundedLiveSpanStore<Key: Hashable, Value> {
         }
     }
 
-    private let capacity: Int
+    /// Max live entries before the oldest is evicted on insert. Exposed
+    /// (read-only) so the owning sink can name the limit in its eviction
+    /// diagnostics without hard-coding a second copy of the number.
+    let capacity: Int
     private var index: [Key: Node] = [:]
     // head = oldest (evict from here), tail = newest (insert here). FIFO order.
     private var head: Node?
