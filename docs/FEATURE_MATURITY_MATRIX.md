@@ -1,17 +1,25 @@
 # Feature Maturity Matrix
 
-**Last updated:** 2026-05-07  
+**Last updated:** 2026-06-10  
 **SDK version:** 0.2.0-alpha
 
-This document defines the maturity level of every feature in the Dash0 Mobile Observability SDK across Android, iOS, and React Native platforms.
+This document defines the **functional maturity** level of every feature in the Dash0 Mobile Observability SDK across Android, iOS, and React Native platforms.
+
+> **API stability vs. functional maturity.** The whole SDK is at `0.2.0-alpha`,
+> and **every public API surface is annotated `@Incubating`** (Android
+> `@Incubating`, iOS public structs/enums, RN exported functions) — meaning the
+> *API shape* may still change without a deprecation cycle. The "GA / Beta /
+> Incubating" labels in the tables below describe how **complete and tested a
+> feature's behaviour** is, not an API-stability promise. Until the SDK reaches
+> a stable (non-alpha) release, treat all signatures as subject to change.
 
 ## Maturity Levels
 
-| Level | Meaning | Stability Guarantee |
+| Level | Meaning | Notes (pre-1.0: API still `@Incubating`) |
 |-------|---------|---------------------|
-| **GA** | Production-ready. OTel semconv compliant. Fully tested. | API stable; breaking changes only in major versions |
-| **Beta** | Feature-complete, undergoing final validation. May have edge cases. | API mostly stable; minor changes possible in minor versions |
-| **Incubating** | Opt-in, non-OTel-native, or undergoing active development. | API may change without notice |
+| **GA** | Behaviour is production-ready, OTel-semconv compliant, fully tested. | Functionally complete; API still `@Incubating` until the SDK leaves alpha |
+| **Beta** | Feature-complete, undergoing final validation. May have edge cases. | API still `@Incubating`; minor behaviour changes possible |
+| **Incubating** | Opt-in, non-OTel-native, or under active development. | API may change without notice |
 
 ---
 
@@ -48,7 +56,7 @@ This document defines the maturity level of every feature in the Dash0 Mobile Ob
 | Subsystem | Maturity | Tests | Key Properties |
 |-----------|----------|-------|----------------|
 | Dual-tier buffering | GA | 26+ | RAM (5K events) + SQLite (50 MB, 24h TTL), crash-safe |
-| Export pipeline | GA | 10+ | OTLP/gRPC, RetryableExporter with exponential backoff |
+| Export pipeline | GA | 10+ | OTLP — **HTTP/protobuf default**, gRPC opt-in (`MobileConfig.protocol`); RetryableExporter with exponential backoff |
 | Export modes | GA | 194 config tests | CONDITIONAL, CONTINUOUS, HYBRID (default) |
 | Policy evaluation | GA | 194 behavioral tests | DSL engine, geo/device matching, 21 matcher types |
 | Session management | GA | Integrated | ID rotation, boot tracking, crash recovery markers |
@@ -70,13 +78,13 @@ This document defines the maturity level of every feature in the Dash0 Mobile Ob
 | Screen view | GA | Integrated | Full |
 | Vitals | GA | Integrated | Full |
 | Dual-tier buffering | GA | Unit | Full (RAM + disk) |
-| OTLP export (HTTP) | GA | Unit | Partial (HTTP/4318 vs Android gRPC/4317) |
-| Session management | GA | Integrated | Full |
-| Dynamic sampling | GA | Unit | Full |
-| Policy evaluation | Beta | Integrated | Subset of Android matchers |
-| Screenshot | Not implemented | — | Roadmap |
-| Wireframe | Not implemented | — | Roadmap |
-| Database | Not implemented | — | Roadmap |
+| OTLP export | GA | Unit | Full — HTTP/protobuf default (matches Android default); gRPC factory opt-in on both platforms |
+| Session management | GA | Integrated | Full (`SessionManager` — UUID rotation + UserDefaults persistence) |
+| Dynamic sampling | GA | Unit | Full (`DynamicSampler` + `SamplerFactory` + `SamplingConfig`) |
+| Policy evaluation | Beta | Integrated | Runtime ships (`PolicyEvaluator` + `ConfigPoller`); subset of Android matchers, DSL v2 only |
+| Screenshot | Incubating | Unit | Ships (`ScreenshotInstrumentation`), **default OFF** behind capture consent |
+| Wireframe | Incubating | Unit | Ships (`WireframeInstrumentation`), **default OFF** behind capture consent |
+| Database | Not implemented | — | Roadmap (Android-only Room instrumentation) |
 
 ---
 
@@ -91,8 +99,10 @@ This document defines the maturity level of every feature in the Dash0 Mobile Ob
 | React Navigation | GA | 2 | `installReactNavigationInstrumentation(navRef)` |
 | Tap telemetry | GA | 2 | `withTapTelemetry('target', handler)` |
 | OTel API shim | GA | 2 | `otel.trace.getTracer(...)` for 3rd-party compat |
+| Sampling via `StartConfig` | GA | Unit | `sampling: { strategy, normalRate?, highPriorityRate? }`, threaded to both native sinks. **RN default `always_on`** (RN manual spans are root spans; the old `dynamic(0.1)` default silently dropped ~90% of first spans). Native auto-instrumentation keeps `dynamic(0.1)`. |
+| Remote kill switch / global sample rate | GA | Delegated | `sdk.enabled` / `sample_rate` over remote config — honored by the native SDK, transitively covering RN. |
 
-All RN features delegate buffering, policy evaluation, and OTLP export to the underlying native SDKs (Android/iOS). The JS layer is a thin marshaller.
+All RN features delegate buffering, policy evaluation, remote config (kill switch + global sampling), and OTLP export to the underlying native SDKs (Android/iOS). The JS layer is a thin marshaller.
 
 ---
 
@@ -128,12 +138,12 @@ Cross-platform comparison of key capabilities:
 | Dual-tier buffering | GA | GA | Delegated |
 | Export modes (3) | GA | GA | Delegated |
 | Policy DSL evaluation | GA | Beta | Delegated |
-| Predictive export | Beta | Roadmap | Delegated |
+| Predictive export | Beta | Beta (opt-in `enablePredictiveExport`) | Delegated |
 | PII scrubbing | GA | GA | Delegated |
 | Crash recovery | GA | GA | Delegated |
-| OTLP transport | gRPC (:4317) | HTTP (:4318) | Per-platform |
-| Screenshot capture | Incubating | Roadmap | Roadmap |
-| Wireframe capture | Incubating | Roadmap | Roadmap |
+| OTLP transport | HTTP/protobuf default, gRPC opt-in | HTTP/protobuf default, gRPC opt-in | Per-platform |
+| Screenshot capture | Incubating (default OFF) | Incubating (default OFF) | Roadmap |
+| Wireframe capture | Incubating (default OFF) | Incubating (default OFF) | Roadmap |
 | Debug widget | Incubating | Roadmap | Roadmap |
 | UAT matrix validated | 12/12 | 12/12 | 24/24 |
 

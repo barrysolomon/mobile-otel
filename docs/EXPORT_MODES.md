@@ -8,6 +8,8 @@ The Mobile OTEL SDK supports three export modes to balance observability needs w
 
 ### 1. CONDITIONAL (Most Battery Efficient)
 
+> **Default note:** As of v0.2.0-alpha the SDK default is **HYBRID** (was CONDITIONAL). Explicitly set `ExportMode.CONDITIONAL` for the behavior described in this section.
+
 **Best for: Production apps, battery-sensitive scenarios**
 
 Data is **only exported when triggered by conditions**:
@@ -209,20 +211,18 @@ Based on typical usage patterns:
 
 ## Migration Guide
 
-### From No Export Control → CONDITIONAL
+### To CONDITIONAL
 
-Default behavior - no changes needed. The SDK defaults to CONDITIONAL mode.
-
-### From Always-On → CONDITIONAL
+The SDK default is **HYBRID** (v0.2.0-alpha). To get pure policy-triggered export with no periodic device-metric flush, set CONDITIONAL explicitly:
 
 ```kotlin
-// Before
+// Before (uses the HYBRID default)
 val config = MobileConfig(...)
 
 // After
 val config = MobileConfig(
     ...,
-    exportMode = ExportMode.CONDITIONAL  // Explicit (but this is default)
+    exportMode = ExportMode.CONDITIONAL  // Explicit — overrides the HYBRID default
 )
 ```
 

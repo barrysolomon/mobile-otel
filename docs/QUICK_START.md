@@ -17,18 +17,28 @@ Two paths depending on your goal:
 
 ### Step 1: Add the SDK
 
-The SDK is not yet on Maven Central. Include it as a local module or clone this repo and add:
+The SDK (v0.2.0-alpha) publishes to **GitHub Packages**, not Maven Central. Consuming it requires a GitHub personal access token with the `read:packages` scope:
 
 ```kotlin
-// settings.gradle.kts
-include(":otel-android-mobile")
-project(":otel-android-mobile").projectDir = file("path/to/otel-android-mobile")
+// settings.gradle.kts (or build.gradle.kts repositories block)
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+        credentials {
+            // A GitHub PAT with read:packages
+            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
 
 // app/build.gradle.kts
 dependencies {
-    implementation(project(":otel-android-mobile"))
+    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
 }
 ```
+
+> As of 0.2.0-alpha the full module set publishes — the `io.opentelemetry.android:mobile` umbrella plus `mobile-core` and all `mobile-instrumentation-*` modules — so the dependency tree resolves without local module wiring.
 
 ### Step 2: Initialize in Application.onCreate()
 
@@ -39,7 +49,10 @@ class MyApplication : Application() {
         OTelMobile.start(this, MobileConfig(
             serviceName    = "my-app",
             serviceVersion = "1.0.0",
-            collectorEndpoint = "https://collector.example.com:4317"
+            // Default OTLP protocol is HTTP/protobuf — the SDK POSTs to
+            // <endpoint>/v1/{logs,traces,metrics}. For a gRPC-only collector,
+            // add: protocol = OtlpProtocol.GRPC  (typically a :4317 port).
+            collectorEndpoint = "https://collector.example.com:4318"
         ))
     }
 }
@@ -107,7 +120,7 @@ The demo app is **Schedulr**, a medical appointment scheduling app. Fault scenar
 
 You need an OTLP-compatible collector. Options:
 
-- **Dash0 cloud:** Use `https://ingress.<region>.aws.dash0.com:4317` with your auth token
+- **Dash0 cloud:** Use `https://ingress.<region>.aws.dash0.com:4318` with your auth token (HTTP/protobuf, the SDK default; use `:4317` only if you switch to `OtlpProtocol.GRPC`)
 - **Local collector:** Deploy an OTEL Collector (see [sister repo](https://github.com/barrysolomon/mobile-otel-control-plane) for k8s manifests)
 - **Docker:** `docker run -p 4317:4317 -p 4318:4318 otel/opentelemetry-collector-contrib:latest`
 
@@ -193,18 +206,22 @@ To build the APK without installing (useful for CI or sending to a colleague):
 
 For a **physical device**: enable **Developer Options → USB Debugging**, connect via USB, and verify with `adb devices` before running `installDebug`.
 
+### Step 4: Point the App at Your Collector
+
 Point the app at the OTEL Collector. Open **Profile -> Dash0 Connection** in the running app to update the endpoint at runtime:
 
 ```text
-Local collector (emulator):  http://10.0.2.2:4317
-Dash0 cloud (direct):       https://ingress.<region>.aws.dash0.com:4317
+Local collector (emulator):  http://10.0.2.2:4318
+Dash0 cloud (direct):       https://ingress.<region>.aws.dash0.com:4318
 ```
+
+> These are OTLP HTTP/protobuf endpoints (the SDK default). For a gRPC collector use `:4317` and set `protocol = OtlpProtocol.GRPC`. A cleartext `http://` endpoint to a non-loopback host is rejected unless `allowInsecureTransport` is set — loopback / `10.0.2.2` is always permitted.
 
 Or set it at build time in `assets/otel-config.json`:
 
 ```json
 {
-  "collectorEndpoint": "http://10.0.2.2:4317",
+  "collectorEndpoint": "http://10.0.2.2:4318",
   "serviceName": "schedulr",
   "serviceVersion": "1.1.0"
 }

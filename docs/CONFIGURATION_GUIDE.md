@@ -105,15 +105,20 @@ Most production apps use Strategy A. The demo app uses Strategy B so that config
 |-------|------|---------|---------------------|
 | `serviceName` | String | — | **Required.** Must not be blank. Maps to OTel `service.name`. |
 | `serviceVersion` | String | — | **Required.** Must not be blank. Maps to OTel `service.version`. |
-| `collectorEndpoint` | String | — | **Required.** OTLP/gRPC endpoint (e.g., `https://host:4317`). Must not be blank. HTTP (non-localhost) emits a warning. |
-| `exportMode` | String | `"CONDITIONAL"` | `"CONDITIONAL"`, `"CONTINUOUS"`, `"HYBRID"` |
+| `collectorEndpoint` | String | — | **Required.** OTLP endpoint. With the default `HTTP_PROTOBUF` protocol the SDK POSTs to `<endpoint>/v1/{logs,traces,metrics}`; with `GRPC` it is a single gRPC endpoint (e.g., `https://host:4317`). Must not be blank. HTTP (non-localhost) emits a warning. |
+| `protocol` | String | `"HTTP_PROTOBUF"` | `"HTTP_PROTOBUF"` (default, matches iOS, traverses HTTPS proxies / PaaS ingress) or `"GRPC"` (single endpoint, typically `:4317`). |
+| `exportMode` | String | `"HYBRID"` | `"CONDITIONAL"`, `"CONTINUOUS"`, `"HYBRID"` |
 | `headers` | Object | `null` | Key-value map of HTTP headers added to every export request. Use for auth tokens and dataset routing. |
 | `traceExportIntervalSeconds` | Long | `30` | Must be > 0. Interval between periodic trace exports (CONTINUOUS/HYBRID modes). |
 | `metricExportIntervalSeconds` | Long | `60` | Must be > 0. Interval between periodic metric exports. |
-| `ramBufferSize` | Int | `5000` | 1–100,000. Maximum events held in the in-memory ring buffer. |
+| `ramBufferSize` | Int | `5000` | 1–100,000. Maximum events held in the in-memory ring buffer (count cap). |
+| `ramBufferMaxTotalBytes` | Long | `10485760` (10 MB) | Total-byte budget for the RAM ring buffer; oldest events overflow to disk when exceeded. Must be >= `ramBufferMaxEventBytes`. Caps RAM independently of `ramBufferSize`. |
+| `ramBufferMaxEventBytes` | Int | `262144` (256 KB) | Must be > 0. Per-event byte cap; a single oversize event is dropped and counted (`buffer.ram.dropped_oversize`) rather than buffered. |
 | `diskBufferMb` | Int | `50` | 1–500. Maximum size of the SQLite disk buffer in megabytes. |
 | `diskBufferTtlHours` | Int | `24` | 1–168 (7 days). Events older than this are dropped from the disk buffer. |
+| `encryptDiskBufferAtRest` | Boolean | `true` | Encrypt the on-disk buffer at rest (SQLCipher + Android Keystore) — parity with iOS `NSFileProtection`. Crash-safe: degrades to cleartext rather than failing if SQLCipher/Keystore are unavailable. Set `false` to keep the buffer cleartext. |
 | `exportTimeoutSeconds` | Long | `30` | Must be > 0. Per-export request timeout. |
+| `remoteConfigEnabled` | Boolean | `true` | Poll the control-plane `/config?dsl_version=2` endpoint for policy DSL updates + the remote kill switch (`sdk.enabled`) / global sampling (`sdk.sample_rate`). Set `false` when `collectorEndpoint` points at a plain OTLP ingest endpoint that does not serve config. |
 | `configPollIntervalSeconds` | Long | `300` | Must be > 0. How often the SDK polls the gateway for updated export policies. |
 | `maxExportRetries` | Int | `3` | 0–10. Retry count on export failure. |
 | `attachContextAttributes` | Boolean | `false` | Attach additional context attributes (e.g., thread, activity) to every log record. |
@@ -379,8 +384,8 @@ OTelMobile.start(application) {
 |-------|----------|------|---------|-------------|
 | `service { }` | `name` | String? | — | Required. OTel `service.name`. |
 | `service { }` | `version` | String? | — | Required. OTel `service.version`. |
-| `export { }` | `endpoint` | String? | — | Required. OTLP/gRPC endpoint URL. |
-| `export { }` | `mode` | ExportMode | `CONDITIONAL` | Export trigger strategy. |
+| `export { }` | `endpoint` | String? | — | Required. OTLP endpoint URL (HTTP/protobuf by default; gRPC when `protocol = GRPC`). |
+| `export { }` | `mode` | ExportMode | `HYBRID` | Export trigger strategy. |
 | `export { }` | `headers` | Map<String,String>? | `null` | HTTP headers for auth/routing. |
 | `export { }` | `traceIntervalSeconds` | Long | `30` | Periodic trace export interval. |
 | `export { }` | `metricIntervalSeconds` | Long | `60` | Periodic metric export interval. |
@@ -404,7 +409,9 @@ Note: `ScreenshotConfig`, `WireframeConfig`, `NetworkConfig`, `ErrorConfig`, `Vi
 
 ## 5. Export Modes
 
-### CONDITIONAL (default)
+> **Default:** As of v0.2.0-alpha the SDK defaults to **HYBRID**. The CONDITIONAL behavior below applies only when you set `ExportMode.CONDITIONAL` explicitly.
+
+### CONDITIONAL
 
 Events accumulate silently in the dual-tier buffer (RAM + SQLite). Nothing is exported until an export policy trigger fires. When a policy matches (e.g., a crash event arrives), the SDK calls `flushWindow(N)` to export the last N minutes of buffered events.
 

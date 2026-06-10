@@ -82,12 +82,12 @@ For each platform you'll use:
 ```bash
 cp <path>.template <path>
 # Edit to fill in:
-#   YOUR_COLLECTOR_ENDPOINT  (e.g. ingress.dash0.com:4317 for gRPC, ingress.dash0.com:4318 for HTTP)
+#   YOUR_COLLECTOR_ENDPOINT  (e.g. ingress.dash0.com:4318 for HTTP/protobuf — the default; :4317 for gRPC)
 #   YOUR_AUTH_TOKEN          (Auth Token from your Dash0 org)
 #   YOUR_DATASET_NAME        (use "otel-mobile" so this guide's filters work)
 ```
 
-> **Gotcha:** Android exports OTLP/gRPC `:4317`, iOS exports OTLP/HTTP `:4318`. The endpoint port differs per platform — see memory `feedback_rn_transport_asymmetry.md`.
+> **0.2.0 change:** Android's default OTLP protocol is now **HTTP/protobuf** (was gRPC), matching iOS — so a single `:4318` endpoint works for both platforms and traverses HTTPS-terminating proxies / managed ingress. Restore gRPC with `MobileConfig.protocol = OtlpProtocol.GRPC` (typically `:4317`). The earlier per-platform port asymmetry (`feedback_rn_transport_asymmetry.md`) no longer applies by default.
 
 ### T0.4 — Set up the Dash0 CLI
 
@@ -436,7 +436,7 @@ We built an OpenTelemetry-native mobile SDK (Android, iOS, React Native) that ca
 
 - **Dual-tier buffer**: RAM (5,000 events, lock-free queue) + SQLite (50MB, 24-hour TTL). Survives app crashes, process kills, even force-quit. When you relaunch the app, all the buffered events are still there.
 - **Policy DSL**: A JSON-based language describing when to export. "When the app crashes, flush the last 5 minutes." "When HTTP status >= 500, flush 2 minutes." Evaluated on-device in real-time.
-- **3 export modes**: CONDITIONAL (only export when policy triggers — <0.5% battery), CONTINUOUS (periodic like everyone else), HYBRID (heartbeat + conditional).
+- **3 export modes**: CONDITIONAL (only export when policy triggers — <0.5% battery), CONTINUOUS (periodic like everyone else), HYBRID (heartbeat + conditional). **HYBRID is the default** (as of 0.2.0, on both Android and iOS).
 - **Visual control plane**: React Flow graph editor where you draw workflows → compiles to DSL → pushes to devices. Change what gets exported without an app release.
 - **Cross-platform parity**: Android, iOS, RN all emit the same trace shapes. Same `service.name` pattern, same `session.id`, same span hierarchy.
 - **OTel-native**: Standard OTLP export to any backend. No vendor lock-in. No Gradle plugin required.
@@ -582,14 +582,31 @@ The SDK requests `?dsl_version=2` by default. If the gateway returns v1, it hand
 
 ### Step 1: Add the dependency
 
+**Android** — published to GitHub Packages (not Maven Central). Needs a GitHub PAT with `read:packages`:
+
 ```kotlin
+// settings.gradle.kts repositories
+maven {
+    url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+    credentials {
+        username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+        password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+    }
+}
+
 // build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.1.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
 }
 ```
 
-(Not on Maven Central yet — currently included via project dependency.)
+**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.2.0-alpha`, product `OTelMobileSDK`.
+
+**React Native** — npm, under the `alpha` dist-tag (a bare install gets the older 0.1.0-alpha):
+
+```bash
+npm install @barrysolomon/mobile-react-native@alpha   # or @0.2.0-alpha
+```
 
 ### Step 2: Initialize in `Application.onCreate()`
 
@@ -597,19 +614,20 @@ dependencies {
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        MobileOtel.initialize(this, MobileConfig(
+        OTelMobile.start(this, MobileConfig(
             serviceName = "my-app",
             serviceVersion = "1.0.0",
-            collectorEndpoint = "https://collector.dash0.com:4317",
-            exportMode = ExportMode.HYBRID
+            // Default protocol is OTLP HTTP/protobuf (POSTs to <endpoint>/v1/{logs,traces,metrics}).
+            collectorEndpoint = "https://collector.dash0.com:4318",
+            exportMode = ExportMode.HYBRID  // HYBRID is the default
         ))
     }
 }
 ```
 
-Auto-wired by `initialize()`: lifecycle, crashes, sessions, predictive health, policy evaluation with built-in defaults.
+Auto-wired by `OTelMobile.start()`: lifecycle, crashes, sessions, predictive health, policy evaluation with built-in defaults.
 
-> **Gotcha:** `MobileOtel.initialize()` is idempotent — first caller wins in dual-init races (RN). See `feedback_mobileotel_idempotency.md`.
+> **Gotcha:** init is idempotent — first caller wins in dual-init races (RN). See `feedback_mobileotel_idempotency.md`.
 
 ### Step 3: Wire the network interceptor (recommended)
 
@@ -622,14 +640,16 @@ val client = OkHttpClient.Builder()
 ### Step 4: Optional per-module config
 
 ```kotlin
-MobileOtel.initialize(this, MobileConfig(
+OTelMobile.start(this, MobileConfig(
     serviceName = "my-app",
+    collectorEndpoint = "https://collector.dash0.com:4318",
     // ...
-    tapConfig = TapConfig(captureSwipes = true, addSpanEvents = true),
-    screenshotConfig = ScreenshotConfig(enabled = true, redactText = true, quality = 50),
-    errorConfig = ErrorConfig(maxErrorsPerMinute = 10, deduplicationWindowMs = 300_000)
+    screenshotConfig = ScreenshotConfig(enabled = true, redactTextViews = true, quality = 50),
+    errorConfig = ErrorConfig(rateLimit = 10, deduplicateWindowMs = 300_000)
 ))
 ```
+
+> Sub-config field names are verified against `MobileConfig.kt` and the instrumentation modules. Note `ScreenshotConfig` is `@Incubating` and defaults to `enabled = false`; `ErrorConfig` uses `rateLimit` (per minute) and `deduplicateWindowMs`. Per-tap behaviour is controlled by the tap module's own `TapConfig`, which is wired via the modular builder rather than a `MobileConfig` field.
 
 ### Free with zero config
 
@@ -709,7 +729,7 @@ Sentry is crash-focused, not full observability. We capture crashes AND network 
 | **seqId** | Sequence ID on each event. Prevents double-export when RAM and disk both hold copies. |
 | **CONDITIONAL mode** | Export only when a policy triggers. Most battery-efficient. |
 | **CONTINUOUS mode** | Periodic export like traditional SDKs. Familiar but expensive. |
-| **HYBRID mode** | Periodic heartbeat + conditional flush. Default for iOS. |
+| **HYBRID mode** | Periodic heartbeat + conditional flush. Default on both Android and iOS (as of 0.2.0). |
 | **DSL v1** | Flat trigger/action JSON. Produced by `graphToDSL.ts`. |
 | **DSL v2** | State-machine (FSM) JSON. Produced by `graphToDSLv2.ts`. Supports transitions and timeouts. |
 | **WindowEventHub** | Fan-out dispatcher: sends touch/key events to all registered modules. |

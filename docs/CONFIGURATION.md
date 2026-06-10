@@ -36,26 +36,31 @@ OTelMobile.start(application, config)
 |-------|------|-------------|
 | `serviceName` | String | OTel `service.name` resource attribute |
 | `serviceVersion` | String | OTel `service.version` resource attribute |
-| `collectorEndpoint` | String | OTLP/gRPC endpoint (e.g., `https://host:4317`) |
+| `collectorEndpoint` | String | OTLP endpoint. With the default `HTTP_PROTOBUF` protocol the SDK POSTs to `<endpoint>/v1/{logs,traces,metrics}` (e.g., `https://ingress.us1.dash0.com`); with `GRPC` it is a single gRPC endpoint (e.g., `https://host:4317`) |
 
 #### Export Behavior
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `exportMode` | ExportMode | `CONDITIONAL` | `CONTINUOUS`, `CONDITIONAL`, or `HYBRID` |
+| `protocol` | OtlpProtocol | `HTTP_PROTOBUF` | `HTTP_PROTOBUF` (default, matches iOS, traverses HTTPS proxies/PaaS ingress) or `GRPC` (single endpoint, typically `:4317`) |
+| `exportMode` | ExportMode | `HYBRID` | `CONTINUOUS`, `CONDITIONAL`, or `HYBRID` |
 | `traceExportIntervalSeconds` | Long | `30` | Periodic trace export interval (CONTINUOUS mode) |
 | `metricExportIntervalSeconds` | Long | `60` | Periodic metric export interval |
 | `exportTimeoutSeconds` | Long | `30` | Per-export timeout |
 | `maxExportRetries` | Int | `3` | Retry count on export failure |
+| `remoteConfigEnabled` | Boolean | `true` | Poll the control-plane `/config` endpoint for policy DSL + remote kill switch / global sampling. Set `false` when `collectorEndpoint` is a plain OTLP ingest endpoint that does not serve config |
 | `headers` | Map? | `null` | Extra HTTP headers (auth tokens, dataset) |
 
 #### Buffering
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `ramBufferSize` | Int | `5000` | Max events held in RAM ring buffer |
+| `ramBufferSize` | Int | `5000` | Max events held in RAM ring buffer (count cap) |
+| `ramBufferMaxTotalBytes` | Long | `10485760` (10 MB) | Total-byte budget for the RAM ring buffer; oldest events overflow to disk when exceeded (caps RAM independently of `ramBufferSize`) |
+| `ramBufferMaxEventBytes` | Int | `262144` (256 KB) | Per-event byte cap; a single oversize event is dropped and counted (`buffer.ram.dropped_oversize`) rather than buffered |
 | `diskBufferMb` | Int | `50` | Max SQLite disk buffer size in MB |
 | `diskBufferTtlHours` | Int | `24` | Time-to-live for disk-buffered events |
+| `encryptDiskBufferAtRest` | Boolean | `true` | Encrypt the on-disk buffer at rest (SQLCipher + Android Keystore) — parity with iOS `NSFileProtection`. Crash-safe: degrades to cleartext rather than failing if SQLCipher/Keystore are unavailable. Set `false` to keep the buffer cleartext |
 
 When the RAM buffer is full, oldest events overflow to the SQLite disk buffer. On `flushWindow(minutes)`, both RAM and disk events within the time window are exported.
 
@@ -84,7 +89,11 @@ Presets:
 | **CONTINUOUS** | Yes | Yes | Yes | Full visibility; periodic bulk export + policy triggers |
 | **HYBRID** | No | Yes | Yes (2x interval) | Balanced; device health metrics flow continuously, events are policy-driven |
 
-### CONDITIONAL (default)
+### HYBRID (default)
+
+The shipped default (v0.2.0-alpha). Device-health metrics and periodic heartbeats export on a schedule, while bulk event data stays buffered and exports only on a policy trigger. See [EXPORT_MODES.md](./EXPORT_MODES.md) for the full breakdown.
+
+### CONDITIONAL
 
 Events accumulate in the buffer. When a policy trigger fires (e.g., crash, UI freeze), `flushWindow(N)` exports only the last N minutes of events. Nothing is exported unless a policy matches.
 
@@ -325,9 +334,16 @@ These are compiled into the SDK and active when no remote policies are configure
 | `crash-recovery` | `event.name == "app.crash"` | Flush last 5 minutes |
 | `http-error-detector` | `event.name == "http.error"` | Flush last 5 minutes |
 
-### Remote Policy Polling
+### Remote Policy Polling, Kill Switch & Global Sampling
 
-When a gateway endpoint is configured, the SDK polls `GET /config` at `configPollIntervalSeconds` (default: 300s) to fetch updated policies. Remote policies override the built-in fallback set.
+When remote config is enabled (`remoteConfigEnabled = true`, the default; iOS `enablePolicyPolling`, default `true`), the SDK polls `GET /config?dsl_version=2` at `configPollIntervalSeconds` (default: 300s) to fetch updated policies. Remote policies override the built-in fallback set.
+
+The same payload carries two control-plane overrides honored on all platforms (and transitively on React Native):
+
+- **`sdk.enabled`** — a remote **kill switch**. When the control plane returns `sdk.enabled = false`, the SDK stops emitting/exporting telemetry without an app update.
+- **`sdk.sample_rate`** — a **global sampling override** applied on top of the local `samplingConfig`.
+
+To defend the kill switch against MITM / OTA tampering, the payload can be HMAC-signed; see [docs/design/remote-kill-switch.md](./design/remote-kill-switch.md). On iOS the signing key is `MobileConfig.configSigningKey`; transport security (HTTPS enforcement, optional cert/public-key pinning via `MobileConfig.pinning`, and `allowInsecureTransport`) is configured on the iOS `MobileConfig`.
 
 ## Credential Configuration
 

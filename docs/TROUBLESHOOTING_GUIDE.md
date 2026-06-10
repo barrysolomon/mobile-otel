@@ -210,7 +210,9 @@ adb logcat | grep "OTelMobile\|MobileOtel"
 # Common issues:
 # - Emulator: Should use 10.0.2.2 not localhost
 # - Physical device: Should use host machine's local IP
-# - Collector must be listening on port 4317 (gRPC) or 4318 (HTTP)
+# - The SDK defaults to OTLP/HTTP (protobuf), POSTing to <endpoint>/v1/{logs,traces,metrics}
+#   (typically the collector's HTTP receiver on :4318). Set MobileConfig.protocol =
+#   OtlpProtocol.GRPC for a gRPC endpoint (typically :4317).
 ```
 
 **Solutions:**
@@ -392,7 +394,8 @@ val config = MobileConfig(
     diskBufferMb = 20  // Default is 50
 )
 
-// 3. Use CONDITIONAL export mode (default) to minimize background work
+// 3. Use CONDITIONAL export mode to minimize background work
+//    (the SDK default is HYBRID; set CONDITIONAL explicitly for the lowest overhead)
 val config = MobileConfig(
     exportMode = ExportMode.CONDITIONAL
 )

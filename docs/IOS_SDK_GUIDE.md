@@ -40,19 +40,18 @@ Source entry point: [OTelMobile.swift](../otel-ios-mobile/Sources/OTelMobileSDK/
 
 ## Installation
 
-The SDK ships as a Swift Package with seven products. Add it to your app's `Package.swift`:
+The SDK ships as a Swift Package with ten library products (the package itself is named `OTelMobile` and lives in `otel-ios-mobile/` at the repo root). Pin the shipped tag `v0.2.0-alpha` in your app's `Package.swift`:
 
 ```swift
 dependencies: [
-    // Placeholder URL — replace once the package is published. For local
-    // development use `.package(path: "../mobile-otel/otel-ios-mobile")`.
-    .package(url: "https://github.com/dash0hq/otel-ios-mobile.git", from: "0.1.0-alpha"),
+    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.2.0-alpha"),
+    // For local development: .package(path: "../mobile-otel/otel-ios-mobile")
 ],
 targets: [
     .target(
         name: "MyApp",
         dependencies: [
-            .product(name: "OTelMobileSDK", package: "otel-ios-mobile"),
+            .product(name: "OTelMobileSDK", package: "mobile-otel"),
         ]
     ),
 ]
@@ -63,12 +62,13 @@ Products and when to import them (see [Package.swift](../otel-ios-mobile/Package
 | Product | Import when you want... |
 | --- | --- |
 | `OTelMobileSDK` | The main SDK entry point (`OTelMobile.start`). Pulls in everything below transitively. |
-| `OTelMobileCore` | Just the protocol/type layer (no UIKit, no providers). Useful for sharing code between SDK and app. |
+| `OTelMobileCore` | Just the protocol/type layer (no UIKit, no providers). Also home of the capture consent types (`CaptureContext`) and redaction API (`Dash0.redact(_:)`). |
 | `NetworkInstrumentation` | To configure or manually control the URLSession swizzle. |
 | `LifecycleInstrumentation` | To customize the lifecycle installer or inspect its state. |
 | `ErrorsInstrumentation` | To call `recordError(_:)` for caught errors manually. |
-| `ScreenInstrumentation` | Reserved. Currently staged and not auto-installed — see the note in [OTelMobile.swift](../otel-ios-mobile/Sources/OTelMobileSDK/OTelMobile.swift). |
-| `VitalsInstrumentation`, `FreezeInstrumentation` | Placeholders only — see [VitalsInstrumentation.swift](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) and [FreezeInstrumentation.swift](../otel-ios-mobile/Sources/FreezeInstrumentation/FreezeInstrumentation.swift). |
+| `ScreenInstrumentation` | The SwiftUI `.trackScreen(_:)` ViewModifier and (opt-in) UIKit swizzle. Auto-installed via `.screen`. |
+| `VitalsInstrumentation`, `FreezeInstrumentation` | App-start / jank / memory vitals and the main-thread freeze watchdog. Auto-installed via `.vitals` / `.freeze`. |
+| `ScreenshotInstrumentation`, `WireframeInstrumentation` | Visual capture modules. **Off by default** — opt in with `.screenshot` / `.wireframe` plus a consent gate (see [AutoCaptureOptions](#autocaptureoptions)). |
 
 ## Minimal Setup
 
@@ -93,7 +93,8 @@ What `start(config:)` does out of the box, based on [OTelMobile.swift](../otel-i
 - Wires a `LoggerProvider` with two processors: a `MobileLogRecordProcessor` (buffer for selective flush) and a `BatchLogRecordProcessor` (2 s schedule delay, 2048 queue, 512 batch) that streams to OTLP.
 - Wires a `TracerProvider` with a single `BatchSpanProcessor` to OTLP.
 - Wires a `MeterProvider` with a `PeriodicMetricReader` at 10 s cadence.
-- Posts an async block to the main queue that installs `NetworkInstrumentation`, `LifecycleInstrumentation`, and `ErrorsInstrumentation` based on `config.autoCaptureOptions`. The deferral is intentional — see [Troubleshooting](#troubleshooting) for why synchronous install breaks SwiftUI.
+- Installs `NetworkInstrumentation` synchronously (so requests fired in `App.init` are captured), then posts an async block to the main queue that installs the rest of the modules in `config.autoCaptureOptions` — by default `LifecycleInstrumentation`, `ErrorsInstrumentation`, `ScreenInstrumentation`, `FreezeInstrumentation`, `VitalsInstrumentation` + `AppStartInstrumentation`, and the `DeviceStatsCollector` gauge loop. `.screenshot` / `.wireframe` are excluded from the default set. The deferral is intentional — see [Troubleshooting](#troubleshooting) for why synchronous install breaks SwiftUI.
+- Starts the always-on `sdk.enabled` / `sdk.sample_rate` self-telemetry gauges, and (since `enablePolicyPolling` defaults to `true`) a `ConfigPoller` for the remote kill switch.
 
 Two entry points exist:
 
@@ -110,14 +111,22 @@ From [MobileConfig.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Config/Mobile
 | --- | --- | --- | --- |
 | `serviceName` | `String` | — | Required. Emitted as OTel `service.name` on every signal. |
 | `serviceVersion` | `String` | `"1.0.0"` | Emitted as `service.version`. |
-| `endpoint` | `String` | — | Required. Root OTLP/HTTP URL (e.g. `https://ingress.YOUR-DOMAIN.dash0.com:4318`). Each exporter appends its own `/v1/...` suffix. |
+| `endpoint` | `String` | — | Required. Root OTLP/HTTP URL (e.g. `https://ingress.YOUR-DOMAIN.dash0.com:4318`). Each exporter appends its own `/v1/...` suffix. Cleartext `http://` to a non-loopback host is rejected unless `allowInsecureTransport` is set. |
 | `authToken` | `String?` | `nil` | Bearer token. Pass the full header value including `Bearer ` prefix. |
-| `exportMode` | `ExportMode` | `.conditional` | One of `.conditional`, `.continuous`, `.hybrid`. Parsed by the DSL layer; the production export pipeline currently runs the batch processors regardless — see [Known behavior](#known-behavior). |
+| `exportMode` | `ExportMode` | `.hybrid` | One of `.conditional`, `.continuous`, `.hybrid`. `.hybrid` (the default) emits periodic device heartbeats/metrics and still supports policy-triggered selective flush. |
 | `bufferConfig` | `BufferConfig` | `.default` | RAM-buffer sizing for the selective-flush path. |
 | `privacyConfig` | `PrivacyConfig` | `.default` | PII, location, coordinate bucketing, screenshot redaction knobs. |
-| `autoCaptureOptions` | `AutoCaptureOptions` | `.all` | Opt-out flags for auto-instrumentation. See below. |
-| `pollingIntervalSeconds` | `Int` | `300` | Reserved for the config poller (not wired in the current production `start` path). |
+| `autoCaptureOptions` | `AutoCaptureOptions` | `.default` | Which auto-instrumentation modules `start` installs. `.default` is every module **except** `.screenshot` and `.wireframe`. See below. |
+| `pollingIntervalSeconds` | `Int` | `300` | Remote-config poll cadence (seconds). Active when `enablePolicyPolling` is `true`. |
+| `enablePolicyPolling` | `Bool` | `true` | **Defaults ON.** `start` constructs a `ConfigPoller` against `<endpoint>/config?dsl_version=2` so the remote kill switch (`sdk.enabled`) and global sampling override (`sample_rate`) work out of the box. Set `false` to disable remote config entirely. |
+| `samplingConfig` | `SamplingConfig` | `.dynamic(0.1, 1.0)` | Trace sampling: 10% baseline, 100% for `page.*` / `app.startup`. Use `.alwaysOn()` for dev or `.production(rate:)` for fixed-rate. |
 | `extraHeaders` | `[String: String]` | `[:]` | Merged onto every OTLP/HTTP request — commonly `"Dash0-Dataset"` alongside the bearer token. |
+| `extraResourceAttributes` | `[String: String]` | `[:]` | Extra resource attributes merged into the built-in resource (e.g. `telemetry.distro.*`). |
+| `screenshotConfig` | `ScreenshotConfig` | `ScreenshotConfig()` | Used only when `.screenshot` is enabled. Carries the `shouldCapture` consent gate and redaction knobs. |
+| `wireframeConfig` | `WireframeConfig` | `WireframeConfig()` | Used only when `.wireframe` is enabled. Carries the `shouldCapture` consent gate. |
+| `allowInsecureTransport` | `Bool` | `false` | When `false`, cleartext `http://` to a non-loopback host is rejected (the pipeline is disabled, never a host crash). Loopback/`.local` stays exempt for local-collector dev. |
+| `pinning` | `TransportSecurity.PinningConfig?` | `nil` | Optional SPKI public-key and/or DER certificate pinning, applied to both the OTLP exporters and the config poller (fail-closed per connection). |
+| `configSigningKey` | `Data?` | `nil` | Optional HMAC-SHA256 shared secret. When set, the poller verifies the `X-Dash0-Config-Signature` header over the raw body before applying remote config (keeps last-applied config on verification failure). |
 
 Example with everything tuned:
 
@@ -127,7 +136,7 @@ MobileConfig(
     serviceVersion: "2.3.1",
     endpoint: "https://ingress.YOUR-DOMAIN.dash0.com:4318",
     authToken: "Bearer \(token)",
-    exportMode: .conditional,
+    exportMode: .hybrid,
     bufferConfig: BufferConfig(ramEvents: 2500, diskMb: 25, retentionHours: 12),
     privacyConfig: .production,
     autoCaptureOptions: [.network, .lifecycle, .errors],
@@ -137,31 +146,55 @@ MobileConfig(
 
 ### Known behavior
 
-- `bufferConfig.diskMb` and `bufferConfig.retentionHours` parse and are carried on the struct, but the iOS RAM buffer is in-memory only today. A disk tier mirroring Android's SQLite buffer is planned.
-- `pollingIntervalSeconds` is honored by the DSL/config poller type but not wired into the default `start(config:)` — treat it as reserved.
-- `exportMode` is encoded into the shared DSL types and exercised by the on-device policy evaluator, but the production `start(config:)` path always installs the same batch exporters. Selective-flush semantics come from `flushWindow(minutes:)`, not from switching modes.
+- `pollingIntervalSeconds` drives the remote-config poll cadence whenever `enablePolicyPolling` is `true` (the default). The poller feeds the `PolicyEvaluator` and the shared `RemoteGate` (kill switch + global sampling).
+- `exportMode` selects flush behavior: `.continuous` drains the RAM buffer through OTLP on the `logExportIntervalSeconds` cadence; `.conditional` flushes only on a policy trigger or an explicit `flushWindow(minutes:)`; `.hybrid` (default) does both.
 
 ## AutoCaptureOptions
 
 `AutoCaptureOptions` is a Swift `OptionSet`. From [AutoCaptureOptions.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Config/AutoCaptureOptions.swift):
 
-| Flag | Currently wired? | Notes |
+| Flag | Auto-installed by `start`? | Notes |
 | --- | --- | --- |
 | `.tap` | Placeholder | No UIKit gesture swizzle ships today. |
 | `.scroll` | Placeholder | Same — Android parity is pending. |
-| `.lifecycle` | **Wired** | Installs `LifecycleInstrumentation`. |
-| `.screen` | Staged, not auto-installed | `ScreenInstrumentation` exists but its `UIViewController` swizzle is commented out in `OTelMobile.start` pending a safer install path. Call `ScreenInstrumentation.shared.install(tracer:logger:)` manually if you want to opt into the swizzle today. |
-| `.network` | **Wired** | Installs `NetworkInstrumentation`. |
-| `.errors` | **Wired** | Installs `ErrorsInstrumentation`. |
-| `.freeze` | Placeholder | Only [FreezeInstrumentation.swift](../otel-ios-mobile/Sources/FreezeInstrumentation/FreezeInstrumentation.swift) placeholder exists. |
-| `.vitals` | Placeholder | Only [VitalsInstrumentation.swift](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) placeholder exists. `DeviceStatsCollector` is the opt-in metrics path today. |
-| `.textInput` | Placeholder | |
-| `.screenshot` | Placeholder | |
-| `.wireframe` | Placeholder | |
-| `.all` | — | Convenience shorthand for every flag above (ships as the default). |
-| `.none` | — | Disable all auto-instrumentation — use this if you want to wire modules by hand. |
+| `.lifecycle` | **Yes** | Installs `LifecycleInstrumentation`. |
+| `.screen` | **Yes** | Installs `ScreenInstrumentation` — enables the SwiftUI `.trackScreen(_:)` / `.trackTaps(target:)` ViewModifiers. The UIKit `UIViewController` swizzle stays opt-in (`enableUIKitSwizzle: true`) because it races with SwiftUI hosting-controller lifecycle. |
+| `.network` | **Yes** | Installs `NetworkInstrumentation` (synchronously, so requests in `App.init` are captured). |
+| `.errors` | **Yes** | Installs `ErrorsInstrumentation`. |
+| `.freeze` | **Yes** | Installs `FreezeInstrumentation` (main-thread watchdog). |
+| `.vitals` | **Yes** | Installs `VitalsInstrumentation` + `AppStartInstrumentation` (cold/warm start spans). |
+| `.deviceStats` | **Yes** | Auto-starts the `DeviceStatsCollector` gauge loop (memory/battery/thermal/storage). |
+| `.textInput` | Placeholder | No effect yet. |
+| `.screenshot` | **Opt-in only** | Installs `ScreenshotInstrumentation`. **Not in `.default`** — add it explicitly and supply a `shouldCapture` consent gate (see below). |
+| `.wireframe` | **Opt-in only** | Installs `WireframeInstrumentation`. **Not in `.default`** — add it explicitly and supply a consent gate. |
+| `.default` | — | The value `MobileConfig` uses when you don't specify `autoCaptureOptions`: every module above **except** `.screenshot` and `.wireframe`. |
+| `.all` | — | Every flag including `.screenshot` and `.wireframe`. |
+| `.none` | — | Disable all auto-instrumentation — wire modules by hand. |
 
-Setting a flag that is currently a placeholder has no runtime effect. The default `.all` is intentional: it mirrors Android's "drop-in observability" UX so future releases can light up additional modules without requiring callers to change their config.
+The default (`.default`) deliberately excludes the privacy-sensitive `.screenshot` and `.wireframe` modules — they capture screen pixels / view-hierarchy content and must be opt-in. Placeholder flags (`.tap`, `.scroll`, `.textInput`) have no runtime effect yet.
+
+### Opting into screenshot / wireframe capture
+
+Add the option(s) and provide a consent gate. The gate is consulted **synchronously on the main thread immediately before each capture**; return `false` to skip the capture entirely (no view-tree walk, no render, no log):
+
+```swift
+let config = MobileConfig(
+    serviceName: "my-ios-app",
+    endpoint: "https://ingress.YOUR-DOMAIN.dash0.com:4318",
+    authToken: "Bearer \(token)",
+    autoCaptureOptions: AutoCaptureOptions.default.union([.screenshot, .wireframe]),
+    screenshotConfig: ScreenshotConfig().withConsentGate { ctx in
+        // ctx.kind is .screenshot or .wireframe; ctx.trigger / ctx.screenName
+        // let you decide per-screen (e.g. never on a screen showing a card number).
+        ConsentManager.shared.allows(ctx)
+    },
+    wireframeConfig: WireframeConfig().withConsentGate { ctx in
+        ConsentManager.shared.allows(ctx)
+    }
+)
+```
+
+Captures are redacted by default (`ScreenshotConfig.redactTextFields == true`). To mark sensitive regions deterministically: `Dash0.redact(view)` / `UIView.dash0MarkSensitive()` for UIKit, or `.dash0Redacted()` on a SwiftUI view. See [IOS_CONFIGURATION.md](IOS_CONFIGURATION.md#screenshotconfig) for the full knob set. You can also trigger a capture manually via `mobile.captureScreenshot()` / `mobile.captureWireframe()`.
 
 ## Public API
 
@@ -251,9 +284,12 @@ Two capture paths:
 1. **Objective-C exceptions** via `NSSetUncaughtExceptionHandler`. Catches `NSException` instances, including those bridged from thrown Swift errors that escape.
 2. **POSIX signals** via `sigaction` for `SIGABRT`, `SIGSEGV`, `SIGILL`, `SIGFPE`, `SIGBUS`, `SIGPIPE`, `SIGTRAP`. Covers native crashes.
 
-Because the process is mid-crash when these fire, the handler does only async-signal-safe-ish work: writes a small newline-separated marker file under `~/Library/Caches/io.dash0.mobile.crash-marker` with signal name, timestamp, reason, and up to 50 stack frames — then re-raises the signal so the OS / debugger / App Store crash reporter still picks it up. The handler does **not** call into the OTel tracer or logger (locks and allocations are unsafe at that point).
+The two paths differ in what they can safely persist, because the signal handler runs in a true async-signal-safe context (no allocation, no Foundation, no locks):
 
-On the next `install(logger:)` call, `emitAnyPendingCrash` reads the marker, emits an `app.crash` log at severity `fatal` with `crash.*` and `exception.stacktrace` attributes, then deletes the marker. This is the "recovery marker" pattern — the N+1'th launch reports the crash that killed the N'th.
+- **Signal path** — the `sigaction` handler does the bare minimum: `write(2)` a fixed **3-byte `S<sig>` marker** to a pre-opened file descriptor, then restore the default handler and re-raise so the OS / debugger / App Store crash reporter still records the crash. **No stack trace is captured on this path** — collecting one safely from a signal handler requires a dedicated crash reporter (see [IOS_CRASH_REPORTING.md](IOS_CRASH_REPORTING.md)).
+- **NSException path** — the trampoline runs in normal execution context, so it writes a richer newline-separated marker (`io.dash0.mobile.crash-marker` under Caches) with kind, scrubbed name/reason, timestamp, and up to 50 `callStackSymbols` frames, then chains through any previously-installed handler (Sentry/Firebase/etc.). The exception reason is PII-scrubbed before it touches disk.
+
+On the next `install(logger:)` call, `emitAnyPendingCrash` reads whichever marker is present, emits an `app.crash` log at severity `fatal` with `crash.*` (and `exception.stacktrace` only when the NSException path captured frames), then deletes the marker. This is the "recovery marker" pattern — the N+1'th launch reports the crash that killed the N'th.
 
 Manual error reporting is also available:
 
@@ -263,17 +299,17 @@ ErrorsInstrumentation.shared.recordError(error, attributes: ["context": .string(
 
 Production apps with symbolication requirements should still consider pairing this with PLCrashReporter or KSCrash. This built-in path has zero external dependencies and is good enough for observability signals.
 
-### ScreenInstrumentation (staged, not auto-installed)
+### ScreenInstrumentation
 
 Source: [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift).
 
-Swizzles `UIViewController.viewDidAppear` and `viewDidDisappear` to emit a `screen.view` log and open/close a `page.<ScreenName>` span per screen. Works for UIKit and SwiftUI (the `UIHostingController` wrapping each SwiftUI screen still fires these methods).
+Emits a `screen.view` log and opens/closes a `page.<ScreenName>` span per screen. **Auto-installed by `start`** when `.screen` is in `autoCaptureOptions` (it is, by default). The safe default path is the SwiftUI bridge: annotate screens with the `.trackScreen("Name")` ViewModifier (and `.trackTaps(target:)`).
 
-It is **not** installed by default in the current release. The comment in [OTelMobile.swift](../otel-ios-mobile/Sources/OTelMobileSDK/OTelMobile.swift) captures why: `UIHostingController` hierarchies are sensitive to `viewDidAppear`/`Disappear` swizzles and we'd rather ship a ViewModifier-based SwiftUI integration with an optional UIKit swizzle gated by opt-in. If you want the behavior today, wire it yourself:
+The UIKit `UIViewController.viewDidAppear`/`viewDidDisappear` swizzle is **not** enabled by default because `UIHostingController` hierarchies are sensitive to it; it is opt-in for pure-UIKit apps. To enable the swizzle, install manually:
 
 ```swift
 if let tracer = mobile.tracer {
-    ScreenInstrumentation.shared.install(tracer: tracer, logger: mobile.logger)
+    ScreenInstrumentation.shared.install(tracer: tracer, logger: mobile.logger, enableUIKitSwizzle: true)
 }
 ```
 
@@ -312,7 +348,7 @@ Every log, span, and metric carries the resource built by [ResourceBuilder.swift
 | `service.name` | From `MobileConfig.serviceName`. |
 | `service.version` | From `MobileConfig.serviceVersion`. |
 | `telemetry.sdk.name` | `"io.dash0.mobile"`. |
-| `telemetry.sdk.version` | `"0.1.0-alpha"` — bump on release. |
+| `telemetry.sdk.version` | `"0.1.0-alpha"` — the literal in [ResourceBuilder.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) (`sdkVersion`). Note: this constant still reads `0.1.0-alpha` even though the shipped package tag is `v0.2.0-alpha`. |
 | `telemetry.sdk.language` | `"swift"`. |
 | `os.type` | `"darwin"` on iOS and macOS. |
 | `os.name` | `"iOS"` or `"macOS"`. |
@@ -329,7 +365,7 @@ Callers can pass `extraAttributes: [String: String]` to override defaults on key
 Signals emitted by this SDK follow OTel semconv where they apply:
 
 - **HTTP client spans** (from `NetworkInstrumentation`): `http.request.method`, `url.full`, `http.response.status_code`, `server.address`, `server.port`, plus any configured request/response headers under `http.request.header.<name>` / `http.response.header.<name>`.
-- **App crash logs** (from `ErrorsInstrumentation`): `event.name=app.crash`, `exception.stacktrace`, `crash.kind`, `crash.name`, `crash.reason`, `crash.timestamp`, severity `fatal`.
+- **App crash logs** (from `ErrorsInstrumentation`): `event.name=app.crash`, `crash.from_marker=true`, `crash.kind` (`exception` or `signal`), `crash.name`, `crash.signal`, `crash.reason`, `crash.timestamp`, severity `fatal`. `exception.stacktrace` is present only for the NSException path; signal-path crashes carry no stack (see [IOS_CRASH_REPORTING.md](IOS_CRASH_REPORTING.md)).
 - **App error logs** (manual `recordError`): `event.name=app.error`, `error.type`, `error.message`, severity `error`.
 - **Lifecycle logs** (from `LifecycleInstrumentation`): `event.name=app.launch | app.foreground | app.background | app.will_terminate | app.memory_warning`.
 - **Screen view logs** (if `ScreenInstrumentation` is wired): `event.name=screen.view`, `screen.name`.
@@ -397,4 +433,4 @@ The demo control center exports `DEVELOPER_DIR` itself when a full Xcode is dete
 - [iOS Configuration Reference](IOS_CONFIGURATION.md) — Every field on `MobileConfig` and its sub-configs.
 - [iOS Demo Runbook](HOW_TO_DEMO_IOS.md) — Step-by-step for running the Starter and Astronomy Shop demos.
 - [Android SDK Guide](ANDROID_SDK_GUIDE.md) — Sibling doc for the Android SDK.
-- [DSL v2 Schema](../mobile-otel-control-plane/docs/DSL_V2_SCHEMA.md) — Cross-platform policy DSL consumed by both SDKs.
+- [DSL v2 Schema](../../mobile-otel-control-plane/docs/DSL_V2_SCHEMA.md) — Cross-platform policy DSL consumed by both SDKs (sibling `mobile-otel-control-plane` repo).
