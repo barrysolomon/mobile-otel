@@ -12,6 +12,12 @@ public struct WireframeNode: Sendable, Equatable {
     public let isInteractive: Bool?
     public let isEnabled: Bool?
     public let truncated: Bool
+    /// `true` when this node covers a sensitive region (a secure UIKit field or
+    /// a view tagged via `Dash0.redact(_:)` / `.dash0Redacted()`). Redacted
+    /// nodes carry NO text-bearing fields — no `hint`, `label`, or `id` — so
+    /// the wireframe JSON can never leak sensitive content. The region's
+    /// `type` and `bounds` are still emitted so layout is preserved.
+    public let redacted: Bool
     public let children: [WireframeNode]
 
     public init(
@@ -23,16 +29,22 @@ public struct WireframeNode: Sendable, Equatable {
         isInteractive: Bool? = nil,
         isEnabled: Bool? = nil,
         truncated: Bool = false,
+        redacted: Bool = false,
         children: [WireframeNode] = []
     ) {
         self.type = type
         self.bounds = bounds
-        self.accessibilityIdentifier = accessibilityIdentifier
-        self.hint = hint
-        self.accessibilityLabel = accessibilityLabel
+        // Hard invariant: a redacted node never carries text-bearing fields,
+        // regardless of what the caller passed. This makes leaking
+        // structurally impossible at the data-model layer, not just at the
+        // walk layer.
+        self.accessibilityIdentifier = redacted ? nil : accessibilityIdentifier
+        self.hint = redacted ? nil : hint
+        self.accessibilityLabel = redacted ? nil : accessibilityLabel
         self.isInteractive = isInteractive
         self.isEnabled = isEnabled
         self.truncated = truncated
+        self.redacted = redacted
         self.children = children
     }
 
@@ -58,6 +70,9 @@ public struct WireframeNode: Sendable, Equatable {
         }
         if truncated {
             parts.append("\"truncated\":true")
+        }
+        if redacted {
+            parts.append("\"redacted\":true")
         }
         if !children.isEmpty {
             let childJson = children.map { $0.toJson() }.joined(separator: ",")

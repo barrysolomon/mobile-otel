@@ -86,9 +86,33 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         #endif
     }
 
+    /// Evaluate the consent gate synchronously on the main thread. The capture
+    /// path that calls this is already on the main thread (UIKit rendering),
+    /// so this is a direct call — no dispatch hop that could let the gated
+    /// state change between the decision and the render.
+    ///
+    /// Returns `true` when no gate is configured (consent follows the
+    /// `enabled` flag alone) or the gate authorizes the capture.
+    internal func consentAllows(trigger: String, screenName: String?) -> Bool {
+        guard let gate = config.shouldCapture else { return true }
+        let context = CaptureContext(
+            trigger: CaptureTrigger(rawTrigger: trigger),
+            kind: .screenshot,
+            screenName: screenName
+        )
+        return gate(context)
+    }
+
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private func captureFromKeyWindow(trigger: String) {
         guard let window = Self.findKeyWindow() else { return }
+
+        // Consent gate: consulted synchronously on the main thread immediately
+        // before any rendering work. If it denies, skip the capture entirely —
+        // no render, no redaction walk, no log.
+        let screenName = Self.topViewControllerName(in: window)
+        guard consentAllows(trigger: trigger, screenName: screenName) else { return }
+
         let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
         let image = renderer.image { ctx in
             window.layer.render(in: ctx.cgContext)
@@ -121,6 +145,14 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
                 .first { $0.isKeyWindow }
         }
         return nil
+    }
+
+    private static func topViewControllerName(in window: UIWindow) -> String? {
+        var vc = window.rootViewController
+        while let presented = vc?.presentedViewController { vc = presented }
+        if let nav = vc as? UINavigationController { vc = nav.topViewController }
+        if let tab = vc as? UITabBarController { vc = tab.selectedViewController }
+        return vc.map { String(describing: Swift.type(of: $0)) }
     }
 
     internal func scaleImage(_ image: UIImage) -> UIImage? {
@@ -164,22 +196,33 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         }
     }
 
-    private func collectTextFieldRects(in view: UIView) -> [CGRect] {
+    /// Walk the view tree and collect the frames of every region that must be
+    /// masked, per ``Dash0RedactionPolicy``: explicitly-tagged views, UIKit
+    /// secure fields, and — when ``ScreenshotConfig/redactAllText`` is set —
+    /// all text-bearing views. Once a view is masked its subtree is skipped
+    /// (the parent rect already covers the children).
+    ///
+    /// Marked `internal` so unit tests can assert masking decisions without a
+    /// live render. Main-thread only (UIKit view state).
+    internal func collectTextFieldRects(in view: UIView) -> [CGRect] {
         var rects: [CGRect] = []
-        collectTextFieldRectsRecursive(view: view, rootView: view, rects: &rects)
+        collectRedactionRectsRecursive(view: view, rootView: view, rects: &rects)
         return rects
     }
 
-    private func collectTextFieldRectsRecursive(view: UIView, rootView: UIView, rects: inout [CGRect]) {
+    private func collectRedactionRectsRecursive(view: UIView, rootView: UIView, rects: inout [CGRect]) {
         guard view.isHidden == false else { return }
 
-        if view is UITextField || view is UITextView {
+        if Dash0RedactionPolicy.shouldRedact(view, redactAllText: config.redactAllText) {
             let frame = view.convert(view.bounds, to: rootView)
             rects.append(frame)
+            // The masked rect already covers descendants; no need to descend
+            // (and descending could double-mask or leak a child's larger frame).
+            return
         }
 
         for sub in view.subviews {
-            collectTextFieldRectsRecursive(view: sub, rootView: rootView, rects: &rects)
+            collectRedactionRectsRecursive(view: sub, rootView: rootView, rects: &rects)
         }
     }
 
