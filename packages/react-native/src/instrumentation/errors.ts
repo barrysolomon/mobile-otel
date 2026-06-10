@@ -11,8 +11,11 @@
  */
 
 import { Dash0Mobile } from '../index';
+import { sanitizeMessage, sanitizeStacktrace } from '../redact';
 
 export const DEDUPE_WINDOW_MS = 5 * 60 * 1000;
+/** Cap on the dedupe map so a high-cardinality error storm can't leak memory. */
+const DEDUPE_MAX_ENTRIES = 256;
 const SEVERITY_ERROR = 17 as const;
 const SEVERITY_FATAL = 21 as const;
 
@@ -50,13 +53,20 @@ export function installErrorInstrumentation(): () => void {
     const now = Date.now();
     const lastAt = recentlySeen.get(key);
     if (lastAt === undefined || now - lastAt >= DEDUPE_WINDOW_MS) {
+      // LRU-style insert: re-key so the freshest entries stay, then evict the
+      // oldest if we've blown the cap. Bounds memory under an error storm.
+      recentlySeen.delete(key);
       recentlySeen.set(key, now);
+      if (recentlySeen.size > DEDUPE_MAX_ENTRIES) {
+        const oldest = recentlySeen.keys().next().value;
+        if (oldest !== undefined) recentlySeen.delete(oldest);
+      }
       Dash0Mobile.log(
         'app.error',
         {
           'exception.type': error?.name ?? 'Error',
-          'exception.message': error?.message ?? String(error),
-          'exception.stacktrace': error?.stack ?? '',
+          'exception.message': sanitizeMessage(error?.message ?? String(error)),
+          'exception.stacktrace': sanitizeStacktrace(error?.stack ?? ''),
         },
         isFatal ? SEVERITY_FATAL : SEVERITY_ERROR,
       );

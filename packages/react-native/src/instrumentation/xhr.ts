@@ -10,6 +10,7 @@
 
 import { Dash0Mobile } from '../index';
 import type { SpanHandle } from '../index';
+import { sanitizeUrl } from '../redact';
 
 export interface XhrInstrumentationConfig {
   ignoredHosts?: readonly string[];
@@ -52,8 +53,12 @@ export function installXhrInstrumentation(
         url: string | URL,
         ...rest: unknown[]
       ) {
-        instance.__dash0_method = method.toUpperCase();
-        instance.__dash0_url = typeof url === 'string' ? url : url.toString();
+        try {
+          instance.__dash0_method = method.toUpperCase();
+          instance.__dash0_url = typeof url === 'string' ? url : url.toString();
+        } catch {
+          // Capturing request metadata must never block the real open().
+        }
         // @ts-expect-error — forwarding variadic
         return originalOpen(method, url, ...rest);
       };
@@ -62,47 +67,58 @@ export function installXhrInstrumentation(
       (instance as unknown as { send: XMLHttpRequest['send'] }).send = function send(
         body?: Document | XMLHttpRequestBodyInit | null,
       ) {
-        const url = instance.__dash0_url ?? '';
-        const host = hostFromUrl(url);
-        if (!host || !ignored.has(host)) {
-          const method = instance.__dash0_method ?? 'GET';
-          instance.__dash0_span = Dash0Mobile.startSpan(
-            `${method} ${host ?? 'unknown'}`,
-            {
-              'http.request.method': method,
-              'url.full': url,
-              ...(host ? { 'server.address': host } : {}),
-            },
-            'CLIENT',
-          );
+        // ALL telemetry setup is best-effort: a throw here must never stop
+        // the host's real request from going out.
+        try {
+          const url = instance.__dash0_url ?? '';
+          const host = hostFromUrl(url);
+          if (!host || !ignored.has(host)) {
+            const method = instance.__dash0_method ?? 'GET';
+            instance.__dash0_span = Dash0Mobile.startSpan(
+              `${method} ${host ?? 'unknown'}`,
+              {
+                'http.request.method': method,
+                'url.full': sanitizeUrl(url),
+                ...(host ? { 'server.address': host } : {}),
+              },
+              'CLIENT',
+            );
 
-          const onError = () => {
-            instance.__dash0_failed = true;
-          };
-          const onLoadEnd = () => {
-            const span = instance.__dash0_span;
-            if (!span) return;
-            if (instance.__dash0_failed) {
-              span.setStatus('ERROR', 'network error');
-            } else {
-              const status = instance.status;
-              if (typeof status === 'number' && status > 0) {
-                span.setAttribute('http.response.status_code', status);
-                if (status >= 400) {
-                  span.setStatus('ERROR', `HTTP ${status}`);
+            const onError = () => {
+              instance.__dash0_failed = true;
+            };
+            const onLoadEnd = () => {
+              try {
+                const span = instance.__dash0_span;
+                if (!span) return;
+                if (instance.__dash0_failed) {
+                  span.setStatus('ERROR', 'network error');
                 } else {
-                  span.setStatus('OK');
+                  const status = instance.status;
+                  if (typeof status === 'number' && status > 0) {
+                    span.setAttribute('http.response.status_code', status);
+                    if (status >= 400) {
+                      span.setStatus('ERROR', `HTTP ${status}`);
+                    } else {
+                      span.setStatus('OK');
+                    }
+                  } else {
+                    span.setStatus('OK');
+                  }
                 }
-              } else {
-                span.setStatus('OK');
+                span.end();
+                instance.__dash0_span = undefined;
+              } catch {
+                // Telemetry finalization failure must not surface to the host.
               }
-            }
-            span.end();
-            instance.__dash0_span = undefined;
-          };
+            };
 
-          instance.addEventListener('error', onError);
-          instance.addEventListener('loadend', onLoadEnd);
+            instance.addEventListener('error', onError);
+            instance.addEventListener('loadend', onLoadEnd);
+          }
+        } catch (telemetryErr) {
+          // eslint-disable-next-line no-console
+          console.warn?.('[@dash0/mobile] xhr instrumentation setup failed', telemetryErr);
         }
         return originalSend(body);
       };
@@ -110,6 +126,13 @@ export function installXhrInstrumentation(
       return instance;
     },
   });
+
+  // Double-install guard: Fast Refresh / repeated start() would otherwise
+  // stack Proxy wrappers and leak the original constructor.
+  if ((OriginalXHR as { __dash0_installed?: boolean }).__dash0_installed) {
+    return () => {};
+  }
+  (OriginalXHR as { __dash0_installed?: boolean }).__dash0_installed = true;
 
   (globalThis as unknown as { XMLHttpRequest: XhrCtor }).XMLHttpRequest =
     wrapped as XhrCtor;
@@ -121,5 +144,7 @@ export function installXhrInstrumentation(
       (globalThis as unknown as { XMLHttpRequest?: XhrCtor }).XMLHttpRequest =
         OriginalXHR;
     }
+    // Clear the guard so a later install() can re-instrument.
+    delete (OriginalXHR as { __dash0_installed?: boolean }).__dash0_installed;
   };
 }

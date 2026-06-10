@@ -23,6 +23,14 @@ internal class OTelMobileCallSink(
 
     private val liveSpans = HashMap<String, io.opentelemetry.api.trace.Span>()
 
+    // Async gauges must be registered exactly ONCE per metric name. Calling
+    // buildWithCallback on every event leaks a new never-closed observable +
+    // a retained closure each time. We register one observable gauge per name
+    // and have its callback report the latest value/attributes stored here.
+    private val gaugeRegistered = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private val gaugeLatest =
+        java.util.concurrent.ConcurrentHashMap<String, Pair<Double, Attributes>>()
+
     override fun start(config: StartConfig) {
         val app = appContext.applicationContext as android.app.Application
         // Build optional auth + dataset headers. Dash0's OTLP/HTTP ingress
@@ -119,7 +127,18 @@ internal class OTelMobileCallSink(
         when (instrumentType) {
             "counter" -> meter.counterBuilder(name).build().add(value.toLong(), otelAttrs)
             "histogram" -> meter.histogramBuilder(name).build().record(value, otelAttrs)
-            "gauge" -> meter.gaugeBuilder(name).buildWithCallback { obs -> obs.record(value, otelAttrs) }
+            "gauge" -> {
+                // Stash the latest reading, then register the observable gauge
+                // ONCE per name. The callback re-reads from gaugeLatest on each
+                // collection so we don't leak a closure/instrument per event.
+                gaugeLatest[name] = value to otelAttrs
+                gaugeRegistered.computeIfAbsent(name) { gaugeName ->
+                    meter.gaugeBuilder(gaugeName).buildWithCallback { obs ->
+                        gaugeLatest[gaugeName]?.let { (v, a) -> obs.record(v, a) }
+                    }
+                    true
+                }
+            }
             else -> Unit
         }
     }

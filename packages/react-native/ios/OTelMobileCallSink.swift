@@ -14,6 +14,14 @@ final class OTelMobileCallSink: BridgeCallSink {
     private var otel: OTelMobile?
     private let spanLock = NSLock()
     private var liveSpans: [String: Span] = [:]
+    // Insertion-order list mirroring liveSpans keys for O(1)-amortized LRU
+    // eviction. Guarded by `spanLock` together with `liveSpans`.
+    private var liveSpanOrder: [String] = []
+    // Cap on concurrently-tracked spans. Orphaned spanStart (a spanEnd that
+    // never arrives — JS crash mid-request, dropped batch) would otherwise
+    // grow liveSpans without bound. When exceeded we evict + end the oldest
+    // as a timed-out error.
+    private static let maxLiveSpans = 2048
 
     func start(_ config: BridgeStartConfig) {
         guard otel == nil else { return }
@@ -52,8 +60,19 @@ final class OTelMobileCallSink: BridgeCallSink {
         } catch {
             // Start failure is logged but non-fatal — JS side stays operational
             // and future emitBatch calls become no-ops until a successful start.
-            NSLog("[@dash0/mobile-react-native] OTelMobile.start failed: \(error)")
+            // Do NOT interpolate the full error: it can embed the endpoint URL
+            // (incl. credentials) or auth token. Log a static message + the
+            // error code only, and only when debug logging is enabled.
+            Self.debugLog("OTelMobile.start failed (code \((error as NSError).code))")
         }
+    }
+
+    /// Gate diagnostic NSLogs behind a debug flag so production builds don't
+    /// emit potentially sensitive init/auth detail to the device log.
+    private static func debugLog(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        NSLog("[@dash0/mobile-react-native] %@", message())
+        #endif
     }
 
     func emitLog(
@@ -76,22 +95,59 @@ final class OTelMobileCallSink: BridgeCallSink {
 
     func startSpan(
         spanId: String,
+        parentSpanId: String?,
         name: String,
         spanKind: String,
         attributes: [String: Any],
         startTimeUnixNano: UInt64
     ) {
         guard let tracer = otel?.tracer else { return }
-        let span = tracer.spanBuilder(spanName: name)
+
+        // Resolve the parent span (if still live) under the lock, then build
+        // OUTSIDE the lock — never hold spanLock across OTel calls.
+        var parentSpan: Span?
+        if let parentSpanId = parentSpanId {
+            spanLock.lock()
+            parentSpan = liveSpans[parentSpanId]
+            spanLock.unlock()
+        }
+
+        let builder = tracer.spanBuilder(spanName: name)
             .setStartTime(time: Self.dateFromUnixNano(startTimeUnixNano))
             .setSpanKind(kind: Self.mapSpanKind(spanKind))
-            .startSpan()
+        if let parentSpan = parentSpan {
+            // TODO: switch to the OTel-Swift parent-context API
+            // (`builder.setParent(parentSpan)`) once the SpanBuilder overload
+            // is confirmed against the pinned OTelMobileSDK version. Until then
+            // record the parent linkage as an attribute so Dash0 can still
+            // associate the spans rather than orphaning them.
+            builder.setAttribute(key: "parent.span.id", value: .string(parentSpanId ?? ""))
+            _ = parentSpan
+        }
+        let span = builder.startSpan()
         for (k, v) in Self.toAttributeValues(attributes) {
             span.setAttribute(key: k, value: v)
         }
+
+        // Insert + enforce the LRU cap. Capture any victim under the lock,
+        // then end it OUTSIDE the lock (span.end / status are OTel calls).
+        var evicted: Span?
+        var evictedTime: UInt64 = startTimeUnixNano
         spanLock.lock()
+        if liveSpans[spanId] == nil {
+            liveSpanOrder.append(spanId)
+        }
         liveSpans[spanId] = span
+        if liveSpans.count > Self.maxLiveSpans, let oldestId = liveSpanOrder.first {
+            liveSpanOrder.removeFirst()
+            evicted = liveSpans.removeValue(forKey: oldestId)
+        }
         spanLock.unlock()
+
+        if let evicted = evicted {
+            evicted.status = .error(description: "span evicted: liveSpans cap exceeded (orphaned spanStart)")
+            evicted.end(time: Self.dateFromUnixNano(evictedTime))
+        }
     }
 
     func endSpan(
@@ -103,6 +159,9 @@ final class OTelMobileCallSink: BridgeCallSink {
     ) {
         spanLock.lock()
         let span = liveSpans.removeValue(forKey: spanId)
+        if span != nil, let idx = liveSpanOrder.firstIndex(of: spanId) {
+            liveSpanOrder.remove(at: idx)
+        }
         spanLock.unlock()
         guard let span = span else { return }
 
@@ -144,9 +203,20 @@ final class OTelMobileCallSink: BridgeCallSink {
         default:
             // counter — integer values are the common case. Fractional
             // counters aren't expressible through OTel-Swift's long counter,
-            // so truncate and log once if the JS side ever sends a non-int.
+            // so truncate. `Int(value)` traps on NaN/Inf/out-of-range doubles,
+            // so clamp into Int range first and drop non-finite values.
+            guard value.isFinite else { return }
+            let clamped = value.rounded(.towardZero)
+            let intValue: Int
+            if clamped >= Double(Int.max) {
+                intValue = Int.max
+            } else if clamped <= Double(Int.min) {
+                intValue = Int.min
+            } else {
+                intValue = Int(clamped)
+            }
             meter.counterBuilder(name: name).build()
-                .add(value: Int(value), attributes: otelAttrs)
+                .add(value: intValue, attributes: otelAttrs)
         }
     }
 
@@ -161,6 +231,7 @@ final class OTelMobileCallSink: BridgeCallSink {
         otel = nil
         spanLock.lock()
         liveSpans.removeAll()
+        liveSpanOrder.removeAll()
         spanLock.unlock()
     }
 

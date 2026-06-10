@@ -7,8 +7,11 @@
  */
 
 import { Dash0Mobile } from '../index';
+import { sanitizeMessage, sanitizeStacktrace } from '../redact';
 
 const DEDUPE_WINDOW_MS = 5 * 60 * 1000;
+/** Cap on the dedupe map so a high-cardinality rejection storm can't leak memory. */
+const DEDUPE_MAX_ENTRIES = 256;
 const SEVERITY_ERROR = 17 as const;
 
 type RejectionEvent = { reason: unknown };
@@ -41,15 +44,21 @@ export function installUnhandledRejectionInstrumentation(): () => void {
     const now = Date.now();
     const lastAt = recentlySeen.get(key);
     if (lastAt !== undefined && now - lastAt < DEDUPE_WINDOW_MS) return;
+    // LRU-style insert + cap so a rejection storm can't grow the map forever.
+    recentlySeen.delete(key);
     recentlySeen.set(key, now);
+    if (recentlySeen.size > DEDUPE_MAX_ENTRIES) {
+      const oldest = recentlySeen.keys().next().value;
+      if (oldest !== undefined) recentlySeen.delete(oldest);
+    }
 
     if (reason instanceof Error) {
       Dash0Mobile.log(
         'app.error',
         {
           'exception.type': reason.name ?? 'Error',
-          'exception.message': reason.message ?? String(reason),
-          'exception.stacktrace': reason.stack ?? '',
+          'exception.message': sanitizeMessage(reason.message ?? String(reason)),
+          'exception.stacktrace': sanitizeStacktrace(reason.stack ?? ''),
           'exception.escaped': true,
         },
         SEVERITY_ERROR,
@@ -59,7 +68,7 @@ export function installUnhandledRejectionInstrumentation(): () => void {
         'app.error',
         {
           'exception.type': 'UnhandledRejection',
-          'exception.message': String(reason),
+          'exception.message': sanitizeMessage(String(reason)),
           'exception.escaped': true,
         },
         SEVERITY_ERROR,
