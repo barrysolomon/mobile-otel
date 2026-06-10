@@ -2,7 +2,13 @@ import Testing
 @testable import ScreenshotInstrumentation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import OTelMobileCore
+@testable import OTelMobileCore
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+import UIKit
+#endif
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
 
 @Suite("ScreenshotInstrumentation", .serialized)
 struct ScreenshotInstrumentationTests {
@@ -232,6 +238,173 @@ struct RateLimiterTests {
         #expect(limiter.tryAcquire())
     }
 }
+
+// MARK: - CaptureContext
+
+@Suite("CaptureContext")
+struct CaptureContextTests {
+
+    @Test("trigger round-trips through rawValue")
+    func triggerRoundTrips() {
+        let cases: [(String, CaptureTrigger)] = [
+            ("error", .error),
+            ("screen_view", .screenView),
+            ("tap", .tap),
+            ("manual", .manual),
+            ("policy_crash_recovery", .policy(name: "crash_recovery")),
+            ("custom_thing", .other("custom_thing")),
+        ]
+        for (raw, expected) in cases {
+            #expect(CaptureTrigger(rawTrigger: raw) == expected)
+            #expect(expected.rawValue == raw)
+        }
+    }
+
+    @Test("policy trigger exposes policyName")
+    func policyName() {
+        let ctx = CaptureContext(trigger: .policy(name: "ui_freeze"), kind: .screenshot)
+        #expect(ctx.policyName == "ui_freeze")
+        let manual = CaptureContext(trigger: .manual, kind: .wireframe)
+        #expect(manual.policyName == nil)
+    }
+
+    @Test("context carries trigger and kind")
+    func carriesTriggerAndKind() {
+        let ctx = CaptureContext(trigger: .error, kind: .screenshot, screenName: "Checkout")
+        #expect(ctx.trigger == .error)
+        #expect(ctx.kind == .screenshot)
+        #expect(ctx.screenName == "Checkout")
+    }
+}
+
+// MARK: - Consent gate
+
+@Suite("ScreenshotConsentGate", .serialized)
+struct ScreenshotConsentGateTests {
+
+    private func makeContext(processor: LogCapture) -> InstrumentationContext {
+        let logger = makeLogger(processor: processor)
+        let tracer = TracerProviderBuilder().build().get(instrumentationName: "test")
+        let meter = MeterProviderSdk.builder().build().get(name: "test")
+        return InstrumentationContext(
+            tracer: tracer, logger: logger, meter: meter,
+            sessionProvider: TestSessionProvider(), eventHub: TouchEventHub(),
+            privacyConfig: .default
+        )
+    }
+
+    @Test("nil consent gate allows capture (follows enabled flag)")
+    func nilGateAllows() {
+        let inst = ScreenshotInstrumentation(config: ScreenshotConfig(enabled: true))
+        #expect(inst.consentAllows(trigger: "manual", screenName: "Home"))
+    }
+
+    @Test("consent gate returning false denies capture")
+    func gateFalseDenies() {
+        let config = ScreenshotConfig(enabled: true) .withConsentGate { _ in false }
+        let inst = ScreenshotInstrumentation(config: config)
+        #expect(!inst.consentAllows(trigger: "error", screenName: "Pay"))
+    }
+
+    @Test("consent gate returning true allows capture")
+    func gateTrueAllows() {
+        let config = ScreenshotConfig(enabled: true).withConsentGate { _ in true }
+        let inst = ScreenshotInstrumentation(config: config)
+        #expect(inst.consentAllows(trigger: "error", screenName: "Pay"))
+    }
+
+    @Test("consent gate receives correct trigger and kind")
+    func gateReceivesContext() {
+        final class Box: @unchecked Sendable { var ctx: CaptureContext? }
+        let box = Box()
+        let config = ScreenshotConfig(enabled: true).withConsentGate { ctx in
+            box.ctx = ctx
+            return false
+        }
+        let inst = ScreenshotInstrumentation(config: config)
+        _ = inst.consentAllows(trigger: "policy_crash_recovery", screenName: "Cart")
+        #expect(box.ctx?.kind == .screenshot)
+        #expect(box.ctx?.trigger == .policy(name: "crash_recovery"))
+        #expect(box.ctx?.screenName == "Cart")
+    }
+}
+
+// MARK: - Deterministic redaction (UIKit)
+
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+@MainActor
+@Suite("ScreenshotRedaction", .serialized)
+struct ScreenshotRedactionTests {
+
+    @Test("secure UIKit text field is masked")
+    func secureFieldMasked() {
+        let field = UITextField(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        field.isSecureTextEntry = true
+        #expect(Dash0RedactionPolicy.shouldRedact(field, redactAllText: false))
+    }
+
+    @Test("non-secure UIKit text field is NOT masked by default")
+    func nonSecureFieldNotMasked() {
+        let field = UITextField(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        field.isSecureTextEntry = false
+        #expect(!Dash0RedactionPolicy.shouldRedact(field, redactAllText: false))
+    }
+
+    @Test("non-secure text field IS masked in redact-all mode")
+    func nonSecureFieldMaskedRedactAll() {
+        let field = UITextField(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        field.isSecureTextEntry = false
+        #expect(Dash0RedactionPolicy.shouldRedact(field, redactAllText: true))
+    }
+
+    @Test("explicitly tagged UIView is masked")
+    func taggedViewMasked() {
+        let view = UIView(frame: CGRect(x: 10, y: 10, width: 50, height: 50))
+        #expect(!Dash0RedactionPolicy.shouldRedact(view, redactAllText: false))
+        Dash0.redact(view)
+        #expect(Dash0RedactionPolicy.shouldRedact(view, redactAllText: false))
+        Dash0.unredact(view)
+        #expect(!Dash0RedactionPolicy.shouldRedact(view, redactAllText: false))
+    }
+
+    @Test("collectTextFieldRects masks secure field and tagged region")
+    func collectMasksSecureAndTagged() {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        let secure = UITextField(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        secure.isSecureTextEntry = true
+        let plain = UILabel(frame: CGRect(x: 0, y: 40, width: 100, height: 20))
+        let tagged = UIView(frame: CGRect(x: 0, y: 80, width: 100, height: 20))
+        Dash0.redact(tagged)
+        root.addSubview(secure)
+        root.addSubview(plain)
+        root.addSubview(tagged)
+
+        let inst = ScreenshotInstrumentation(config: ScreenshotConfig(redactAllText: false))
+        let rects = inst.collectTextFieldRects(in: root)
+        // secure + tagged masked; plain label NOT masked (redactAllText false)
+        #expect(rects.count == 2)
+    }
+
+    @Test("collectTextFieldRects masks all text in redact-all mode")
+    func collectMasksAllTextRedactAll() {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        root.addSubview(label)
+        let inst = ScreenshotInstrumentation(config: ScreenshotConfig(redactAllText: true))
+        #expect(inst.collectTextFieldRects(in: root).count == 1)
+    }
+
+    @Test("class-name fallback is off by default, on when enabled")
+    func classNameFallback() {
+        final class MySecureFieldHost: UIView {}
+        let view = MySecureFieldHost(frame: .zero)
+        #expect(!Dash0RedactionPolicy.shouldRedact(view, redactAllText: false))
+        Dash0.conservativeClassNameFallbackEnabled = true
+        defer { Dash0.conservativeClassNameFallbackEnabled = false }
+        #expect(Dash0RedactionPolicy.shouldRedact(view, redactAllText: false))
+    }
+}
+#endif
 
 // MARK: - Test helpers
 

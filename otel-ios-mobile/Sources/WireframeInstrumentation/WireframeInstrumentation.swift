@@ -133,12 +133,30 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
         #endif
     }
 
+    /// Evaluate the consent gate synchronously on the main thread (the capture
+    /// path is already on the main thread). Returns `true` when no gate is
+    /// configured or the gate authorizes the capture.
+    internal func consentAllows(trigger: String, screenName: String?) -> Bool {
+        guard let gate = config.shouldCapture else { return true }
+        let context = CaptureContext(
+            trigger: CaptureTrigger(rawTrigger: trigger),
+            kind: .wireframe,
+            screenName: screenName
+        )
+        return gate(context)
+    }
+
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private func captureFromKeyWindow(trigger: String) {
         guard let window = Self.findKeyWindow() else { return }
+
+        // Consent gate: consulted synchronously on the main thread immediately
+        // before the view-tree walk. If it denies, skip the capture entirely.
+        let screenName = Self.topViewControllerName(in: window)
+        guard consentAllows(trigger: trigger, screenName: screenName) else { return }
+
         let node = buildTree(view: window, depth: 0)
         let json = node.toJson()
-        let screenName = Self.topViewControllerName(in: window)
         emitWireframe(json: json, nodeCount: node.nodeCount(), screenName: screenName, trigger: trigger, sizeBytes: json.count)
     }
 
@@ -149,14 +167,27 @@ public final class WireframeInstrumentation: @unchecked Sendable, TouchEventList
 
         let type = Self.viewTypeName(view)
 
-        let aid: String? = config.includeAccessibilityIdentifiers ? view.accessibilityIdentifier : nil
-
-        let hint: String? = config.includeTextHints ? extractHint(from: view) : nil
-
-        let label: String? = config.includeContentDescription ? view.accessibilityLabel : nil
+        // Deterministic redaction: a node is redacted when the shared policy
+        // says so (secure UIKit field or explicitly-tagged view, incl. SwiftUI
+        // `.dash0Redacted()`). Redacted nodes drop ALL text-bearing fields (the
+        // WireframeNode initializer enforces this) and we do NOT descend into
+        // their subtree, so no sensitive child text can leak either.
+        let isRedacted = Dash0RedactionPolicy.shouldRedact(view, redactAllText: false)
 
         let interactive: Bool? = config.includeInteractionState ? view.isUserInteractionEnabled : nil
         let enabled: Bool? = config.includeInteractionState ? (view.alpha > 0 && !view.isHidden) : nil
+
+        if isRedacted {
+            return WireframeNode(
+                type: type, bounds: bounds,
+                isInteractive: interactive, isEnabled: enabled,
+                redacted: true
+            )
+        }
+
+        let aid: String? = config.includeAccessibilityIdentifiers ? view.accessibilityIdentifier : nil
+        let hint: String? = config.includeTextHints ? extractHint(from: view) : nil
+        let label: String? = config.includeContentDescription ? view.accessibilityLabel : nil
 
         if depth >= config.maxDepth {
             return WireframeNode(

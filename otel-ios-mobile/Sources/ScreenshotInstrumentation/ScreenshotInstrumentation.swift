@@ -106,12 +106,36 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         #endif
     }
 
+    /// Evaluate the consent gate synchronously on the main thread. The capture
+    /// path that calls this is already on the main thread (UIKit rendering),
+    /// so this is a direct call — no dispatch hop that could let the gated
+    /// state change between the decision and the render.
+    ///
+    /// Returns `true` when no gate is configured (consent follows the
+    /// `enabled` flag alone) or the gate authorizes the capture.
+    internal func consentAllows(trigger: String, screenName: String?) -> Bool {
+        guard let gate = config.shouldCapture else { return true }
+        let context = CaptureContext(
+            trigger: CaptureTrigger(rawTrigger: trigger),
+            kind: .screenshot,
+            screenName: screenName
+        )
+        return gate(context)
+    }
+
     #if canImport(UIKit) && (os(iOS) || os(tvOS))
     private func captureFromKeyWindow(trigger: String) {
         // MAIN THREAD ONLY below this point until the postProcessQueue hop:
         // UIApplication/UIWindow/UIView/CALayer access requires the main
         // thread. capture(trigger:) guarantees we're on main here.
         guard let window = Self.findKeyWindow() else { return }
+
+        // Consent gate: consulted synchronously on the main thread immediately
+        // before any rendering work. If it denies, skip the capture entirely —
+        // no render, no redaction walk, no log.
+        let screenName = Self.topViewControllerName(in: window)
+        guard consentAllows(trigger: trigger, screenName: screenName) else { return }
+
         let originalSize = window.bounds.size
         let renderer = UIGraphicsImageRenderer(size: originalSize)
         let image = renderer.image { ctx in
@@ -173,6 +197,14 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         return nil
     }
 
+    private static func topViewControllerName(in window: UIWindow) -> String? {
+        var vc = window.rootViewController
+        while let presented = vc?.presentedViewController { vc = presented }
+        if let nav = vc as? UINavigationController { vc = nav.topViewController }
+        if let tab = vc as? UITabBarController { vc = tab.selectedViewController }
+        return vc.map { String(describing: Swift.type(of: $0)) }
+    }
+
     internal func scaleImage(_ image: UIImage) -> UIImage? {
         let w = image.size.width
         let h = image.size.height
@@ -215,57 +247,42 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
         }
     }
 
-    private func collectTextFieldRects(in view: UIView) -> [CGRect] {
+    /// Walk the view tree and collect the frames of every region that must be
+    /// masked, per ``Dash0RedactionPolicy``: explicitly-tagged views, UIKit
+    /// secure fields, and — when ``ScreenshotConfig/redactAllText`` is set —
+    /// all text-bearing views. Once a view is masked its subtree is skipped
+    /// (the parent rect already covers the children).
+    ///
+    /// Marked `internal` so unit tests can assert masking decisions without a
+    /// live render. Main-thread only (UIKit view state).
+    internal func collectTextFieldRects(in view: UIView) -> [CGRect] {
         var rects: [CGRect] = []
-        collectTextFieldRectsRecursive(view: view, rootView: view, rects: &rects)
+        collectRedactionRectsRecursive(view: view, rootView: view, rects: &rects)
         return rects
     }
 
-    private func collectTextFieldRectsRecursive(view: UIView, rootView: UIView, rects: inout [CGRect]) {
+    private func collectRedactionRectsRecursive(view: UIView, rootView: UIView, rects: inout [CGRect]) {
         guard view.isHidden == false else { return }
 
-        // UIKit text-bearing views. A secure UITextField (isSecureTextEntry)
-        // is itself a UITextField, so it is already covered by this branch —
-        // there is no separate `isSecureTextEntry` branch because it would be
-        // unreachable. If this branch is ever narrowed, secure fields MUST be
-        // re-added explicitly.
-        if view is UITextField || view is UITextView {
-            rects.append(view.convert(view.bounds, to: rootView))
-        } else if Self.isSwiftUITextRendering(view) {
-            // SwiftUI LIMITATION: SwiftUI's SecureField / TextField do NOT
-            // render as UIKit UITextField/UITextView. They draw into private
-            // host views (e.g. _UIGraphicsView / CGDrawingView / SwiftUI text
-            // renderers) whose class names are not public API. The recursive
-            // collector above therefore misses them entirely, which would
-            // capture a SwiftUI SecureField's contents as PLAINTEXT PIXELS.
-            // As a safety net, when redaction is enabled we also redact any
-            // view whose class name matches SwiftUI's text-rendering host
-            // views. This is heuristic (private class names can change across
-            // OS versions); it errs on the side of over-redaction rather than
-            // leaking a password. Callers that need stronger guarantees should
-            // disable screenshot capture on screens with sensitive SwiftUI
-            // input until a first-class SwiftUI redaction API exists.
-            rects.append(view.convert(view.bounds, to: rootView))
+        if Dash0RedactionPolicy.shouldRedact(view, redactAllText: config.redactAllText) {
+            let frame = view.convert(view.bounds, to: rootView)
+            rects.append(frame)
+            // The masked rect already covers descendants; no need to descend
+            // (and descending could double-mask or leak a child's larger frame).
+            return
         }
 
         for sub in view.subviews {
-            collectTextFieldRectsRecursive(view: sub, rootView: rootView, rects: &rects)
+            collectRedactionRectsRecursive(view: sub, rootView: rootView, rects: &rects)
         }
     }
 
-    /// Heuristic detection of SwiftUI text-rendering host views by class name.
-    /// SwiftUI does not expose its text host views as public types, so we
-    /// match on the private class-name substrings SwiftUI uses to draw text
-    /// (including SecureField/TextField content). See the comment in
-    /// `collectTextFieldRectsRecursive` for the privacy rationale.
-    private static func isSwiftUITextRendering(_ view: UIView) -> Bool {
-        let name = String(describing: Swift.type(of: view))
-        guard name.contains("SwiftUI") || name.hasPrefix("_UI") || name.hasPrefix("CG") else {
-            return false
-        }
-        let lower = name.lowercased()
-        return lower.contains("text") || lower.contains("secure") || lower.contains("graphicsview")
-    }
+    // NOTE: SwiftUI text/secure-field detection now lives in
+    // `Dash0RedactionPolicy` (OTelMobileCore/Capture), which provides the
+    // deterministic tag-based path plus an opt-in class-name fallback gated by
+    // `Dash0.conservativeClassNameFallbackEnabled`. The old private
+    // `isSwiftUITextRendering` heuristic was removed when the two screenshot
+    // redaction paths (security hotfix + consent API) were unified.
 
     private func compressImage(_ image: UIImage) -> Data? {
         switch config.format {

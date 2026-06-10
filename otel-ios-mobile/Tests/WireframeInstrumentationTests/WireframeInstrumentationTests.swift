@@ -2,7 +2,13 @@ import Testing
 @testable import WireframeInstrumentation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import OTelMobileCore
+@testable import OTelMobileCore
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+import UIKit
+#endif
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
 
 @Suite("WireframeInstrumentation", .serialized)
 struct WireframeInstrumentationTests {
@@ -196,6 +202,41 @@ struct WireframeNodeTests {
         #expect(json.contains("\"truncated\":true"))
     }
 
+    @Test("redacted node drops all text-bearing fields and emits redacted:true")
+    func redactedNodeDropsText() {
+        // Even when the caller passes text fields, a redacted node must not
+        // carry them — the invariant is enforced by the initializer.
+        let node = WireframeNode(
+            type: "UITextField",
+            bounds: [0, 0, 100, 20],
+            accessibilityIdentifier: "card_number",
+            hint: "Card number",
+            accessibilityLabel: "4111 1111 1111 1111",
+            redacted: true
+        )
+        #expect(node.redacted)
+        #expect(node.accessibilityIdentifier == nil)
+        #expect(node.hint == nil)
+        #expect(node.accessibilityLabel == nil)
+        let json = node.toJson()
+        #expect(json.contains("\"redacted\":true"))
+        #expect(!json.contains("4111"))
+        #expect(!json.contains("card_number"))
+        #expect(!json.contains("Card number"))
+        // Layout is preserved.
+        #expect(json.contains("\"bounds\":[0,0,100,20]"))
+    }
+
+    @Test("non-redacted node keeps text fields")
+    func nonRedactedKeepsText() {
+        let node = WireframeNode(
+            type: "UILabel", bounds: [0, 0, 50, 20],
+            accessibilityLabel: "Welcome", redacted: false
+        )
+        #expect(node.accessibilityLabel == "Welcome")
+        #expect(!node.toJson().contains("\"redacted\""))
+    }
+
     @Test("nodeCount counts all nodes recursively")
     func nodeCountRecursive() {
         let leaf1 = WireframeNode(type: "UILabel", bounds: [0, 0, 50, 20])
@@ -232,6 +273,135 @@ struct WireframeConfigTests {
         #expect(config.includeInteractionState)
     }
 }
+
+// MARK: - Consent gate
+
+@Suite("WireframeConsentGate", .serialized)
+struct WireframeConsentGateTests {
+
+    @Test("nil consent gate allows capture")
+    func nilGateAllows() {
+        let inst = WireframeInstrumentation(config: WireframeConfig(enabled: true))
+        #expect(inst.consentAllows(trigger: "screen_view", screenName: "Home"))
+    }
+
+    @Test("consent gate returning false denies capture")
+    func gateFalseDenies() {
+        let config = WireframeConfig(enabled: true).withConsentGate { _ in false }
+        let inst = WireframeInstrumentation(config: config)
+        #expect(!inst.consentAllows(trigger: "tap", screenName: "Home"))
+    }
+
+    @Test("consent gate returning true allows capture")
+    func gateTrueAllows() {
+        let config = WireframeConfig(enabled: true).withConsentGate { _ in true }
+        let inst = WireframeInstrumentation(config: config)
+        #expect(inst.consentAllows(trigger: "tap", screenName: "Home"))
+    }
+
+    @Test("consent gate receives wireframe kind and correct trigger")
+    func gateReceivesContext() {
+        final class Box: @unchecked Sendable { var ctx: CaptureContext? }
+        let box = Box()
+        let config = WireframeConfig(enabled: true).withConsentGate { ctx in
+            box.ctx = ctx
+            return true
+        }
+        let inst = WireframeInstrumentation(config: config)
+        _ = inst.consentAllows(trigger: "screen_view", screenName: "Profile")
+        #expect(box.ctx?.kind == .wireframe)
+        #expect(box.ctx?.trigger == .screenView)
+        #expect(box.ctx?.screenName == "Profile")
+    }
+}
+
+// MARK: - Deterministic redaction in the tree walk (UIKit)
+
+#if canImport(UIKit) && (os(iOS) || os(tvOS))
+@MainActor
+@Suite("WireframeRedactionWalk", .serialized)
+struct WireframeRedactionWalkTests {
+
+    @Test("buildTree marks secure field redacted and does not descend")
+    func secureFieldRedacted() {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let secure = UITextField(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        secure.isSecureTextEntry = true
+        secure.accessibilityLabel = "supersecret"
+        // A child inside the secure field whose label would otherwise leak.
+        let leaky = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        leaky.accessibilityLabel = "supersecret"
+        secure.addSubview(leaky)
+        root.addSubview(secure)
+
+        let inst = WireframeInstrumentation()
+        let tree = inst.buildTree(view: root, depth: 0)
+        let json = tree.toJson()
+        #expect(json.contains("\"redacted\":true"))
+        #expect(!json.contains("supersecret"))
+        // Did not descend into the secure field's subtree.
+        let secureNode = tree.children.first { $0.redacted }
+        #expect(secureNode?.children.isEmpty == true)
+    }
+
+    @Test("buildTree marks explicitly tagged view redacted")
+    func taggedViewRedacted() {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let tagged = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        tagged.accessibilityLabel = "1234-5678-9012"
+        Dash0.redact(tagged)
+        root.addSubview(tagged)
+
+        let inst = WireframeInstrumentation()
+        let json = inst.buildTree(view: root, depth: 0).toJson()
+        #expect(json.contains("\"redacted\":true"))
+        #expect(!json.contains("1234-5678-9012"))
+    }
+
+    @Test("buildTree keeps non-sensitive labels visible")
+    func nonSensitiveVisible() {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        label.accessibilityLabel = "Welcome back"
+        root.addSubview(label)
+        let inst = WireframeInstrumentation(config: WireframeConfig(includeContentDescription: true))
+        let json = inst.buildTree(view: root, depth: 0).toJson()
+        #expect(json.contains("Welcome back"))
+    }
+}
+#endif
+
+// MARK: - SwiftUI .dash0Redacted() tagging mechanism
+
+#if canImport(SwiftUI) && canImport(UIKit) && (os(iOS) || os(tvOS))
+@MainActor
+@Suite("SwiftUIRedactionTagging", .serialized)
+struct SwiftUIRedactionTaggingTests {
+
+    // SwiftUI rendering is impractical to unit-test, so we assert the
+    // mechanism instead: the backing UIView that `.dash0Redacted()` installs
+    // (built by the single source of truth `makeTagged()`, which `makeUIView`
+    // calls) carries the sensitive tag, and the shared redaction policy +
+    // capture walk pick it up. This is the exact robustness guarantee that
+    // replaces the old SwiftUI class-name heuristic.
+    @available(iOS 15.0, tvOS 15.0, *)
+    @Test("the backing tag view is marked sensitive and is masked by the walk")
+    func backingViewIsMasked() {
+        let backing = Dash0RedactionBackingView.makeTagged()
+        #expect(backing.dash0IsMarkedSensitive)
+        #expect(Dash0RedactionPolicy.shouldRedact(backing, redactAllText: false))
+
+        // And the wireframe/screenshot walk masks the region the backing view
+        // occupies when it is mounted in the tree.
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        backing.frame = CGRect(x: 0, y: 0, width: 100, height: 30)
+        root.addSubview(backing)
+        let inst = WireframeInstrumentation()
+        let json = inst.buildTree(view: root, depth: 0).toJson()
+        #expect(json.contains("\"redacted\":true"))
+    }
+}
+#endif
 
 // MARK: - Test helpers
 

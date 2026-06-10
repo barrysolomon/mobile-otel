@@ -1033,6 +1033,11 @@ public final class OTelMobile: @unchecked Sendable {
             && config.maxPayloadKb == d.maxPayloadKb
             && config.maxCapturesPerMinute == d.maxCapturesPerMinute
             && config.redactTextFields == d.redactTextFields
+            && config.redactAllText == d.redactAllText
+            // A consent gate is a closure (not Equatable); its mere presence
+            // means the config is non-default so the user's gate is honoured
+            // rather than silently dropped by reusing the `.shared` singleton.
+            && config.shouldCapture == nil
             && config.captureOnScreenView == d.captureOnScreenView
             && config.captureOnError == d.captureOnError
             && config.captureOnPolicyMatch == d.captureOnPolicyMatch
@@ -1053,5 +1058,7 @@ public final class OTelMobile: @unchecked Sendable {
             && config.includeTextHints == d.includeTextHints
             && config.includeContentDescription == d.includeContentDescription
             && config.includeInteractionState == d.includeInteractionState
+            // See note above: presence of a consent gate forces non-default.
+            && config.shouldCapture == nil
     }
 }
