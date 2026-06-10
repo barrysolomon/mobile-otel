@@ -30,29 +30,34 @@ class Dash0MobilePackage : ReactPackage {
         emptyList()
 
     private fun installOkHttpInterceptor() {
-        // Idempotent: createNativeModules can be called more than once (e.g. on
-        // a JS reload / multiple ReactInstanceManagers). Replacing the factory
-        // repeatedly would stack DelegatingOkHttpClientFactory wrappers, so
-        // install exactly once per process. The interceptor instance is a
-        // process-wide singleton, so a single install covers every later
-        // ReactInstanceManager.
+        // Idempotent: createNativeModules can run more than once (JS reload /
+        // multiple ReactInstanceManagers). Install exactly once per process; the
+        // interceptor instance is a process-wide singleton, so one install
+        // covers every later ReactInstanceManager.
         if (!installed.compareAndSet(false, true)) return
         try {
-            // Capture whatever factory is currently in effect so we DELEGATE to
-            // it instead of replacing the host's OkHttp configuration. RN's
-            // default factory builds the standard client; a host that set its
-            // own factory keeps all of its customizations — we only add one
-            // interceptor on top.
-            val previous: OkHttpClientFactory = OkHttpClientProvider.getOkHttpClientFactory()
+            // Set a factory that builds RN's DEFAULT-configured client and adds
+            // our interceptor on top.
+            //
+            // We use createClientBuilder() rather than capturing+delegating to a
+            // "previous" factory because react-native exposes no stable
+            // getOkHttpClientFactory() — it is absent in react-android 0.76 (the
+            // declared peer), so capturing the previous factory does not compile
+            // against the supported RN version. createClientBuilder() returns
+            // RN's default builder (timeouts, cookie jar, default interceptors),
+            // so we preserve RN's standard client config and only add ours. This
+            // is the documented RN interceptor-injection pattern. A host that had
+            // installed its OWN custom factory is replaced with default+interceptor
+            // (the unavoidable trade without a getter).
             OkHttpClientProvider.setOkHttpClientFactory(
-                DelegatingOkHttpClientFactory(previous, NetworkInstrumentation.interceptor),
+                InterceptorInstallingFactory(NetworkInstrumentation.interceptor),
             )
         } catch (_: Throwable) {
             // Installing instrumentation must NEVER crash host bring-up. If the
             // RN networking module isn't present or the API shape changed, we
-            // simply ship without native network capture rather than taking the
-            // app down. Telemetry is always subordinate to the host. Reset the
-            // guard so a later attempt can retry.
+            // ship without native network capture rather than taking the app
+            // down. Telemetry is always subordinate to the host. Reset the guard
+            // so a later attempt can retry.
             installed.set(false)
         }
     }
@@ -63,19 +68,16 @@ class Dash0MobilePackage : ReactPackage {
 }
 
 /**
- * Wraps the host's existing [OkHttpClientFactory], adding the Dash0 network
- * interceptor as an *application* interceptor (so it sees the logical request,
- * including redirects collapsed into one call, and injects `traceparent` once
- * per logical request).
+ * Builds RN's default-configured OkHttp client (via [OkHttpClientProvider.createClientBuilder])
+ * and adds the Dash0 network interceptor as an *application* interceptor — so it
+ * sees the logical request (redirects collapsed into one call) and injects
+ * `traceparent` once per logical request.
  */
-private class DelegatingOkHttpClientFactory(
-    private val delegate: OkHttpClientFactory,
+private class InterceptorInstallingFactory(
     private val interceptor: OTelNetworkInterceptor,
 ) : OkHttpClientFactory {
-    override fun createNewNetworkModuleClient(): OkHttpClient {
-        val base = delegate.createNewNetworkModuleClient()
-        return base.newBuilder()
+    override fun createNewNetworkModuleClient(): OkHttpClient =
+        OkHttpClientProvider.createClientBuilder()
             .addInterceptor(interceptor)
             .build()
-    }
 }

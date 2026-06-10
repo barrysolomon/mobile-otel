@@ -464,18 +464,24 @@ private class RecordingSink : BridgeCallSink {
     }
 }
 
+// Mirrors the react-android 0.76.0 Kotlin `Promise` interface exactly. That
+// interface declares `code` and `userInfo` as NON-null (it is Promise.kt, not
+// the older Java Promise where everything was a nullable platform type), so the
+// override signatures must use non-null `String` / `WritableMap` or Kotlin
+// reports "overrides nothing".
 private class RecordingPromise : Promise {
     var resolved = false
     var rejected = false
     override fun resolve(value: Any?) { resolved = true }
-    override fun reject(code: String?, message: String?) { rejected = true }
-    override fun reject(code: String?, throwable: Throwable?) { rejected = true }
-    override fun reject(code: String?, message: String?, throwable: Throwable?) { rejected = true }
+    override fun reject(code: String, message: String?) { rejected = true }
+    override fun reject(code: String, throwable: Throwable?) { rejected = true }
+    override fun reject(code: String, message: String?, throwable: Throwable?) { rejected = true }
     override fun reject(throwable: Throwable) { rejected = true }
     override fun reject(throwable: Throwable, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, message: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, message: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    // The 4-arg overload is declared with all-nullable params in 0.76's Promise.kt.
     override fun reject(code: String?, message: String?, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap?) { rejected = true }
     @Suppress("DEPRECATION")
     override fun reject(message: String) { rejected = true }

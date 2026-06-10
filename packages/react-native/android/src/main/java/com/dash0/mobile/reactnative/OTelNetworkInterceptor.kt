@@ -44,7 +44,10 @@ import java.util.concurrent.atomic.AtomicReference
 import okhttp3.Interceptor
 import okhttp3.Response
 
-internal class OTelNetworkInterceptor : Interceptor {
+// Public (not `internal`) because it is exposed through the public
+// `NetworkInstrumentation.interceptor` property; an `internal` type behind a
+// public property is a Kotlin "exposes internal type" compile error.
+class OTelNetworkInterceptor : Interceptor {
 
     /**
      * Everything the interceptor needs to produce telemetry. Held behind a

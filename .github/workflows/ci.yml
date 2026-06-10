@@ -88,3 +88,36 @@ jobs:
           npm install
           npm test
           npx tsc --noEmit
+
+  # Kotlin unit tests for the RN Android native module. These were previously
+  # orphaned — the module had src/test/**/*.kt but no standalone Gradle build,
+  # so they only ever compiled inside a host app via RN autolinking and ran
+  # NOWHERE in CI (the react-native job above is jest-only). That meant the
+  # OTelNetworkInterceptor — which wraps the host app's entire OkHttp pipeline —
+  # shipped without a runnable test. This job runs them on a pure JVM via the
+  # standalone harness added in packages/react-native/android (settings.gradle +
+  # wrapper). See OTelNetworkInterceptorTest + Dash0MobileModuleTest.
+  react-native-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform 36
+        # react-android 0.76 + the OTel SDK pull androidx.core 1.17.x, which
+        # requires compiling against android-36 (the standalone build sets
+        # compileSdk=36 in settings.gradle).
+        run: sdkmanager "platforms;android-36"
+      - name: Publish the native Android SDK to mavenLocal
+        # io.opentelemetry.android:mobile is this repo's own artifact (source in
+        # otel-android-mobile/) and is not on any public repo. The RN-android
+        # harness resolves it from mavenLocal, so publish it first from the
+        # demo-app composite build that already includes the SDK modules.
+        working-directory: examples/demo-app
+        run: ./gradlew :otel-android-mobile:publishToMavenLocal
+      - name: RN Android Kotlin unit tests
+        working-directory: packages/react-native/android
+        run: ./gradlew :testDebugUnitTest

@@ -4,6 +4,17 @@
 // Kotlin plugin versions. We apply the plugins here but let the host provide
 // them — hardcoding classpath versions here forced an old AGP/Kotlin combo
 // that conflicted with host-provided stdlib.
+//
+// Plugins are applied WITHOUT versions: in a host-autolinked build the host's
+// settings `pluginManagement` resolves them; in the standalone test build the
+// module's own settings.gradle `pluginManagement` does. Using the `plugins {}`
+// DSL (rather than legacy `apply plugin:`) is what lets the standalone build
+// resolve the plugin from `pluginManagement` with no buildscript classpath.
+
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
 
 // Default matches RN 0.85's Kotlin (2.1.20). Older RN consumers can override
 // via -PDash0Mobile_kotlinVersion.
@@ -12,8 +23,15 @@ ext.safeExtGet = { prop, fallback ->
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
-apply plugin: 'com.android.library'
-apply plugin: 'org.jetbrains.kotlin.android'
+// The standalone unit-test harness sets this. It excludes Dash0MobilePackage.kt
+// from compilation because that file is the ONLY source touching RN's
+// OkHttpClientProvider factory API, whose `getOkHttpClientFactory()` getter is
+// absent in the pinned react-android 0.76.0 (verified via javap on the AAR).
+// The package is pure provider-swap wiring with no pure-JVM-testable logic; the
+// interceptor it installs (OTelNetworkInterceptor) is React-free and IS tested
+// here. A host-autolinked build (no this flag) compiles the full module
+// against the host's own RN version as before.
+ext.standaloneTestBuild = project.hasProperty('Dash0Mobile_standaloneTestBuild')
 
 android {
     namespace 'com.dash0.mobile.reactnative'
@@ -22,6 +40,7 @@ android {
     defaultConfig {
         minSdk safeExtGet('minSdkVersion', 26)
     }
+
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -36,6 +55,11 @@ android {
         targetSdk safeExtGet('targetSdkVersion', 34)
         unitTests {
             includeAndroidResources = true
+            // The bridge tests exercise pure decode/forward logic with
+            // JavaOnlyMap/JavaOnlyArray fakes and a mocked ReactApplicationContext;
+            // they never touch a real Android runtime. Return defaults for any
+            // incidental android.* call instead of throwing "not mocked".
+            returnDefaultValues = true
         }
     }
 
@@ -44,13 +68,30 @@ android {
     }
 }
 
+// (Dash0MobilePackage.kt is no longer excluded from the standalone build: it now
+// uses only react-android 0.76-stable OkHttpClientProvider APIs — createClientBuilder()
+// + setOkHttpClientFactory — so it compiles against the declared RN peer and is
+// covered by the standalone harness like the rest of the module.)
+
 repositories {
     google()
     mavenCentral()
+    // The native Android SDK (io.opentelemetry.android:mobile) is this repo's
+    // own artifact, published to the local Maven cache by the demo-app build
+    // (examples/demo-app publishes :otel-android-mobile* to mavenLocal). It is
+    // not on a public repo, so resolve it from mavenLocal for the standalone
+    // test build. Listed last so public deps still come from google()/central.
+    mavenLocal()
 }
 
+// react-android version. Host-autolinked builds leave this as `+` (the host
+// app pins the RN version); the standalone test harness sets
+// -PDash0Mobile_reactAndroidVersion (see gradle.properties) for a reproducible
+// build against the version this package's package.json devDepends on.
+ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion') ?: '+'
+
 dependencies {
-    implementation "com.facebook.react:react-android:+"
+    implementation "com.facebook.react:react-android:$reactAndroidVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
 
     // react-android bundles OkHttp and exposes OkHttpClientProvider /
@@ -68,7 +109,10 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-api:1.58.0'
 
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.mockito:mockito-core:5.12.0'
+    // Mockito 5.18 (and its bundled ByteBuddy) supports the JDK 25 bytecode the
+    // standalone harness runs on; 5.12's ByteBuddy could not instrument classes
+    // on Java 25 ("Could not modify all classes ... ReactApplicationContext").
+    testImplementation 'org.mockito:mockito-core:5.18.0'
     testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
     testImplementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
     testImplementation 'io.opentelemetry:opentelemetry-api:1.58.0'
