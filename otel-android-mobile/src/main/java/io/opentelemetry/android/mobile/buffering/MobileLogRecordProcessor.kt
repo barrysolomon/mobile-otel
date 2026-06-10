@@ -103,7 +103,13 @@ class MobileLogRecordProcessor private constructor(
     // Wired by OTelMobile to capture a screenshot + wireframe for journey-replay context
     // alongside every flush trigger. Best-effort — must not throw; silent no-op if the
     // screenshot/wireframe modules aren't installed.
-    @Volatile var policyMatchHook: ((policyId: String) -> Unit)? = null
+    @Volatile var policyMatchHook: ((policyId: String) -> Unit)? = null,
+    // Shared remote kill-switch / global-sampling gate. The same instance is wired into
+    // the [PolicyEvaluator] (which updates it from fetched config) and the span sampler,
+    // so logs and spans are gated coherently. Defaults to an open gate so call sites that
+    // don't supply one behave exactly as before (enabled, full rate).
+    private val remoteGate: io.opentelemetry.android.mobile.policy.RemoteGate =
+        io.opentelemetry.android.mobile.policy.RemoteGate()
 ) : LogRecordProcessor {
 
     private val TAG = "MobileLogRecordProcessor"
@@ -131,8 +137,10 @@ class MobileLogRecordProcessor private constructor(
         ttlHours = diskBufferTtlHours
     )
 
-    // Policy evaluator: determines when to flush
-    private val policyEvaluator = PolicyEvaluator(context, config)
+    // Policy evaluator: determines when to flush. Shares the remote gate so the `sdk`
+    // block fetched alongside flush policies updates the same kill switch the choke
+    // points read.
+    private val policyEvaluator = PolicyEvaluator(context, config, remoteGate = remoteGate)
 
     // Device metrics collector: captures device health metrics on triggers
     private val deviceMetricsCollector = DeviceMetricsCollector(context, meter, config.deviceMetricsConfig)
@@ -198,6 +206,19 @@ class MobileLogRecordProcessor private constructor(
         .setUnit("{events}")
         .ofLongs()
         .buildWithCallback { obs -> obs.record(droppedOversizeCount.get()) }
+
+    // Remote kill-switch state gauges. These are deliberately exempt from the gate: an
+    // operator must be able to observe a remotely-disabled SDK, so they continue to emit
+    // even while `enabled = false`. This is the only telemetry that flows when disabled.
+    private val sdkEnabledGauge = meter.gaugeBuilder("sdk.enabled")
+        .setDescription("Whether the SDK is remotely enabled (1) or disabled (0)")
+        .setUnit("{state}")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(if (remoteGate.enabled) 1L else 0L) }
+    private val sdkSampleRateGauge = meter.gaugeBuilder("sdk.sample_rate")
+        .setDescription("Currently-applied global head-sampling rate (0.0 to 1.0)")
+        .setUnit("1")
+        .buildWithCallback { obs -> obs.record(remoteGate.sampleRate) }
 
     init {
         // Seed the seqId counter from the max seqId on disk so that new events in
@@ -331,6 +352,15 @@ class MobileLogRecordProcessor private constructor(
     override fun onEmit(context: OtelContext, logRecord: ReadWriteLogRecord) {
         if (isShutdown.get()) {
             Log.w(TAG, "Processor is shutdown, dropping log record")
+            return
+        }
+
+        // Remote kill switch / global sampling — consulted BEFORE any buffering,
+        // coalescing, or attribute work so a disabled SDK does no per-event work.
+        // `enabled = false` drops everything; `sampleRate < 1.0` drops probabilistically
+        // via a non-biased per-thread RNG. Covers RN-originated logs transitively, since
+        // the bridge emits through this same processor (see remote-kill-switch.md §6).
+        if (!remoteGate.allowEvent()) {
             return
         }
 
@@ -1079,6 +1109,12 @@ class MobileLogRecordProcessor private constructor(
     }
 
     /**
+     * Returns the shared remote kill-switch / global-sampling gate this processor reads.
+     * Exposed so the owning provider can wire the same instance into the span sampler.
+     */
+    fun getRemoteGate(): io.opentelemetry.android.mobile.policy.RemoteGate = remoteGate
+
+    /**
      * Gets the current buffer statistics for monitoring.
      */
     fun getBufferStats(): BufferStats {
@@ -1124,6 +1160,7 @@ class MobileLogRecordProcessor private constructor(
         private var ramBufferMaxEventBytes: Int = 256 * 1024
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
+        private var remoteGate: io.opentelemetry.android.mobile.policy.RemoteGate? = null
 
         fun setExporter(exporter: LogRecordExporter) = apply { this.exporter = exporter }
         fun setConfig(config: io.opentelemetry.android.mobile.config.MobileConfig) = apply { this.config = config }
@@ -1133,6 +1170,14 @@ class MobileLogRecordProcessor private constructor(
         fun setRamBufferMaxEventBytes(bytes: Int) = apply { this.ramBufferMaxEventBytes = bytes }
         fun setDiskBufferMb(sizeMb: Int) = apply { this.diskBufferMb = sizeMb }
         fun setDiskBufferTtlHours(hours: Int) = apply { this.diskBufferTtlHours = hours }
+
+        /**
+         * Supplies the shared remote kill-switch / global-sampling gate. Pass the
+         * same instance handed to the span sampler so logs and spans gate coherently.
+         * When omitted, the processor uses a fresh open gate (enabled, full rate).
+         */
+        fun setRemoteGate(gate: io.opentelemetry.android.mobile.policy.RemoteGate) =
+            apply { this.remoteGate = gate }
 
         fun build(): MobileLogRecordProcessor {
             return MobileLogRecordProcessor(
@@ -1144,7 +1189,8 @@ class MobileLogRecordProcessor private constructor(
                 ramBufferMaxTotalBytes = ramBufferMaxTotalBytes,
                 ramBufferMaxEventBytes = ramBufferMaxEventBytes,
                 diskBufferMb = diskBufferMb,
-                diskBufferTtlHours = diskBufferTtlHours
+                diskBufferTtlHours = diskBufferTtlHours,
+                remoteGate = remoteGate ?: io.opentelemetry.android.mobile.policy.RemoteGate()
             )
         }
     }

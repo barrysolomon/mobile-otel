@@ -31,6 +31,12 @@ public final class DeviceStatsCollector: @unchecked Sendable {
     private var batteryGauge: DoubleGauge?
     private var thermalGauge: LongGauge?
     private var storageGauge: DoubleGauge?
+    // NOTE: the SDK-state gauges (`sdk.enabled` / `sdk.sample_rate`) used to
+    // live here, gated behind `.deviceStats`. They moved to the dedicated
+    // `SDKStateGaugeCollector`, which `OTelMobile.start` runs UNCONDITIONALLY
+    // (independent of `autoCaptureOptions`) so a remotely-disabled SDK stays
+    // observable even when device-stats capture is turned off. See
+    // `docs/design/remote-kill-switch.md`.
 
     public init() {}
 
@@ -42,6 +48,10 @@ public final class DeviceStatsCollector: @unchecked Sendable {
 
     /// Start the periodic collection loop. No-op if already running.
     /// Gauge instruments are built once up-front and reused across ticks.
+    ///
+    /// SDK-state gauges (`sdk.enabled` / `sdk.sample_rate`) are NOT emitted
+    /// here — they live in `SDKStateGaugeCollector`, which runs unconditionally
+    /// so a disabled SDK stays observable regardless of `.deviceStats`.
     public func start(meter: MeterSdk, intervalSeconds: UInt64 = 5) {
         lock.lock()
         guard timer == nil else { lock.unlock(); return }

@@ -74,4 +74,13 @@ struct MobileConfigTests {
         #expect(config.pollingIntervalSeconds == 300)
         #expect(config.authToken == nil)
     }
+
+    @Test("enablePolicyPolling defaults to true (remote kill switch on by default)")
+    func enablePolicyPollingDefaultsTrue() {
+        // Flipped false → true so the remote kill switch is functional out of
+        // the box without opt-in. See docs/design/remote-kill-switch.md
+        // §Polling defaults.
+        let config = MobileConfig(serviceName: "test-app", endpoint: "https://collector:4317")
+        #expect(config.enablePolicyPolling)
+    }
 }

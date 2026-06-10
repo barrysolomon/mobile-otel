@@ -75,9 +75,16 @@ class MobileLoggerProvider private constructor(
     private val sampler: io.opentelemetry.sdk.trace.samplers.Sampler
     private val mobileProcessor: MobileLogRecordProcessor
 
+    // The single source of truth for the remote kill switch + global sampling. Created
+    // here and threaded into BOTH the span sampler (via SamplerFactory) and the log
+    // processor (via its builder), which in turn hands it to the PolicyEvaluator that
+    // updates it from fetched config. One instance ⇒ logs and spans gate coherently.
+    private val remoteGate = io.opentelemetry.android.mobile.policy.RemoteGate()
+
     init {
-        // Create sampler based on configuration
-        sampler = SamplerFactory.createSampler(config.samplingConfig)
+        // Create sampler based on configuration, sharing the remote gate so the span
+        // choke point honours the same kill switch as the log choke point.
+        sampler = SamplerFactory.createSampler(config.samplingConfig, remoteGate)
 
         val resource = Resource.getDefault().merge(
             Resource.builder()
@@ -213,7 +220,9 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // Create mobile log processor with ring buffer
+        // Create mobile log processor with ring buffer. It shares the same remoteGate as
+        // the sampler above; the processor passes it to its PolicyEvaluator, which is the
+        // component that fetches the `sdk` block and pushes it into the gate.
         mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
             .setConfig(config)
@@ -223,6 +232,7 @@ class MobileLoggerProvider private constructor(
             .setRamBufferMaxEventBytes(config.ramBufferMaxEventBytes)
             .setDiskBufferMb(config.diskBufferMb)
             .setDiskBufferTtlHours(config.diskBufferTtlHours)
+            .setRemoteGate(remoteGate)
             .build()
 
         // Build SDK Logger Provider
@@ -307,6 +317,13 @@ class MobileLoggerProvider private constructor(
     fun getDeviceId(): String = deviceId
 
     fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
+
+    /**
+     * Returns the shared remote kill-switch / global-sampling gate driving both the log
+     * processor and the span sampler. Operators normally control this via remote config;
+     * exposed here for inspection and tests.
+     */
+    fun getRemoteGate(): io.opentelemetry.android.mobile.policy.RemoteGate = remoteGate
 
     fun getOpenTelemetrySdk(): OpenTelemetrySdk = openTelemetrySdk
 

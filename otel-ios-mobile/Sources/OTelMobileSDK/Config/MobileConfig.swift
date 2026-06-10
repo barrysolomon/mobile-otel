@@ -19,7 +19,14 @@ public struct MobileConfig: Sendable {
 
     /// If true, `OTelMobile.start(config:)` constructs a `ConfigPoller`
     /// against `<endpoint>/config?dsl_version=2` and feeds it to the
-    /// `PolicyEvaluator`. Default false.
+    /// `PolicyEvaluator` and the shared `RemoteGate`.
+    ///
+    /// **Default true.** This is an intentional behaviour change (see
+    /// `docs/design/remote-kill-switch.md` §Polling defaults): the SDK now
+    /// polls remote config by default so the remote kill switch + global
+    /// sampling override are functional out of the box without an explicit
+    /// opt-in. Poll interval, ephemeral session, 15s timeout and exponential
+    /// backoff are unchanged. Set `false` to disable remote config entirely.
     public let enablePolicyPolling: Bool
 
     /// Sampling cadence for the device-stats gauge loop when
@@ -92,7 +99,7 @@ public struct MobileConfig: Sendable {
         autoCaptureOptions: AutoCaptureOptions = .default,
         pollingIntervalSeconds: Int = 300,
         extraHeaders: [String: String] = [:],
-        enablePolicyPolling: Bool = false,
+        enablePolicyPolling: Bool = true,
         deviceStatsIntervalSeconds: UInt64 = 15,
         enablePredictiveExport: Bool = false,
         predictiveExportIntervalSeconds: UInt64 = 30,

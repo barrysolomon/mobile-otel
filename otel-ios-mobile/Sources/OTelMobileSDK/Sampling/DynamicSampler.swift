@@ -128,9 +128,14 @@ public final class DynamicSampler: Sampler, @unchecked Sendable {
         }
     }
 
-    /// Trace-id-keyed sampling. Matches Android's algorithm: convert
-    /// the lower 8 bytes to an unsigned ratio, sample if `< rate`. iOS
-    /// gets `idLo` directly from `TraceId` — no hex parse needed.
+    /// Trace-id-keyed sampling. Keys on the LOWER 8 bytes (low 64 bits) of
+    /// the trace id, converts to an unsigned `[0, 1)` ratio, and samples if
+    /// `ratio < rate`. iOS gets the low 64 bits directly as `TraceId.idLo`
+    /// — no hex parse needed. This is the trailing-8-bytes key mandated by
+    /// the OTel `TraceIdRatioBasedSampler`, and Android's
+    /// `DynamicSampler.shouldSampleTraceId` keys on the same trailing bytes
+    /// (`traceId.substring(16, 32)`), so the two platforms produce identical
+    /// keep/drop decisions for the same `(traceId, rate)`.
     private func shouldSampleTraceId(_ traceId: TraceId, rate: Double) -> Bool {
         if rate >= 1.0 { return true }
         if rate <= 0.0 { return false }

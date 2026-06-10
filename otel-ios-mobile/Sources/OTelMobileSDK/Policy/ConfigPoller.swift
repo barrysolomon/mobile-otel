@@ -30,6 +30,7 @@ public final class ConfigPoller: @unchecked Sendable {
     private let maxBackoffSeconds: TimeInterval
     private let defaults: UserDefaults
     private let evaluator: PolicyEvaluator
+    private let remoteGate: RemoteGate?
     private let logger: Logger?
 
     private let lock = NSLock()
@@ -38,6 +39,18 @@ public final class ConfigPoller: @unchecked Sendable {
     private var stopped = false
     private let session: URLSession
 
+    /// Warm-start race guard. `start()` fires the persisted-config apply in a
+    /// detached Task AND schedules the first network fetch concurrently; the
+    /// two detached `applyConfig` calls can land in EITHER order. A fresh
+    /// gateway result must always win over a stale persisted snapshot —
+    /// otherwise a persisted `enabled = false` could clobber a just-fetched
+    /// `enabled = true` until the next poll. We flip this flag (under `lock`)
+    /// the instant a gateway config is applied; the persisted apply checks it
+    /// first and no-ops if a gateway result already arrived. A persisted
+    /// disable still applies on a true cold start (no gateway result yet),
+    /// preserving keep-last-across-restarts. Guarded by `lock`.
+    private var gatewayConfigApplied = false
+
     public init(
         gatewayEndpoint: String,
         authToken: String?,
@@ -45,6 +58,7 @@ public final class ConfigPoller: @unchecked Sendable {
         pollingIntervalSeconds: TimeInterval = 300,
         maxBackoffSeconds: TimeInterval = 3600,
         evaluator: PolicyEvaluator,
+        remoteGate: RemoteGate? = nil,
         logger: Logger? = nil,
         defaults: UserDefaults = .standard
     ) throws {
@@ -77,6 +91,7 @@ public final class ConfigPoller: @unchecked Sendable {
         self.maxBackoffSeconds = maxBackoffSeconds
         self.defaults = defaults
         self.evaluator = evaluator
+        self.remoteGate = remoteGate
         self.logger = logger
 
         let cfg = URLSessionConfiguration.ephemeral
@@ -188,7 +203,46 @@ public final class ConfigPoller: @unchecked Sendable {
             logFetchFailure("parse", error: "parseConfigV2 returned nil")
             return false
         }
+        // Warm-start ordering guard. The persisted snapshot must never overwrite
+        // a fresher gateway result, regardless of which detached Task runs
+        // first OR how the `await` below interleaves them. A gateway apply
+        // claims precedence by flipping `gatewayConfigApplied`; a persisted
+        // apply bails out the moment it sees that flag set — both up-front (the
+        // gateway already won before we started) and again right before the
+        // gate write (the gateway won while we were suspended in
+        // `updatePolicies`). The gate/persist mutations are the kill-switch-
+        // critical writes, so the second check is taken under the lock
+        // immediately before them, with no intervening `await`.
+        let isGateway = (source == "gateway")
+        lock.lock()
+        if isGateway {
+            gatewayConfigApplied = true
+        } else if gatewayConfigApplied {
+            // A gateway result already won — discard the stale persisted apply
+            // without touching the evaluator, the gate, or UserDefaults.
+            lock.unlock()
+            return false
+        }
+        lock.unlock()
         await evaluator.updatePolicies(config.policies)
+        // Re-check precedence before the kill-switch-critical writes: a gateway
+        // result may have landed (and flipped the flag) while we were suspended
+        // in `updatePolicies` above. If so, leave the gate and persisted
+        // snapshot exactly as the gateway left them.
+        lock.lock()
+        if !isGateway && gatewayConfigApplied {
+            lock.unlock()
+            return false
+        }
+        lock.unlock()
+        // Push the remote kill-switch + global-sampling state into the shared
+        // gate. Precedence (spec §Fail-open): a config that PARSES but omits
+        // the `sdk` block re-enables the fleet (absence = "no restriction"),
+        // so an absent block maps to `.default` rather than leaving a prior
+        // disabled state stuck. A transient fetch/parse FAILURE never reaches
+        // here — `fetchOnce` returns early — so the last-applied gate value is
+        // preserved automatically (fail-open / keep-last).
+        remoteGate?.update(config.sdkConfig ?? .default)
         // Persist to warm-start the next launch.
         defaults.set(data, forKey: Self.lastConfigKey)
         logger?.logRecordBuilder()
@@ -201,6 +255,23 @@ public final class ConfigPoller: @unchecked Sendable {
             ])
             .emit()
         return true
+    }
+
+    // MARK: - Test hooks (internal — exercised by ConfigPollerTests)
+
+    /// Applies a single config through the real `applyConfig` path with an
+    /// explicit `source` ("persisted" / "gateway"), so tests can drive the
+    /// warm-start ordering guard deterministically (no network, no timer).
+    @discardableResult
+    func testApply(jsonString: String, source: String) async -> Bool {
+        await applyConfig(data: Data(jsonString.utf8), source: source)
+    }
+
+    /// Whether a gateway config has claimed warm-start precedence. Internal
+    /// read for tests asserting the ordering guard.
+    var testGatewayConfigApplied: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return gatewayConfigApplied
     }
 
     private func logFetchFailure(_ kind: String, error: String) {

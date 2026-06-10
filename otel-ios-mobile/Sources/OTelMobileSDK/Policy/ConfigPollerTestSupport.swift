@@ -20,4 +20,40 @@ public extension ConfigPoller {
             evaluator: PolicyEvaluator()
         )
     }
+
+    /// Drives the same parse → gate-push path `applyConfig` uses for a
+    /// successful poll, synchronously and without a network round-trip, so
+    /// tests can assert the kill-switch precedence rules deterministically.
+    ///
+    /// Mirrors `applyConfig`'s gate semantics exactly: a config that parses
+    /// but omits the `sdk` block maps to `SDKRemoteConfig.default`
+    /// (re-enable / no restriction); a config that fails to parse leaves the
+    /// gate untouched (returns `false`, modelling the keep-last fail-open
+    /// behaviour where `applyConfig` is never reached).
+    @discardableResult
+    static func testHelperApplyToGate(jsonString: String, gate: RemoteGate) -> Bool {
+        guard let config = PolicyParser.parseConfigV2(jsonString: jsonString) else {
+            return false
+        }
+        gate.update(config.sdkConfig ?? .default)
+        return true
+    }
+
+    /// Builds a poller wired to the given `gate` and an isolated, in-memory
+    /// `UserDefaults` suite, so warm-start ordering tests don't import
+    /// Foundation and don't touch the shared `standard` domain. The endpoint
+    /// is a syntactically-valid URL that is never actually fetched — tests
+    /// drive `testApply(...)` directly.
+    static func testHelperBuildWithGate(gate: RemoteGate, suiteName: String) -> ConfigPoller {
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        // Force-unwrap is safe: the endpoint is a constant valid URL.
+        return try! ConfigPoller(
+            gatewayEndpoint: "https://gateway.example.com/config",
+            authToken: nil,
+            evaluator: PolicyEvaluator(),
+            remoteGate: gate,
+            defaults: defaults
+        )
+    }
 }

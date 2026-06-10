@@ -58,6 +58,18 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// processor behaves exactly like the earlier no-policy implementation.
     private let policyEvaluator: PolicyEvaluator?
 
+    /// Optional remote kill-switch + global-sampling gate. When non-nil, every
+    /// `onEmit` consults `remoteGate.shouldEmitLog()` BEFORE any buffering or
+    /// coalescing work: a remotely-disabled SDK drops the record immediately,
+    /// and a global `sample_rate < 1` applies a probabilistic per-record drop.
+    /// Read is synchronous and allocation-free (see `RemoteGate`), so it never
+    /// blocks the OTel-synchronous `onEmit` contract.
+    ///
+    /// Backward compatible: when `nil`, no gating is applied — the processor
+    /// behaves exactly as before. Shared with the span sampler via `OTelMobile`
+    /// init so logs and spans honour the same `(enabled, sampleRate)`.
+    private let remoteGate: RemoteGate?
+
     /// Optional hook invoked once per policy match with the policy id (e.g.
     /// `"crash-recovery"`). Mirrors Android's `policyMatchHook`. Wired by
     /// `OTelMobile.start` to capture a screenshot + wireframe for journey-
@@ -104,6 +116,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
         policyEvaluator: PolicyEvaluator? = nil,
+        remoteGate: RemoteGate? = nil,
         extraRecordAttributes: [String: String] = [:],
         offlinePolicy: OfflinePolicy = .bufferAll,
         errorCoalescer: ErrorCoalescer = ErrorCoalescer()
@@ -115,6 +128,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
+        self.remoteGate = remoteGate
         self.extraRecordAttributes = extraRecordAttributes
         self.offlinePolicy = offlinePolicy
         self.errorCoalescer = errorCoalescer
@@ -131,6 +145,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         sequenceCounter: SequenceCounter = SequenceCounter(),
         diskBuffer: DiskLogBuffer? = nil,
         policyEvaluator: PolicyEvaluator? = nil,
+        remoteGate: RemoteGate? = nil,
         extraRecordAttributes: [String: String] = [:],
         offlinePolicy: OfflinePolicy = .bufferAll,
         errorCoalescer: ErrorCoalescer = ErrorCoalescer()
@@ -142,6 +157,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         self.sessionProvider = sessionProvider
         self.diskBuffer = diskBuffer
         self.policyEvaluator = policyEvaluator
+        self.remoteGate = remoteGate
         self.extraRecordAttributes = extraRecordAttributes
         self.offlinePolicy = offlinePolicy
         self.errorCoalescer = errorCoalescer
@@ -150,6 +166,20 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     // MARK: - LogRecordProcessor
 
     public func onEmit(logRecord: ReadableLogRecord) {
+        // Remote kill switch + global sampling — consulted at the TOP of
+        // onEmit, BEFORE any enrichment, offline filtering, or error
+        // coalescing, so a remotely-disabled SDK does NO per-event work for
+        // this record (no coalescer-state mutation, no attribute stamping).
+        // Matches the Android processor (MobileLogRecordProcessor.onEmit) and
+        // the spec's "does no work when disabled" contract. Synchronous,
+        // allocation-free read of the shared gate: `!enabled` ⇒ drop;
+        // `sample_rate < 1` ⇒ probabilistic drop. The gate reads only gate
+        // state (not the record), so running it before enrichment is correct.
+        // RN-originated telemetry rides the same logger → this same `onEmit`,
+        // so this single gate covers React Native with no RN-side change. The
+        // SDK-state gauges are emitted on a separate path and remain unaffected.
+        if let gate = remoteGate, !gate.shouldEmitLog() { return }
+
         var enriched = logRecord
         for (key, value) in extraRecordAttributes where !key.isEmpty {
             enriched.setAttribute(key: key, value: value)

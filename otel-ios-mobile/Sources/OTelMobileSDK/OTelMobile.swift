@@ -56,6 +56,12 @@ public final class OTelMobile: @unchecked Sendable {
     /// when `meter` is nil the collector cannot be started.
     public let deviceStats: DeviceStatsCollector
 
+    /// Always-on SDK-state self-telemetry collector. Emits `sdk.enabled` /
+    /// `sdk.sample_rate` gauges reflecting the live `remoteGate`, independent of
+    /// `autoCaptureOptions`, so a remotely-disabled SDK is always observable.
+    /// Started unconditionally by `start(config:)` whenever a `meter` exists.
+    public let sdkStateGauges: SDKStateGaugeCollector
+
     /// Policy evaluator holding the currently-active DSL v2 policies.
     /// Consumers call `policyEvaluator.evaluate(attributes:)` to check an
     /// event against the policy set. Always non-nil; starts empty.
@@ -79,6 +85,14 @@ public final class OTelMobile: @unchecked Sendable {
     /// listen for inbound alerts on its own — the host app (or a future
     /// config poller) feeds them via `fleetAlertHandler.handle(alert)`.
     public let fleetAlertHandler: FleetAlertHandler
+
+    /// Shared remote kill-switch + global-sampling gate. The single source of
+    /// truth for `(enabled, sampleRate)` consulted at BOTH the log choke point
+    /// (`MobileLogRecordProcessor.onEmit`) and the span choke point
+    /// (`RemoteGatedSampler`). `ConfigPoller.applyConfig` pushes parsed `sdk`
+    /// config here on every successful poll. Exposed so app code / tests can
+    /// inspect or seed the live gate state. See `docs/design/remote-kill-switch.md`.
+    public let remoteGate: RemoteGate
 
     /// Underlying trace/meter providers. Held so `forceFlush()` can drain
     /// their batch processors / periodic readers on demand. Optional because
@@ -129,10 +143,12 @@ public final class OTelMobile: @unchecked Sendable {
         tracer: Tracer?,
         meter: MeterSdk?,
         deviceStats: DeviceStatsCollector,
+        sdkStateGauges: SDKStateGaugeCollector = SDKStateGaugeCollector(),
         policyEvaluator: PolicyEvaluator,
         contextSnapshotProvider: ContextSnapshotProvider,
         predictiveExportPolicy: PredictiveExportPolicy?,
         fleetAlertHandler: FleetAlertHandler,
+        remoteGate: RemoteGate = RemoteGate(),
         tracerProvider: TracerProviderSdk? = nil,
         meterProvider: MeterProviderSdk? = nil,
         spanDiskBuffer: DiskSpanBuffer? = nil
@@ -145,10 +161,12 @@ public final class OTelMobile: @unchecked Sendable {
         self.tracer = tracer
         self.meter = meter
         self.deviceStats = deviceStats
+        self.sdkStateGauges = sdkStateGauges
         self.policyEvaluator = policyEvaluator
         self.contextSnapshotProvider = contextSnapshotProvider
         self.predictiveExportPolicy = predictiveExportPolicy
         self.fleetAlertHandler = fleetAlertHandler
+        self.remoteGate = remoteGate
         self.tracerProvider = tracerProvider
         self.meterProvider = meterProvider
         self.spanDiskBuffer = spanDiskBuffer
@@ -298,6 +316,13 @@ public final class OTelMobile: @unchecked Sendable {
         ]
         let policyEvaluator = PolicyEvaluator(policies: defaultPolicies)
 
+        // Shared remote kill-switch + global-sampling gate. Single instance
+        // wired into BOTH the log processor (consulted in `onEmit`) and the
+        // span sampler (`RemoteGatedSampler`), and fed by `ConfigPoller`. Seeds
+        // to the fail-open default (enabled / rate 1.0) so the SDK runs
+        // normally until — and unless — a remote `sdk` block says otherwise.
+        let remoteGate = RemoteGate()
+
         // OTel-native buffer pipeline: selective / force flush drains
         // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
         // the batch processor uses. No custom JSON encoding.
@@ -312,6 +337,7 @@ public final class OTelMobile: @unchecked Sendable {
             sessionProvider: sessionProvider,
             diskBuffer: diskBuffer,
             policyEvaluator: policyEvaluator,
+            remoteGate: remoteGate,
             extraRecordAttributes: config.extraResourceAttributes
         )
         // Trace export pipeline: BatchSpanProcessor → OtlpHttpTraceExporter,
@@ -401,7 +427,12 @@ public final class OTelMobile: @unchecked Sendable {
         // Build the sampler from MobileConfig. Default is dynamic (10%
         // baseline / 100% for page.* + app.startup) so trace waterfalls
         // stay intact at low rates. Override via `MobileConfig.samplingConfig`.
-        let sampler = SamplerFactory.createSampler(config.samplingConfig)
+        let baseSampler = SamplerFactory.createSampler(config.samplingConfig)
+        // Fold the remote kill-switch + global sampling gate over the
+        // configured sampler: `enabled=false` drops every span; `sample_rate<1`
+        // applies an additional global probabilistic filter on top of the
+        // local strategy. The SAME `remoteGate` instance backs the log path.
+        let sampler = RemoteGatedSampler(inner: baseSampler, gate: remoteGate)
         let tracerProvider = TracerProviderBuilder()
             .with(resource: resource)
             .with(sampler: sampler)
@@ -478,6 +509,7 @@ public final class OTelMobile: @unchecked Sendable {
             contextSnapshotProvider: contextSnapshotProvider,
             predictiveExportPolicy: predictivePolicy,
             fleetAlertHandler: fleetAlertHandler,
+            remoteGate: remoteGate,
             tracerProvider: tracerProvider,
             meterProvider: meterProvider,
             spanDiskBuffer: spanDiskBuffer
@@ -533,12 +565,24 @@ public final class OTelMobile: @unchecked Sendable {
                 // set even at low baseline rates.
                 AppStartInstrumentation.shared.install(tracer: tracer)
             }
+            // SDK-state self-telemetry runs UNCONDITIONALLY — independent of
+            // `.deviceStats` — so a remotely-disabled SDK is always observable.
+            // The kill switch can flip a device to `enabled = false`, silencing
+            // all spans and logs; the `sdk.enabled` / `sdk.sample_rate` gauges
+            // are the one stream exempt from the gate, so an operator who has
+            // turned device-stats capture off must still see kill-switch state.
+            // See `docs/design/remote-kill-switch.md`.
+            instance.sdkStateGauges.start(
+                meter: meter,
+                intervalSeconds: config.deviceStatsIntervalSeconds,
+                remoteGate: instance.remoteGate
+            )
             if opts.contains(.deviceStats) {
-                // Auto-start the continuous gauge loop. Before today this
-                // required customers to call `mobile.deviceStats.start(meter:)`
-                // themselves — easy to miss, so the default demo emitted zero
-                // health telemetry. Opt out by dropping `.deviceStats` from
-                // `autoCaptureOptions`.
+                // Auto-start the continuous device-health gauge loop. Before
+                // today this required customers to call
+                // `mobile.deviceStats.start(meter:)` themselves — easy to miss,
+                // so the default demo emitted zero health telemetry. Opt out by
+                // dropping `.deviceStats` from `autoCaptureOptions`.
                 instance.deviceStats.start(
                     meter: meter,
                     intervalSeconds: config.deviceStatsIntervalSeconds
@@ -558,6 +602,7 @@ public final class OTelMobile: @unchecked Sendable {
                     extraHeaders: config.extraHeaders,
                     pollingIntervalSeconds: TimeInterval(config.pollingIntervalSeconds),
                     evaluator: instance.policyEvaluator,
+                    remoteGate: instance.remoteGate,
                     logger: logger
                 ) {
                     poller.start()
