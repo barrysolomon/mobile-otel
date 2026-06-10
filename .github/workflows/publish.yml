@@ -20,7 +20,22 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
-      - run: npm publish --access public
+      - name: Publish to npm under the correct dist-tag
+        # Prereleases (-alpha/-beta/-rc) MUST go to a matching dist-tag, NEVER
+        # 'latest' — otherwise a plain `npm install @barrysolomon/mobile-react-native`
+        # pulls a prerelease. (That is how `latest` previously ended up pinned to
+        # 0.1.0-alpha.) Derive the tag from package.json's version; stable
+        # versions (no prerelease suffix) publish to 'latest'.
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          case "$VERSION" in
+            *-alpha*) TAG=alpha ;;
+            *-beta*)  TAG=beta ;;
+            *-rc*)    TAG=rc ;;
+            *)        TAG=latest ;;
+          esac
+          echo "Publishing $VERSION to dist-tag '$TAG'"
+          npm publish --access public --tag "$TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
