@@ -27,4 +27,15 @@ public extension ErrorsInstrumentation {
         guard let url = crashMarkerURL() else { return }
         try? Data(bytes).write(to: url, options: .atomic)
     }
+
+    /// Read the raw on-disk marker file as a UTF-8 string. Used by the
+    /// write-path PII test to assert what `writeMarker` actually persisted
+    /// to disk (i.e. that scrubbing happens BEFORE the bytes hit the file,
+    /// not only on the next-launch read path). Returns nil if no marker
+    /// exists or it isn't valid UTF-8.
+    static func readMarkerStringForTesting() -> String? {
+        guard let url = crashMarkerURL() else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 }

@@ -127,6 +127,48 @@ struct CrashRecoveryTests {
         }
     }
 
+    @Test("writeMarker scrubs PII from reason + name BEFORE it hits disk")
+    func writePathScrubsPiiBeforeDisk() throws {
+        // Belt-and-braces between tests — the marker file is a process-wide
+        // singleton and a prior test could have left one behind.
+        ErrorsInstrumentation.removeMarkerForTesting()
+
+        // Simulate the NSException trampoline path with PII-bearing fields.
+        // `reason` carries an email; `name` carries a token-like secret.
+        // The fix scrubs BOTH via PiiScrubber inside writeMarker so the
+        // cleartext cache file never contains raw PII even for the window
+        // between the crash and the next-launch read. Regression guard for
+        // the gap where scrubbing only happened on the read path.
+        ErrorsInstrumentation.writeMarker(
+            kind: "NSException",
+            name: "auth token sk-secret-token-for-bob@example.com",
+            reason: "validation failed for alice@example.com",
+            frames: []
+        )
+
+        guard let onDisk = ErrorsInstrumentation.readMarkerStringForTesting() else {
+            Issue.record("marker file missing or not UTF-8 after writeMarker")
+            return
+        }
+
+        // The raw email must NOT be anywhere in the persisted bytes.
+        #expect(!onDisk.contains("alice@example.com"),
+                "raw email leaked into on-disk marker: \(onDisk)")
+        #expect(!onDisk.contains("bob@example.com"),
+                "raw email leaked into on-disk marker (name field): \(onDisk)")
+        // The scrubbed placeholder MUST be what landed on disk instead.
+        #expect(onDisk.contains("reason=validation failed for [EMAIL]"),
+                "reason was not scrubbed before write: \(onDisk)")
+        #expect(onDisk.contains("[EMAIL]"),
+                "expected [EMAIL] placeholder in on-disk marker: \(onDisk)")
+        // name field should also be scrubbed (the email-bearing part).
+        #expect(onDisk.contains("name=") && !onDisk.contains("@example.com"),
+                "name field not scrubbed before write: \(onDisk)")
+
+        // Cleanup so we don't leave a marker for the next serialized test.
+        ErrorsInstrumentation.removeMarkerForTesting()
+    }
+
     @Test("signal-handler 3-byte marker decodes signal kind + number")
     func signalMarker() throws {
         let cap = LogCapture()
