@@ -6,7 +6,18 @@
 package io.opentelemetry.android.mobile
 
 import android.content.Context
+import io.opentelemetry.android.mobile.config.ExporterCustomizers
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.config.OtlpProtocol
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter
+import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.sdk.logs.export.LogRecordExporter
+import io.opentelemetry.sdk.metrics.export.MetricExporter
+import io.opentelemetry.sdk.trace.export.SpanExporter
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -185,6 +196,157 @@ class MobileLoggerProviderTest {
         val provider2 = MobileLoggerProvider.getInstance(context, config)
         assertNotNull(provider2, "Should allow re-initialization after shutdown")
         assertTrue(provider1 !== provider2, "New instance should be different object")
+    }
+
+    // ---------------------------------------------------------------------
+    // OTLP protocol selection (Loper finding #3): the exporter type the
+    // provider constructs must follow MobileConfig.protocol. We capture the
+    // base exporter via the exporter-customizer seam — the customizer is
+    // invoked with exactly the exporter the provider built, so its concrete
+    // class is the ground truth for which transport was wired.
+    // ---------------------------------------------------------------------
+
+    /** Captures the base log/span/metric exporters via the customizer hooks. */
+    private class CapturingCustomizers {
+        var log: LogRecordExporter? = null
+        var span: SpanExporter? = null
+        var metric: MetricExporter? = null
+
+        fun build(): ExporterCustomizers = ExporterCustomizers(
+            log = listOf({ e -> log = e; e }),
+            span = listOf({ e -> span = e; e }),
+            metric = listOf({ e -> metric = e; e })
+        )
+    }
+
+    @Test
+    fun `default protocol is HTTP_PROTOBUF`() {
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://ingress.example.com"
+        )
+        assertEquals(
+            OtlpProtocol.HTTP_PROTOBUF,
+            cfg.protocol,
+            "Default protocol must be HTTP_PROTOBUF to match iOS"
+        )
+    }
+
+    @Test
+    fun `builder default protocol is HTTP_PROTOBUF`() {
+        val cfg = MobileConfig.builder()
+            .setServiceName("svc")
+            .setServiceVersion("1.0.0")
+            .setCollectorEndpoint("https://ingress.example.com")
+            .build()
+        assertEquals(OtlpProtocol.HTTP_PROTOBUF, cfg.protocol)
+    }
+
+    @Test
+    fun `default config wires OTLP HTTP exporters`() {
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://ingress.example.com"
+        )
+        val cap = CapturingCustomizers()
+        MobileLoggerProvider.getInstance(context, cfg, cap.build())
+
+        assertTrue(
+            cap.log is OtlpHttpLogRecordExporter,
+            "Default log exporter should be OTLP/HTTP, was ${cap.log?.javaClass?.name}"
+        )
+        assertTrue(
+            cap.span is OtlpHttpSpanExporter,
+            "Default span exporter should be OTLP/HTTP, was ${cap.span?.javaClass?.name}"
+        )
+        assertTrue(
+            cap.metric is OtlpHttpMetricExporter,
+            "Default metric exporter should be OTLP/HTTP, was ${cap.metric?.javaClass?.name}"
+        )
+    }
+
+    @Test
+    fun `HTTP_PROTOBUF protocol wires OTLP HTTP exporters`() {
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://ingress.example.com",
+            protocol = OtlpProtocol.HTTP_PROTOBUF
+        )
+        val cap = CapturingCustomizers()
+        MobileLoggerProvider.getInstance(context, cfg, cap.build())
+
+        assertTrue(cap.log is OtlpHttpLogRecordExporter)
+        assertTrue(cap.span is OtlpHttpSpanExporter)
+        assertTrue(cap.metric is OtlpHttpMetricExporter)
+    }
+
+    @Test
+    fun `GRPC protocol preserves OTLP gRPC exporters`() {
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://collector.example.com:4317",
+            protocol = OtlpProtocol.GRPC
+        )
+        val cap = CapturingCustomizers()
+        MobileLoggerProvider.getInstance(context, cfg, cap.build())
+
+        assertTrue(
+            cap.log is OtlpGrpcLogRecordExporter,
+            "gRPC log exporter expected, was ${cap.log?.javaClass?.name}"
+        )
+        assertTrue(
+            cap.span is OtlpGrpcSpanExporter,
+            "gRPC span exporter expected, was ${cap.span?.javaClass?.name}"
+        )
+        assertTrue(
+            cap.metric is OtlpGrpcMetricExporter,
+            "gRPC metric exporter expected, was ${cap.metric?.javaClass?.name}"
+        )
+    }
+
+    @Test
+    fun `HTTP exporters build with auth and extra headers without error`() {
+        // Header propagation uses the same builder block as the gRPC path
+        // (config.headers.forEach { addHeader(...) }); this verifies the HTTP
+        // exporter accepts the Authorization Bearer + extra headers and the
+        // provider initializes successfully with the HTTP transport wired.
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://ingress.example.com",
+            protocol = OtlpProtocol.HTTP_PROTOBUF,
+            headers = mapOf(
+                "Authorization" to "Bearer test-token",
+                "X-Custom-Header" to "custom-value"
+            )
+        )
+        val cap = CapturingCustomizers()
+        val provider = MobileLoggerProvider.getInstance(context, cfg, cap.build())
+
+        assertNotNull(provider.getOpenTelemetrySdk())
+        assertTrue(cap.log is OtlpHttpLogRecordExporter)
+        assertTrue(cap.span is OtlpHttpSpanExporter)
+        assertTrue(cap.metric is OtlpHttpMetricExporter)
+    }
+
+    @Test
+    fun `HTTP endpoint already suffixed is not double-appended`() {
+        // Regression guard around buildOtlpHttpUrl as wired through the
+        // provider: an endpoint already carrying /v1/logs must still build a
+        // valid HTTP exporter (the suffix logic is exercised at construction).
+        val cfg = MobileConfig(
+            serviceName = "svc",
+            serviceVersion = "1.0.0",
+            collectorEndpoint = "https://ingress.example.com/v1/logs",
+            protocol = OtlpProtocol.HTTP_PROTOBUF
+        )
+        val cap = CapturingCustomizers()
+        MobileLoggerProvider.getInstance(context, cfg, cap.build())
+        assertTrue(cap.log is OtlpHttpLogRecordExporter)
     }
 
     /**

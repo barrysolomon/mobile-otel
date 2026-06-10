@@ -51,6 +51,34 @@ enum class UiTelemetryMode {
 }
 
 /**
+ * OTLP wire protocol used to export telemetry to the collector / ingest endpoint.
+ *
+ * - [HTTP_PROTOBUF] — OTLP over HTTP/1.1 with a protobuf body (`Content-Type:
+ *   application/x-protobuf`). Telemetry is POSTed to `<endpoint>/v1/{logs,traces,metrics}`.
+ *   This is the **default** and matches the iOS SDK, so a single `collectorEndpoint`
+ *   works for both platforms. It also traverses HTTPS-terminating reverse proxies and
+ *   PaaS load balancers (which speak HTTP/1.1, not HTTP/2 gRPC) without special config —
+ *   the common deployment behind managed ingress.
+ * - [GRPC] — OTLP over gRPC (HTTP/2) to a single endpoint, typically `:4317`. Lower
+ *   per-batch overhead on high-volume pipelines and enterprise collectors that expose a
+ *   gRPC receiver. Requires an endpoint that terminates gRPC end-to-end; most HTTPS
+ *   proxies cannot forward it.
+ *
+ * @see MobileConfig.protocol
+ */
+@Incubating
+enum class OtlpProtocol {
+    /**
+     * OTLP/HTTP with protobuf payload. Exports to `<endpoint>/v1/{logs,traces,metrics}`.
+     * Default — matches iOS and works through HTTPS proxies / PaaS ingress.
+     */
+    HTTP_PROTOBUF,
+
+    /** OTLP/gRPC to a single endpoint (typically `:4317`). */
+    GRPC
+}
+
+/**
  * Export mode for telemetry data.
  */
 @Incubating
@@ -100,6 +128,23 @@ data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,
     val collectorEndpoint: String,
+    /**
+     * OTLP wire protocol used to export telemetry. Defaults to
+     * [OtlpProtocol.HTTP_PROTOBUF] to match the iOS SDK (so the same
+     * `collectorEndpoint` works for both platforms) and to traverse
+     * HTTPS-terminating proxies / PaaS ingress that cannot forward gRPC.
+     *
+     * With [OtlpProtocol.HTTP_PROTOBUF] the SDK POSTs to
+     * `<collectorEndpoint>/v1/logs`, `/v1/traces`, and `/v1/metrics`
+     * (the per-signal suffix is appended automatically; if the endpoint
+     * already ends in the right `/v1/<signal>` path it is left untouched).
+     *
+     * With [OtlpProtocol.GRPC] the SDK exports OTLP/gRPC to the single
+     * `collectorEndpoint` (typically a `:4317` gRPC port) — the previous
+     * behaviour. Use this only when your endpoint terminates gRPC
+     * end-to-end.
+     */
+    val protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF,
     val exportMode: ExportMode = ExportMode.HYBRID,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
     val textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig(),
@@ -250,6 +295,39 @@ data class MobileConfig(
         internal fun isLocalhostEndpointForTest(endpoint: String): Boolean =
             isLocalhostEndpoint(endpoint.lowercase())
 
+        /**
+         * Build the per-signal OTLP/HTTP ingest URL from a base
+         * `collectorEndpoint`, mirroring the iOS `OTLPExporterFactory`
+         * URL-building so Android and iOS resolve the same endpoint:
+         *
+         * - Trailing slashes on the base are collapsed before appending, so
+         *   `https://host/` + `/v1/logs` yields `https://host/v1/logs` (not a
+         *   doubled slash).
+         * - If the endpoint already ends in the target `/v1/<signal>` path
+         *   (with or without a trailing slash), it is returned unchanged — we
+         *   never double-append.
+         * - Any query string on the base endpoint is preserved.
+         *
+         * @param base the user-supplied `collectorEndpoint`.
+         * @param signalPath the signal suffix, e.g. `/v1/logs`.
+         */
+        @JvmStatic
+        fun buildOtlpHttpUrl(base: String, signalPath: String): String {
+            val trimmed = base.trim()
+            // Split off any query string so the suffix lands on the path, not after `?`.
+            val queryIdx = trimmed.indexOf('?')
+            val pathPart = if (queryIdx >= 0) trimmed.substring(0, queryIdx) else trimmed
+            val query = if (queryIdx >= 0) trimmed.substring(queryIdx) else ""
+
+            // Already suffixed (with or without a trailing slash) → leave untouched.
+            val withoutTrailingSlash = pathPart.trimEnd('/')
+            if (withoutTrailingSlash.endsWith(signalPath)) {
+                return withoutTrailingSlash + query
+            }
+
+            return withoutTrailingSlash + signalPath + query
+        }
+
         fun builder(): Builder = Builder()
     }
 
@@ -261,6 +339,7 @@ data class MobileConfig(
         private var serviceName: String? = null
         private var serviceVersion: String? = null
         private var collectorEndpoint: String? = null
+        private var protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF
         private var exportMode: ExportMode = ExportMode.HYBRID
         private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
         private var textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig()
@@ -294,6 +373,8 @@ data class MobileConfig(
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
         fun setCollectorEndpoint(collectorEndpoint: String) = apply { this.collectorEndpoint = collectorEndpoint }
+        /** See [MobileConfig.protocol]. Defaults to [OtlpProtocol.HTTP_PROTOBUF] (matches iOS). */
+        fun setProtocol(protocol: OtlpProtocol) = apply { this.protocol = protocol }
         fun setExportMode(exportMode: ExportMode) = apply { this.exportMode = exportMode }
         fun setUiTelemetryMode(mode: UiTelemetryMode) = apply { this.uiTelemetryMode = mode }
         fun setTextInputConfig(config: io.opentelemetry.android.mobile.instrumentation.TextInputConfig) = apply { this.textInputConfig = config }
@@ -342,6 +423,7 @@ data class MobileConfig(
                 serviceName = requireNotNull(serviceName) { "serviceName is required" },
                 serviceVersion = requireNotNull(serviceVersion) { "serviceVersion is required" },
                 collectorEndpoint = requireNotNull(collectorEndpoint) { "collectorEndpoint is required" },
+                protocol = protocol,
                 exportMode = exportMode,
                 uiTelemetryMode = uiTelemetryMode,
                 textInputConfig = textInputConfig,
