@@ -1,6 +1,6 @@
 # Android &harr; iOS Feature Parity Matrix
 
-Updated: 2026-05-14 (post-platform-parity sweep — policy-match captures, wireframe dedup, JSON config plumbing)
+Updated: 2026-06-10 (v0.2.0-alpha doc audit — reconciled the stale "gaps" sections against shipped iOS code: DiskLogBuffer, PolicyEvaluator runtime, DynamicSampler, SessionManager rotation, and the OTLP/gRPC factory all ship today)
 iOS branch: merged to `main` (was `iPhone`)
 Android SDK module: `otel-android-mobile/` + 21 instrumentation submodules
 iOS SDK package: `otel-ios-mobile/` (SwiftPM, 9 library products)
@@ -45,8 +45,11 @@ iOS SDK package: `otel-ios-mobile/` (SwiftPM, 9 library products)
 
 **Honest remaining deferred work:**
 
-- Screenshot/Wireframe SwiftUI ViewModifiers — need privacy design before
-  shipping. Design spec lives at [`docs/design/screenshot-wireframe-privacy.md`](./design/screenshot-wireframe-privacy.md).
+- Screenshot/Wireframe **ship on iOS** (`ScreenshotInstrumentation`,
+  `WireframeInstrumentation`) but, like Android, are **default OFF** behind the
+  capture-consent gate (`AutoCaptureOptions.default` excludes `.screenshot` /
+  `.wireframe`; pass `.all` or add them explicitly to opt in). Privacy design
+  spec: [`docs/design/screenshot-wireframe-privacy.md`](./design/screenshot-wireframe-privacy.md).
 - PLCrashReporter as optional SPM dep — documented as integration guide
   rather than bundled dep (license/conflict/size concerns — customers with
   Sentry/Firebase already have a crash reporter).
@@ -218,7 +221,7 @@ Every Android-side script under `scripts/` with iOS equivalent status. Android s
 | validate-us065-freeze-flush.sh | `scripts/test/validate-us065-freeze-flush.sh` | &#10060; | not-started |
 | validate-us066-no-false-flush.sh | `scripts/test/validate-us066-no-false-flush.sh` | &#10060; | not-started |
 | validate-us067-ram-overflow.sh | `scripts/test/validate-us067-ram-overflow.sh` | &#10060; | not-started |
-| validate-us068-disk-ttl.sh | `scripts/test/validate-us068-disk-ttl.sh` | &#10060; | not-started (disk buffer absent) |
+| validate-us068-disk-ttl.sh | `scripts/test/validate-us068-disk-ttl.sh` | &#10060; | not-started (iOS `DiskLogBuffer` ships; scenario script not yet ported) |
 | validate-us069-selective-flush.sh | `scripts/test/validate-us069-selective-flush.sh` | &#10060; | not-started |
 | validate-us070-timestamp-monotonic.sh | `scripts/test/validate-us070-timestamp-monotonic.sh` | &#10060; | not-started |
 | validate-us071-span-hierarchy.sh | `scripts/test/validate-us071-span-hierarchy.sh` | [`validate-ios-us071-span-hierarchy.sh`](../scripts/test/validate-ios-us071-span-hierarchy.sh) | shipped — asserts 15 checkout span names + ≥13 child spans with parent id |
@@ -301,130 +304,60 @@ files reference iOS.
 | Starter (single-screen interactive) | `examples/demo-app/` (full hospital scheduler demo) | [`examples/demo-app-ios-starter/`](../examples/demo-app-ios-starter/) | ~60% | **1** screen — `ContentView.swift`: resource, logs, traces, metrics, network, errors, device stats, counters sections; no navigation/journey, no multi-activity, no crash dialog, no airplane-mode toggle, no debug widget |
 | Upstream Astronomy Shop | [`examples/upstream-demo-app/`](../examples/upstream-demo-app/) (OpenTelemetry community demo port) | [`examples/upstream-demo-app-ios/`](../examples/upstream-demo-app-ios/) | ~40% | **3 of 6** screens — ProductList, ProductDetail, Cart; **missing** RecommendedSection, About (`AboutActivity`, `AppFeaturesFragment`), ConfirmCrashPopUp, CheckoutInfo+Confirmation |
 
-## Critical gaps (ranked)
+## Genuine remaining gaps (ranked)
 
-1. **Disk buffer / crash-safe persistence.** Android has `DiskLogBuffer` (Room
-   SQLite v4, 50MB, 24h TTL) and `seqId`-based dedup for RAM&rarr;disk mirrors
-   (SR-017). iOS buffer is RAM-only, actor-backed `Deque`. The "survives process
-   death" marketing claim only applies to Android today. No Swift port of
-   Room/SQLite bridging, no migration story.
-2. **Policy evaluator runtime.** iOS parses DSL v2 at behavioral parity (14
-   tests) but has zero trigger-matching / condition-evaluation engine. Parsed
-   `PolicyConfig` currently has no consumer. Android `PolicyEvaluator` has
-   ~116 runtime tests (crash match, error match, condition DSL, geo, security).
-   This blocks conditional/hybrid export modes on iOS.
-3. **Instrumentation breadth (15 of 20 modules absent).** tap, scroll,
-   text-input, back-press, compose-click, wireframe, screenshot, freeze,
-   system-events, database, file-io, amplify-datastore, screen-orientation,
-   debug-widget, timber. Freeze and Vitals are `public enum` placeholders. The
-   `WindowEventHub` / `TouchEventHub` has no installer wired on iOS, so even
-   when modules land there is no dispatch infrastructure.
-4. **No validation-suite parity.** 28 `validate-us0XX-*.sh` scenario scripts
-   exist for Android (happy-path, network-loss, crash-flush, RAM-overflow,
-   disk-TTL, selective-flush, timestamp-monotonic, etc.). Zero exist for iOS.
-   There is no `scripts/test/run-phase9-suite.sh` analog, no
-   `validate-telemetry.sh` for iOS. CI-readiness for iOS is not established.
-5. **Zero user-facing iOS documentation.** None of `ANDROID_SDK_GUIDE`,
-   `QUICK_START`, `CONFIGURATION`, `API_REFERENCE`, `EXPORT_MODES`,
-   `AUTO_INSTRUMENTATION`, `SAMPLING`, `DEVICE_METRICS` have iOS analogs. The
-   [`docs/guides/TUTORIAL_ANDROID_QUICKSTART.md`](guides/TUTORIAL_ANDROID_QUICKSTART.md)
-   has no iOS twin. Customers landing from a Dash0 website link have nothing to
-   read.
+> **Reconciliation note (v0.2.0-alpha):** the items below were rewritten after
+> verifying every claim against the shipped iOS sources. The earlier "Critical
+> gaps" / "Secondary gaps" / "Phase progress" sections claimed iOS lacked a disk
+> buffer, a policy-evaluator runtime, dynamic sampling, session rotation, and
+> gRPC — **all of those ship today** (see the SDK-core-features table above:
+> [`DiskLogBuffer.swift`], [`PolicyEvaluator.swift`], [`DynamicSampler.swift`],
+> [`SessionManager.swift`], and [`OTLPExporterFactory.makeGrpc*`]). Those stale
+> bullets were leftovers from the abandoned `iPhone` branch and have been deleted.
+> What remains below are the gaps the code *actually* still has.
 
-## Phase 1 progress (2026-04-18)
+1. **User identity.** Android has `UserIdentity` + `MobileOtel.identify(user)`.
+   iOS has no `UserIdentity` type and no `identify` API — telemetry cannot be
+   attached to an end-user identity on iOS.
+2. **Log tailing.** Android ships `LogTailBuffer` / `LogTailingConfig`; iOS has
+   no analog.
+3. **`EnrichingLogRecordExporter`.** The Android enricher depends on a
+   Dash0-proprietary `ContextSnapshotProvider` (geo + per-batch policy-match
+   attribution). iOS has a `ContextSnapshotProvider` but no enriching exporter
+   wired around it.
+4. **Standalone jank detector + coroutine/async error capture.** iOS emits
+   `ui.jank` from the Vitals `CADisplayLink` watcher, but there is no separate
+   `JankDetector` analog, and no Swift-concurrency unhandled-error capture
+   (Android hooks `CoroutineExceptionHandler`).
+5. **Rate limiter (general-purpose).** Android exposes a reusable `RateLimiter`;
+   iOS rate-limits errors inline (`ErrorRecordingThrottle`) but has no shared
+   utility.
+6. **Policy DSL v1 compiler.** iOS parses DSL **v2** at behavioral parity, but
+   has no v1 compiler / auto-detect path (Android keeps v1 for back-compat).
+7. **Instrumentation breadth.** Android ships 21 instrumentation modules; iOS
+   ships 9 library products. The Android-only / not-yet-ported modules are
+   enumerated in the *Instrumentation modules* table above (back-press,
+   compose-click, database, file-io, amplify-datastore, screen-orientation,
+   system-events, debug-widget, timber, plus standalone tap/scroll/text-input
+   modules — on iOS those are folded into the SwiftUI ViewModifiers).
+8. **Validation-suite + docs breadth.** Most Android `validate-us0XX-*.sh`
+   scenario scripts and the user-facing docs (`ANDROID_SDK_GUIDE`,
+   `QUICK_START`, etc.) have no iOS twin yet. See the *Scripts* and
+   *Documentation* tables for the per-item status.
 
-The first GA-runup phase closes three SDK foundation gaps:
+## What's ahead
 
-- **Phase 1.1 — PII scrubbing pipeline**: `PiiScrubber` ported from
-  Android with all 40 behavioural-parity tests + 4 wiring tests
-  (`ErrorsInstrumentation` recovery path + `NetworkInstrumentation`
-  `url.full`).
-- **Phase 1.2 — Retryable exporter + status surfacing**:
-  `RetryableExporter` (LogRecordExporter decorator, exponential backoff,
-  3 retries) + `ExportStatusManager` (per-instance + `.shared`,
-  4-variant status enum). 14 tests. Wired into `OTelMobile.start`.
-- **Phase 1.3 — Boot tracker + dynamic sampler (31 tests)**:
-  `BootTracker` (`sysctl kern.boottime` → hex string, 4 tests),
-  `SamplingConfig` (8 tests), `DynamicSampler` (13 tests, runtime
-  rate adjustment + `page.*` / `app.startup` always-sampled),
-  `SamplerFactory` (6 tests). Wired into `OTelMobile.start` via new
-  `MobileConfig.samplingConfig` (default `.dynamic(0.1, 1.0)`).
-  `EnrichingLogRecordExporter` deferred — the Android version depends
-  on a Dash0-proprietary `ContextSnapshotProvider` (geo + per-batch
-  policy match attribution) that has no iOS analog yet.
-
-## Phase 2 progress (2026-04-18)
-
-UI / lifecycle instrumentation parity. Most Android UI modules are
-either already on iOS (tap, scroll, text-input via SwiftUI
-ViewModifiers in ScreenInstrumentation) or non-portable (back-press,
-compose-click — Android-only). The biggest remaining gap was app-start
-span emission.
-
-- **Phase 2.1 — App start instrumentation (7 tests)**:
-  `AppStartInstrumentation` ships as a span emitter (Android parity).
-  Emits `app.startup` (the name `DynamicSampler` boosts to high-
-  priority — closes a dead code path from Phase 1.3b),
-  `app.start.cold`, `app.start.warm` with Android-equivalent
-  `mobile.app.start.*` attributes. Process-start time read via
-  `sysctl(KERN_PROC_PID)`, same accuracy as Android's
-  `Process.getStartElapsedRealtime()`. Wired into `OTelMobile.start`
-  under the `.vitals` capability flag.
-
-## Phase 3 progress (2026-04-18)
-
-Test backfill in the highest-leverage areas where iOS coverage was
-near zero. No new SDK code; pure regression coverage of paths that
-already shipped.
-
-- **Phase 3.1 — Errors backfill (+14 tests)**:
-  `ErrorsInstrumentationTests` covers `recordError` (severity, type,
-  PII-scrubbed message, custom-attr passthrough, no-logger no-op),
-  install idempotency + pending-marker scan on install, `signalName`
-  mnemonic mapping for the full POSIX fatal set, `crashMarkerURL`
-  contract, and recovery edge cases (empty file, malformed lines).
-  Errors coverage 5 → 19 tests (8% → 29% of Android).
-- **Phase 3.2 — Session backfill (+12 tests)**:
-  `SessionManagerTests` covers fresh mint, stable-within-window read,
-  `rotateSession`, `UserDefaults` persistence round-trip, mint-on-
-  inactivity-timeout, resume-within-window, snapshot accuracy, touch-
-  to-extend semantics, default 15-min timeout matching Android, and
-  defensive UUID-shape rotation. Session coverage 0 → 12 tests
-  (0% → 46% of Android).
-
-Net: iOS unit-test count grew from 178 to 261 (+47%), with new suites
-concentrated in PII redaction, export reliability, sampling, app-start
-tracing, errors recovery, and session lifecycle.
-
-## Secondary gaps
-
-- **Session rotation**: iOS `StaticSessionProvider` never rotates; Android has
-  idle + app-lifecycle rotation and persistence.
-- **Sampling**: no `DynamicSampler` or `SamplerFactory` on iOS.
-- **Fleet alerting**: absent on iOS.
-- **Predictive telemetry (OTEP)**: absent on iOS.
-- **Log tailing**: absent on iOS.
-- **Jank / app-start / coroutine-error instrumentation**: absent on iOS.
-- **gRPC transport**: iOS is HTTP-only.
-- **DSL-based fluent builder**: iOS `MobileConfig` is a single-shot struct init,
-  not a nested builder DSL.
-
-## What's ahead (not in scope for the iPhone branch)
-
-- Swift port of `DiskLogBuffer` + SR-017 crash-safe flush on CoreData or SQLite
-  (GRDB candidate).
-- Policy evaluator runtime: port `PolicyEvaluator` match/condition engine from
-  [`PolicyEvaluator.kt`](../otel-android-mobile/src/main/java/io/opentelemetry/android/mobile/policy/PolicyEvaluator.kt).
-- Touch-event hub installer: wire a `UIWindow` subclass swizzle (or
-  `UIGestureRecognizer` bridge) to feed TapInstrumentation / ScrollInstrumentation.
-- SwiftUI `.swiftGesture` modifier for tap/long-press/swipe so the tap module
-  works in pure-SwiftUI apps without UIKit swizzles.
-- iOS user-docs: `IOS_SDK_GUIDE.md`, `IOS_QUICK_START.md`,
-  `TUTORIAL_IOS_QUICKSTART.md`, iOS sections in `CONFIGURATION.md`,
-  `EXPORT_MODES.md`, `AUTO_INSTRUMENTATION.md`.
-- iOS validation-suite: port `validate-us0XX-*.sh` scenarios to
-  `xcodebuild test` + simulator control (equivalent of `adb` scripting).
-- iOS CI workflow in `.github/workflows/` (currently only Android + Go).
-- iOS expansion of `upstream-demo-app-ios` to cover all 6 upstream screens
-  (RecommendedSection, About, ConfirmCrashPopUp, CheckoutInfo, CheckoutConfirmation).
-- iOS OTLP/gRPC exporter (currently HTTP-only).
+- **User identity on iOS**: port `UserIdentity` + `identify(_:)` onto
+  `SessionManager`.
+- **Log tailing on iOS**: Swift analog of `LogTailBuffer` / `LogTailingConfig`.
+- **`EnrichingLogRecordExporter` on iOS**: wrap the existing
+  `ContextSnapshotProvider` in an enriching exporter for geo + policy-match
+  attribution parity.
+- **Instrumentation breadth**: a SwiftUI `.swiftGesture` modifier for
+  tap/long-press/swipe in pure-SwiftUI apps, plus the remaining portable
+  Android modules.
+- **iOS user docs**: `IOS_SDK_GUIDE.md` exists; still missing
+  `IOS_QUICK_START.md`, `TUTORIAL_IOS_QUICKSTART.md`, and iOS sections inside the
+  cross-platform `CONFIGURATION.md` / `EXPORT_MODES.md` / `AUTO_INSTRUMENTATION.md`.
+- **iOS validation-suite**: port more `validate-us0XX-*.sh` scenarios to
+  `xcodebuild test` + simulator control (6 ported so far — see *Scripts*).

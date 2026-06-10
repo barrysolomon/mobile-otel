@@ -3,11 +3,11 @@
 The Dash0 iOS SDK ships a minimal crash-marker mechanism in
 [`ErrorsInstrumentation`](../otel-ios-mobile/Sources/ErrorsInstrumentation/ErrorsInstrumentation.swift):
 
-- `NSSetUncaughtExceptionHandler` captures uncaught Objective-C / bridged Swift exceptions (**with** full `callStackSymbols` — Cocoa guarantees these before tear-down).
-- POSIX signal handlers (`SIGABRT`/`SIGSEGV`/`SIGILL`/`SIGFPE`/`SIGBUS`/`SIGPIPE`/`SIGTRAP`) write a 3-byte async-signal-safe marker. **No stack trace** — we cannot safely collect one from a signal handler without a dedicated crash reporter.
-- Next launch reads the marker and emits an `app.crash` log with the signal number / exception type.
+- `NSSetUncaughtExceptionHandler` captures uncaught Objective-C / bridged Swift exceptions (**with** `callStackSymbols` — Cocoa makes these available before tear-down). These frames are written to the marker (up to 50, PII-scrubbed) and surface as `exception.stacktrace`.
+- POSIX signal handlers (`SIGABRT`/`SIGSEGV`/`SIGILL`/`SIGFPE`/`SIGBUS`/`SIGPIPE`/`SIGTRAP`) write a fixed 3-byte async-signal-safe marker (`S<sig>`) and re-raise. **No stack trace on this path** — we cannot safely collect one from a signal handler without a dedicated crash reporter.
+- Next launch reads the marker and emits an `app.crash` log with the signal number / exception type (`crash.from_marker=true`).
 
-That's enough to **count** crashes and associate them with sessions, but it's **not** enough for debugging — you need symbolicated native stack traces on signal-path crashes.
+That's enough to **count** crashes and associate them with sessions, and exception-path crashes carry unsymbolicated frames — but it's **not** enough for debugging signal-path native crashes, and **the SDK does not symbolicate anything itself** (no dSYM upload / address→symbol resolution is implemented). For symbolicated native stacks, integrate a dedicated crash reporter alongside our SDK.
 
 For that, integrate **PLCrashReporter** (recommended) alongside our SDK.
 
@@ -129,6 +129,6 @@ Combine these with PLCrashReporter (or similar) for the complete picture.
 
 ## Testing crash recovery
 
-In the [Starter demo](../examples/demo-app-ios-starter/README.md) the **Crash Now** button calls `fatalError(...)` which raises `SIGABRT`. After the simulator restarts the app (manually relaunch), you should see `app.crash` with `crash.signal=6` arrive in Dash0 under the `os.name=iOS` slice.
+In the [Starter demo](../examples/demo-app-ios-starter/README.md) the **Crash Now** button calls `fatalError(...)`, which traps the process via a fatal signal (`SIGTRAP`/`SIGILL` on arm64, `SIGABRT` on some toolchains — all are in the handled set). After you manually relaunch the app, you should see `app.crash` with `crash.kind=signal` and the corresponding `crash.signal` arrive in Dash0 under the `os.name=iOS` slice.
 
 With PLCrashReporter installed, that same crash also ships with a full stack trace.

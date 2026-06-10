@@ -6,21 +6,59 @@ Mobile-specific extensions for OpenTelemetry Android including buffering and con
 
 ## Features
 
-- **Ring Buffer**: Two-tier buffering (RAM + disk) for offline resilience
+- **Ring Buffer**: Two-tier buffering (RAM + disk) for offline resilience, with optional at-rest encryption
 - **Conditional Export**: Policy-based selective data transmission
-- **OTLP/gRPC**: Direct export to OpenTelemetry Collector
+- **OTLP/HTTP or gRPC**: Direct export to an OpenTelemetry Collector (HTTP/protobuf by default; gRPC opt-in)
 - **Standard APIs**: Built on official OpenTelemetry SDK
 - **Low Overhead**: < 5% performance impact
 
 ## Installation
 
-Add to your `build.gradle.kts`:
+The SDK is published to **GitHub Packages** (not Maven Central). Consuming it requires (1) declaring the Maven repository, (2) authenticating with a GitHub Personal Access Token that has the `read:packages` scope, and (3) adding the dependency.
+
+### 1. Declare the repository
+
+In `settings.gradle.kts` (or your root `build.gradle.kts` `repositories` block):
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("gpr.token").orNull
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
+```
+
+### 2. Provide credentials
+
+GitHub Packages requires authentication even for public packages. Add a PAT with the `read:packages` scope to `~/.gradle/gradle.properties` (keep it out of version control):
+
+```properties
+gpr.user=your-github-username
+gpr.token=ghp_your_personal_access_token_with_read_packages
+```
+
+Or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment (the repo block above falls back to these).
+
+### 3. Add the dependency
 
 ```kotlin
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.1.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
 }
 ```
+
+The umbrella `io.opentelemetry.android:mobile` artifact pulls in its full dependency tree — `mobile-core` and every `mobile-instrumentation-<name>` module — all published to the same GitHub Packages repository, so a single dependency line resolves everything.
 
 ## Quick Start
 
@@ -28,7 +66,6 @@ dependencies {
 
 ```kotlin
 import io.opentelemetry.android.mobile.OTelMobile
-import io.opentelemetry.android.mobile.autocapture.AutoCaptureOptions
 import io.opentelemetry.android.mobile.config.MobileConfig
 
 class MyApplication : Application() {
@@ -38,14 +75,13 @@ class MyApplication : Application() {
         val config = MobileConfig(
             serviceName = "my-mobile-app",
             serviceVersion = "1.0.0",
-            collectorEndpoint = "https://otel-collector.example.com:4317"
+            // HTTP/protobuf (default): the SDK POSTs to <endpoint>/v1/{logs,traces,metrics}
+            collectorEndpoint = "https://otel-collector.example.com"
         )
 
-        OTelMobile.start(
-            application = this,
-            config = config,
-            options = AutoCaptureOptions()
-        )
+        // start() enables all auto-instrumentation (taps, scrolls, back press,
+        // freeze/ANR, lifecycle, screen views, errors, vitals).
+        OTelMobile.start(application = this, config = config)
     }
 }
 ```
@@ -63,7 +99,7 @@ class MyApplication : Application() {
         val config = MobileConfig(
             serviceName = "my-mobile-app",
             serviceVersion = "1.0.0",
-            collectorEndpoint = "https://otel-collector.example.com:4317",
+            collectorEndpoint = "https://otel-collector.example.com",
             ramBufferSize = 5000,
             diskBufferMb = 50
         )
@@ -111,9 +147,9 @@ Mobile App (Your Code)
     │
     ├──► MobileLogRecordProcessor
     │      ├─► RAM Buffer (ConcurrentQueue, 5000 events)
-    │      ├─► Disk Buffer (Room/SQLite, 50MB, 24h)
+    │      ├─► Disk Buffer (Room/SQLite, 50MB, 24h, encrypted at rest by default)
     │      ├─► PolicyEvaluator (conditional export)
-    │      └─► OTLP Exporter (gRPC)
+    │      └─► OTLP Exporter (HTTP/protobuf by default; gRPC opt-in)
     │
     └──► OTEL Collector
            └─► Backends (Loki, Prometheus, etc)
@@ -125,10 +161,15 @@ Mobile App (Your Code)
 |--------|------|---------|-------------|
 | `serviceName` | String | Required | Service name for telemetry |
 | `serviceVersion` | String | Required | Service version |
-| `collectorEndpoint` | String | Required | OTEL Collector endpoint (gRPC) |
-| `ramBufferSize` | Int | 5000 | Maximum events in RAM buffer |
-| `diskBufferMb` | Long | 50 | Maximum disk buffer size (MB) |
-| `retentionHours` | Int | 24 | Maximum age for buffered events |
+| `collectorEndpoint` | String | Required | OTEL Collector / ingest endpoint. With the default `HTTP_PROTOBUF` protocol the SDK appends `/v1/{logs,traces,metrics}` automatically, so pass the base URL (e.g. `https://collector.example.com`). |
+| `protocol` | `OtlpProtocol` | `HTTP_PROTOBUF` | OTLP wire protocol: `HTTP_PROTOBUF` (default, matches iOS, works behind HTTPS proxies) or `GRPC` (single endpoint, typically `:4317`). |
+| `exportMode` | `ExportMode` | `HYBRID` | `CONDITIONAL`, `CONTINUOUS`, or `HYBRID`. |
+| `ramBufferSize` | Int | 5000 | Maximum events in RAM buffer (count cap) |
+| `ramBufferMaxTotalBytes` | Long | 10 MB | Total-byte budget for the RAM buffer; oldest events overflow to disk past this. |
+| `ramBufferMaxEventBytes` | Int | 256 KB | Per-event byte cap; oversize events are dropped and counted. |
+| `diskBufferMb` | Int | 50 | Maximum disk buffer size (MB) |
+| `diskBufferTtlHours` | Int | 24 | Maximum age (hours) for buffered events |
+| `encryptDiskBufferAtRest` | Boolean | `true` | Encrypt the on-disk buffer at rest (SQLCipher + Android Keystore). Crash-safe; degrades to cleartext if unavailable. Set `false` to skip the SQLCipher native-library cost. |
 
 ## Use Cases
 
@@ -254,11 +295,12 @@ See [Quick Start — Setting Up an Emulator](../docs/QUICK_START.md#step-3-start
 
 ## Documentation
 
-- [Configuration Guide](docs/configuration.md)
-- [Best Practices](docs/best-practices.md)
-- [API Reference](docs/api-reference.md)
-- [Examples](examples/)
-- [Troubleshooting](docs/troubleshooting.md)
+- [Android SDK Integration Guide](../docs/ANDROID_SDK_GUIDE.md)
+- [Auto-Instrumentation Reference](../docs/AUTO_INSTRUMENTATION.md)
+- [Export Modes](../docs/EXPORT_MODES.md)
+- [Sampling](../docs/SAMPLING.md)
+- [API Reference](../docs/API_REFERENCE.md)
+- [Instrumentation modules](../instrumentation/README.md)
 
 ## Contributing
 
@@ -270,7 +312,7 @@ Apache License 2.0 - See [LICENSE](../LICENSE) for details.
 
 ## Support
 
-- [GitHub Issues](https://github.com/open-telemetry/opentelemetry-android-contrib/issues)
+- [GitHub Issues](https://github.com/barrysolomon/mobile-otel/issues)
 - [Slack Channel](https://cloud-native.slack.com/archives/C01N7PP1THC) (#otel-android)
 - [Documentation](https://opentelemetry.io/docs/languages/android/)
 

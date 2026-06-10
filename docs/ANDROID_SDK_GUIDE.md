@@ -30,25 +30,60 @@ Your App
    │  All events ──► MobileLogRecordProcessor ──► RAM buffer (5000 events)
    │                                          └──► DiskLogBuffer (SQLite, 50MB, 24h)
    │
-   └─ Flush trigger ──► PolicyEvaluator ──► OTLP/gRPC ──► OTEL Collector
+   └─ Flush trigger ──► PolicyEvaluator ──► OTLP (HTTP/protobuf or gRPC) ──► OTEL Collector
 ```
 
 **Requirements:** Android API 26+ (Android 8.0), JDK 17, Kotlin 2.0+
 
 ## Installation
 
-The SDK is not yet published to Maven Central. Include it as a local Gradle module:
+The SDK is published to **GitHub Packages** (not Maven Central). Pulling it in takes three steps: declare the Maven repository, authenticate with a GitHub PAT that has the `read:packages` scope, and add the dependency.
+
+### 1. Declare the repository
 
 ```kotlin
 // settings.gradle.kts
-include(":otel-android-mobile")
-project(":otel-android-mobile").projectDir = file("path/to/otel-android-mobile")
-
-// app/build.gradle.kts
-dependencies {
-    implementation(project(":otel-android-mobile"))
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("gpr.token").orNull
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
 ```
+
+### 2. Provide credentials
+
+GitHub Packages requires authentication even for public packages. Add a PAT (scope `read:packages`) to `~/.gradle/gradle.properties`:
+
+```properties
+gpr.user=your-github-username
+gpr.token=ghp_your_personal_access_token_with_read_packages
+```
+
+(Or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment.)
+
+### 3. Add the dependency
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
+}
+```
+
+The umbrella `io.opentelemetry.android:mobile` artifact and its full dependency tree — `mobile-core` plus every `mobile-instrumentation-<name>` module — are all published to this GitHub Packages repository, so the single dependency above resolves the whole SDK.
+
+> Building from source instead? The repository has no standalone root Gradle project — the modules are wired through the composite build under `examples/demo-app/`. Run module tasks from there (e.g. `cd examples/demo-app && ./gradlew :otel-android-mobile:test`).
 
 Key transitive dependencies pulled in automatically:
 
@@ -85,7 +120,9 @@ class MyApplication : Application() {
         OTelMobile.start(this, MobileConfig(
             serviceName       = "my-app",
             serviceVersion    = BuildConfig.VERSION_NAME,
-            collectorEndpoint = "https://collector.example.com:4317"
+            // Default protocol is HTTP/protobuf: the SDK POSTs to
+            // <endpoint>/v1/{logs,traces,metrics}, so pass the base URL.
+            collectorEndpoint = "https://collector.example.com"
         ))
     }
 }
@@ -97,19 +134,62 @@ Register in `AndroidManifest.xml`:
 <application android:name=".MyApplication" ...>
 ```
 
+### OTLP Protocol (HTTP vs gRPC)
+
+The default protocol is `OtlpProtocol.HTTP_PROTOBUF`. The SDK appends the per-signal path
+(`/v1/logs`, `/v1/traces`, `/v1/metrics`) to `collectorEndpoint` automatically (trailing-slash
+safe; if the endpoint already ends in `/v1/<signal>` it is left untouched). This matches the iOS
+SDK — one `collectorEndpoint` works for both — and traverses HTTPS-terminating proxies / managed
+ingress that cannot forward HTTP/2 gRPC.
+
+Switch to gRPC only when your endpoint terminates gRPC end-to-end (typically a `:4317` port):
+
+```kotlin
+MobileConfig(
+    serviceName       = "my-app",
+    serviceVersion    = "1.0.0",
+    collectorEndpoint = "https://collector.example.com:4317",
+    protocol          = OtlpProtocol.GRPC
+)
+```
+
+> **Transport security:** a non-HTTPS `collectorEndpoint` (other than localhost / the
+> `10.0.2.2` emulator loopback) logs a prominent `MobileConfig` security error — the auth
+> token and telemetry would otherwise travel in plaintext — but does not crash the host.
+> Use `https://` in production.
+
 ### Full MobileConfig Options
 
 ```kotlin
 MobileConfig(
-    serviceName            = "my-app",
-    serviceVersion         = "1.0.0",
-    collectorEndpoint      = "https://collector.example.com:4317",
-    exportMode             = ExportMode.CONDITIONAL,   // CONDITIONAL | CONTINUOUS | HYBRID
-    attachContextAttributes = true,                    // device/session attrs on every log
-    policyEndpoint         = "https://gateway.example.com/config",  // remote policy fetch
-    flushWindowMinutes     = 5                         // default window for selective flush
+    serviceName             = "my-app",
+    serviceVersion          = "1.0.0",
+    collectorEndpoint       = "https://collector.example.com",
+    protocol                = OtlpProtocol.HTTP_PROTOBUF, // HTTP_PROTOBUF (default) | GRPC
+    exportMode              = ExportMode.HYBRID,          // CONDITIONAL | CONTINUOUS | HYBRID (default)
+    attachContextAttributes = true,                       // device/session attrs on every log
+    ramBufferSize           = 5000,                       // RAM event-count cap
+    ramBufferMaxTotalBytes  = 10L * 1024 * 1024,          // RAM total-byte budget (default 10 MB)
+    ramBufferMaxEventBytes  = 256 * 1024,                 // per-event byte cap (default 256 KB)
+    diskBufferMb            = 50,                          // SQLite disk buffer size
+    diskBufferTtlHours      = 24,                          // max age of buffered events
+    encryptDiskBufferAtRest = true,                       // SQLCipher + Keystore (default ON)
+    remoteConfigEnabled     = true                        // poll /config for policy + kill switch
 )
 ```
+
+> **Disk-buffer encryption:** `encryptDiskBufferAtRest` defaults to **`true`** — the on-disk
+> buffer (`otel_log_buffer.db`) is encrypted with SQLCipher under an Android Keystore–wrapped
+> passphrase (parity with iOS `NSFileProtection`). Enabling it is crash-safe: any open failure
+> (existing cleartext buffer, invalidated key, missing native libs) transparently recreates the
+> buffer and, if SQLCipher/Keystore are unavailable, degrades to cleartext rather than failing.
+> The one-time cost is dropping already-buffered (TTL-bounded) telemetry on first encrypted
+> launch. Set `false` to keep the buffer cleartext and avoid the SQLCipher native-library size.
+
+> **Remote kill switch & global sampling:** when `remoteConfigEnabled` is `true` (default), the
+> SDK polls the control-plane `/config` endpoint and honors a remote `sdk.enabled` flag (kill
+> switch) and `sample_rate`. Set `remoteConfigEnabled = false` when `collectorEndpoint` points
+> directly at a plain OTLP ingest endpoint that does not serve policy config.
 
 ### Two Entry Points
 
@@ -204,17 +284,17 @@ Span.current().setStatus(StatusCode.OK)
 
 > **Note:** Scroll capture attaches to `RecyclerView` instances found at activity resume. Views created dynamically inside fragments may not be picked up until the next activity resume.
 
-Control via `AutoCaptureOptions` in `MobileConfig`:
+`OTelMobile.start()` enables the full auto-capture set with default `AutoCaptureOptions`
+(`PrivacyMode.STRICT`, 2000 ms freeze threshold, 3×3 tap grid, etc.). The per-signal toggles
+below describe those defaults:
 
 ```kotlin
-MobileConfig(
-    ...
-    autoCaptureOptions = AutoCaptureOptions(
-        captureTaps        = true,
-        captureScroll      = false,  // disable scroll events
-        freezeThresholdMs  = 3000,   // raise freeze threshold
-        privacyMode        = PrivacyMode.STRICT  // default
-    )
+// Defaults applied by OTelMobile.start():
+AutoCaptureOptions(
+    captureTaps        = true,
+    captureScroll      = true,
+    freezeThresholdMs  = 2000,
+    privacyMode        = PrivacyMode.STRICT  // default
 )
 ```
 
@@ -355,9 +435,8 @@ Selective flush (`windowMinutes`) is the key feature — export only the event w
 
 | Mode | Behavior |
 | ---- | -------- |
-| `PrivacyMode.STRICT` | No PII; view labels hashed; no coordinates |
-| `PrivacyMode.BALANCED` | Hashed user IDs; sanitized URLs |
-| `PrivacyMode.PERMISSIVE` | Full data (use only with user consent) |
+| `PrivacyMode.STRICT` | Safe default — hash UI text/labels and bucket coordinates |
+| `PrivacyMode.RELAXED` | Allow raw UI text/labels (not recommended for production) |
 
 ### Allowlists / Denylists
 
@@ -404,7 +483,7 @@ adb logcat | grep "OTelMobile\|MobileOtel\|PolicyEvaluator"
 
 Check:
 
-1. `collectorEndpoint` is reachable from the device (use `10.0.2.2:4317` for emulator loopback)
+1. `collectorEndpoint` is reachable from the device (use `10.0.2.2` for emulator loopback — append the OTLP/HTTP receiver port, e.g. `:4318`, or `:4317` when `protocol = OtlpProtocol.GRPC`)
 2. `ExportMode` — in `CONDITIONAL` mode, nothing exports until a policy trigger fires
 3. Call `MobileOtel.forceFlush()` manually to verify the pipeline works
 
@@ -414,7 +493,11 @@ Check:
 
 ### Policy evaluation not triggering
 
-The SDK fetches policy config from `policyEndpoint` on startup. If no config is fetched (no network, or endpoint not set), `PolicyEvaluator.evaluate()` returns `null` and no policy-based flush occurs. You'll still get error/predictive/recovery flushes.
+When `remoteConfigEnabled` is `true` (the default), the SDK polls the control-plane `/config`
+endpoint (derived from `collectorEndpoint`, every `configPollIntervalSeconds`) for the policy DSL.
+If no config is fetched (no network, `remoteConfigEnabled = false`, or the endpoint is a plain OTLP
+ingest that doesn't serve `/config`), no policy-based flush occurs. You'll still get
+error/predictive/recovery flushes.
 
 ### Unit testing
 
@@ -424,7 +507,7 @@ Use `TestDemoApplication` pattern to skip `OTelMobile.start()` in Robolectric te
 class TestApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Do NOT call OTelMobile.start() — avoids gRPC init in tests
+        // Do NOT call OTelMobile.start() — avoids exporter/network init in tests
     }
 }
 

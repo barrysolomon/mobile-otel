@@ -89,15 +89,17 @@ This is the exact path exercised by [validate-ios-end-to-end.sh](../scripts/test
 
 ### What's shipped vs TODO on iOS
 
-Auto-installed and live: `NetworkInstrumentation` (URLProtocol swizzle), `LifecycleInstrumentation`, `ErrorsInstrumentation` (uncaught NSException + signal + crash marker), `ScreenInstrumentation` (SwiftUI `.trackScreen(_:)` ViewModifier), `FreezeInstrumentation` (main-thread watchdog), `VitalsInstrumentation` (app.start, ui.jank, memory).
+Auto-installed and live (the `.default` `AutoCaptureOptions` set): `NetworkInstrumentation` (URLProtocol swizzle), `LifecycleInstrumentation`, `ErrorsInstrumentation` (uncaught NSException + signal + crash marker), `ScreenInstrumentation` (SwiftUI `.trackScreen(_:)` ViewModifier), `FreezeInstrumentation` (main-thread watchdog), `VitalsInstrumentation` + `AppStartInstrumentation` (app.start, ui.jank, memory), and the `DeviceStatsCollector` gauge loop.
 
-Still TODO: tap / scroll / text-input modules (placeholder flags in `AutoCaptureOptions`), `ScreenshotInstrumentation` / `WireframeInstrumentation` (need privacy design first — text redaction, attribute size caps, consent model).
+Opt-in (shipped, **off by default**): `ScreenshotInstrumentation` / `WireframeInstrumentation` — enable by adding `.screenshot` / `.wireframe` to `autoCaptureOptions` and supplying a `shouldCapture` consent gate (captures are redacted by default via `Dash0.redact(_:)` / `.dash0Redacted()`). See [IOS_CONFIGURATION.md](IOS_CONFIGURATION.md#capture-consent--redaction).
+
+Still TODO: tap / scroll / text-input modules (placeholder flags in `AutoCaptureOptions`).
 
 ## Part 2 — Crash and recovery demo (optional)
 
 Proves that the SDK survives real process death. The AstronomyShop doesn't currently have a dedicated "crash now" button — trigger a crash from the simulator menu (**Device → Simulate Memory Warning** won't crash; see below for a scripted approach) or build a fork with a test button wired to `fatalError(_:)`.
 
-The mechanism: POSIX signal + `NSException` handlers write a marker file mid-crash then re-raise so the OS still records the crash. On the next launch `ErrorsInstrumentation` reads the marker and emits an `app.crash` log with severity `fatal` + `crash.kind`, `crash.name`, `exception.stacktrace`. After emitting, the marker is deleted so a second relaunch is quiet.
+The mechanism: POSIX signal + `NSException` handlers write a marker file mid-crash then re-raise so the OS still records the crash. On the next launch `ErrorsInstrumentation` reads the marker and emits an `app.crash` log with severity `fatal` + `crash.kind`, `crash.name` (and `exception.stacktrace` on the NSException path — signal-path crashes carry no stack; see [IOS_CRASH_REPORTING.md](IOS_CRASH_REPORTING.md)). After emitting, the marker is deleted so a second relaunch is quiet.
 
 Scripted crash (uses `kill -9` on the launched process after ~3 s):
 
@@ -144,6 +146,9 @@ Mirror what you'd say for Android, adapted for iOS specifics:
 - **Privacy by default.** `PrivacyConfig.default` scrubs PII, buckets tap coordinates, and skips location capture. `NetworkConfig.default` strips query strings, refuses to capture `Authorization`/`Cookie` even if you ask it to, and captures only `Content-Type` by default. The OTLP endpoint host is auto-added to the network denylist so the SDK doesn't instrument its own exports.
 - **Cross-platform parity.** The DSL v2 models on iOS ([DSLv2Models.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Policy/DSLv2Models.swift)) are a direct port of Android's. Workflows authored in the control plane UI compile once and evaluate the same way on both platforms.
 - **SwiftUI-safe auto-install.** Auto-instrumentation defers to the main queue's next tick after `start(config:)` returns, so `URLSessionConfiguration` swizzles + signal handlers don't race with SwiftUI scene setup.
+- **Secure transport, on by default.** HTTPS is enforced — a cleartext endpoint is rejected, not silently shipped (`allowInsecureTransport` defaults `false`). Optional public-key pinning and HMAC-signed remote config are available.
+- **Remote kill switch out of the box.** `enablePolicyPolling` defaults ON, so an operator can flip `sdk.enabled` / `sample_rate` from the control plane and the device honors it within a poll cycle. The `sdk.enabled` / `sdk.sample_rate` gauges stream even when a device is disabled, so kill-switch state is always observable.
+- **Consent-gated visual capture.** Screenshots and wireframes are opt-in behind a `shouldCapture` consent gate and default-on redaction — privacy is the default posture, not an afterthought.
 
 ## Related Documentation
 

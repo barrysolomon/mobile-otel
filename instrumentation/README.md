@@ -19,7 +19,7 @@ All the modular instrumentation that the Android SDK auto-wires (or you opt into
 | [vitals](vitals/) | Memory, battery, jank, app-start metrics | On |
 | [network](network/) | OkHttp HTTP spans + `http.error` logs | User-wired |
 
-### Incubating (9) — opt-in via config
+### Incubating (11) — opt-in via config
 
 | Module | Captures | Notes |
 |--------|----------|-------|
@@ -40,7 +40,7 @@ All the modular instrumentation that the Android SDK auto-wires (or you opt into
 ```
             ┌─────────────────────────────────────────┐
             │  otel-android-mobile (public SDK)       │
-            │  MobileOtel.initialize(MobileConfig)    │
+            │  OTelMobile.start(application, config)  │
             └──────────────────┬──────────────────────┘
                                │ wires every module via
                                │ InstrumentationRegistry

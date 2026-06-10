@@ -32,7 +32,9 @@ First release hardened against a real production integration (Loper — Expo SDK
 
 - **Remote kill switch + global sampling** over remote config (`sdk.enabled` / `sample_rate`), honored on all platforms; transitively covers React Native.
 - **Capture consent API** (`shouldCapture`) + deterministic SwiftUI/UIKit redaction (replaces a class-name heuristic).
-- **Transport security**: HTTPS enforcement (cleartext rejected unless `allowInsecureTransport`), optional certificate / public-key **pinning**, and **HMAC-signed remote config** so the kill switch can't be flipped by a MITM/OTA payload.
+- **Transport security**:
+  - **iOS** — HTTPS enforcement (cleartext rejected unless `allowInsecureTransport`), optional certificate / public-key **pinning**, and **HMAC-signed remote config** (`configSigningKey`) so the kill switch can't be flipped by a MITM/OTA payload.
+  - **Android** — HTTPS enforcement (logs a prominent error on cleartext to a non-loopback host) + disk at-rest encryption (below). Cert pinning, `allowInsecureTransport`, and signed-config verification are **not yet implemented on Android** (iOS-only this release); tracked as a follow-up.
 - **Android disk-buffer encryption at rest** (SQLCipher + Android Keystore) — parity with iOS `NSFileProtection`.
 - **Android RAM byte caps** (10 MB total / 256 KB per event), **iOS error rate-limiter + dedup**, **O(1) RN-iOS live-span store** (was unbounded).
 - **iOS CI restored** (cost-bounded: path-filtered macOS job + nightly), a dependency-free **secret-scan** CI job, and the **RN-iOS production sink is now compiled and unit-tested** in CI.

@@ -227,6 +227,15 @@ try {
 
 ## Runtime Sampling Adjustment
 
+### Remote global sampling & kill switch (v0.2.0-alpha)
+
+When remote config is enabled (`remoteConfigEnabled = true` on Android, default; `enablePolicyPolling = true` on iOS, default), the control plane can override sampling for the whole fleet without an app update, via the `/config?dsl_version=2` payload:
+
+- **`sdk.sample_rate`** — a global sampling rate applied on top of the local `samplingConfig`.
+- **`sdk.enabled`** — a remote **kill switch**; when `false`, the SDK stops emitting/exporting telemetry entirely.
+
+This is honored on Android, iOS, and (transitively) React Native. To prevent a MITM/OTA payload from flipping the kill switch, the config can be HMAC-signed (iOS `MobileConfig.configSigningKey`); see [docs/design/remote-kill-switch.md](./design/remote-kill-switch.md).
+
 ### Workflow Actions
 
 Workflows can dynamically adjust sampling based on events:

@@ -376,22 +376,29 @@ data class MobileConfig(
     val collectorEndpoint: String,              // must start with https:// in production
 
     // ── Export ────────────────────────────────────────────────────────────────
-    val exportMode: ExportMode = ExportMode.CONDITIONAL,
+    val protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF,   // HTTP_PROTOBUF (default) | GRPC
+    val exportMode: ExportMode = ExportMode.HYBRID,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
     val traceExportIntervalSeconds: Long = 30,
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
     val exportTimeoutSeconds: Long = 30,
+    @Incubating val remoteConfigEnabled: Boolean = true,       // poll /config?dsl_version=2 (kill switch + global sampling)
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,              // range 0–10
     val headers: Map<String, String>? = null,
+    val extraResourceAttributes: Map<String, String>? = null,  // e.g. telemetry.distro.* for the RN bridge
     val attachContextAttributes: Boolean = false,
     val buildChannel: String? = null,
+    val userContextPrefsName: String? = null,   // SharedPreferences name for optional user-demographic context (null = none)
 
     // ── Buffer ────────────────────────────────────────────────────────────────
-    val ramBufferSize: Int = 5000,              // range 1–100,000
+    val ramBufferSize: Int = 5000,              // range 1–100,000 (count cap)
+    val ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024,      // 10 MB total-byte budget; must be >= ramBufferMaxEventBytes
+    val ramBufferMaxEventBytes: Int = 256 * 1024,              // 256 KB per-event cap (oversize → dropped + counted)
     val diskBufferMb: Int = 50,                 // range 1–500
     val diskBufferTtlHours: Int = 24,           // range 1–168
+    @Incubating val encryptDiskBufferAtRest: Boolean = true,   // SQLCipher + Android Keystore; crash-safe, degrades to cleartext
 
     // ── Sub-configs ───────────────────────────────────────────────────────────
     val textInputConfig: TextInputConfig = TextInputConfig(),
@@ -405,7 +412,10 @@ data class MobileConfig(
 
     // ── Incubating ────────────────────────────────────────────────────────────
     @Incubating val screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false),
-    @Incubating val wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
+    @Incubating val wireframeConfig: WireframeConfig = WireframeConfig(enabled = false),
+    @Incubating val offlineBudgetConfig: OfflineBudgetConfig = OfflineBudgetConfig.default(),
+    @Incubating val offlinePolicy: OfflinePolicy = OfflinePolicy.BUFFER_ALL,
+    @Incubating val appManagedScreens: Boolean = false
 )
 ```
 
@@ -413,12 +423,20 @@ data class MobileConfig(
 - `serviceName`, `serviceVersion`, `collectorEndpoint` must not be blank
 - `traceExportIntervalSeconds`, `metricExportIntervalSeconds`, `predictionIntervalSeconds`, `exportTimeoutSeconds`, `configPollIntervalSeconds` must be positive
 - `ramBufferSize` in `1..100_000`
+- `ramBufferMaxEventBytes` must be positive; `ramBufferMaxTotalBytes` must be `>= ramBufferMaxEventBytes`
 - `diskBufferMb` in `1..500`
 - `diskBufferTtlHours` in `1..168`
 - `maxExportRetries` in `0..10`
-- Non-HTTPS endpoint logs a warning unless the host is `localhost`, `127.0.0.1`, or `10.0.2.2`
+- Non-HTTPS endpoint logs a prominent error unless the host is `localhost`, `127.0.0.1`, `10.0.2.2`, or an IPv6 loopback (`::1`)
 
 ### Enums
+
+#### OtlpProtocol
+
+| Value | Behaviour |
+|-------|-----------|
+| `HTTP_PROTOBUF` | **Default.** OTLP/HTTP with a protobuf body, POSTed to `<collectorEndpoint>/v1/{logs,traces,metrics}` (per-signal suffix appended automatically). Matches the iOS SDK and traverses HTTPS-terminating proxies / PaaS ingress that cannot forward gRPC. |
+| `GRPC` | OTLP/gRPC to a single `collectorEndpoint` (typically a `:4317` gRPC port) — the pre-0.2.0 behaviour. Use only when the endpoint terminates gRPC end-to-end. |
 
 #### ExportMode
 
@@ -426,7 +444,7 @@ data class MobileConfig(
 |-------|-----------|
 | `CONDITIONAL` | Flush only when a policy trigger fires (most battery-efficient) |
 | `CONTINUOUS` | Flush on a fixed schedule regardless of conditions |
-| `HYBRID` | Regular lightweight exports plus conditional full dumps; prediction cycle driven by heartbeat |
+| `HYBRID` | **Default.** Regular lightweight exports (device metrics + heartbeats) plus conditional full dumps; prediction cycle driven by heartbeat |
 
 #### UiTelemetryMode
 
@@ -453,21 +471,28 @@ Each setter returns `Builder` for chaining; `build()` validates required fields.
 fun setServiceName(serviceName: String): Builder
 fun setServiceVersion(serviceVersion: String): Builder
 fun setCollectorEndpoint(collectorEndpoint: String): Builder
-fun setExportMode(exportMode: ExportMode): Builder
+fun setProtocol(protocol: OtlpProtocol): Builder        // default HTTP_PROTOBUF
+fun setExportMode(exportMode: ExportMode): Builder       // default HYBRID
 fun setUiTelemetryMode(mode: UiTelemetryMode): Builder
 fun setTextInputConfig(config: TextInputConfig): Builder
 fun setTraceExportIntervalSeconds(interval: Long): Builder
 fun setMetricExportIntervalSeconds(interval: Long): Builder
 fun setPredictionIntervalSeconds(seconds: Long): Builder
 fun setRamBufferSize(ramBufferSize: Int): Builder
+fun setRamBufferMaxTotalBytes(bytes: Long): Builder      // default 10 MB
+fun setRamBufferMaxEventBytes(bytes: Int): Builder       // default 256 KB
 fun setDiskBufferMb(diskBufferMb: Int): Builder
 fun setDiskBufferTtlHours(diskBufferTtlHours: Int): Builder
+fun setEncryptDiskBufferAtRest(enabled: Boolean): Builder   // default true
 fun setExportTimeoutSeconds(exportTimeoutSeconds: Long): Builder
+fun setRemoteConfigEnabled(enabled: Boolean): Builder       // default true
 fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long): Builder
 fun setMaxExportRetries(maxExportRetries: Int): Builder
 fun setHeaders(headers: Map<String, String>): Builder
 fun setAttachContextAttributes(enabled: Boolean): Builder
 fun setBuildChannel(channel: String): Builder
+fun setUserContextPrefsName(name: String?): Builder
+fun setAppManagedScreens(enabled: Boolean): Builder
 fun setSamplingConfig(config: SamplingConfig): Builder
 fun setDeviceMetricsConfig(config: DeviceMetricsConfig): Builder
 fun setSessionConfig(config: SessionConfig): Builder

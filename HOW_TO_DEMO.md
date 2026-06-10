@@ -318,7 +318,7 @@ Default-on. To express it explicitly in DSL v2 (e.g. for fleet-wide policy), use
 
 | Topic | Detail |
 |-------|--------|
-| **OTel-native** | Uses `LogRecordExporter`/`SpanExporter`, standard OTLP/gRPC — no proprietary protocols |
+| **OTel-native** | Uses `LogRecordExporter`/`SpanExporter`, standard OTLP — HTTP/protobuf by default (gRPC opt-in via `OtlpProtocol.GRPC`), no proprietary protocols |
 | **Dual-tier buffering** | RAM ring buffer (5000 events) + SQLite (50MB, 24h TTL) — survives process death |
 | **Export policy DSL** | Conditional / continuous / hybrid modes — battery-efficient selective flush |
 | **Behavioral test coverage** | 194 tests proving every config toggle changes runtime behavior |

@@ -25,18 +25,21 @@ These live in the native SDK; the RN layer inherits them by construction.
 | RAM ring buffer | ✅ | ✅ | ✅ (native) |
 | Disk spill (SQLite / Core Data) | ✅ | ✅ | ✅ (native) |
 | Crash-safety mirror with `seqId` dedupe | ✅ | ✅ | ✅ (native) |
-| OTLP/gRPC export | ✅ | ✅ | ✅ (native) |
+| OTLP/HTTP export (default since 0.2.0-alpha) | ✅ | ✅ | ✅ (native) |
+| OTLP/gRPC export (opt-in `MobileConfig.protocol`) | ✅ | — (HTTP only) | ✅ (native, Android only) |
 | Retry with exponential backoff | ✅ | ✅ | ✅ (native) |
 | 50 ms JS→native bridge batching | — | — | ✅ |
+| Sampling (`always_on`/`always_off`/`dynamic`) | ✅ default `dynamic(0.1)` | ✅ default `dynamic(0.1)` | ✅ via `StartConfig.sampling`, RN default `always_on` |
 
 ## Auto-instrumentation
 
 | Feature | Android | iOS | React Native (JS) |
 |---------|:------:|:---:|:-----------------:|
-| HTTP request tracing | ✅ OkHttp | ✅ URLProtocol | ✅ fetch + XHR |
+| HTTP request tracing | ✅ OkHttp | ✅ URLProtocol | ✅ Android: native OkHttp interceptor (JS XHR shim gated off) · iOS: JS fetch/XHR shim |
+| W3C `traceparent` injection (mobile→backend stitch) | ✅ | ✅ | ✅ Android native interceptor · iOS native URLProtocol (opt-in) |
 | Uncaught exception capture | ✅ | ✅ | ✅ ErrorUtils |
 | Unhandled promise rejection | — | — | ✅ |
-| App lifecycle (fg/bg) | ✅ | ✅ | ✅ AppState |
+| App lifecycle (`app.foreground`/`app.background`/`app.start`) | ✅ | ✅ | ✅ native (Android `ProcessLifecycleOwner`, iOS `NotificationCenter`) — no JS flag |
 | Session lifecycle | ✅ | ✅ | ✅ (native) |
 | Activity/Screen navigation | ✅ | ✅ SwiftUI | 🟡 opt-in (React Navigation) |
 | Tap events | ✅ `TapInstrumentation` | ✅ gesture recognizer | 🟡 opt-in (`withTapTelemetry`) |
@@ -67,6 +70,19 @@ These live in the native SDK; the RN layer inherits them by construction.
 | PII scrubbing (URL query params, headers) | ✅ | ✅ | ✅ (native) |
 | `captureLocation = false` by default | ✅ | ✅ | ✅ (native) |
 | Network privacy presets (default/minimal/debug) | ✅ | ✅ | ✅ (native) |
+| Screenshot/wireframe default OFF + consent gate (`shouldCapture`) | ✅ | ✅ (new in 0.2.0-alpha) | ✅ (native; OFF by default on RN) |
+| Capture consent API (`shouldCapture`) | ✅ | ✅ | ✅ (native) |
+
+## Security & transport (new in 0.2.0-alpha)
+
+| Feature | Android | iOS | React Native (JS) |
+|---------|:------:|:---:|:-----------------:|
+| Remote kill switch + global sampling (`sdk.enabled` / `sample_rate`) | ✅ | ✅ | ✅ (native, transitive) |
+| Remote-config polling default | ✅ | ✅ ON (new in 0.2.0-alpha) | ✅ (native, opt-in via `enablePolicyPolling`) |
+| HTTPS enforcement (cleartext rejected unless `allowInsecureTransport`) | ✅ | ✅ | ✅ (native) |
+| Certificate / public-key pinning | ✅ | ✅ | ✅ (native) |
+| HMAC-signed remote config | ✅ | ✅ | ✅ (native) |
+| Disk-buffer encryption at rest | ✅ SQLCipher + Keystore (new in 0.2.0-alpha) | ✅ `NSFileProtection` | ✅ (native) |
 
 ## OTel API compatibility
 
@@ -89,23 +105,23 @@ These live in the native SDK; the RN layer inherits them by construction.
 
 | Artifact | Android | iOS | React Native |
 |---------|:------:|:---:|:-----------------:|
-| AstronomyShop demo | ✅ | ✅ | 🟡 src complete, host projects pending (RN-003) |
+| AstronomyShop demo | ✅ | ✅ | ✅ host projects scaffolded (`AstronomyShopRN/{ios,android}`) |
 | 14-span checkout trace tree | ✅ | ✅ | ✅ (via ShopTelemetry) |
-| AutoDemoDriver | ✅ (monkey) | ✅ (XCUITest) | ✅ (JS state machine) |
+| AutoDemoDriver | ✅ (monkey) | ✅ (XCUITest) | ✅ (JS state machine: browse×3 → checkout → idle) |
 
 ## CI coverage
 
 | Check | Android | iOS | React Native |
 |---------|:------:|:---:|:-----------------:|
-| Unit tests in CI | ✅ `test.yml` | ✅ `ios-tests.yml` | ✅ `rn-tests.yml` |
-| Simulator/emulator build in CI | ✅ | ✅ | ⬜ (pending RN-003) |
-| Safety audit (forbidden patterns) | ✅ | ✅ | ⬜ |
+| Unit tests in CI | ✅ `test.yml` | ✅ `ios-tests.yml` (restored in 0.2.0-alpha) | ✅ `rn-tests.yml` (incl. compiled RN-iOS production sink) |
+| Simulator/emulator build in CI | ✅ | ✅ | 🟡 device-mode E2E automation still being wired up |
+| Secret-scan / safety audit | ✅ | ✅ | ✅ dependency-free secret-scan job (new in 0.2.0-alpha) |
 
 ## Gaps tracked as follow-ups
 
 - **RN-SCROLL / RN-TEXT / RN-BACK** — scroll, text input, back-press auto-instrumentation parity
 - **RN-BROWNFIELD-001** — brownfield sample (RN screens in native shell)
-- **EXPO-001** — Expo config plugin for no-eject integration
+- **EXPO-001** — Expo *managed-workflow* config plugin (no prebuild). The bare/dev-client workflow already works; 0.2.0-alpha was hardened against a real Expo SDK 56 / RN 0.85 integration (incl. `expo/fetch` capture via the native Android interceptor).
 - **REALM-001..N** — MongoDB Realm instrumentation (Innovapptive)
 - **AMPLIFY-RN-001..N** — Amplify DataStore RN port
 - **RN-SCREENSHOT-001** — screenshot/wireframe per-trigger flags need a bridge contract change so JS-side `autoCapture.{screenshot,wireframe}: {captureOnPolicyMatch: ...}` flows through to native. **Unblocked:** privacy design done — both native SDKs already redact text by default. As of 2026-05-14 the JS `ScreenshotAutoCapture` / `WireframeAutoCapture` types exist (`packages/react-native/src/bridge/types.ts`) but the bridge protocol carries only the `enabled` bit. Per-trigger flags must be set natively (Android: `MobileConfig.screenshotConfig` / `wireframeConfig`; iOS: same) until the bridge grows per-module options.

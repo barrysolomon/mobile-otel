@@ -1,6 +1,8 @@
 # Mobile OTel SDK
 
-OpenTelemetry-native Android observability SDK with intelligent buffering, on-device export policies, and predictive telemetry.
+OpenTelemetry-native mobile observability SDK (Android, iOS, React Native) with intelligent buffering, on-device export policies, predictive telemetry, and a remote kill switch.
+
+> **Current release: `0.2.0-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for the full 0.2.0-alpha notes.
 
 > **Management plane (gateway, control plane UI, k8s manifests)** has moved to [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
@@ -15,17 +17,46 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 - **Conditional export** — Zero bandwidth when nothing goes wrong (CONDITIONAL mode)
 - **Selective flush** — Export last N minutes around a problem, not everything
 - **Predictive flush** — Pre-emptive export when crash risk or network loss risk is high
+- **Remote kill switch** — Disable the SDK or cap sampling fleet-wide over signed remote config (`sdk.enabled` / `sample_rate`)
+- **Transport security** — HTTPS enforced by default (cleartext rejected unless `allowInsecureTransport`), optional cert/public-key pinning, HMAC-signed remote config
+- **At-rest encryption** — Android disk buffer encrypted (SQLCipher + Keystore), parity with iOS `NSFileProtection`
 
 ## Quick Start
 
 ### Android SDK Integration
+
+Add the dependency from GitHub Packages (artifact `io.opentelemetry.android:mobile:0.2.0-alpha`). Consuming GitHub Packages requires a GitHub personal access token with the `read:packages` scope:
+
+```kotlin
+// settings.gradle.kts (or build.gradle.kts repositories block)
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+        credentials {
+            // A GitHub PAT with read:packages
+            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
+// app/build.gradle.kts
+dependencies {
+    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
+}
+```
+
+> The full module set publishes to GitHub Packages as of 0.2.0-alpha — `io.opentelemetry.android:mobile` (the umbrella) plus `mobile-core` and all `mobile-instrumentation-*` modules — so the dependency tree resolves cleanly.
 
 ```kotlin
 // In Application.onCreate()
 OTelMobile.start(this, MobileConfig(
     serviceName = "my-app",
     serviceVersion = "1.0.0",
-    collectorEndpoint = "https://collector.example.com:4317"
+    // Default protocol is OTLP HTTP/protobuf; the SDK POSTs to
+    // <endpoint>/v1/{logs,traces,metrics}. One endpoint works for Android + iOS.
+    collectorEndpoint = "https://collector.example.com:4318"
+    // For a gRPC-only collector: protocol = OtlpProtocol.GRPC (typically :4317)
 ))
 
 // That's it. All auto-instrumentation is now active:
@@ -77,6 +108,60 @@ val client = OkHttpClient.Builder()
     .build()
 ```
 
+### iOS SDK Integration (SwiftPM)
+
+Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.2.0-alpha`, and depend on the `OTelMobileSDK` product:
+
+```swift
+// Package.swift
+dependencies: [
+    // SwiftPM resolves the git tag literally — the release tag is v0.2.0-alpha
+    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.2.0-alpha"))
+],
+targets: [
+    .target(name: "MyApp", dependencies: [
+        .product(name: "OTelMobileSDK", package: "mobile-otel")
+    ])
+]
+```
+
+```swift
+// App startup
+import OTelMobileSDK
+
+let otel = try OTelMobile.start(config: MobileConfig(
+    serviceName: "my-app",
+    serviceVersion: "1.0.0",
+    endpoint: "https://collector.example.com:4318"  // OTLP HTTP/protobuf
+))
+```
+
+> Screenshot and wireframe capture default **OFF** on iOS. Opt in via `screenshotConfig` / `wireframeConfig`, and provide a `shouldCapture` consent gate (a `CaptureConsentGate`) to decide per-capture whether to record.
+
+### React Native Integration (npm)
+
+Install under the **`alpha`** dist-tag — a bare install resolves the older 0.1.0-alpha:
+
+```bash
+npm install @barrysolomon/mobile-react-native@alpha
+# or pin exactly:
+npm install @barrysolomon/mobile-react-native@0.2.0-alpha
+```
+
+```ts
+import OTelMobile from '@barrysolomon/mobile-react-native';
+
+await OTelMobile.start({
+  serviceName: 'my-app',
+  endpoint: 'https://collector.example.com:4318',
+  // RN manual spans default to always-on sampling (strategy: 'always_on').
+  // Opt back into on-device sampling explicitly:
+  // sampling: { strategy: 'dynamic', normalRate: 0.1 },
+});
+```
+
+> RN is a thin JS facade over the native Android + iOS SDKs — buffering, policy evaluation, and OTLP export happen natively. On Android, native network instrumentation injects W3C `traceparent` so mobile→backend traces stitch (Expo SDK 52+ `expo/fetch` safe).
+
 ## Project Structure
 
 ```text
@@ -95,7 +180,7 @@ mobile-otel/
 │
 ├── otel-android-mobile-core/     # Core non-UI subsystems (builder, hub, context)
 │
-├── instrumentation/              # Modular UI instrumentation (10 modules)
+├── instrumentation/              # Modular instrumentation (21 modules; core 10 shown)
 │   ├── tap/                      # Touch, long-press, swipe detection
 │   ├── scroll/                   # RecyclerView scroll tracking
 │   ├── screen/                   # Screen view + page span lifecycle
@@ -131,7 +216,7 @@ mobile-otel/
 │ OTelMobile.start() │                    │                │
 │  ├─ Errors    ──┐  │                    │ + mobilepolicy │
 │  ├─ Vitals    ──┤  │───────────────────>│   processor    │──> Backends
-│  ├─ Predictive──┤  │  OTLP/gRPC        │                │
+│  ├─ Predictive──┤  │  OTLP/HTTP        │                │
 │  ├─ AutoCapture─┤  │                    │                │
 │  └─ RingBuffer──┘  │                    └────────────────┘
 │                    │
@@ -162,9 +247,11 @@ mobile-otel/
 
 | Component | Key Dependencies |
 | --- | --- |
-| Android SDK | Kotlin, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2 |
+| Android SDK | Kotlin, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, SQLCipher (at-rest encryption) |
+| iOS SDK | Swift 5.9, opentelemetry-swift 2.1.x, swift-collections 1.1.x |
+| React Native | TypeScript facade over the native Android + iOS SDKs |
 | Demo Backend | TypeScript, Express.js 4.21, better-sqlite3, OTel SDK Node 0.57.0 |
-| Collector Processor | Go 1.21+, OpenTelemetry Collector 1.39.0 |
+| Collector Processor | Go 1.24, OpenTelemetry Collector 1.39.0 |
 
 ## Building
 
