@@ -44,6 +44,40 @@ extension BridgeCallSink {
     }
 }
 
+/// Bridge-side mirror of the JS `SamplingConfig`. Decoded from the RN
+/// `start()` payload and translated to the native SDK's `SamplingConfig`
+/// in `OTelMobileCallSink.start`. Kept SDK-independent so the dispatcher
+/// and its tests compile without linking `OTelMobileSDK`.
+public struct BridgeSamplingConfig: Equatable {
+    public enum Strategy: String, Equatable {
+        case alwaysOn = "always_on"
+        case alwaysOff = "always_off"
+        case dynamic
+
+        /// Maps the JS `strategy` string; unknown values fall back to
+        /// `.alwaysOn` (the RN default — see `BridgeStartConfig.sampling`).
+        public static func fromToken(_ raw: String?) -> Strategy {
+            switch raw {
+            case "always_off": return .alwaysOff
+            case "dynamic": return .dynamic
+            default: return .alwaysOn
+            }
+        }
+    }
+
+    public let strategy: Strategy
+    /// Baseline rate for `.dynamic`. Nil = native default.
+    public let normalRate: Double?
+    /// High-priority rate for `.dynamic`. Nil = native default.
+    public let highPriorityRate: Double?
+
+    public init(strategy: Strategy, normalRate: Double? = nil, highPriorityRate: Double? = nil) {
+        self.strategy = strategy
+        self.normalRate = normalRate
+        self.highPriorityRate = highPriorityRate
+    }
+}
+
 public struct BridgeStartConfig: Equatable {
     public let serviceName: String
     public let serviceVersion: String?
@@ -63,6 +97,18 @@ public struct BridgeStartConfig: Equatable {
     /// "screen", "deviceStats". Unknown tokens are ignored (forward compat).
     public let nativeAutoCapture: [String]
 
+    /// Trace sampling strategy from the JS caller, mapped onto the native
+    /// `SamplingConfig` in `OTelMobileCallSink.start`.
+    ///
+    /// The RN bridge defaults this to `.alwaysOn` when the JS caller omits
+    /// `sampling`, rather than inheriting the native SDK's `dynamic(0.1)`
+    /// default. RN manual spans are root spans with arbitrary names, so a
+    /// 10% baseline silently drops ~90% of a user's first span (Loper
+    /// finding #4). Nil means the caller sent nothing — the sink falls back
+    /// to `.alwaysOn` to preserve the RN default; in practice the JS bridge
+    /// always sends a value.
+    public let sampling: BridgeSamplingConfig?
+
     public init(
         serviceName: String,
         serviceVersion: String?,
@@ -70,7 +116,8 @@ public struct BridgeStartConfig: Equatable {
         authToken: String?,
         dataset: String?,
         extraResourceAttributes: [String: String] = [:],
-        nativeAutoCapture: [String] = []
+        nativeAutoCapture: [String] = [],
+        sampling: BridgeSamplingConfig? = nil
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -79,5 +126,6 @@ public struct BridgeStartConfig: Equatable {
         self.dataset = dataset
         self.extraResourceAttributes = extraResourceAttributes
         self.nativeAutoCapture = nativeAutoCapture
+        self.sampling = sampling
     }
 }

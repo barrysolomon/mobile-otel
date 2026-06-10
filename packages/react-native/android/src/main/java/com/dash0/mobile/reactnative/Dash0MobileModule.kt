@@ -48,6 +48,9 @@ class Dash0MobileModule internal constructor(
                         .getArrayOrNull("nativeAutoCapture")
                         ?.toStringList()
                         ?: emptyList(),
+                    sampling = config
+                        .getMapOrNull("sampling")
+                        ?.toSamplingConfig(),
                 ),
             )
             promise.resolve(null)
@@ -195,6 +198,16 @@ private fun ReadableMap.toStringMap(): Map<String, String> {
     }
     return out
 }
+
+private fun ReadableMap.getDoubleOrNull(key: String): Double? =
+    if (hasKey(key) && getType(key) == ReadableType.Number) getDouble(key) else null
+
+private fun ReadableMap.toSamplingConfig(): BridgeSamplingConfig =
+    BridgeSamplingConfig(
+        strategy = SamplingStrategy.fromToken(getStringOrNull("strategy")),
+        normalRate = getDoubleOrNull("normalRate"),
+        highPriorityRate = getDoubleOrNull("highPriorityRate"),
+    )
 
 private fun ReadableMap.toAttributeMap(): Map<String, Any?> {
     val iter = keySetIterator()

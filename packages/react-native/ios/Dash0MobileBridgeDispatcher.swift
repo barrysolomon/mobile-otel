@@ -29,6 +29,7 @@ public final class Dash0MobileBridgeDispatcher {
         let extras: [String: String] = (config["extraResourceAttributes"] as? [String: Any])?
             .compactMapValues { $0 as? String } ?? [:]
         let nativeAutoCapture = (config["nativeAutoCapture"] as? [Any])?.compactMap { $0 as? String } ?? []
+        let sampling = Self.parseSampling(config["sampling"])
         sink.start(BridgeStartConfig(
             serviceName: serviceName,
             serviceVersion: config["serviceVersion"] as? String,
@@ -36,8 +37,29 @@ public final class Dash0MobileBridgeDispatcher {
             authToken: config["authToken"] as? String,
             dataset: config["dataset"] as? String,
             extraResourceAttributes: extras,
-            nativeAutoCapture: nativeAutoCapture
+            nativeAutoCapture: nativeAutoCapture,
+            sampling: sampling
         ))
+    }
+
+    /// Decode the JS `sampling` object into a `BridgeSamplingConfig`.
+    /// Returns nil when absent so the sink applies the RN default
+    /// (`.alwaysOn`). `normalRate` / `highPriorityRate` may arrive as
+    /// Int, Double, or NSNumber across the RN bridge.
+    private static func parseSampling(_ raw: Any?) -> BridgeSamplingConfig? {
+        guard let map = raw as? [String: Any] else { return nil }
+        return BridgeSamplingConfig(
+            strategy: .fromToken(map["strategy"] as? String),
+            normalRate: doubleOrNil(map["normalRate"]),
+            highPriorityRate: doubleOrNil(map["highPriorityRate"])
+        )
+    }
+
+    private static func doubleOrNil(_ v: Any?) -> Double? {
+        if let n = v as? Double { return n }
+        if let n = v as? Int { return Double(n) }
+        if let n = v as? NSNumber { return n.doubleValue }
+        return nil
     }
 
     public func emitBatch(_ payloads: [[String: Any]]) {
