@@ -17,7 +17,7 @@ Two paths depending on your goal:
 
 ### Step 1: Add the SDK
 
-The SDK (v0.2.0-alpha) publishes to **GitHub Packages**, not Maven Central. Consuming it requires a GitHub personal access token with the `read:packages` scope:
+The SDK (v0.2.1-alpha) publishes to **GitHub Packages**, not Maven Central. Consuming it requires a GitHub personal access token with the `read:packages` scope:
 
 ```kotlin
 // settings.gradle.kts (or build.gradle.kts repositories block)
@@ -34,7 +34,7 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.2.1-alpha")
 }
 ```
 

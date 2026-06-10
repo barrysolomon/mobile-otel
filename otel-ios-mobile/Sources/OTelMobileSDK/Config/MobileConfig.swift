@@ -95,14 +95,17 @@ public struct MobileConfig: Sendable {
     /// disabled (the SDK never crashes the host). Loopback/localhost endpoints
     /// are always permitted for local-collector development regardless of this
     /// flag. Set `true` only for a deliberate, network-isolated deployment.
-    /// Mirrors Android's `MobileConfig.allowInsecureTransport`.
+    /// Matches Android's `MobileConfig.allowInsecureTransport` (same name,
+    /// same default `false`, same loopback carve-out).
     public let allowInsecureTransport: Bool
 
     /// Optional certificate / public-key pinning applied to BOTH the OTLP
     /// export connections and the config-poller connection. When `nil` (the
     /// default) no pinning is performed. A pin mismatch fails only that
-    /// connection (fail-closed for the connection), never the host. Mirrors
-    /// Android's `MobileConfig.pinningConfig`.
+    /// connection (fail-closed for the connection), never the host. Matches
+    /// Android's `MobileConfig.pinningConfig` (whose `TransportSecurity.PinningConfig`
+    /// carries the same `spkiSHA256Pins` + `certificates` pin kinds; on Android
+    /// pinning is enforced on the OTLP/HTTP path).
     public let pinning: TransportSecurity.PinningConfig?
 
     /// Optional HMAC-SHA256 shared secret used to verify the integrity of
@@ -113,7 +116,9 @@ public struct MobileConfig: Sendable {
     /// the poller verifies the `X-Dash0-Config-Signature` header over the raw
     /// body and **keeps the last-applied config** on verification failure
     /// (fail toward availability — never disables telemetry on a bad
-    /// signature). Mirrors Android's `MobileConfig.configSigningKey`.
+    /// signature). Matches Android's `MobileConfig.configSigningKey` (an
+    /// HMAC-SHA256 shared secret; Android verifies the same
+    /// `X-Dash0-Config-Signature` header with a constant-time compare).
     public let configSigningKey: Data?
 
     public init(

@@ -95,11 +95,35 @@ class PolicyEvaluator(
     // SR-008: prefer an injected OkHttpClient so callers can share the SDK's
     // connection pool / dispatcher across components. Construct a private one
     // only when nothing was injected (preserves the old default behaviour for
-    // existing call sites).
-    private val httpClient: OkHttpClient = httpClient ?: OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+    // existing call sites). When certificate/public-key pinning is configured
+    // (config.pinningConfig) the constructed client applies an OkHttp
+    // CertificatePinner for the config-endpoint host (iOS parity: the poller
+    // gets the SAME pinning as the OTLP export connections). A pin mismatch
+    // fails only that TLS connection — surfaced as an SSLPeerUnverifiedException
+    // that fetchConfig catches and retries, never crashing the host. An injected
+    // client is used as-is (the caller owns its TLS config).
+    private val httpClient: OkHttpClient = httpClient ?: run {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+        val pinHost = io.opentelemetry.android.mobile.config.TransportSecurity.hostOf(collectorEndpoint)
+        if (pinHost != null) {
+            io.opentelemetry.android.mobile.config.TransportSecurity
+                .certificatePinner(pinHost, config.pinningConfig)
+                ?.let { builder.certificatePinner(it) }
+        }
+        builder.build()
+    }
+
+    // HTTPS-enforcement gate for the config-poll transport (iOS parity, matches
+    // ConfigPoller.enforceHTTPS). A cleartext http:// config endpoint to a
+    // non-loopback host with allowInsecureTransport=false is rejected: the poller
+    // never fetches, so the last-applied / persisted config (or built-in default
+    // policies) keeps running — telemetry is never disabled by this gate.
+    private val configTransportAllowed: Boolean =
+        io.opentelemetry.android.mobile.config.TransportSecurity.enforceHttps(
+            collectorEndpoint, config.allowInsecureTransport
+        )
 
     @androidx.annotation.VisibleForTesting
     internal fun getHttpClientForTest(): OkHttpClient = this.httpClient
@@ -145,7 +169,15 @@ class PolicyEvaluator(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     init {
-        if (config.remoteConfigEnabled) {
+        if (!configTransportAllowed) {
+            // Cleartext config endpoint to a non-loopback host with
+            // allowInsecureTransport=false — do NOT poll. The built-in default
+            // policies (or any persisted/last-applied config) keep running; we
+            // never disable telemetry on a transport-policy rejection.
+            Log.e(TAG, "Config poll transport rejected for '$collectorEndpoint' (cleartext to " +
+                "non-loopback host, allowInsecureTransport=false); remote config polling DISABLED. " +
+                "Using built-in default policies. Use https:// or set allowInsecureTransport=true.")
+        } else if (config.remoteConfigEnabled) {
             // Initial config fetch
             fetchConfig()
 
@@ -436,25 +468,59 @@ class PolicyEvaluator(
 
                 val response = httpClient.newCall(request).execute()
                 if (response.isSuccessful) {
-                    val body = response.body?.string()
-                    if (body != null) {
-                        val config = parseConfigAny(body)
-                        if (config != null) {
-                            policyConfig.set(config)
+                    // Read the RAW body bytes once: HMAC verification (below) must
+                    // run over the exact bytes the gateway signed, and the body can
+                    // only be consumed once.
+                    val bodyBytes = response.body?.bytes()
+                    if (bodyBytes != null) {
+                        // Config-integrity gate (iOS parity, matches
+                        // ConfigPoller). When configSigningKey is set, verify the
+                        // X-Dash0-Config-Signature header (hex or base64,
+                        // case-insensitive) over the RAW body with a constant-time
+                        // compare BEFORE applying. A missing/bad signature ⇒ KEEP
+                        // the last-applied config: we leave policyConfig and the
+                        // remoteGate untouched and skip this poll. This closes the
+                        // kill-switch MITM/OTA vector without ever disabling
+                        // telemetry on a bad payload. When the key is null, behave
+                        // exactly as before (apply any parseable config).
+                        val signingKey = config.configSigningKey
+                        if (signingKey != null && signingKey.isNotEmpty()) {
+                            val signature = response.header(
+                                io.opentelemetry.android.mobile.config.TransportSecurity.SIGNATURE_HEADER_NAME
+                            )
+                            if (signature.isNullOrBlank()) {
+                                Log.w(TAG, "Config signature missing " +
+                                    "(${io.opentelemetry.android.mobile.config.TransportSecurity.SIGNATURE_HEADER_NAME} " +
+                                    "header) but configSigningKey is set; keeping last-applied config")
+                                response.close()
+                                return@launch
+                            }
+                            val verified = io.opentelemetry.android.mobile.config.TransportSecurity
+                                .verifyHmacSha256(bodyBytes, signingKey, signature)
+                            if (!verified) {
+                                Log.w(TAG, "Config HMAC verification failed; keeping last-applied config")
+                                response.close()
+                                return@launch
+                            }
+                        }
+                        val body = String(bodyBytes, Charsets.UTF_8)
+                        val parsed = parseConfigAny(body)
+                        if (parsed != null) {
+                            policyConfig.set(parsed)
                             // Push the root `sdk` block into the shared gate. Absent block
                             // (null) re-opens the gate per the fail-open contract; a parse
-                            // failure (config == null) skips this entirely, preserving the
+                            // failure (parsed == null) skips this entirely, preserving the
                             // last-applied gate state. Guarded so a gate write can never
                             // derail config application.
                             remoteGate?.let { gate ->
                                 try {
-                                    gate.apply(config.sdk)
+                                    gate.apply(parsed.sdk)
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to apply sdk gate config", e)
                                 }
                             }
-                            Log.i(TAG, "Fetched policy config: ${config.policies.size} policies, " +
-                                "sdk=${config.sdk?.let { "enabled=${it.enabled}, rate=${it.clampedSampleRate}" } ?: "absent"}")
+                            Log.i(TAG, "Fetched policy config: ${parsed.policies.size} policies, " +
+                                "sdk=${parsed.sdk?.let { "enabled=${it.enabled}, rate=${it.clampedSampleRate}" } ?: "absent"}")
                         } else {
                             Log.w(TAG, "Failed to parse config response")
                         }

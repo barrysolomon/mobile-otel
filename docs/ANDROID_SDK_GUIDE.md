@@ -77,7 +77,7 @@ gpr.token=ghp_your_personal_access_token_with_read_packages
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.2.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.2.1-alpha")
 }
 ```
 

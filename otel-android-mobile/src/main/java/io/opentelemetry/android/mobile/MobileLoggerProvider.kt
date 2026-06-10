@@ -90,6 +90,42 @@ class MobileLoggerProvider private constructor(
         // choke point honours the same kill switch as the log choke point.
         sampler = SamplerFactory.createSampler(config.samplingConfig, remoteGate)
 
+        // Transport-security gate (iOS parity). Reject a cleartext http:// endpoint
+        // to a non-loopback host unless allowInsecureTransport is set; on rejection
+        // we install NO-OP exporters so export is disabled GRACEFULLY (PII never
+        // leaves the device in cleartext) without crashing the host. Pinning, when
+        // configured, is applied to the OTLP/HTTP TLS stack via a pinned SSLContext
+        // (the OTLP HTTP builder exposes setSslContext, not the OkHttp client).
+        val transportAllowed = io.opentelemetry.android.mobile.config.TransportSecurity.enforceHttps(
+            config.collectorEndpoint, config.allowInsecureTransport
+        )
+        if (!transportAllowed) {
+            android.util.Log.e(
+                "MobileLoggerProvider",
+                "Transport rejected for '${config.collectorEndpoint}' (cleartext to non-loopback host, " +
+                    "allowInsecureTransport=false). OTLP export is DISABLED (no-op exporters) — the host " +
+                    "is not affected. Use https:// or set allowInsecureTransport=true."
+            )
+        }
+        // Pinning only applies on the OTLP/HTTP path. The gRPC sender does not get
+        // OkHttp/TrustManager pinning here — use HTTP_PROTOBUF (the default) when
+        // pinning is required.
+        val pinnedTls: Pair<javax.net.ssl.SSLContext, javax.net.ssl.X509TrustManager>? =
+            if (config.protocol == OtlpProtocol.HTTP_PROTOBUF && transportAllowed) {
+                io.opentelemetry.android.mobile.config.TransportSecurity.pinningSslContext(config.pinningConfig)
+            } else {
+                if (config.pinningConfig != null && !config.pinningConfig.isEmpty &&
+                    config.protocol == OtlpProtocol.GRPC
+                ) {
+                    android.util.Log.w(
+                        "MobileLoggerProvider",
+                        "pinningConfig is set but protocol=GRPC; OTLP/gRPC export is NOT pinned. " +
+                            "Use OtlpProtocol.HTTP_PROTOBUF (the default) for certificate pinning."
+                    )
+                }
+                null
+            }
+
         val resource = Resource.getDefault().merge(
             Resource.builder()
                 .put("service.name", config.serviceName)
@@ -124,13 +160,16 @@ class MobileLoggerProvider private constructor(
         // headers are carried over identically on both paths.
         // SECURITY: never log header values — they include the Dash0 ingest
         // Bearer token. Do not reintroduce any logging of key/value here.
-        var baseLogExporter: LogRecordExporter = when (config.protocol) {
+        var baseLogExporter: LogRecordExporter = if (!transportAllowed) {
+            io.opentelemetry.android.mobile.export.NoopLogRecordExporter
+        } else when (config.protocol) {
             OtlpProtocol.HTTP_PROTOBUF ->
                 OtlpHttpLogRecordExporter.builder()
                     .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/logs"))
                     .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
                     .apply {
                         config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        pinnedTls?.let { setSslContext(it.first, it.second) }
                     }
                     .build()
             OtlpProtocol.GRPC ->
@@ -160,13 +199,16 @@ class MobileLoggerProvider private constructor(
         // OTLP/HTTP (default) metrics POST to <endpoint>/v1/metrics, matching
         // iOS. With OTLP/gRPC a single collectorEndpoint (a gRPC port, typically
         // :4317) is sufficient.
-        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = when (config.protocol) {
+        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = if (!transportAllowed) {
+            io.opentelemetry.android.mobile.export.NoopMetricExporter
+        } else when (config.protocol) {
             OtlpProtocol.HTTP_PROTOBUF ->
                 OtlpHttpMetricExporter.builder()
                     .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/metrics"))
                     .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
                     .apply {
                         config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        pinnedTls?.let { setSslContext(it.first, it.second) }
                     }
                     .build()
             OtlpProtocol.GRPC ->
@@ -207,13 +249,16 @@ class MobileLoggerProvider private constructor(
         // Span exporter — same transport as logs and metrics. OTLP/HTTP
         // (default) POSTs to <endpoint>/v1/traces (matches iOS); OTLP/gRPC
         // exports to the single collectorEndpoint.
-        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = when (config.protocol) {
+        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = if (!transportAllowed) {
+            io.opentelemetry.android.mobile.export.NoopSpanExporter
+        } else when (config.protocol) {
             OtlpProtocol.HTTP_PROTOBUF ->
                 OtlpHttpSpanExporter.builder()
                     .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/traces"))
                     .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
                     .apply {
                         config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        pinnedTls?.let { setSslContext(it.first, it.second) }
                     }
                     .build()
             OtlpProtocol.GRPC ->

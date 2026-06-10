@@ -254,7 +254,46 @@ data class MobileConfig(
      * name (e.g. the cold-launch first frame). Default `false` keeps that render
      * as legitimate startup telemetry. Intended for single-Activity Compose apps.
      */
-    @Incubating val appManagedScreens: Boolean = false
+    @Incubating val appManagedScreens: Boolean = false,
+    /**
+     * Permit cleartext (`http://`) transport to a non-loopback host for the
+     * OTLP exporters AND the config poller. **Default false** — a cleartext
+     * non-localhost endpoint is rejected and the corresponding pipeline is
+     * disabled (the SDK never crashes the host). Loopback / localhost endpoints
+     * (`localhost`, `127.0.0.1`, `10.0.2.2` emulator, `::1`, `*.local`) are
+     * always permitted for local-collector development regardless of this flag.
+     * Set `true` only for a deliberate, network-isolated deployment.
+     *
+     * Matches the iOS SDK's `MobileConfig.allowInsecureTransport`.
+     */
+    @Incubating val allowInsecureTransport: Boolean = false,
+    /**
+     * Optional certificate / public-key pinning applied to BOTH the OTLP export
+     * connections (OTLP/HTTP path) and the config-poller connection. When `null`
+     * (the default) no pinning is performed. A pin mismatch fails only that TLS
+     * connection (fail-closed for the connection), never the host.
+     *
+     * Pinning is enforced on the OTLP HTTP protocol only ([OtlpProtocol.HTTP_PROTOBUF],
+     * the default). The OTLP/gRPC path does not apply OkHttp/TrustManager pinning;
+     * use the HTTP protocol when pinning is required (consistent with the SDK
+     * defaulting to HTTP).
+     *
+     * Matches the iOS SDK's `MobileConfig.pinning` / `TransportSecurity.PinningConfig`.
+     */
+    @Incubating val pinningConfig: TransportSecurity.PinningConfig? = null,
+    /**
+     * Optional HMAC-SHA256 shared secret used to verify the integrity of fetched
+     * remote-config payloads before applying them (closes the kill-switch
+     * MITM/OTA-abuse vector). When `null` (the default) config is applied as
+     * before (backward compatible). When set, the poller verifies the
+     * `X-Dash0-Config-Signature` header (hex or base64, case-insensitive) over
+     * the raw body with a constant-time compare and **keeps the last-applied
+     * config** on verification failure (fail toward availability — never disables
+     * telemetry on a bad signature).
+     *
+     * Matches the iOS SDK's `MobileConfig.configSigningKey`.
+     */
+    @Incubating val configSigningKey: ByteArray? = null
 ) {
     init {
         require(serviceName.isNotBlank()) { "serviceName must not be blank" }
@@ -274,20 +313,36 @@ data class MobileConfig(
         require(configPollIntervalSeconds > 0) { "configPollIntervalSeconds must be positive" }
         require(maxExportRetries in 0..10) { "maxExportRetries must be between 0 and 10" }
 
-        // Enforce HTTPS for the collector endpoint. localhost / emulator-loopback
-        // (10.0.2.2) stay exempt for local development. For any other cleartext
-        // http:// endpoint, log a PROMINENT ERROR — telemetry (including the auth
-        // token in headers) would otherwise travel in plaintext over the network.
+        // Transport-security policy for the collector endpoint. localhost /
+        // emulator-loopback (10.0.2.2) stay exempt for local development. For any
+        // other cleartext http:// endpoint we log a PROMINENT ERROR here — and,
+        // unless [allowInsecureTransport] is set, the OTLP exporters and the
+        // config poller ACTUALLY reject the transport at the network paths (see
+        // MobileLoggerProvider / PolicyEvaluator, via [TransportSecurity.enforceHttps])
+        // so PII never leaves the device in cleartext by default. This matches the
+        // iOS SDK's HTTPS enforcement.
+        //
+        // Certificate / public-key pinning ([pinningConfig]) and signed-config
+        // verification ([configSigningKey]) are likewise applied at the network
+        // paths — see [TransportSecurity]. They mirror the iOS SDK's
+        // `TransportSecurity.PinningConfig` and `configSigningKey`.
         //
         // Prime directive: we do NOT hard-crash the host on misconfiguration; we
-        // log loudly and continue. (Cert pinning is intentionally out of scope —
-        // that's a feature, not a config-validation fix.)
+        // log loudly, and a rejected transport degrades to a disabled pipeline.
         val endpoint = collectorEndpoint.lowercase()
         if (!endpoint.startsWith("https://") && !isLocalhostEndpoint(endpoint)) {
-            Log.e("MobileConfig", "SECURITY: collectorEndpoint '$collectorEndpoint' uses cleartext " +
-                "(non-HTTPS) transport to a non-localhost host. Telemetry AND the ingest auth " +
-                "token will be sent in PLAINTEXT and can be intercepted. Use https:// in production. " +
-                "Continuing with insecure transport — fix this before shipping.")
+            if (allowInsecureTransport) {
+                Log.e("MobileConfig", "SECURITY: collectorEndpoint '$collectorEndpoint' uses cleartext " +
+                    "(non-HTTPS) transport to a non-localhost host — permitted only because " +
+                    "allowInsecureTransport=true. Telemetry AND the ingest auth token are sent in " +
+                    "PLAINTEXT and can be intercepted. Use https:// in production.")
+            } else {
+                Log.e("MobileConfig", "SECURITY: collectorEndpoint '$collectorEndpoint' uses cleartext " +
+                    "(non-HTTPS) transport to a non-localhost host. With allowInsecureTransport=false " +
+                    "(the default) the OTLP export and config-poll pipelines will be DISABLED rather " +
+                    "than send PII in plaintext. Use https:// in production, or set " +
+                    "allowInsecureTransport=true for a deliberate, network-isolated deployment.")
+            }
         }
     }
 
@@ -389,6 +444,9 @@ data class MobileConfig(
         private var screenshotConfig: ScreenshotConfig = ScreenshotConfig(enabled = false)
         private var wireframeConfig: WireframeConfig = WireframeConfig(enabled = false)
         private var appManagedScreens: Boolean = false
+        private var allowInsecureTransport: Boolean = false
+        private var pinningConfig: TransportSecurity.PinningConfig? = null
+        private var configSigningKey: ByteArray? = null
 
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
@@ -429,6 +487,12 @@ data class MobileConfig(
         fun setScreenshotConfig(config: ScreenshotConfig) = apply { this.screenshotConfig = config }
         fun setWireframeConfig(config: WireframeConfig) = apply { this.wireframeConfig = config }
         fun setAppManagedScreens(enabled: Boolean) = apply { this.appManagedScreens = enabled }
+        /** See [MobileConfig.allowInsecureTransport]. Default `false`. */
+        fun setAllowInsecureTransport(enabled: Boolean) = apply { this.allowInsecureTransport = enabled }
+        /** See [MobileConfig.pinningConfig]. Default `null` (no pinning). */
+        fun setPinningConfig(config: TransportSecurity.PinningConfig?) = apply { this.pinningConfig = config }
+        /** See [MobileConfig.configSigningKey]. Default `null` (no signature verification). */
+        fun setConfigSigningKey(key: ByteArray?) = apply { this.configSigningKey = key }
 
         fun addLogExporterCustomizer(customizer: (LogRecordExporter) -> LogRecordExporter) = apply {
             exporterCustomizers.addLog(customizer)
@@ -475,7 +539,10 @@ data class MobileConfig(
                 errorConfig = errorConfig,
                 screenshotConfig = screenshotConfig,
                 wireframeConfig = wireframeConfig,
-                appManagedScreens = appManagedScreens
+                appManagedScreens = appManagedScreens,
+                allowInsecureTransport = allowInsecureTransport,
+                pinningConfig = pinningConfig,
+                configSigningKey = configSigningKey
             )
         }
 

@@ -142,7 +142,7 @@ function resolveNative(): NativeDash0MobileModule | null {
 // callers and correlate issues to a specific bridge release. Keep this in
 // sync with package.json on each release.
 const DISTRO_NAME = 'dash0-react-native';
-const DISTRO_VERSION = '0.1.0-alpha';
+const DISTRO_VERSION = '0.2.1-alpha';
 
 function resolveReactNativeVersion(): string | undefined {
   try {

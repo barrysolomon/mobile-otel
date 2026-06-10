@@ -1,7 +1,7 @@
 # Geo & Device Context Policy Extension
 
 **Status**: Active Extension
-**Version**: 0.2.0-alpha
+**Version**: 0.2.1-alpha
 **Last Updated**: 2026-01-21
 
 ---

@@ -9,6 +9,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.1-alpha] — 2026-06-10
+
+Patch release: correct the SDK's self-reported version and complete Android transport-security parity (both surfaced by the v0.2.0-alpha documentation audit).
+
+### Fixed
+
+- **The SDK now reports its real version.** `0.2.0-alpha` shipped with hardcoded `0.1.0-alpha` version literals, so emitted telemetry carried the wrong `telemetry.sdk.version` (iOS) / `telemetry.distro.version` (React Native). Fixed:
+  - iOS — `ResourceBuilder.sdkVersion` → `0.2.1-alpha`.
+  - React Native — `DISTRO_VERSION` → `0.2.1-alpha`.
+  - (Android already derived its version correctly from the OpenTelemetry SDK resource.)
+
+### Added
+
+- **Android transport-security parity with iOS.** `0.2.0-alpha` shipped transport security on iOS only; Android now matches, with the same `MobileConfig` API names/semantics:
+  - **`allowInsecureTransport`** (default `false`) — cleartext `http://` to a non-loopback host is now *rejected* (export disabled / poller skipped, gracefully — never crashes the host), not merely logged. Loopback (`localhost`/`127.0.0.1`/`::1`/`*.local`/`10.0.2.2`) is exempt.
+  - **Certificate / public-key pinning** (`pinningConfig`: SPKI SHA-256 pins and/or DER certs) — applied via OkHttp `CertificatePinner` on the config poller and a pinning `TrustManager` on the OTLP/HTTP exporter. Pin mismatch fails only that connection. (Pinning requires the HTTP protocol — the default; a warning is logged if set with `protocol = GRPC`.)
+  - **`configSigningKey`** (HMAC-SHA256) — when set, the remote-config payload's `X-Dash0-Config-Signature` is verified (constant-time) before applying; failure keeps the last-applied config. So a MITM/OTA payload can't flip the kill switch on Android either.
+
+  The iOS source comments that referenced "Android's `MobileConfig.allowInsecureTransport` / `pinningConfig` / `configSigningKey`" are now accurate.
+
+### Docs
+
+- Bumped install coordinates to `0.2.1-alpha` across READMEs and guides (npm `@0.2.1-alpha` / dist-tag `@alpha`, Android Maven `0.2.1-alpha`, iOS SwiftPM tag `v0.2.1-alpha`). Historical "new in 0.2.0-alpha" provenance notes left intact.
+
 ## [0.2.0-alpha] — 2026-06-10
 
 First release hardened against a real production integration (Loper — Expo SDK 56 / RN 0.85, ~400k users, self-hosted OTel collector → Dash0). Thanks to Loper engineering for an exceptional teardown with reproductions and patches. This entry consolidates the earlier (never-published) production-readiness work with the Loper fixes and the security/reliability hardening pass.

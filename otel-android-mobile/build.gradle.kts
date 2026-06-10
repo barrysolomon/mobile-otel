@@ -133,7 +133,12 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("org.robolectric:robolectric:4.16.1")
-    testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
+    // MockWebServer (mockwebserver3 package) + okhttp-tls, aligned with the
+    // okhttp 5.x that the OTLP sender forces onto the runtime classpath.
+    // okhttp-tls provides HeldCertificate for generating real self-signed certs
+    // in the transport-security / pinning tests.
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.3.2")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.3.2")
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.58.0")
 
@@ -155,7 +160,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "io.opentelemetry.android"
             artifactId = "mobile"
-            version = "0.2.0-alpha"
+            version = "0.2.1-alpha"
 
             afterEvaluate {
                 from(components["release"])
