@@ -10,6 +10,7 @@ package com.dash0.mobile.reactnative
 import android.content.Context
 import io.opentelemetry.android.mobile.OTelMobile
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
@@ -56,10 +57,27 @@ internal class OTelMobileCallSink(
                 // time. CONDITIONAL buffers spans for up to 1 hour, which is
                 // surprising behavior for a JS dev who just called startSpan().
                 exportMode = io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS,
+                // RN sampling default is ALWAYS_ON (Loper finding #4): RN manual
+                // spans are root spans with arbitrary names, so the native SDK's
+                // dynamic(0.1) default would silently drop ~90% of a user's first
+                // span. The JS bridge sends always_on unless the caller opts into
+                // sampling; rate-limiting for RN belongs in the collector.
+                samplingConfig = samplingConfigOf(config.sampling),
                 extraResourceAttributes = config.extraResourceAttributes,
             ),
         )
     }
+
+    private fun samplingConfigOf(sampling: BridgeSamplingConfig?): SamplingConfig =
+        when (sampling?.strategy) {
+            null,
+            SamplingStrategy.ALWAYS_ON -> SamplingConfig.alwaysOn()
+            SamplingStrategy.ALWAYS_OFF -> SamplingConfig.alwaysOff()
+            SamplingStrategy.DYNAMIC -> SamplingConfig.dynamic(
+                normalRate = sampling.normalRate ?: 0.05,
+                highPriorityRate = sampling.highPriorityRate ?: 1.0,
+            )
+        }
 
     override fun emitLog(
         name: String,

@@ -54,6 +54,14 @@ final class OTelMobileCallSink: BridgeCallSink {
             authToken: config.authToken,
             exportMode: exportMode,
             extraHeaders: extraHeaders,
+            // RN sampling default is .alwaysOn (Loper finding #4): RN manual
+            // spans are root spans with arbitrary names, so the native SDK's
+            // dynamic(0.1) default would silently drop ~90% of a user's first
+            // span — and a dropped iOS span is a non-recording PropagatedSpan
+            // whose end() is a silent no-op. The JS bridge sends always_on
+            // unless the caller opts into sampling; rate-limiting for RN
+            // belongs in the collector.
+            samplingConfig: Self.samplingConfig(from: config.sampling),
             extraResourceAttributes: mergedAttrs
         )
         do {
@@ -245,6 +253,23 @@ final class OTelMobileCallSink: BridgeCallSink {
     }
 
     // MARK: - Helpers
+
+    /// Translate the bridge sampling config into the SDK's `SamplingConfig`.
+    /// Nil (caller sent nothing) maps to `.alwaysOn` to preserve the RN
+    /// default — see the `samplingConfig:` comment in `start`.
+    private static func samplingConfig(from sampling: BridgeSamplingConfig?) -> SamplingConfig {
+        switch sampling?.strategy {
+        case .none, .alwaysOn:
+            return .alwaysOn()
+        case .alwaysOff:
+            return .alwaysOff()
+        case .dynamic:
+            return .dynamic(
+                normalRate: sampling?.normalRate ?? 0.05,
+                highPriorityRate: sampling?.highPriorityRate ?? 1.0
+            )
+        }
+    }
 
     private static func toAttributeValues(_ raw: [String: Any]) -> [String: AttributeValue] {
         var out: [String: AttributeValue] = [:]

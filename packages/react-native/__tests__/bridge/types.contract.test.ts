@@ -69,6 +69,23 @@ describe('bridge payload contract', () => {
     expect(cfg.serviceName).toBeDefined();
   });
 
+  it('StartConfig.sampling accepts always_on / always_off / dynamic', () => {
+    const cfgs: StartConfig[] = [
+      { serviceName: 's', endpoint: 'e', sampling: { strategy: 'always_on' } },
+      { serviceName: 's', endpoint: 'e', sampling: { strategy: 'always_off' } },
+      {
+        serviceName: 's',
+        endpoint: 'e',
+        sampling: { strategy: 'dynamic', normalRate: 0.1, highPriorityRate: 1.0 },
+      },
+    ];
+    expect(cfgs.map(c => c.sampling?.strategy)).toEqual([
+      'always_on',
+      'always_off',
+      'dynamic',
+    ]);
+  });
+
   it('BridgePayload union discriminates on `kind`', () => {
     const samples: BridgePayload[] = [
       {

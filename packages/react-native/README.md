@@ -81,6 +81,33 @@ await Dash0Mobile.start({
 });
 ```
 
+## Sampling
+
+**The RN bridge defaults to `always_on` (100% of spans)** — unlike the native
+Android/iOS SDKs, which default to `dynamic(0.1)` (10% baseline). RN manual
+spans (`Dash0Mobile.startSpan()` / `Dash0Mobile.span()`) are root spans with
+arbitrary names, so a 10% baseline would silently drop ~90% of a user's very
+first span — a terrible first-run experience (and on iOS a dropped span is a
+non-recording span whose `.end()` is a silent no-op). For RN architectures,
+sampling and rate-limiting belong in the collector, not the on-device SDK.
+
+Opt into on-device sampling explicitly:
+
+```ts
+await Dash0Mobile.start({
+  // ...
+  // 100% (RN default — may be omitted):
+  sampling: { strategy: 'always_on' },
+  // Disable tracing entirely:
+  // sampling: { strategy: 'always_off' },
+  // Native-style dynamic sampling (10% baseline, 100% for high-priority spans):
+  // sampling: { strategy: 'dynamic', normalRate: 0.1, highPriorityRate: 1.0 },
+});
+```
+
+The native-only Android/iOS SDKs keep their `dynamic(0.1)` default — only the
+RN-bridged default changes.
+
 ## Architecture
 
 The JS layer is a thin marshaller with a 50 ms batching window. All buffering,

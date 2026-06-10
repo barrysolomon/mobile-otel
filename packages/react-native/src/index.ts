@@ -16,13 +16,14 @@ import type {
   Attributes,
   BridgePayload,
   NativeDash0MobileModule,
+  SamplingConfig,
   SeverityNumber,
   SpanKind,
   SpanStartPayload,
   StartConfig,
 } from './bridge/types';
 
-export type { Attributes, SeverityNumber, StartConfig } from './bridge/types';
+export type { Attributes, SamplingConfig, SeverityNumber, StartConfig } from './bridge/types';
 export { installReactNavigationInstrumentation } from './instrumentation/navigation';
 export { withTapTelemetry } from './instrumentation/touch';
 export { otel } from './otel-compat';
@@ -174,8 +175,16 @@ export const Dash0Mobile = {
     // iOS URLProtocol / NSException / signal-handler swizzles by default,
     // which collide with RN's new-arch JS event loop.
     const nativeAutoCapture = buildNativeAutoCaptureTokens(config.autoCapture);
+    // RN sampling default: always_on. RN manual spans are root spans with
+    // arbitrary names, so the native SDKs' dynamic(0.1) default would
+    // silently drop ~90% of a user's first span (Loper finding #4). Sampling
+    // for RN architectures belongs in the collector — callers can still opt
+    // into on-device sampling by passing an explicit `sampling`. See the
+    // SamplingConfig doc comment in bridge/types.ts.
+    const sampling: SamplingConfig = config.sampling ?? { strategy: 'always_on' };
     const mergedConfig: StartConfig & { nativeAutoCapture: string[] } = {
       ...config,
+      sampling,
       extraResourceAttributes: {
         'telemetry.distro.name': DISTRO_NAME,
         'telemetry.distro.version': DISTRO_VERSION,
