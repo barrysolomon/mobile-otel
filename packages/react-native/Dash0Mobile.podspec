@@ -22,6 +22,10 @@ Pod::Spec.new do |s|
   s.exclude_files = [
     "ios/Tests/**/*",
     "ios/OTelMobileCallSink.swift",
+    # BoundedLiveSpanStore is used only by OTelMobileCallSink. Both are copied
+    # together into the consumer's app target (same module → internal access),
+    # so it is excluded from the pod alongside the call sink.
+    "ios/BoundedLiveSpanStore.swift",
   ]
   s.swift_version = "5.9"
 

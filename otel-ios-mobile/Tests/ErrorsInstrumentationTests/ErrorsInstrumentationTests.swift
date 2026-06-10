@@ -118,6 +118,54 @@ struct ErrorsInstrumentationTests {
         ErrorsInstrumentation.shared.recordError(TestError(message: "x"))
     }
 
+    // MARK: - recordError throttling (rate limit + dedup, Android parity)
+
+    /// LocalizedError so `localizedDescription` reflects the message — a plain
+    /// `Error` returns a generic description for every instance, collapsing all
+    /// dedup fingerprints.
+    private struct ThrottleError: LocalizedError {
+        let m: String
+        var errorDescription: String? { m }
+    }
+
+    @Test("recordError suppresses identical errors within the dedup window")
+    func recordErrorDedupsIdentical() {
+        ErrorsInstrumentation.shared.configureRecording(.default)
+        ErrorsInstrumentation.removeMarkerForTesting() // also resets throttle counters
+        let cap = LogCapture()
+        ErrorsInstrumentation.shared.install(logger: makeLogger(processor: cap))
+        for _ in 0..<5 {
+            ErrorsInstrumentation.shared.recordError(ThrottleError(m: "same boom"))
+        }
+        #expect(cap.records.filter { $0.body == "app.error" }.count == 1)
+    }
+
+    @Test("recordError lets distinct errors through up to the rate limit")
+    func recordErrorEnforcesRateLimit() {
+        ErrorsInstrumentation.shared.configureRecording(ErrorRecordingConfig(rateLimit: 3))
+        ErrorsInstrumentation.removeMarkerForTesting()
+        let cap = LogCapture()
+        ErrorsInstrumentation.shared.install(logger: makeLogger(processor: cap))
+        for i in 0..<6 {
+            ErrorsInstrumentation.shared.recordError(ThrottleError(m: "distinct \(i)"))
+        }
+        #expect(cap.records.filter { $0.body == "app.error" }.count == 3)
+        ErrorsInstrumentation.shared.configureRecording(.default) // restore for later tests
+    }
+
+    @Test("recordError with .unlimited emits every call (legacy behavior)")
+    func recordErrorUnlimitedEmitsAll() {
+        ErrorsInstrumentation.shared.configureRecording(.unlimited)
+        ErrorsInstrumentation.removeMarkerForTesting()
+        let cap = LogCapture()
+        ErrorsInstrumentation.shared.install(logger: makeLogger(processor: cap))
+        for _ in 0..<20 {
+            ErrorsInstrumentation.shared.recordError(ThrottleError(m: "same"))
+        }
+        #expect(cap.records.filter { $0.body == "app.error" }.count == 20)
+        ErrorsInstrumentation.shared.configureRecording(.default) // restore for later tests
+    }
+
     // MARK: - install / uninstall
 
     @Test("install is idempotent — second call is a no-op")

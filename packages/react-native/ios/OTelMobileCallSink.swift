@@ -13,7 +13,17 @@ import OTelMobileSDK
 final class OTelMobileCallSink: BridgeCallSink {
     private var otel: OTelMobile?
     private let spanLock = NSLock()
-    private var liveSpans: [String: Span] = [:]
+
+    /// Upper bound on concurrently-live (started-but-not-ended) spans. A
+    /// misbehaving JS layer that starts spans without ending them must not
+    /// balloon native memory. Matches the historical ~2048 ceiling.
+    private static let maxLiveSpans = 2048
+
+    /// O(1) lookup-by-id AND O(1) oldest-eviction. Replaces the previous
+    /// unbounded `[String: Span]` (which leaked on never-ended spans) — and
+    /// avoids the O(n) `firstIndex` scan a naive bounded list would need on
+    /// eviction. All access is serialized under `spanLock`.
+    private let liveSpans = BoundedLiveSpanStore<String, Span>(capacity: maxLiveSpans)
 
     func start(_ config: BridgeStartConfig) {
         guard otel == nil else { return }
@@ -90,8 +100,15 @@ final class OTelMobileCallSink: BridgeCallSink {
             span.setAttribute(key: k, value: v)
         }
         spanLock.lock()
-        liveSpans[spanId] = span
+        // Inserting at capacity evicts the oldest live span. End it so it is
+        // not leaked (the JS side never called endSpan for it). Marked ERROR
+        // so the dropped span is visibly attributable rather than silently OK.
+        let evicted = liveSpans.put(spanId, span)
         spanLock.unlock()
+        if let evicted = evicted {
+            evicted.status = .error(description: "span evicted: liveSpans cap (\(Self.maxLiveSpans)) reached")
+            evicted.end()
+        }
     }
 
     func endSpan(
@@ -160,7 +177,7 @@ final class OTelMobileCallSink: BridgeCallSink {
     func shutdown() {
         otel = nil
         spanLock.lock()
-        liveSpans.removeAll()
+        _ = liveSpans.removeAll()
         spanLock.unlock()
     }
 

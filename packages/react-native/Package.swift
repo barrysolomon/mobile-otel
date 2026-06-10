@@ -35,6 +35,9 @@ let package = Package(
             sources: [
                 "BridgeCallSink.swift",
                 "Dash0MobileBridgeDispatcher.swift",
+                // O(1) bounded live-span store. Pure Swift, no OTel/React deps,
+                // so it compiles standalone and is unit-testable via swift test.
+                "BoundedLiveSpanStore.swift",
             ]
         ),
         .testTarget(
