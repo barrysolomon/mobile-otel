@@ -82,6 +82,75 @@ class Dash0MobileModuleTest {
         assertTrue(sink.starts[0].nativeAutoCapture.isEmpty())
     }
 
+    // ── start: sampling (Loper finding #4) ───────────────────────────────
+
+    @Test
+    fun start_decodes_alwaysOff_sampling() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+            "sampling", JavaOnlyMap.of("strategy", "always_off"),
+        )
+        module.start(cfg, RecordingPromise())
+        assertEquals(
+            BridgeSamplingConfig(strategy = SamplingStrategy.ALWAYS_OFF),
+            sink.starts[0].sampling,
+        )
+    }
+
+    @Test
+    fun start_decodes_dynamic_sampling_with_rates() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+            "sampling", JavaOnlyMap.of(
+                "strategy", "dynamic",
+                "normalRate", 0.1,
+                "highPriorityRate", 1.0,
+            ),
+        )
+        module.start(cfg, RecordingPromise())
+        assertEquals(
+            BridgeSamplingConfig(
+                strategy = SamplingStrategy.DYNAMIC,
+                normalRate = 0.1,
+                highPriorityRate = 1.0,
+            ),
+            sink.starts[0].sampling,
+        )
+    }
+
+    @Test
+    fun start_decodes_alwaysOn_sampling() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+            "sampling", JavaOnlyMap.of("strategy", "always_on"),
+        )
+        module.start(cfg, RecordingPromise())
+        assertEquals(SamplingStrategy.ALWAYS_ON, sink.starts[0].sampling?.strategy)
+    }
+
+    @Test
+    fun start_sampling_null_when_absent() {
+        // The JS bridge always sends `sampling`, but a missing field decodes
+        // to null (the sink then applies the RN ALWAYS_ON default).
+        val cfg = JavaOnlyMap.of("serviceName", "s", "endpoint", "https://e")
+        module.start(cfg, RecordingPromise())
+        assertNull(sink.starts[0].sampling)
+    }
+
+    @Test
+    fun start_unknown_sampling_strategy_falls_back_to_alwaysOn() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+            "sampling", JavaOnlyMap.of("strategy", "martian"),
+        )
+        module.start(cfg, RecordingPromise())
+        assertEquals(SamplingStrategy.ALWAYS_ON, sink.starts[0].sampling?.strategy)
+    }
+
     @Test
     fun start_rejects_when_serviceName_missing() {
         val cfg = JavaOnlyMap.of("endpoint", "e")
@@ -395,18 +464,24 @@ private class RecordingSink : BridgeCallSink {
     }
 }
 
+// Mirrors the react-android 0.76.0 Kotlin `Promise` interface exactly. That
+// interface declares `code` and `userInfo` as NON-null (it is Promise.kt, not
+// the older Java Promise where everything was a nullable platform type), so the
+// override signatures must use non-null `String` / `WritableMap` or Kotlin
+// reports "overrides nothing".
 private class RecordingPromise : Promise {
     var resolved = false
     var rejected = false
     override fun resolve(value: Any?) { resolved = true }
-    override fun reject(code: String?, message: String?) { rejected = true }
-    override fun reject(code: String?, throwable: Throwable?) { rejected = true }
-    override fun reject(code: String?, message: String?, throwable: Throwable?) { rejected = true }
+    override fun reject(code: String, message: String?) { rejected = true }
+    override fun reject(code: String, throwable: Throwable?) { rejected = true }
+    override fun reject(code: String, message: String?, throwable: Throwable?) { rejected = true }
     override fun reject(throwable: Throwable) { rejected = true }
     override fun reject(throwable: Throwable, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
-    override fun reject(code: String?, message: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    override fun reject(code: String, message: String?, userInfo: com.facebook.react.bridge.WritableMap) { rejected = true }
+    // The 4-arg overload is declared with all-nullable params in 0.76's Promise.kt.
     override fun reject(code: String?, message: String?, throwable: Throwable?, userInfo: com.facebook.react.bridge.WritableMap?) { rejected = true }
     @Suppress("DEPRECATION")
     override fun reject(message: String) { rejected = true }

@@ -1,19 +1,47 @@
 name: CI
-# Triggers: push to main/iPhone/uat-matrix only. The pull_request trigger
-# was removed 2026-05-13 because every PR on a tracked branch fired CI
-# twice (push + PR), doubling minute consumption. The push run on the PR
-# head commit already validates the same code.
-#
-# The iOS job was also removed 2026-05-13. macos-15 runners bill at 10x
-# the ubuntu rate; a single failed iOS run consumed hundreds of
-# ubuntu-minute equivalents. `swift test` is validated locally on every
-# SDK change (407/407 green as of the architecture-hardening epic). CI
-# now covers the free-tier jobs: Android JVM unit tests + Go + React Native.
+# Cost-aware triggers (revised 2026-06-10):
+#   - push to main/iPhone/uat-matrix and pull_request to main.
+#   - `concurrency` cancels superseded runs, so the push+PR double-fire on a
+#     tracked branch no longer doubles minute consumption (the earlier run is
+#     cancelled the instant a newer commit arrives). This restores PR
+#     validation — previously PRs ran no CI — without the quota blow-up that
+#     caused the pull_request trigger to be dropped in 2026-05.
+#   - The iOS (macOS, 10x-billed) job lives in ios-ci.yml, path-filtered to
+#     iOS sources + run nightly, so macOS minutes are spent only when iOS
+#     code actually changes.
 on:
   push:
     branches: [main, iPhone, uat-matrix]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tracked files for leaked ingest tokens / secrets
+        # Dependency-free guard against committing Dash0 ingest tokens
+        # (auth_…) or common private-key material. Scans only git-tracked
+        # files, so local .env / .env.bak (gitignored) never trip it — but a
+        # token that slips into a tracked file fails the build. Added after a
+        # live ingest token was found in a gitignored demo .env (not in
+        # history); this prevents the next one from reaching a tracked file.
+        run: |
+          set -euo pipefail
+          pattern='auth_[A-Za-z0-9]{20,}|-----BEGIN ([A-Z ]+)?PRIVATE KEY-----|AKIA[0-9A-Z]{16}'
+          # Exclude this workflow file (it necessarily contains the pattern string).
+          if git grep -nIE "$pattern" -- . ':(exclude).github/workflows/ci.yml' > /tmp/secrets.txt; then
+            echo "::error::Potential secret(s) found in tracked files:"
+            cat /tmp/secrets.txt
+            exit 1
+          fi
+          echo "No leaked secrets in tracked files."
+
   android:
     runs-on: ubuntu-latest
     steps:
@@ -60,3 +88,36 @@ jobs:
           npm install
           npm test
           npx tsc --noEmit
+
+  # Kotlin unit tests for the RN Android native module. These were previously
+  # orphaned — the module had src/test/**/*.kt but no standalone Gradle build,
+  # so they only ever compiled inside a host app via RN autolinking and ran
+  # NOWHERE in CI (the react-native job above is jest-only). That meant the
+  # OTelNetworkInterceptor — which wraps the host app's entire OkHttp pipeline —
+  # shipped without a runnable test. This job runs them on a pure JVM via the
+  # standalone harness added in packages/react-native/android (settings.gradle +
+  # wrapper). See OTelNetworkInterceptorTest + Dash0MobileModuleTest.
+  react-native-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform 36
+        # react-android 0.76 + the OTel SDK pull androidx.core 1.17.x, which
+        # requires compiling against android-36 (the standalone build sets
+        # compileSdk=36 in settings.gradle).
+        run: sdkmanager "platforms;android-36"
+      - name: Publish the native Android SDK to mavenLocal
+        # io.opentelemetry.android:mobile is this repo's own artifact (source in
+        # otel-android-mobile/) and is not on any public repo. The RN-android
+        # harness resolves it from mavenLocal, so publish it first from the
+        # demo-app composite build that already includes the SDK modules.
+        working-directory: examples/demo-app
+        run: ./gradlew :otel-android-mobile:publishToMavenLocal
+      - name: RN Android Kotlin unit tests
+        working-directory: packages/react-native/android
+        run: ./gradlew :testDebugUnitTest

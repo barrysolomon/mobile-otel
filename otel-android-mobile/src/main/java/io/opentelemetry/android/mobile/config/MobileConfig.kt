@@ -51,6 +51,34 @@ enum class UiTelemetryMode {
 }
 
 /**
+ * OTLP wire protocol used to export telemetry to the collector / ingest endpoint.
+ *
+ * - [HTTP_PROTOBUF] — OTLP over HTTP/1.1 with a protobuf body (`Content-Type:
+ *   application/x-protobuf`). Telemetry is POSTed to `<endpoint>/v1/{logs,traces,metrics}`.
+ *   This is the **default** and matches the iOS SDK, so a single `collectorEndpoint`
+ *   works for both platforms. It also traverses HTTPS-terminating reverse proxies and
+ *   PaaS load balancers (which speak HTTP/1.1, not HTTP/2 gRPC) without special config —
+ *   the common deployment behind managed ingress.
+ * - [GRPC] — OTLP over gRPC (HTTP/2) to a single endpoint, typically `:4317`. Lower
+ *   per-batch overhead on high-volume pipelines and enterprise collectors that expose a
+ *   gRPC receiver. Requires an endpoint that terminates gRPC end-to-end; most HTTPS
+ *   proxies cannot forward it.
+ *
+ * @see MobileConfig.protocol
+ */
+@Incubating
+enum class OtlpProtocol {
+    /**
+     * OTLP/HTTP with protobuf payload. Exports to `<endpoint>/v1/{logs,traces,metrics}`.
+     * Default — matches iOS and works through HTTPS proxies / PaaS ingress.
+     */
+    HTTP_PROTOBUF,
+
+    /** OTLP/gRPC to a single endpoint (typically `:4317`). */
+    GRPC
+}
+
+/**
  * Export mode for telemetry data.
  */
 @Incubating
@@ -100,6 +128,23 @@ data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,
     val collectorEndpoint: String,
+    /**
+     * OTLP wire protocol used to export telemetry. Defaults to
+     * [OtlpProtocol.HTTP_PROTOBUF] to match the iOS SDK (so the same
+     * `collectorEndpoint` works for both platforms) and to traverse
+     * HTTPS-terminating proxies / PaaS ingress that cannot forward gRPC.
+     *
+     * With [OtlpProtocol.HTTP_PROTOBUF] the SDK POSTs to
+     * `<collectorEndpoint>/v1/logs`, `/v1/traces`, and `/v1/metrics`
+     * (the per-signal suffix is appended automatically; if the endpoint
+     * already ends in the right `/v1/<signal>` path it is left untouched).
+     *
+     * With [OtlpProtocol.GRPC] the SDK exports OTLP/gRPC to the single
+     * `collectorEndpoint` (typically a `:4317` gRPC port) — the previous
+     * behaviour. Use this only when your endpoint terminates gRPC
+     * end-to-end.
+     */
+    val protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF,
     val exportMode: ExportMode = ExportMode.HYBRID,
     val uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS,
     val textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig(),
@@ -107,8 +152,42 @@ data class MobileConfig(
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
     val ramBufferSize: Int = 5000,
+    /**
+     * Total-byte budget for the RAM ring buffer (SDK_SAFETY non-negotiable #3,
+     * iOS parity with `RAMEventBuffer.maxTotalBytes`). When adding an event
+     * would push the cumulative estimated size over this budget, oldest events
+     * are overflowed to disk (FIFO) until the buffer is back under budget. This
+     * caps RAM independently of [ramBufferSize] (the count cap), so a handful of
+     * large screenshot/wireframe events can't balloon memory. Default 10 MB. */
+    val ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024,
+    /**
+     * Per-event byte cap for the RAM ring buffer (iOS parity with
+     * `RAMEventBuffer.maxEventBytes`). A single event whose estimated size
+     * exceeds this is dropped and counted (see [MobileLogRecordProcessor]
+     * `droppedOversizeCount` / the `buffer.ram.dropped_oversize` gauge) rather
+     * than buffered. Default 256 KB. */
+    val ramBufferMaxEventBytes: Int = 256 * 1024,
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
+    /**
+     * When true (the default), the on-disk telemetry buffer
+     * (`otel_log_buffer.db`) is encrypted at rest using SQLCipher with a
+     * passphrase wrapped by an Android Keystore key. This brings Android to
+     * parity with iOS NSFileProtection: persisted spans/logs/bodies — which can
+     * contain PII — are unreadable on rooted or backed-up devices.
+     *
+     * **Default ON, with crash-safe migration.** Enabling encryption on an
+     * existing cleartext buffer (or any open failure: invalidated Keystore key,
+     * corrupt file, missing native libs) NEVER crashes the host. The buffer is
+     * transparently recreated, and if SQLCipher/Keystore are fundamentally
+     * unavailable on the device the buffer degrades to cleartext rather than
+     * failing. The one-time cost of enabling encryption is dropping any
+     * already-buffered (TTL-bounded, best-effort) telemetry on first launch.
+     *
+     * Set to `false` to keep the buffer cleartext (e.g. to avoid the SQLCipher
+     * native-library size cost where at-rest PII risk is not a concern).
+     */
+    @Incubating val encryptDiskBufferAtRest: Boolean = true,
     val exportTimeoutSeconds: Long = 30,
     /**
      * Enables polling the collector/control-plane `/config` endpoint for
@@ -185,18 +264,30 @@ data class MobileConfig(
         require(metricExportIntervalSeconds > 0) { "metricExportIntervalSeconds must be positive" }
         require(predictionIntervalSeconds > 0) { "predictionIntervalSeconds must be positive" }
         require(ramBufferSize in 1..100_000) { "ramBufferSize must be between 1 and 100,000" }
+        require(ramBufferMaxEventBytes > 0) { "ramBufferMaxEventBytes must be positive" }
+        require(ramBufferMaxTotalBytes >= ramBufferMaxEventBytes) {
+            "ramBufferMaxTotalBytes ($ramBufferMaxTotalBytes) must be >= ramBufferMaxEventBytes ($ramBufferMaxEventBytes)"
+        }
         require(diskBufferMb in 1..500) { "diskBufferMb must be between 1 and 500" }
         require(diskBufferTtlHours in 1..168) { "diskBufferTtlHours must be between 1 and 168 (7 days)" }
         require(exportTimeoutSeconds > 0) { "exportTimeoutSeconds must be positive" }
         require(configPollIntervalSeconds > 0) { "configPollIntervalSeconds must be positive" }
         require(maxExportRetries in 0..10) { "maxExportRetries must be between 0 and 10" }
 
-        // Warn if collector endpoint is not using TLS (allow localhost for development)
+        // Enforce HTTPS for the collector endpoint. localhost / emulator-loopback
+        // (10.0.2.2) stay exempt for local development. For any other cleartext
+        // http:// endpoint, log a PROMINENT ERROR — telemetry (including the auth
+        // token in headers) would otherwise travel in plaintext over the network.
+        //
+        // Prime directive: we do NOT hard-crash the host on misconfiguration; we
+        // log loudly and continue. (Cert pinning is intentionally out of scope —
+        // that's a feature, not a config-validation fix.)
         val endpoint = collectorEndpoint.lowercase()
         if (!endpoint.startsWith("https://") && !isLocalhostEndpoint(endpoint)) {
-            Log.w("MobileConfig", "collectorEndpoint is not using HTTPS. " +
-                "Telemetry data will be transmitted in plaintext. " +
-                "Use https:// in production to protect data in transit.")
+            Log.e("MobileConfig", "SECURITY: collectorEndpoint '$collectorEndpoint' uses cleartext " +
+                "(non-HTTPS) transport to a non-localhost host. Telemetry AND the ingest auth " +
+                "token will be sent in PLAINTEXT and can be intercepted. Use https:// in production. " +
+                "Continuing with insecure transport — fix this before shipping.")
         }
     }
 
@@ -223,6 +314,39 @@ data class MobileConfig(
         internal fun isLocalhostEndpointForTest(endpoint: String): Boolean =
             isLocalhostEndpoint(endpoint.lowercase())
 
+        /**
+         * Build the per-signal OTLP/HTTP ingest URL from a base
+         * `collectorEndpoint`, mirroring the iOS `OTLPExporterFactory`
+         * URL-building so Android and iOS resolve the same endpoint:
+         *
+         * - Trailing slashes on the base are collapsed before appending, so
+         *   `https://host/` + `/v1/logs` yields `https://host/v1/logs` (not a
+         *   doubled slash).
+         * - If the endpoint already ends in the target `/v1/<signal>` path
+         *   (with or without a trailing slash), it is returned unchanged — we
+         *   never double-append.
+         * - Any query string on the base endpoint is preserved.
+         *
+         * @param base the user-supplied `collectorEndpoint`.
+         * @param signalPath the signal suffix, e.g. `/v1/logs`.
+         */
+        @JvmStatic
+        fun buildOtlpHttpUrl(base: String, signalPath: String): String {
+            val trimmed = base.trim()
+            // Split off any query string so the suffix lands on the path, not after `?`.
+            val queryIdx = trimmed.indexOf('?')
+            val pathPart = if (queryIdx >= 0) trimmed.substring(0, queryIdx) else trimmed
+            val query = if (queryIdx >= 0) trimmed.substring(queryIdx) else ""
+
+            // Already suffixed (with or without a trailing slash) → leave untouched.
+            val withoutTrailingSlash = pathPart.trimEnd('/')
+            if (withoutTrailingSlash.endsWith(signalPath)) {
+                return withoutTrailingSlash + query
+            }
+
+            return withoutTrailingSlash + signalPath + query
+        }
+
         fun builder(): Builder = Builder()
     }
 
@@ -234,6 +358,7 @@ data class MobileConfig(
         private var serviceName: String? = null
         private var serviceVersion: String? = null
         private var collectorEndpoint: String? = null
+        private var protocol: OtlpProtocol = OtlpProtocol.HTTP_PROTOBUF
         private var exportMode: ExportMode = ExportMode.HYBRID
         private var uiTelemetryMode: UiTelemetryMode = UiTelemetryMode.EVENTS
         private var textInputConfig: io.opentelemetry.android.mobile.instrumentation.TextInputConfig = io.opentelemetry.android.mobile.instrumentation.TextInputConfig()
@@ -241,8 +366,11 @@ data class MobileConfig(
         private var metricExportIntervalSeconds: Long = 60
         private var predictionIntervalSeconds: Long = 30
         private var ramBufferSize: Int = 5000
+        private var ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024
+        private var ramBufferMaxEventBytes: Int = 256 * 1024
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
+        private var encryptDiskBufferAtRest: Boolean = true
         private var exportTimeoutSeconds: Long = 30
         private var remoteConfigEnabled: Boolean = true
         private var configPollIntervalSeconds: Long = 300
@@ -265,6 +393,8 @@ data class MobileConfig(
         fun setServiceName(serviceName: String) = apply { this.serviceName = serviceName }
         fun setServiceVersion(serviceVersion: String) = apply { this.serviceVersion = serviceVersion }
         fun setCollectorEndpoint(collectorEndpoint: String) = apply { this.collectorEndpoint = collectorEndpoint }
+        /** See [MobileConfig.protocol]. Defaults to [OtlpProtocol.HTTP_PROTOBUF] (matches iOS). */
+        fun setProtocol(protocol: OtlpProtocol) = apply { this.protocol = protocol }
         fun setExportMode(exportMode: ExportMode) = apply { this.exportMode = exportMode }
         fun setUiTelemetryMode(mode: UiTelemetryMode) = apply { this.uiTelemetryMode = mode }
         fun setTextInputConfig(config: io.opentelemetry.android.mobile.instrumentation.TextInputConfig) = apply { this.textInputConfig = config }
@@ -272,8 +402,14 @@ data class MobileConfig(
         fun setMetricExportIntervalSeconds(interval: Long) = apply { this.metricExportIntervalSeconds = interval }
         fun setPredictionIntervalSeconds(seconds: Long) = apply { this.predictionIntervalSeconds = seconds }
         fun setRamBufferSize(ramBufferSize: Int) = apply { this.ramBufferSize = ramBufferSize }
+        /** See [MobileConfig.ramBufferMaxTotalBytes]. Default 10 MB. */
+        fun setRamBufferMaxTotalBytes(bytes: Long) = apply { this.ramBufferMaxTotalBytes = bytes }
+        /** See [MobileConfig.ramBufferMaxEventBytes]. Default 256 KB. */
+        fun setRamBufferMaxEventBytes(bytes: Int) = apply { this.ramBufferMaxEventBytes = bytes }
         fun setDiskBufferMb(diskBufferMb: Int) = apply { this.diskBufferMb = diskBufferMb }
         fun setDiskBufferTtlHours(diskBufferTtlHours: Int) = apply { this.diskBufferTtlHours = diskBufferTtlHours }
+        /** See [MobileConfig.encryptDiskBufferAtRest]. Default `true`. */
+        fun setEncryptDiskBufferAtRest(enabled: Boolean) = apply { this.encryptDiskBufferAtRest = enabled }
         fun setExportTimeoutSeconds(exportTimeoutSeconds: Long) = apply { this.exportTimeoutSeconds = exportTimeoutSeconds }
         fun setRemoteConfigEnabled(enabled: Boolean) = apply { this.remoteConfigEnabled = enabled }
         fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long) = apply { this.configPollIntervalSeconds = configPollIntervalSeconds }
@@ -309,6 +445,7 @@ data class MobileConfig(
                 serviceName = requireNotNull(serviceName) { "serviceName is required" },
                 serviceVersion = requireNotNull(serviceVersion) { "serviceVersion is required" },
                 collectorEndpoint = requireNotNull(collectorEndpoint) { "collectorEndpoint is required" },
+                protocol = protocol,
                 exportMode = exportMode,
                 uiTelemetryMode = uiTelemetryMode,
                 textInputConfig = textInputConfig,
@@ -316,8 +453,11 @@ data class MobileConfig(
                 metricExportIntervalSeconds = metricExportIntervalSeconds,
                 predictionIntervalSeconds = predictionIntervalSeconds,
                 ramBufferSize = ramBufferSize,
+                ramBufferMaxTotalBytes = ramBufferMaxTotalBytes,
+                ramBufferMaxEventBytes = ramBufferMaxEventBytes,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours,
+                encryptDiskBufferAtRest = encryptDiskBufferAtRest,
                 exportTimeoutSeconds = exportTimeoutSeconds,
                 remoteConfigEnabled = remoteConfigEnabled,
                 configPollIntervalSeconds = configPollIntervalSeconds,

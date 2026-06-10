@@ -56,6 +56,69 @@ struct Dash0MobileBridgeDispatcherTests {
         #expect(sink.starts[0].nativeAutoCapture == [])
     }
 
+    // ── start: sampling (Loper finding #4) ─────────────────────────────────
+
+    @Test
+    func start_decodes_alwaysOff_sampling() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+            "sampling": ["strategy": "always_off"],
+        ])
+        #expect(sink.starts[0].sampling == BridgeSamplingConfig(strategy: .alwaysOff))
+    }
+
+    @Test
+    func start_decodes_dynamic_sampling_with_rates() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+            "sampling": ["strategy": "dynamic", "normalRate": 0.1, "highPriorityRate": 1.0],
+        ])
+        #expect(sink.starts[0].sampling == BridgeSamplingConfig(
+            strategy: .dynamic, normalRate: 0.1, highPriorityRate: 1.0
+        ))
+    }
+
+    @Test
+    func start_decodes_alwaysOn_sampling() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+            "sampling": ["strategy": "always_on"],
+        ])
+        #expect(sink.starts[0].sampling == BridgeSamplingConfig(strategy: .alwaysOn))
+    }
+
+    @Test
+    func start_sampling_nil_when_absent() throws {
+        // The JS bridge always sends `sampling`, but the dispatcher must
+        // decode a missing field as nil (the sink then applies the RN
+        // .alwaysOn default).
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: ["serviceName": "s", "endpoint": "https://e"])
+        #expect(sink.starts[0].sampling == nil)
+    }
+
+    @Test
+    func start_unknown_sampling_strategy_falls_back_to_alwaysOn() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+            "sampling": ["strategy": "martian"],
+        ])
+        #expect(sink.starts[0].sampling?.strategy == .alwaysOn)
+    }
+
     @Test
     func start_throws_when_serviceName_missing() {
         let sink = RecordingSink()

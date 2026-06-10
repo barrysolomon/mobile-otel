@@ -48,6 +48,9 @@ class Dash0MobileModule internal constructor(
                         .getArrayOrNull("nativeAutoCapture")
                         ?.toStringList()
                         ?: emptyList(),
+                    sampling = config
+                        .getMapOrNull("sampling")
+                        ?.toSamplingConfig(),
                 ),
             )
             promise.resolve(null)
@@ -58,15 +61,20 @@ class Dash0MobileModule internal constructor(
 
     @ReactMethod
     fun emitBatch(payloads: ReadableArray, promise: Promise) {
-        try {
-            for (i in 0 until payloads.size()) {
+        // Isolate each payload: a single malformed entry (e.g. wrong-typed
+        // severity/value) must not reject the whole batch, or JS retries the
+        // entire batch forever and never makes progress. Drop the bad one,
+        // keep going.
+        for (i in 0 until payloads.size()) {
+            try {
                 val p = payloads.getMap(i) ?: continue
                 dispatch(p)
+            } catch (t: Throwable) {
+                // Best-effort: skip the offending payload and continue.
+                continue
             }
-            promise.resolve(null)
-        } catch (t: Throwable) {
-            promise.reject("Dash0Mobile.emitBatch", t)
         }
+        promise.resolve(null)
     }
 
     @ReactMethod
@@ -94,7 +102,7 @@ class Dash0MobileModule internal constructor(
         val attrs = p.getMapOrNull("attributes")?.toAttributeMap() ?: emptyMap()
         when (kind) {
             "log" -> {
-                val severity = p.getInt("severity")
+                val severity = p.getIntOrDefault("severity", 9)
                 sink.emitLog(
                     name = p.getString("name") ?: return,
                     severity = severity,
@@ -132,7 +140,7 @@ class Dash0MobileModule internal constructor(
             "metric" -> sink.recordMetric(
                 name = p.getString("name") ?: return,
                 instrumentType = p.getString("instrumentType") ?: "counter",
-                value = p.getDouble("value"),
+                value = p.getDoubleOrDefault("value", 0.0),
                 attributes = attrs,
                 timeUnixNano = p.getStringAsLong("timeUnixNano"),
             )
@@ -169,6 +177,16 @@ private fun ReadableArray.toStringList(): List<String> {
 private fun ReadableMap.getStringAsLong(key: String): Long =
     getStringOrNull(key)?.toLongOrNull() ?: 0L
 
+// Type-guarded numeric reads. ReadableMap.getInt/getDouble throw if the JS
+// value isn't actually a number (e.g. a stringified severity). Check the
+// declared type first and fall back to the default so one malformed payload
+// can't blow up dispatch.
+private fun ReadableMap.getIntOrDefault(key: String, default: Int): Int =
+    if (hasKey(key) && getType(key) == ReadableType.Number) getInt(key) else default
+
+private fun ReadableMap.getDoubleOrDefault(key: String, default: Double): Double =
+    if (hasKey(key) && getType(key) == ReadableType.Number) getDouble(key) else default
+
 private fun ReadableMap.toStringMap(): Map<String, String> {
     val iter = keySetIterator()
     val out = LinkedHashMap<String, String>()
@@ -180,6 +198,16 @@ private fun ReadableMap.toStringMap(): Map<String, String> {
     }
     return out
 }
+
+private fun ReadableMap.getDoubleOrNull(key: String): Double? =
+    if (hasKey(key) && getType(key) == ReadableType.Number) getDouble(key) else null
+
+private fun ReadableMap.toSamplingConfig(): BridgeSamplingConfig =
+    BridgeSamplingConfig(
+        strategy = SamplingStrategy.fromToken(getStringOrNull("strategy")),
+        normalRate = getDoubleOrNull("normalRate"),
+        highPriorityRate = getDoubleOrNull("highPriorityRate"),
+    )
 
 private fun ReadableMap.toAttributeMap(): Map<String, Any?> {
     val iter = keySetIterator()

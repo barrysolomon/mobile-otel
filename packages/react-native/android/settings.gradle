@@ -1,0 +1,62 @@
+/*
+ * Standalone Gradle settings for the @dash0/mobile-react-native Android module.
+ *
+ * WHY THIS EXISTS:
+ *   When consumed by a host React Native app, this module is wired into the
+ *   host's Gradle build via RN autolinking — the host buildscript supplies the
+ *   Android Gradle Plugin + Kotlin plugin versions and the repositories. That
+ *   means the module's Kotlin unit tests (src/test/**) ran NOWHERE in isolation;
+ *   CI's react-native job was jest-only and the native interceptor that wraps
+ *   the host's entire OkHttp pipeline shipped without a runnable test.
+ *
+ *   This file makes the module a self-contained Gradle build so
+ *   `./gradlew :testDebugUnitTest` runs the src/test Kotlin on a pure JVM with
+ *   no emulator. It supplies exactly what autolinking would otherwise inject:
+ *   the plugin versions (pluginManagement) and the dependency repositories,
+ *   including Maven Central where React Native publishes `react-android` and
+ *   where the OkHttp / OpenTelemetry artifacts live.
+ *
+ *   The shipping `build.gradle` is unchanged in spirit — it still applies the
+ *   AGP + Kotlin plugins by id without hardcoding classpath versions, exactly
+ *   as a host-autolinked build expects. The versions are pinned HERE so they
+ *   only affect the standalone test build, never a host consumer.
+ */
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        // AGP 8.11.x runs on the demo-app's Gradle 9.1.0 (and thus JDK 25)
+        // while still using the standalone kotlin-android plugin. AGP 9.x was
+        // rejected here: its built-in Kotlin integration registers its own
+        // `kotlin` extension and clashes with org.jetbrains.kotlin.android
+        // ("extension already registered with name 'kotlin'").
+        id 'com.android.library' version '8.11.1'
+        id 'org.jetbrains.kotlin.android' version '2.1.20'
+    }
+}
+
+dependencyResolutionManagement {
+    // The module's own build.gradle declares google()/mavenCentral() in a
+    // `repositories {}` block (it must, to stay autolinking-friendly), so do
+    // NOT fail on project repos here.
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'dash0-mobile-react-native-android'
+
+// react-android 0.76 + the OTel SDK pull androidx.core 1.17.x transitively,
+// which requires compiling against android-36. The shipping build.gradle reads
+// the compileSdk/targetSdk from rootProject.ext (defaulting to 34 for old host
+// consumers); set them here for the standalone test build only, without
+// touching that host-facing default.
+gradle.rootProject {
+    ext.compileSdkVersion = 36
+    ext.targetSdkVersion = 36
+}

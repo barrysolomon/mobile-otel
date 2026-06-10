@@ -61,6 +61,36 @@ export interface WireframeAutoCapture {
   dedupeByContentHash?: boolean;
 }
 
+/**
+ * Trace sampling strategy passed through the RN bridge into the native SDK's
+ * `SamplingConfig`. Field names and semantics mirror Android's
+ * `io.opentelemetry.android.mobile.sampling.SamplingConfig` and iOS's
+ * `SamplingConfig` factory constructors one-to-one.
+ *
+ *   - `always_on`  → `SamplingConfig.alwaysOn()`  — sample 100% of spans.
+ *   - `always_off` → `SamplingConfig.alwaysOff()` — drop all spans.
+ *   - `dynamic`    → `SamplingConfig.dynamic(normalRate, highPriorityRate)`
+ *     — `normalRate` baseline with `highPriorityRate` for high-priority
+ *     spans (page.* / app.startup).
+ *
+ * RN DEFAULT: when `sampling` is omitted the bridge defaults to `always_on`
+ * (NOT the native SDK's `dynamic(0.1)` default). RN manual spans
+ * (`Dash0Mobile.startSpan()`) are ROOT spans with arbitrary names; a 10%
+ * baseline silently drops ~90% of a user's very first span, which is a
+ * terrible first-run experience and historically read as "spans vanish."
+ * Sampling/rate-limiting for RN architectures belongs in the collector, not
+ * the on-device SDK. Pass an explicit `sampling` to opt back into on-device
+ * sampling. The native-only Android/iOS SDKs keep their `dynamic(0.1)`
+ * default — only the RN-bridged default changes.
+ */
+export interface SamplingConfig {
+  strategy: 'always_on' | 'always_off' | 'dynamic';
+  /** Baseline rate for `dynamic` (0.0–1.0). Ignored for always_on/always_off. */
+  normalRate?: number;
+  /** Rate for high-priority spans under `dynamic` (0.0–1.0). Defaults to 1.0 natively. */
+  highPriorityRate?: number;
+}
+
 export interface StartConfig {
   serviceName: string;
   serviceVersion?: string;
@@ -72,6 +102,12 @@ export interface StartConfig {
     diskBytes?: number;
   };
   enablePolicyPolling?: boolean;
+  /**
+   * Trace sampling strategy. Defaults to `always_on` on RN (see
+   * {@link SamplingConfig}) — unlike the native SDKs' `dynamic(0.1)` default.
+   * Omit to keep all spans on-device and rate-limit in the collector.
+   */
+  sampling?: SamplingConfig;
   /**
    * Toggles for JS-side auto-instrumentation (fetch/XHR spans, JS error +
    * unhandled rejection logs). Defaults to all-on. RN bridge uses the same

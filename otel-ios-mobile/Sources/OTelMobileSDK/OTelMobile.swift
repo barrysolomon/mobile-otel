@@ -56,6 +56,12 @@ public final class OTelMobile: @unchecked Sendable {
     /// when `meter` is nil the collector cannot be started.
     public let deviceStats: DeviceStatsCollector
 
+    /// Always-on SDK-state self-telemetry collector. Emits `sdk.enabled` /
+    /// `sdk.sample_rate` gauges reflecting the live `remoteGate`, independent of
+    /// `autoCaptureOptions`, so a remotely-disabled SDK is always observable.
+    /// Started unconditionally by `start(config:)` whenever a `meter` exists.
+    public let sdkStateGauges: SDKStateGaugeCollector
+
     /// Policy evaluator holding the currently-active DSL v2 policies.
     /// Consumers call `policyEvaluator.evaluate(attributes:)` to check an
     /// event against the policy set. Always non-nil; starts empty.
@@ -79,6 +85,14 @@ public final class OTelMobile: @unchecked Sendable {
     /// listen for inbound alerts on its own — the host app (or a future
     /// config poller) feeds them via `fleetAlertHandler.handle(alert)`.
     public let fleetAlertHandler: FleetAlertHandler
+
+    /// Shared remote kill-switch + global-sampling gate. The single source of
+    /// truth for `(enabled, sampleRate)` consulted at BOTH the log choke point
+    /// (`MobileLogRecordProcessor.onEmit`) and the span choke point
+    /// (`RemoteGatedSampler`). `ConfigPoller.applyConfig` pushes parsed `sdk`
+    /// config here on every successful poll. Exposed so app code / tests can
+    /// inspect or seed the live gate state. See `docs/design/remote-kill-switch.md`.
+    public let remoteGate: RemoteGate
 
     /// Underlying trace/meter providers. Held so `forceFlush()` can drain
     /// their batch processors / periodic readers on demand. Optional because
@@ -129,10 +143,12 @@ public final class OTelMobile: @unchecked Sendable {
         tracer: Tracer?,
         meter: MeterSdk?,
         deviceStats: DeviceStatsCollector,
+        sdkStateGauges: SDKStateGaugeCollector = SDKStateGaugeCollector(),
         policyEvaluator: PolicyEvaluator,
         contextSnapshotProvider: ContextSnapshotProvider,
         predictiveExportPolicy: PredictiveExportPolicy?,
         fleetAlertHandler: FleetAlertHandler,
+        remoteGate: RemoteGate = RemoteGate(),
         tracerProvider: TracerProviderSdk? = nil,
         meterProvider: MeterProviderSdk? = nil,
         spanDiskBuffer: DiskSpanBuffer? = nil
@@ -145,10 +161,12 @@ public final class OTelMobile: @unchecked Sendable {
         self.tracer = tracer
         self.meter = meter
         self.deviceStats = deviceStats
+        self.sdkStateGauges = sdkStateGauges
         self.policyEvaluator = policyEvaluator
         self.contextSnapshotProvider = contextSnapshotProvider
         self.predictiveExportPolicy = predictiveExportPolicy
         self.fleetAlertHandler = fleetAlertHandler
+        self.remoteGate = remoteGate
         self.tracerProvider = tracerProvider
         self.meterProvider = meterProvider
         self.spanDiskBuffer = spanDiskBuffer
@@ -247,21 +265,48 @@ public final class OTelMobile: @unchecked Sendable {
         // `HTTPClient`, so `export(...)` returns the REAL send result
         // instead of the upstream always-`.success` that breaks every
         // downstream retry/persist decorator. See the class doc for why.
-        let logsEndpointURL = try OTLPExporterFactory.buildLogsEndpointURL(
-            from: config.endpoint
-        )
-        let baseLogExporter = SynchronousLogRecordExporter(
-            endpoint: logsEndpointURL,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders
-        )
-        // Decorate with RetryableExporter so transient failures get
-        // exponential-backoff retries (3 attempts, 1s → 60s ceiling) and
-        // every transition publishes through `ExportStatusManager`.
-        // Mirrors Android: only the log exporter is wrapped — span and
-        // metric retry behaviour stays delegated to the upstream batch
-        // processors.
-        let otlpLogExporter = RetryableExporter(delegate: baseLogExporter)
+        // Transport-security gate (task §1). Validate the export endpoint's
+        // transport ONCE up front. A cleartext `http://` endpoint to a
+        // non-loopback host with `allowInsecureTransport == false` is REJECTED:
+        // we substitute no-op exporters so the SDK still constructs and the
+        // host keeps running (graceful disable, never a throw into the app).
+        // Loopback/localhost and explicit opt-in are permitted.
+        let transportAllowed: Bool = {
+            guard let url = URL(string: config.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return true // malformed URL is handled by the factory's invalidEndpoint path
+            }
+            do {
+                try TransportSecurity.enforceHTTPS(url, allowInsecure: config.allowInsecureTransport)
+                return true
+            } catch {
+                NSLog("[Dash0] Export DISABLED: %@. Set allowInsecureTransport=true (dev only) or use https://.",
+                      String(describing: error))
+                return false
+            }
+        }()
+
+        let otlpLogExporter: LogRecordExporter
+        if transportAllowed {
+            let logsEndpointURL = try OTLPExporterFactory.buildLogsEndpointURL(
+                from: config.endpoint,
+                allowInsecure: config.allowInsecureTransport
+            )
+            let baseLogExporter = SynchronousLogRecordExporter(
+                endpoint: logsEndpointURL,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                pinning: config.pinning
+            )
+            // Decorate with RetryableExporter so transient failures get
+            // exponential-backoff retries (3 attempts, 1s → 60s ceiling) and
+            // every transition publishes through `ExportStatusManager`.
+            // Mirrors Android: only the log exporter is wrapped — span and
+            // metric retry behaviour stays delegated to the upstream batch
+            // processors.
+            otlpLogExporter = RetryableExporter(delegate: baseLogExporter)
+        } else {
+            otlpLogExporter = DisabledLogRecordExporter()
+        }
 
         // Policy evaluator is created once and shared between the processor
         // (which consults it on every onEmit) and the OTelMobile instance
@@ -298,6 +343,13 @@ public final class OTelMobile: @unchecked Sendable {
         ]
         let policyEvaluator = PolicyEvaluator(policies: defaultPolicies)
 
+        // Shared remote kill-switch + global-sampling gate. Single instance
+        // wired into BOTH the log processor (consulted in `onEmit`) and the
+        // span sampler (`RemoteGatedSampler`), and fed by `ConfigPoller`. Seeds
+        // to the fail-open default (enabled / rate 1.0) so the SDK runs
+        // normally until — and unless — a remote `sdk` block says otherwise.
+        let remoteGate = RemoteGate()
+
         // OTel-native buffer pipeline: selective / force flush drains
         // buffered `ReadableLogRecord`s through the same OTLP/HTTP exporter
         // the batch processor uses. No custom JSON encoding.
@@ -312,6 +364,7 @@ public final class OTelMobile: @unchecked Sendable {
             sessionProvider: sessionProvider,
             diskBuffer: diskBuffer,
             policyEvaluator: policyEvaluator,
+            remoteGate: remoteGate,
             extraRecordAttributes: config.extraResourceAttributes
         )
         // Trace export pipeline: BatchSpanProcessor → OtlpHttpTraceExporter,
@@ -327,23 +380,45 @@ public final class OTelMobile: @unchecked Sendable {
         // the HTTP callback. A SpanExporter-level decorator sees only
         // .success and cannot trigger persist. See the PersistingTraceHTTPClient
         // doc comment for the full rationale.
+        // When pinning is configured, the persisting client must wrap a PINNED
+        // BaseHTTPClient so failed-batch persistence AND pin enforcement both
+        // apply on the same connection. With no pinning, the persisting client
+        // keeps its default BaseHTTPClient.
         let traceHTTPClient: HTTPClient? = spanDiskBuffer.map { buffer in
-            PersistingTraceHTTPClient(
+            if let pinnedDelegate = OTLPExporterFactory.makePinnedHTTPClient(pinning: config.pinning) {
+                return PersistingTraceHTTPClient(
+                    delegate: pinnedDelegate,
+                    diskBuffer: buffer,
+                    sessionProvider: sessionProvider
+                )
+            }
+            return PersistingTraceHTTPClient(
                 diskBuffer: buffer,
                 sessionProvider: sessionProvider
             )
         }
-        let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
-            endpoint: config.endpoint,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders,
-            httpClient: traceHTTPClient
-        )
-        let otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
-            endpoint: config.endpoint,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders
-        )
+        let otlpTraceExporter: SpanExporter
+        let otlpMetricExporter: MetricExporter
+        if transportAllowed {
+            otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
+                endpoint: config.endpoint,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                httpClient: traceHTTPClient,
+                allowInsecure: config.allowInsecureTransport,
+                pinning: config.pinning
+            )
+            otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
+                endpoint: config.endpoint,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                allowInsecure: config.allowInsecureTransport,
+                pinning: config.pinning
+            )
+        } else {
+            otlpTraceExporter = DisabledSpanExporter()
+            otlpMetricExporter = DisabledMetricExporter()
+        }
 
         // Spans still go through upstream's BatchSpanProcessor — the iOS
         // MobileLogRecordProcessor analogue for traces doesn't exist yet,
@@ -401,7 +476,12 @@ public final class OTelMobile: @unchecked Sendable {
         // Build the sampler from MobileConfig. Default is dynamic (10%
         // baseline / 100% for page.* + app.startup) so trace waterfalls
         // stay intact at low rates. Override via `MobileConfig.samplingConfig`.
-        let sampler = SamplerFactory.createSampler(config.samplingConfig)
+        let baseSampler = SamplerFactory.createSampler(config.samplingConfig)
+        // Fold the remote kill-switch + global sampling gate over the
+        // configured sampler: `enabled=false` drops every span; `sample_rate<1`
+        // applies an additional global probabilistic filter on top of the
+        // local strategy. The SAME `remoteGate` instance backs the log path.
+        let sampler = RemoteGatedSampler(inner: baseSampler, gate: remoteGate)
         let tracerProvider = TracerProviderBuilder()
             .with(resource: resource)
             .with(sampler: sampler)
@@ -478,6 +558,7 @@ public final class OTelMobile: @unchecked Sendable {
             contextSnapshotProvider: contextSnapshotProvider,
             predictiveExportPolicy: predictivePolicy,
             fleetAlertHandler: fleetAlertHandler,
+            remoteGate: remoteGate,
             tracerProvider: tracerProvider,
             meterProvider: meterProvider,
             spanDiskBuffer: spanDiskBuffer
@@ -533,12 +614,24 @@ public final class OTelMobile: @unchecked Sendable {
                 // set even at low baseline rates.
                 AppStartInstrumentation.shared.install(tracer: tracer)
             }
+            // SDK-state self-telemetry runs UNCONDITIONALLY — independent of
+            // `.deviceStats` — so a remotely-disabled SDK is always observable.
+            // The kill switch can flip a device to `enabled = false`, silencing
+            // all spans and logs; the `sdk.enabled` / `sdk.sample_rate` gauges
+            // are the one stream exempt from the gate, so an operator who has
+            // turned device-stats capture off must still see kill-switch state.
+            // See `docs/design/remote-kill-switch.md`.
+            instance.sdkStateGauges.start(
+                meter: meter,
+                intervalSeconds: config.deviceStatsIntervalSeconds,
+                remoteGate: instance.remoteGate
+            )
             if opts.contains(.deviceStats) {
-                // Auto-start the continuous gauge loop. Before today this
-                // required customers to call `mobile.deviceStats.start(meter:)`
-                // themselves — easy to miss, so the default demo emitted zero
-                // health telemetry. Opt out by dropping `.deviceStats` from
-                // `autoCaptureOptions`.
+                // Auto-start the continuous device-health gauge loop. Before
+                // today this required customers to call
+                // `mobile.deviceStats.start(meter:)` themselves — easy to miss,
+                // so the default demo emitted zero health telemetry. Opt out by
+                // dropping `.deviceStats` from `autoCaptureOptions`.
                 instance.deviceStats.start(
                     meter: meter,
                     intervalSeconds: config.deviceStatsIntervalSeconds
@@ -552,13 +645,23 @@ public final class OTelMobile: @unchecked Sendable {
             // start it. Any failure is logged via the poller itself; we
             // never want a bad gateway URL to crash startup.
             if config.enablePolicyPolling {
+                // Transport security is threaded through to the poller too:
+                // HTTPS enforcement (a rejected cleartext endpoint makes the
+                // `try?` fail, so the poller simply doesn't start — last-applied
+                // config keeps running), the same `pinning` as the OTLP
+                // exporters, and the optional HMAC `configSigningKey` that gates
+                // applying a fetched payload.
                 if let poller = try? ConfigPoller(
                     gatewayEndpoint: config.endpoint,
                     authToken: config.authToken,
                     extraHeaders: config.extraHeaders,
                     pollingIntervalSeconds: TimeInterval(config.pollingIntervalSeconds),
                     evaluator: instance.policyEvaluator,
-                    logger: logger
+                    remoteGate: instance.remoteGate,
+                    logger: logger,
+                    allowInsecureTransport: config.allowInsecureTransport,
+                    pinning: config.pinning,
+                    configSigningKey: config.configSigningKey
                 ) {
                     poller.start()
                 }
@@ -612,19 +715,36 @@ public final class OTelMobile: @unchecked Sendable {
                         // rotation, region migration, and dataset rename
                         // therefore "just work."
                         //
-                        // Use a vanilla BaseHTTPClient (NOT
-                        // PersistingTraceHTTPClient) so retry failures
-                        // during replay don't re-persist the same rows
-                        // we're trying to drain.
-                        if let replayURL = try? OTLPExporterFactory.buildTracesEndpointURL(from: config.endpoint) {
+                        // Transport-security gate (task §1): only replay when
+                        // the configured endpoint passed the HTTPS policy up
+                        // front. If export was disabled (cleartext to a
+                        // non-loopback host without opt-in), persisted spans
+                        // stay on disk rather than being POSTed in cleartext.
+                        // `buildTracesEndpointURL` re-applies `enforceHTTPS`
+                        // (via `allowInsecure`) and throws on a rejected
+                        // endpoint, so the `try?` also fails closed.
+                        //
+                        // Use a vanilla client (NOT PersistingTraceHTTPClient)
+                        // so retry failures during replay don't re-persist the
+                        // same rows we're trying to drain — but apply the SAME
+                        // pinning as the live exporters so a pinned deployment
+                        // enforces pins on the replay connection too. With no
+                        // pinning, this is the prior BaseHTTPClient behaviour.
+                        if transportAllowed,
+                           let replayURL = try? OTLPExporterFactory.buildTracesEndpointURL(
+                               from: config.endpoint,
+                               allowInsecure: config.allowInsecureTransport) {
                             let replayHeaders = Self.buildReplayHeaders(
                                 authToken: config.authToken,
                                 extraHeaders: config.extraHeaders)
+                            let replayClient: HTTPClient =
+                                OTLPExporterFactory.makePinnedHTTPClient(pinning: config.pinning)
+                                ?? BaseHTTPClient()
                             _ = await OTelMobile.recoverSpanRequests(
                                 from: b,
                                 endpoint: replayURL,
                                 headers: replayHeaders,
-                                httpClient: BaseHTTPClient(),
+                                httpClient: replayClient,
                                 batchSize: 64)
                         }
                     }
@@ -1033,6 +1153,11 @@ public final class OTelMobile: @unchecked Sendable {
             && config.maxPayloadKb == d.maxPayloadKb
             && config.maxCapturesPerMinute == d.maxCapturesPerMinute
             && config.redactTextFields == d.redactTextFields
+            && config.redactAllText == d.redactAllText
+            // A consent gate is a closure (not Equatable); its mere presence
+            // means the config is non-default so the user's gate is honoured
+            // rather than silently dropped by reusing the `.shared` singleton.
+            && config.shouldCapture == nil
             && config.captureOnScreenView == d.captureOnScreenView
             && config.captureOnError == d.captureOnError
             && config.captureOnPolicyMatch == d.captureOnPolicyMatch
@@ -1053,5 +1178,7 @@ public final class OTelMobile: @unchecked Sendable {
             && config.includeTextHints == d.includeTextHints
             && config.includeContentDescription == d.includeContentDescription
             && config.includeInteractionState == d.includeInteractionState
+            // See note above: presence of a consent gate forces non-default.
+            && config.shouldCapture == nil
     }
 }

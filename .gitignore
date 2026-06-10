@@ -164,6 +164,12 @@ androidTest-results/
 *.sqlite
 *.sqlite3
 
+# Backup env files
+.env.bak*
+
+# React Native compiled output (build artifact — published via npm, not committed)
+packages/react-native/lib/
+
 # Node (if using React Native or web tools)
 node_modules/
 npm-debug.log*

@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
 import OpenTelemetrySdk
+import OTelMobileCore
 
 // MARK: - DiskLogBuffer
 
@@ -83,6 +84,11 @@ public actor DiskLogBuffer {
         self.maxTotalBytes = maxTotalBytes
         self.retentionSeconds = retentionSeconds
         self.openAndPrepare()
+        // At-rest protection: persisted logs can carry PII. Protect the DB
+        // file (WAL/SHM inherit the directory's class) and exclude the
+        // directory from backups. Crash-safe: helper logs + continues.
+        FileProtectionHelper.protectDirectory(self.dbPath.deletingLastPathComponent())
+        FileProtectionHelper.applyProtection(toFile: self.dbPath)
     }
 
     /// Closes the sqlite handle and finalises any cached prepared statements.

@@ -10,6 +10,7 @@ package com.dash0.mobile.reactnative
 import android.content.Context
 import io.opentelemetry.android.mobile.OTelMobile
 import io.opentelemetry.android.mobile.config.MobileConfig
+import io.opentelemetry.android.mobile.sampling.SamplingConfig
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.common.AttributesBuilder
@@ -22,6 +23,14 @@ internal class OTelMobileCallSink(
 ) : BridgeCallSink {
 
     private val liveSpans = HashMap<String, io.opentelemetry.api.trace.Span>()
+
+    // Async gauges must be registered exactly ONCE per metric name. Calling
+    // buildWithCallback on every event leaks a new never-closed observable +
+    // a retained closure each time. We register one observable gauge per name
+    // and have its callback report the latest value/attributes stored here.
+    private val gaugeRegistered = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private val gaugeLatest =
+        java.util.concurrent.ConcurrentHashMap<String, Pair<Double, Attributes>>()
 
     override fun start(config: StartConfig) {
         val app = appContext.applicationContext as android.app.Application
@@ -48,10 +57,44 @@ internal class OTelMobileCallSink(
                 // time. CONDITIONAL buffers spans for up to 1 hour, which is
                 // surprising behavior for a JS dev who just called startSpan().
                 exportMode = io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS,
+                // RN sampling default is ALWAYS_ON (Loper finding #4): RN manual
+                // spans are root spans with arbitrary names, so the native SDK's
+                // dynamic(0.1) default would silently drop ~90% of a user's first
+                // span. The JS bridge sends always_on unless the caller opts into
+                // sampling; rate-limiting for RN belongs in the collector.
+                samplingConfig = samplingConfigOf(config.sampling),
                 extraResourceAttributes = config.extraResourceAttributes,
             ),
         )
+
+        // Arm the native OkHttp interceptor now that OTelMobile is up and a
+        // tracer exists. The interceptor was installed on RN's OkHttp client
+        // pre-JS (Dash0MobilePackage) but stayed a pass-through no-op until
+        // this moment. Pass the collector endpoint so the interceptor adds our
+        // own ingress host to its ignore list — we must never instrument (or
+        // recurse on) telemetry exports. Wrapped defensively: a failure to arm
+        // network capture must not fail `Dash0Mobile.start`.
+        try {
+            NetworkInstrumentation.interceptor.arm(
+                tracer = OTelMobile.getTracer(SCOPE),
+                collectorEndpoint = config.endpoint,
+            )
+        } catch (_: Throwable) {
+            // No native network capture this session — but start() still
+            // succeeds and JS-side telemetry keeps working.
+        }
     }
+
+    private fun samplingConfigOf(sampling: BridgeSamplingConfig?): SamplingConfig =
+        when (sampling?.strategy) {
+            null,
+            SamplingStrategy.ALWAYS_ON -> SamplingConfig.alwaysOn()
+            SamplingStrategy.ALWAYS_OFF -> SamplingConfig.alwaysOff()
+            SamplingStrategy.DYNAMIC -> SamplingConfig.dynamic(
+                normalRate = sampling.normalRate ?: 0.05,
+                highPriorityRate = sampling.highPriorityRate ?: 1.0,
+            )
+        }
 
     override fun emitLog(
         name: String,
@@ -119,7 +162,18 @@ internal class OTelMobileCallSink(
         when (instrumentType) {
             "counter" -> meter.counterBuilder(name).build().add(value.toLong(), otelAttrs)
             "histogram" -> meter.histogramBuilder(name).build().record(value, otelAttrs)
-            "gauge" -> meter.gaugeBuilder(name).buildWithCallback { obs -> obs.record(value, otelAttrs) }
+            "gauge" -> {
+                // Stash the latest reading, then register the observable gauge
+                // ONCE per name. The callback re-reads from gaugeLatest on each
+                // collection so we don't leak a closure/instrument per event.
+                gaugeLatest[name] = value to otelAttrs
+                gaugeRegistered.computeIfAbsent(name) { gaugeName ->
+                    meter.gaugeBuilder(gaugeName).buildWithCallback { obs ->
+                        gaugeLatest[gaugeName]?.let { (v, a) -> obs.record(v, a) }
+                    }
+                    true
+                }
+            }
             else -> Unit
         }
     }
@@ -135,6 +189,12 @@ internal class OTelMobileCallSink(
     }
 
     override fun shutdown() {
+        // Return the interceptor to pass-through BEFORE stopping the SDK so no
+        // in-flight request tries to start a span on a torn-down tracer.
+        try {
+            NetworkInstrumentation.interceptor.disarm()
+        } catch (_: Throwable) {
+        }
         OTelMobile.stop()
     }
 

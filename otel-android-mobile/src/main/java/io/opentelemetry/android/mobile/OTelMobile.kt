@@ -88,6 +88,10 @@ object OTelMobile {
     fun start(application: Application, config: MobileConfig) {
         synchronized(this) {
             if (provider == null) {
+              // Prime directive: a failure anywhere in SDK startup must never
+              // propagate into the host's Application.onCreate. Catch, log, and
+              // leave the SDK in a degraded/no-op state (provider stays null).
+              try {
                 val instance = MobileOtel.initialize(application, config)
                 provider = instance
 
@@ -129,6 +133,24 @@ object OTelMobile {
                 }
 
                 handle = builder.build()
+              } catch (t: Throwable) {
+                // Roll back any partial init so the SDK is left in a true no-op
+                // state. Without this, a failure AFTER provider was assigned (e.g.
+                // RecoveryTracker.start or builder.build) would leave provider
+                // non-null — the `if (provider == null)` guard would then make
+                // every later start() a silent no-op (no retry) and getLoggerProvider()
+                // would hand back a half-initialized provider whose instrumentation
+                // never installed.
+                provider = null
+                handle = null
+                recoveryTracker = null
+                screenInstrumentation = null
+                android.util.Log.e(
+                    "OTelMobile",
+                    "OTelMobile.start failed; SDK disabled, host app continues normally",
+                    t
+                )
+              }
             }
         }
     }

@@ -115,37 +115,22 @@ internal object LogDatabaseMigrations {
 class DiskLogBuffer private constructor(
     internal val context: Context,
     private val maxSizeMb: Int,
-    private val ttlHours: Int
+    private val ttlHours: Int,
+    private val encryptAtRest: Boolean
 ) {
     private val TAG = "DiskLogBuffer"
 
-    private val database: LogDatabase = Room.databaseBuilder(
-        context.applicationContext,
-        LogDatabase::class.java,
-        "otel_log_buffer.db"
-    )
-        .addMigrations(*LogDatabaseMigrations.ALL)
-        .fallbackToDestructiveMigration(true)  // Safety net: if migration fails, recreate rather than crash
-        .build()
-        .also { db ->
-            // Pre-warm: open the database connection and force WAL checkpoint.
-            // This ensures crash-mirrored events from a previous process (written
-            // to the WAL before process death) are visible to subsequent queries.
-            // Without the checkpoint, getMaxSeqId() returns 0 and the seqId counter
-            // isn't seeded, causing dedup collisions that silently drop disk events.
-            runBlocking(Dispatchers.IO) {
-                val sqliteDb = db.openHelper.writableDatabase
-                try {
-                    // Force WAL checkpoint so crash-mirrored events from a dead
-                    // process are visible to subsequent DAO queries. Room's
-                    // SupportSQLiteDatabase doesn't allow PRAGMA via execSQL,
-                    // so use query() which returns a cursor (side-effect: checkpoint).
-                    sqliteDb.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
-                } catch (e: Exception) {
-                    Log.w("DiskLogBuffer", "WAL checkpoint failed (non-fatal)", e)
-                }
-            }
-        }
+    /**
+     * Whether the buffer is actually running encrypted. This may be `false`
+     * even when [encryptAtRest] was requested, if the Keystore could not
+     * provision a passphrase (graceful degradation — see [buildDatabase]).
+     * Exposed for tests/diagnostics.
+     */
+    @Volatile
+    internal var encryptionActive: Boolean = false
+        private set
+
+    private val database: LogDatabase = openDatabaseCrashSafe()
 
     private val logDao = database.logDao()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -153,6 +138,147 @@ class DiskLogBuffer private constructor(
     // Cached event count — avoids runBlocking COUNT(*) on metric gauge callbacks.
     // Seeded on first access, updated on insert/delete operations.
     private val cachedCount = AtomicInteger(-1) // -1 = not yet seeded
+
+    /**
+     * Builds the Room database, opens it, and forces a WAL checkpoint — all in
+     * a way that NEVER crashes the host on a failed open.
+     *
+     * Failure modes handled:
+     * - **Wrong/invalidated SQLCipher key or corrupt encrypted file**: opening
+     *   the database throws (SQLCipher reports `file is not a database`). We log,
+     *   delete the on-disk files, clear the Keystore-wrapped passphrase, and
+     *   rebuild from scratch. This mirrors the intent of
+     *   `fallbackToDestructiveMigration` for the encryption dimension: an
+     *   unreadable buffer is recreated, never fatal.
+     * - **Cleartext→encrypted transition** (e.g. enabling encryption on an
+     *   existing cleartext DB): the encrypted open fails the same way and the
+     *   old cleartext DB is recreated encrypted. Buffered telemetry is
+     *   best-effort and bounded by TTL, so dropping it on this one-time
+     *   transition is acceptable and crash-free.
+     * - **Encrypted→cleartext transition** (encryption disabled after being on):
+     *   same recreate-on-failure path.
+     */
+    private fun openDatabaseCrashSafe(): LogDatabase {
+        val first = buildDatabase(encrypt = encryptAtRest)
+        return try {
+            prewarm(first)
+            first
+        } catch (e: Throwable) {
+            // Open or checkpoint failed — almost always a key/format mismatch on
+            // the existing file. Recreate destructively rather than crash.
+            Log.w(TAG, "Disk buffer open failed (encrypt=$encryptAtRest); recreating database", e)
+            try {
+                first.close()
+            } catch (_: Throwable) {
+                // Best-effort close of the half-open handle.
+            }
+            deleteDatabaseFiles()
+            if (encryptAtRest) {
+                // The wrapped passphrase may be stale/invalidated; reset it so the
+                // rebuild mints a fresh key + passphrase.
+                runCatching { DiskBufferKeyManager.create(context).reset() }
+            }
+            val rebuilt = buildDatabase(encrypt = encryptAtRest)
+            try {
+                prewarm(rebuilt)
+            } catch (e2: Throwable) {
+                // Encryption is still failing on a brand-new file — fall back to
+                // cleartext so the host keeps functioning. This is the last resort
+                // and only reachable if SQLCipher/Keystore are fundamentally broken
+                // on this device.
+                Log.e(TAG, "Encrypted disk buffer unusable on this device; falling back to cleartext", e2)
+                try {
+                    rebuilt.close()
+                } catch (_: Throwable) {
+                }
+                deleteDatabaseFiles()
+                val cleartext = buildDatabase(encrypt = false)
+                prewarm(cleartext)
+                return cleartext
+            }
+            rebuilt
+        }
+    }
+
+    /**
+     * Constructs the Room database, attaching the SQLCipher
+     * [net.zetetic.database.sqlcipher.SupportOpenHelperFactory] when [encrypt]
+     * is true AND a passphrase can be provisioned from the Android Keystore.
+     *
+     * If [encrypt] is requested but the Keystore cannot supply a passphrase,
+     * this logs and builds an UNENCRYPTED database (graceful degradation) — the
+     * host must never lose telemetry buffering just because encryption could
+     * not be provisioned.
+     */
+    private fun buildDatabase(encrypt: Boolean): LogDatabase {
+        val builder = Room.databaseBuilder(
+            context.applicationContext,
+            LogDatabase::class.java,
+            DB_NAME
+        )
+            .addMigrations(*LogDatabaseMigrations.ALL)
+            .fallbackToDestructiveMigration(true)  // Safety net: if migration fails, recreate rather than crash
+
+        encryptionActive = false
+        if (encrypt) {
+            val factory = createCipherFactory()
+            if (factory != null) {
+                builder.openHelperFactory(factory)
+                encryptionActive = true
+                Log.i(TAG, "Disk buffer at-rest encryption ENABLED (SQLCipher + Android Keystore)")
+            } else {
+                Log.w(TAG, "Disk buffer encryption requested but unavailable; running cleartext")
+            }
+        }
+        return builder.build()
+    }
+
+    /**
+     * Builds the SQLCipher SupportFactory from a Keystore-wrapped passphrase, or
+     * returns `null` (caller runs cleartext) if SQLCipher native libs cannot be
+     * loaded or the passphrase cannot be provisioned. Never throws.
+     */
+    private fun createCipherFactory(): androidx.sqlite.db.SupportSQLiteOpenHelper.Factory? {
+        return try {
+            // net.zetetic:sqlcipher-android auto-loads its native library on first
+            // database open (no explicit loadLibs() call needed). If the .so is
+            // missing for this ABI the open throws UnsatisfiedLinkError, which is
+            // caught by openDatabaseCrashSafe() and degrades to cleartext.
+            val passphrase = DiskBufferKeyManager.create(context).getOrCreatePassphrase()
+                ?: return null
+            net.zetetic.database.sqlcipher.SupportOpenHelperFactory(passphrase)
+        } catch (e: Throwable) {
+            // Keystore failure, class-load failure, anything — degrade to cleartext.
+            Log.e(TAG, "Failed to initialize SQLCipher factory; running cleartext", e)
+            null
+        }
+    }
+
+    /**
+     * Opens the writable database and forces a WAL checkpoint so crash-mirrored
+     * events from a dead process are visible to subsequent DAO queries. Throws
+     * if the underlying file cannot be opened (wrong key / corrupt) — the caller
+     * ([openDatabaseCrashSafe]) treats that as the recreate trigger.
+     */
+    private fun prewarm(db: LogDatabase) {
+        runBlocking(Dispatchers.IO) {
+            val sqliteDb = db.openHelper.writableDatabase
+            // Force WAL checkpoint. Room's SupportSQLiteDatabase doesn't allow
+            // PRAGMA via execSQL, so use query() (side-effect: checkpoint).
+            sqliteDb.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+        }
+    }
+
+    private fun deleteDatabaseFiles() {
+        try {
+            val dbPath = context.getDatabasePath(DB_NAME)
+            dbPath.delete()
+            File(dbPath.absolutePath + "-wal").delete()
+            File(dbPath.absolutePath + "-shm").delete()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete database files during recreate (non-fatal)", e)
+        }
+    }
 
     /**
      * Persists log records to disk.
@@ -435,7 +561,7 @@ class DiskLogBuffer private constructor(
      * Returns 0.0 if the database file does not exist yet.
      */
     fun getStorageSizeMb(): Double {
-        val dbFile = context.getDatabasePath("otel_log_buffer.db")
+        val dbFile = context.getDatabasePath(DB_NAME)
         return if (dbFile.exists()) dbFile.length() / (1024.0 * 1024.0) else 0.0
     }
 
@@ -467,7 +593,7 @@ class DiskLogBuffer private constructor(
         strategy: io.opentelemetry.android.mobile.config.EvictionStrategy
     ): Int = withContext(Dispatchers.IO) {
         try {
-            val dbFile = context.getDatabasePath("otel_log_buffer.db")
+            val dbFile = context.getDatabasePath(DB_NAME)
             if (!dbFile.exists()) return@withContext 0
 
             val currentSizeBytes = dbFile.length()
@@ -508,7 +634,7 @@ class DiskLogBuffer private constructor(
      */
     private suspend fun enforceSizeLimit() {
         try {
-            val dbFile = context.getDatabasePath("otel_log_buffer.db")
+            val dbFile = context.getDatabasePath(DB_NAME)
             if (!dbFile.exists()) return
 
             val currentSizeMb = dbFile.length() / (1024.0 * 1024.0)
@@ -538,12 +664,29 @@ class DiskLogBuffer private constructor(
     }
 
     companion object {
+        /** Room/SQLite database file name for the on-disk telemetry buffer. */
+        internal const val DB_NAME = "otel_log_buffer.db"
+
         @Volatile
         private var instance: DiskLogBuffer? = null
 
-        fun getInstance(context: Context, maxSizeMb: Int, ttlHours: Int): DiskLogBuffer {
+        /**
+         * Returns the shared disk buffer, creating it on first call.
+         *
+         * @param encryptAtRest when true, the Room/SQLite database is encrypted
+         *   at rest via SQLCipher with a passphrase wrapped by an Android
+         *   Keystore key. Defaults to true for enterprise-grade safety; if
+         *   encryption cannot be provisioned the buffer degrades to cleartext
+         *   rather than failing (see [openDatabaseCrashSafe]).
+         */
+        fun getInstance(
+            context: Context,
+            maxSizeMb: Int,
+            ttlHours: Int,
+            encryptAtRest: Boolean = true
+        ): DiskLogBuffer {
             return instance ?: synchronized(this) {
-                instance ?: DiskLogBuffer(context.applicationContext, maxSizeMb, ttlHours).also {
+                instance ?: DiskLogBuffer(context.applicationContext, maxSizeMb, ttlHours, encryptAtRest).also {
                     instance = it
                 }
             }
@@ -560,7 +703,7 @@ class DiskLogBuffer private constructor(
             synchronized(this) {
                 val current = instance
                 if (current != null) {
-                    val dbPath = current.context.getDatabasePath("otel_log_buffer.db")
+                    val dbPath = current.context.getDatabasePath(DB_NAME)
                     current.close()
                     instance = null
                     // Delete database files explicitly so the next test starts with a

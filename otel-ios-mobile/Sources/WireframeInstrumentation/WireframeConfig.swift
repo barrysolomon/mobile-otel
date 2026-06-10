@@ -1,4 +1,5 @@
 import Foundation
+import OTelMobileCore
 
 public struct WireframeConfig: Sendable {
     public var enabled: Bool
@@ -23,6 +24,15 @@ public struct WireframeConfig: Sendable {
     public var includeTextHints: Bool
     public var includeContentDescription: Bool
     public var includeInteractionState: Bool
+    /// Optional customer-owned consent gate. When non-`nil`, it is consulted
+    /// **synchronously on the main thread immediately before each capture**
+    /// (after the `enabled` and rate-limit checks, before the view-tree walk).
+    /// If it returns `false`, the capture is skipped entirely — no walk, no
+    /// log emitted. When `nil`, capture follows ``enabled`` alone. The consent
+    /// gate is an *additional* runtime gate on top of ``enabled``, not a
+    /// replacement. Keep the closure cheap and non-blocking; it runs in the
+    /// capture hot path on the main thread.
+    public var shouldCapture: CaptureConsentGate?
 
     public init(
         enabled: Bool = true,
@@ -36,7 +46,8 @@ public struct WireframeConfig: Sendable {
         includeAccessibilityIdentifiers: Bool = true,
         includeTextHints: Bool = false,
         includeContentDescription: Bool = true,
-        includeInteractionState: Bool = true
+        includeInteractionState: Bool = true,
+        shouldCapture: CaptureConsentGate? = nil
     ) {
         self.enabled = enabled
         self.maxCapturesPerMinute = maxCapturesPerMinute
@@ -50,5 +61,14 @@ public struct WireframeConfig: Sendable {
         self.includeTextHints = includeTextHints
         self.includeContentDescription = includeContentDescription
         self.includeInteractionState = includeInteractionState
+        self.shouldCapture = shouldCapture
+    }
+
+    /// Builder-style setter for the consent gate. Returns a copy with
+    /// ``shouldCapture`` set.
+    public func withConsentGate(_ gate: @escaping CaptureConsentGate) -> WireframeConfig {
+        var copy = self
+        copy.shouldCapture = gate
+        return copy
     }
 }

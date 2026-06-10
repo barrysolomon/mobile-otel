@@ -11,6 +11,7 @@
  */
 
 import { Dash0Mobile } from '../index';
+import { sanitizeUrl } from '../redact';
 
 export interface FetchInstrumentationConfig {
   ignoredHosts?: readonly string[];
@@ -43,51 +44,83 @@ export function installFetchInstrumentation(
   );
 
   const wrapped: FetchFn = async (input, init) => {
-    const url = resolveUrl(input);
-    const host = hostFromUrl(url);
-    if (host && ignored.has(host)) {
+    // Telemetry setup must never break the host's request. Build the span
+    // defensively; on ANY failure fall through to the raw call.
+    let handle: ReturnType<typeof Dash0Mobile.startSpan> | undefined;
+    try {
+      const url = resolveUrl(input);
+      const host = hostFromUrl(url);
+      if (host && ignored.has(host)) {
+        return original(input, init);
+      }
+      const method = resolveMethod(input, init);
+      handle = Dash0Mobile.startSpan(
+        method,
+        {
+          'http.request.method': method,
+          'url.full': sanitizeUrl(url),
+          ...(host ? { 'server.address': host } : {}),
+        },
+        'CLIENT',
+      );
+    } catch (telemetryErr) {
+      // Span setup failed — host request must still proceed unobserved.
+      // eslint-disable-next-line no-console
+      console.warn?.('[@dash0/mobile] fetch instrumentation setup failed', telemetryErr);
       return original(input, init);
     }
 
-    const method = resolveMethod(input, init);
-    const handle = Dash0Mobile.startSpan(
-      method,
-      {
-        'http.request.method': method,
-        'url.full': url,
-        ...(host ? { 'server.address': host } : {}),
-      },
-      'CLIENT',
-    );
-
     try {
       const response = await original(input, init);
-      const status = (response as Response | undefined)?.status;
-      if (typeof status === 'number') {
-        handle.setAttribute('http.response.status_code', status);
-        if (status >= 400) {
-          handle.setStatus('ERROR', `HTTP ${status}`);
+      try {
+        const status = (response as Response | undefined)?.status;
+        if (typeof status === 'number') {
+          handle.setAttribute('http.response.status_code', status);
+          if (status >= 400) {
+            handle.setStatus('ERROR', `HTTP ${status}`);
+          } else {
+            handle.setStatus('OK');
+          }
         } else {
           handle.setStatus('OK');
         }
-      } else {
-        handle.setStatus('OK');
+      } catch {
+        // Telemetry bookkeeping failure must not mask a successful response.
       }
       return response;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      handle.setStatus('ERROR', message);
+      try {
+        const message = err instanceof Error ? err.message : String(err);
+        handle.setStatus('ERROR', message);
+      } catch {
+        // ignore telemetry failure on the error path
+      }
       throw err;
     } finally {
-      handle.end();
+      try {
+        handle.end();
+      } catch {
+        // ignore
+      }
     }
   };
 
-  globalThis.fetch = wrapped;
+  const g = globalThis as unknown as {
+    fetch: FetchFn & { __dash0_installed?: boolean };
+  };
+  // Double-install guard: Fast Refresh / repeated start() would otherwise
+  // stack wrappers and leak the captured `original`.
+  if (g.fetch && (g.fetch as { __dash0_installed?: boolean }).__dash0_installed) {
+    return () => {};
+  }
+  (wrapped as { __dash0_installed?: boolean }).__dash0_installed = true;
+  g.fetch = wrapped;
 
   return function uninstall() {
-    if (globalThis.fetch === wrapped) {
-      globalThis.fetch = original;
+    if (g.fetch === wrapped) {
+      g.fetch = original;
     }
+    // Clear the guard so a later install() can re-instrument.
+    delete (wrapped as { __dash0_installed?: boolean }).__dash0_installed;
   };
 }

@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbConfig
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumbBuffer
@@ -40,6 +41,8 @@ class NavigationInstrumentation private constructor(
     private var currentScreen: String? = null
 
     companion object {
+        private const val TAG = "NavigationInstrumentation"
+
         @Volatile
         private var instance: NavigationInstrumentation? = null
 
@@ -97,6 +100,8 @@ class NavigationInstrumentation private constructor(
         (context as? Application)?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                  // Guard: a breadcrumb/emit fault must never crash a host activity transition.
+                  try {
                     if (!enabled) return
 
                     val screenName = activity.javaClass.simpleName
@@ -129,11 +134,16 @@ class NavigationInstrumentation private constructor(
                     FragmentLifecycleInstrumentation.tryAttach(
                         activity, config, breadcrumbBuffer
                     )
+                  } catch (t: Throwable) {
+                    Log.w(TAG, "onActivityCreated navigation capture failed; swallowing", t)
+                  }
                 }
 
                 override fun onActivityStarted(activity: Activity) {}
 
                 override fun onActivityResumed(activity: Activity) {
+                  // Guard: see onActivityCreated.
+                  try {
                     if (!enabled) return
 
                     val screenName = activity.javaClass.simpleName
@@ -150,9 +160,14 @@ class NavigationInstrumentation private constructor(
                         )
                     )
                     breadcrumbBuffer.add(breadcrumb)
+                  } catch (t: Throwable) {
+                    Log.w(TAG, "onActivityResumed navigation capture failed; swallowing", t)
+                  }
                 }
 
                 override fun onActivityPaused(activity: Activity) {
+                  // Guard: see onActivityCreated.
+                  try {
                     if (!enabled) return
 
                     val screenName = activity.javaClass.simpleName
@@ -167,6 +182,9 @@ class NavigationInstrumentation private constructor(
                         )
                     )
                     breadcrumbBuffer.add(breadcrumb)
+                  } catch (t: Throwable) {
+                    Log.w(TAG, "onActivityPaused navigation capture failed; swallowing", t)
+                  }
                 }
 
                 override fun onActivityStopped(activity: Activity) {}
@@ -174,6 +192,8 @@ class NavigationInstrumentation private constructor(
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
 
                 override fun onActivityDestroyed(activity: Activity) {
+                  // Guard: see onActivityCreated.
+                  try {
                     if (!enabled) return
 
                     val screenName = activity.javaClass.simpleName
@@ -192,6 +212,9 @@ class NavigationInstrumentation private constructor(
                     if (currentScreen == screenName) {
                         currentScreen = null
                     }
+                  } catch (t: Throwable) {
+                    Log.w(TAG, "onActivityDestroyed navigation capture failed; swallowing", t)
+                  }
                 }
             }
         )

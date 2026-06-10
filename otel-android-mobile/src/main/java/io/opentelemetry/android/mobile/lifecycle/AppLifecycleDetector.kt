@@ -9,6 +9,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import io.opentelemetry.api.common.Attributes
@@ -226,19 +227,29 @@ class AppLifecycleDetector private constructor(
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-        // Log app start only on first activity creation
-        if (isFirstStart.compareAndSet(true, false)) {
-            logAppStart()
+        // Guard: a telemetry emit fault must never crash a host activity transition.
+        try {
+            // Log app start only on first activity creation
+            if (isFirstStart.compareAndSet(true, false)) {
+                logAppStart()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "onActivityCreated telemetry failed; swallowing", t)
         }
     }
 
     override fun onActivityStarted(activity: Activity) {
-        val count = activeActivities.incrementAndGet()
+        // Guard: see onActivityCreated.
+        try {
+            val count = activeActivities.incrementAndGet()
 
-        // App came to foreground (from background)
-        if (count == 1L && lastBackgroundTime > 0) {
-            val backgroundDuration = System.currentTimeMillis() - lastBackgroundTime
-            logAppForeground(backgroundDuration)
+            // App came to foreground (from background)
+            if (count == 1L && lastBackgroundTime > 0) {
+                val backgroundDuration = System.currentTimeMillis() - lastBackgroundTime
+                logAppForeground(backgroundDuration)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "onActivityStarted telemetry failed; swallowing", t)
         }
     }
 
@@ -251,13 +262,18 @@ class AppLifecycleDetector private constructor(
     }
 
     override fun onActivityStopped(activity: Activity) {
-        val count = activeActivities.decrementAndGet()
+        // Guard: see onActivityCreated.
+        try {
+            val count = activeActivities.decrementAndGet()
 
-        // App went to background (no activities visible)
-        if (count == 0L) {
-            lastBackgroundTime = System.currentTimeMillis()
-            val sessionDuration = lastBackgroundTime - sessionStartTime.get()
-            logAppBackground(sessionDuration)
+            // App went to background (no activities visible)
+            if (count == 0L) {
+                lastBackgroundTime = System.currentTimeMillis()
+                val sessionDuration = lastBackgroundTime - sessionStartTime.get()
+                logAppBackground(sessionDuration)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "onActivityStopped telemetry failed; swallowing", t)
         }
     }
 

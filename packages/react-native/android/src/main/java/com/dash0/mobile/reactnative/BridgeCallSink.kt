@@ -64,4 +64,46 @@ data class StartConfig(
      * sink will translate them the same way the iOS sink does today.
      */
     val nativeAutoCapture: List<String> = emptyList(),
+    /**
+     * Trace sampling strategy from the JS caller, mapped onto the native
+     * [io.opentelemetry.android.mobile.sampling.SamplingConfig].
+     *
+     * The RN bridge defaults this to [SamplingStrategy.ALWAYS_ON] when the
+     * JS caller omits `sampling`, rather than inheriting the native SDK's
+     * `dynamic(0.1)` default. RN manual spans are root spans with arbitrary
+     * names, so a 10% baseline silently drops ~90% of a user's first span
+     * (Loper finding #4). Null here means "caller said nothing" — the sink
+     * leaves the native default untouched, but in practice the JS bridge
+     * always sends a value.
+     */
+    val sampling: BridgeSamplingConfig? = null,
 )
+
+/**
+ * Bridge-side mirror of the JS `SamplingConfig`. Decoded from the RN
+ * `start()` payload and translated to the native SDK's `SamplingConfig` in
+ * [OTelMobileCallSink.start].
+ */
+data class BridgeSamplingConfig(
+    val strategy: SamplingStrategy,
+    /** Baseline rate for [SamplingStrategy.DYNAMIC]. Null = native default. */
+    val normalRate: Double? = null,
+    /** High-priority rate for [SamplingStrategy.DYNAMIC]. Null = native default. */
+    val highPriorityRate: Double? = null,
+)
+
+enum class SamplingStrategy {
+    ALWAYS_ON,
+    ALWAYS_OFF,
+    DYNAMIC,
+    ;
+
+    companion object {
+        /** Maps the JS `strategy` string; unknown values fall back to ALWAYS_ON (RN default). */
+        fun fromToken(raw: String?): SamplingStrategy = when (raw) {
+            "always_off" -> ALWAYS_OFF
+            "dynamic" -> DYNAMIC
+            else -> ALWAYS_ON
+        }
+    }
+}

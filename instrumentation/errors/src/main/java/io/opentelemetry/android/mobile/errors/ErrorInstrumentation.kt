@@ -207,7 +207,10 @@ class ErrorInstrumentation private constructor(
 
         // Attach breadcrumbs
         if (config.attachBreadcrumbs && BreadcrumbManager.isInitialized()) {
-            val breadcrumbsJson = BreadcrumbManager.toJson()
+            // Scrub the serialized breadcrumb attribute values (emails, phones,
+            // cards, SSNs) before they land on mobile.user.journey. Breadcrumbs
+            // can carry PII in their attribute values (e.g. URLs, form context).
+            val breadcrumbsJson = PiiScrubber.scrubText(BreadcrumbManager.toJson())
             attributesBuilder.put(AttributeKey.stringKey("mobile.user.journey"), breadcrumbsJson)
         }
 

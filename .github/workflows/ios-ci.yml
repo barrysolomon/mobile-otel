@@ -1,0 +1,58 @@
+name: iOS CI
+# iOS lives in its own workflow because macos runners bill at ~10x the ubuntu
+# rate. To keep that cost bounded while still giving iOS real CI coverage
+# (previously it had none — the macos job was dropped in 2026-05 for quota):
+#   - path-filtered: only runs when iOS / RN-iOS sources actually change;
+#   - nightly schedule: a daily safety net independent of changes;
+#   - workflow_dispatch: on-demand manual runs;
+#   - concurrency-cancelled so rapid pushes don't stack macos minutes.
+# This is the platform with the thinnest test suite, so leaving it untested in
+# CI was the highest-risk gap; this restores it at minimal cost.
+on:
+  push:
+    branches: [main, iPhone, uat-matrix]
+    paths:
+      - 'otel-ios-mobile/**'
+      - 'packages/react-native/ios/**'
+      - 'packages/react-native/Package.swift'
+      - '.github/workflows/ios-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'otel-ios-mobile/**'
+      - 'packages/react-native/ios/**'
+      - 'packages/react-native/Package.swift'
+      - '.github/workflows/ios-ci.yml'
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC nightly safety net
+  workflow_dispatch:
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-sdk:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: iOS SDK build
+        working-directory: otel-ios-mobile
+        run: swift build
+      - name: iOS SDK tests
+        working-directory: otel-ios-mobile
+        run: ./run-tests.sh
+
+  react-native-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: RN package Swift build + tests
+        working-directory: packages/react-native
+        run: |
+          swift build
+          swift test

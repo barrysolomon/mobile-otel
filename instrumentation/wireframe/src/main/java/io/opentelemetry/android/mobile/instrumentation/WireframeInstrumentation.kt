@@ -245,6 +245,18 @@ class WireframeInstrumentation(
 
         val type = viewTypeName(view)
 
+        // Jetpack Compose renders into a single AndroidComposeView whose children
+        // are not Views, so we can't introspect Compose text safely. Emit it as an
+        // opaque sensitive leaf (bounds + type only) and do not surface its
+        // hint/contentDescription, which can carry Compose semantics text.
+        if (view.javaClass.name == COMPOSE_VIEW_CLASS) {
+            return WireframeNode(
+                type = type, bounds = bounds, id = null, hint = null,
+                contentDescription = null, clickable = null, enabled = null,
+                truncated = true
+            )
+        }
+
         val id = if (config.includeResourceIds) {
             resourceIdName(view)
         } else null
@@ -450,5 +462,8 @@ class WireframeInstrumentation(
 
     companion object {
         private const val TAG = "OTel-Wireframe"
+        // Fully-qualified name of the Compose interop View. Matched by name so this
+        // module needs no compile-time dependency on Jetpack Compose.
+        private const val COMPOSE_VIEW_CLASS = "androidx.compose.ui.platform.AndroidComposeView"
     }
 }

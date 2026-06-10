@@ -35,12 +35,133 @@ Any of the above can end up in a screenshot or a wireframe view hierarchy (text 
 
 1. **Opt-in, not opt-out.** Neither module is part of `AutoCaptureOptions.default`. Customers explicitly include them in their `MobileConfig`.
 2. **Redact at capture time, not at export time.** The moment the pixel buffer or JSON tree is built, text is masked. Unredacted data never exists in memory long enough to be reachable via a memory-dump exploit.
-3. **Mask by default; expose opt-out at the leaf node, not the module.** The caller can mark specific SwiftUI views as safe-to-capture via `.dash0PrivacySafe()`. Everything else masks.
-4. **Attribute size is bounded.** The capture is capped to a payload size that fits in an OTel log attribute without exploding span cost. A screenshot that would exceed the cap is dropped (with a `screenshot.dropped_reason` log), not truncated mid-image.
-5. **Consent is a separate boolean.** `ScreenshotInstrumentation` and `WireframeInstrumentation` each take a `shouldCapture: () -> Bool` closure that the customer wires to their consent management platform. Default is `{ false }` — nothing captures without explicit customer go-ahead.
+3. **Redact at the leaf node deterministically.** Sensitive regions are masked from a reliable signal — the OS-level `isSecureTextEntry` flag on UIKit fields, plus explicit tagging (`Dash0.redact(_:)` / `.dash0Redacted()`) — not a class-name guess. See **Shipped API** below; this principle replaces the earlier opt-out `.dash0PrivacySafe()` proposal with an opt-IN masking model, which is the safer default for regulated customers.
+4. **Attribute size is bounded.** The capture is capped to a payload size that fits in an OTel log attribute without exploding span cost. A screenshot that would exceed the cap is dropped, not truncated mid-image.
+5. **Consent is a separate, additional runtime gate.** `ScreenshotConfig`/`WireframeConfig` each take an optional `shouldCapture: (@Sendable (CaptureContext) -> Bool)?` closure the customer wires to their consent platform. It is consulted synchronously on the main thread immediately before each capture and is layered on top of the default-OFF `enabled` flag — it does not replace it. See **Shipped API**.
 6. **Capture is rate-limited.** Per-minute cap + cooldown after an event that triggered capture.
 
-## `ScreenshotInstrumentation` — proposed API
+## Shipped API (authoritative)
+
+> This section reconciles the doc with the code as actually shipped on
+> `feat/ios-capture-consent`. Where it conflicts with the **proposed API**
+> sketches further below, this section wins; those sketches are retained as
+> historical design context. The two notable, deliberate divergences from the
+> original proposal are called out inline.
+
+### Consent gate — `CaptureContext`
+
+Both `ScreenshotConfig` and `WireframeConfig` carry:
+
+```swift
+public var shouldCapture: CaptureConsentGate?   // (@Sendable (CaptureContext) -> Bool)?
+public func withConsentGate(_ gate: @escaping CaptureConsentGate) -> Self
+```
+
+`CaptureContext` lives in `OTelMobileCore` and is handed to the gate:
+
+```swift
+public struct CaptureContext: Sendable, Equatable {
+    public let trigger: CaptureTrigger   // .error | .policy(name:) | .screenView | .tap | .manual | .other(String)
+    public let kind: CaptureKind         // .screenshot | .wireframe
+    public let screenName: String?
+    public var policyName: String? { ... }   // non-nil when trigger == .policy
+}
+```
+
+**Contract.** The gate is consulted **synchronously on the main thread,
+immediately before each capture**, after the `enabled` and rate-limit checks
+and before any view-tree walk or pixel render. Returning `false` skips the
+capture entirely — no render, no work, no log. When `shouldCapture == nil`,
+capture follows the `enabled` flag alone (which is already default-OFF, i.e.
+capture is explicit opt-in). The gate is an **additional** runtime gate, never
+a replacement for `enabled`. Keep the closure cheap and non-blocking; it runs
+on the main thread in the capture hot path.
+
+> **Divergence #1 (vs. proposal principle 5):** the proposal sketched
+> `shouldCapture: () -> Bool` defaulting to `{ false }` and "lean no" on a
+> context object. The Open Question on a context object resolved **yes** — the
+> gate takes a `CaptureContext` so customers can decide by trigger/kind/screen
+> without rebuilding their consent integration. The default is `nil` (not
+> `{ false }`) because the separate, already-default-OFF `enabled` flag is the
+> opt-in switch; making the gate also default to "deny" would be a confusing
+> double-negative. Net behaviour is unchanged: nothing captures unless the
+> customer both enables the module **and** (if a gate is set) the gate allows.
+
+### Deterministic redaction
+
+Masking decisions are centralized in `OTelMobileCore` so the screenshot walk
+and the wireframe walk share one source of truth:
+
+```swift
+public enum Dash0RedactionPolicy {
+    public static func shouldRedact(_ view: UIView, redactAllText: Bool) -> Bool
+}
+```
+
+A view is masked when **any** of the following hold, in priority order:
+
+1. **Explicit tag.** The view was marked via `Dash0.redact(_ view: UIView)` /
+   `view.dash0MarkSensitive()` (an associated-object flag), or — for SwiftUI —
+   the `.dash0Redacted()` `ViewModifier` was applied (see below).
+2. **OS-level secure entry.** `UITextField`/`UITextView` with
+   `isSecureTextEntry == true`. This is the reliable replacement for the old
+   "mask every text field" and the SwiftUI class-name guess.
+3. **Redact-all-text mode.** When `ScreenshotConfig.redactAllText == true`,
+   every `UITextField`/`UITextView`/`UILabel` is masked (maximally
+   conservative). Default `false`.
+4. **Conservative class-name fallback (last resort, OFF by default).**
+   `Dash0.conservativeClassNameFallbackEnabled` re-enables a narrow,
+   case-insensitive class-name token match (`securefield`, `securetext`). This
+   is the demoted form of the old heuristic; it can over-mask and break across
+   OS versions, so it is opt-in only and documented as a fallback.
+
+`ScreenshotConfig` exposes the redaction switches as:
+
+```swift
+public var redactTextFields: Bool   // default true — run the redaction walk at all
+public var redactAllText: Bool      // default false — also mask non-secure text
+```
+
+### SwiftUI redaction — why it is robust
+
+```swift
+SecureField("Password", text: $pw).dash0Redacted()
+```
+
+`.dash0Redacted()` (a public `ViewModifier`) installs a transparent,
+non-interactive backing `UIView` (`Dash0RedactionBackingView`, via
+`UIViewRepresentable`) as a `.background` of the modified view. That backing
+view carries the `dash0MarkSensitive()` associated-object flag and tracks the
+SwiftUI region's bounds. The capture walk finds it and masks its frame.
+
+This is robust **because the signal is an associated-object flag the SDK set
+itself, not a SwiftUI private class name**. The old hotfix matched strings like
+`_UITextLayoutCanvasView` / SwiftUI's private secure-field host — fragile
+across OS releases and easy to silently regress. The tag survives OS updates,
+needs no introspection of Apple-private types, and is unit-testable (the
+backing view is built by a single `Dash0RedactionBackingView.makeTagged()`
+factory the tests assert against).
+
+> **Divergence #2 (vs. proposal principle 3):** the proposal used
+> `.dash0PrivacySafe()` — an **opt-out** where everything masks unless marked
+> safe. Shipped is `.dash0Redacted()` — an **opt-in** mask applied to the
+> specific sensitive view. Opt-in masking was chosen because mask-everything
+> produces unreadable screenshots/wireframes that defeat the debugging purpose,
+> while secure fields are already auto-masked deterministically; customers tag
+> the residual sensitive views (card numbers, SSNs) explicitly.
+
+### Wireframe redaction
+
+In the wireframe tree walk, a redacted node:
+- carries `"redacted": true`,
+- drops **all** text-bearing fields (`id`, `hint`, `label`) — enforced in the
+  `WireframeNode` initializer, so a redacted node cannot carry text even if the
+  walk passed some, and
+- is **not descended into** — its sensitive subtree is never serialized.
+
+Layout (`type`, `bounds`) is preserved so the wireframe is still useful.
+
+## `ScreenshotInstrumentation` — proposed API (historical; superseded by Shipped API)
 
 ```swift
 public struct ScreenshotConfig: Sendable {
@@ -104,7 +225,7 @@ public final class ScreenshotInstrumentation: @unchecked Sendable {
 
 A SwiftUI ViewModifier that tags the view so the redaction walker leaves it alone. Applied narrowly — a product image on an e-commerce screen, an app-logo view on a settings screen. Never applied to entire screens.
 
-## `WireframeInstrumentation` — proposed API
+## `WireframeInstrumentation` — proposed API (historical; superseded by Shipped API)
 
 ```swift
 public struct WireframeConfig: Sendable {
@@ -145,6 +266,6 @@ Emits `ui.wireframe` log. The JSON payload is a tree: each node `{ "type": "VSta
 
 ## Open questions
 
-- Should `shouldCapture()` accept a context object (screen name, error class) so customers can redact by context without rebuilding their consent gate? **Lean no** for first ship; add in v2 if field requests.
+- ~~Should `shouldCapture()` accept a context object (screen name, error class) so customers can redact by context without rebuilding their consent gate? **Lean no** for first ship.~~ **Resolved: yes.** Shipped as `shouldCapture: (@Sendable (CaptureContext) -> Bool)?` where `CaptureContext` carries `trigger`, `kind`, and `screenName`. See **Shipped API**.
 - Do we need a way for customers to inspect what was captured before it shipped? **Consider yes** — a debug build delegate hook that gets the encoded bytes + redaction stats. Defer to post-ship.
 - PLCrashReporter integration — does crash recovery want to snapshot one last screenshot right before crash? **No.** The crash marker path is signal-handler-scoped, which forbids almost all APIs including anything that touches UIKit/SwiftUI. Screenshots live in the regular runtime path only.

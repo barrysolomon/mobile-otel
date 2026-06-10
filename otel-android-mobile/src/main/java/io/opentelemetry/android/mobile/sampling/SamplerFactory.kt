@@ -5,6 +5,7 @@
 
 package io.opentelemetry.android.mobile.sampling
 
+import io.opentelemetry.android.mobile.policy.RemoteGate
 import io.opentelemetry.sdk.trace.samplers.Sampler
 
 /**
@@ -18,9 +19,13 @@ object SamplerFactory {
      * Creates a sampler based on the provided configuration.
      *
      * @param config Sampling configuration
+     * @param remoteGate the shared remote kill-switch / global-sampling gate. Wired into
+     *   the [DynamicSampler] (the default mobile strategy) so the span choke point honours
+     *   the same kill switch as the log choke point. When `null`, the sampler uses a fresh
+     *   open gate — preserving the prior behaviour for callers that don't pass one.
      * @return Configured sampler instance
      */
-    fun createSampler(config: SamplingConfig): Sampler {
+    fun createSampler(config: SamplingConfig, remoteGate: RemoteGate? = null): Sampler {
         return when (config.strategy) {
             SamplingStrategy.ALWAYS_ON -> {
                 Sampler.alwaysOn()
@@ -46,10 +51,18 @@ object SamplerFactory {
             }
 
             SamplingStrategy.DYNAMIC -> {
-                DynamicSampler(
-                    baselineSamplingRate = config.samplingRate,
-                    highPrioritySamplingRate = config.highPrioritySamplingRate
-                )
+                if (remoteGate != null) {
+                    DynamicSampler(
+                        baselineSamplingRate = config.samplingRate,
+                        highPrioritySamplingRate = config.highPrioritySamplingRate,
+                        remoteGate = remoteGate
+                    )
+                } else {
+                    DynamicSampler(
+                        baselineSamplingRate = config.samplingRate,
+                        highPrioritySamplingRate = config.highPrioritySamplingRate
+                    )
+                }
             }
         }
     }

@@ -6,6 +6,7 @@ package io.opentelemetry.android.mobile.instrumentation
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import android.text.InputType
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.Window
@@ -119,6 +120,11 @@ class TextInputInstrumentation(
     }
 
     private fun onFieldLeft(field: EditText) {
+        // Skip ALL emission for password fields — even metadata like char count /
+        // is-set leaks information about a secret value. Detect every password
+        // input-type variation (text + visible + web + numeric).
+        if (isPasswordField(field)) return
+
         val resourceId: String? = if (field.id != View.NO_ID) {
             try { field.resources.getResourceEntryName(field.id) } catch (_: Exception) { null }
         } else null
@@ -129,5 +135,21 @@ class TextInputInstrumentation(
             charCount = text.length,
             text = text
         )
+    }
+
+    /** True if [field] is any password-input variation. */
+    private fun isPasswordField(field: EditText): Boolean {
+        val variation = field.inputType and InputType.TYPE_MASK_VARIATION
+        val klass = field.inputType and InputType.TYPE_MASK_CLASS
+        return when {
+            klass == InputType.TYPE_CLASS_TEXT && (
+                variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                    variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                ) -> true
+            klass == InputType.TYPE_CLASS_NUMBER &&
+                variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD -> true
+            else -> false
+        }
     }
 }

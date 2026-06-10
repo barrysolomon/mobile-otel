@@ -21,9 +21,13 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
+import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
+import io.opentelemetry.android.mobile.config.OtlpProtocol
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.android.mobile.sampling.SamplerFactory
 import io.opentelemetry.android.mobile.sampling.DynamicSampler
@@ -75,9 +79,16 @@ class MobileLoggerProvider private constructor(
     private val sampler: io.opentelemetry.sdk.trace.samplers.Sampler
     private val mobileProcessor: MobileLogRecordProcessor
 
+    // The single source of truth for the remote kill switch + global sampling. Created
+    // here and threaded into BOTH the span sampler (via SamplerFactory) and the log
+    // processor (via its builder), which in turn hands it to the PolicyEvaluator that
+    // updates it from fetched config. One instance ⇒ logs and spans gate coherently.
+    private val remoteGate = io.opentelemetry.android.mobile.policy.RemoteGate()
+
     init {
-        // Create sampler based on configuration
-        sampler = SamplerFactory.createSampler(config.samplingConfig)
+        // Create sampler based on configuration, sharing the remote gate so the span
+        // choke point honours the same kill switch as the log choke point.
+        sampler = SamplerFactory.createSampler(config.samplingConfig, remoteGate)
 
         val resource = Resource.getDefault().merge(
             Resource.builder()
@@ -107,19 +118,30 @@ class MobileLoggerProvider private constructor(
                 .build()
         )
 
-        // Create base log exporter (gRPC — note: this is wrapped by LoggingHttpExporter which does
-        // the actual HTTP export. The gRPC exporter here is the fallback delegate; in practice
-        // LoggingHttpExporter handles the export via OkHttp.)
-        var baseLogExporter: LogRecordExporter = OtlpGrpcLogRecordExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
-            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-            .apply {
-                config.headers?.forEach { (key, value) ->
-                    android.util.Log.d("MobileLoggerProvider", "Adding header: $key = $value")
-                    addHeader(key, value)
-                }
-            }
-            .build()
+        // Create the base log exporter for the configured protocol. OTLP/HTTP
+        // (the default) POSTs protobuf to <endpoint>/v1/logs and matches iOS;
+        // OTLP/gRPC exports to the single collectorEndpoint. Auth + extra
+        // headers are carried over identically on both paths.
+        // SECURITY: never log header values — they include the Dash0 ingest
+        // Bearer token. Do not reintroduce any logging of key/value here.
+        var baseLogExporter: LogRecordExporter = when (config.protocol) {
+            OtlpProtocol.HTTP_PROTOBUF ->
+                OtlpHttpLogRecordExporter.builder()
+                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/logs"))
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+            OtlpProtocol.GRPC ->
+                OtlpGrpcLogRecordExporter.builder()
+                    .setEndpoint(config.collectorEndpoint)
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+        }
         for (c in customizers.log) { baseLogExporter = c(baseLogExporter) }
 
         // Wrap with logging for debugging
@@ -134,20 +156,28 @@ class MobileLoggerProvider private constructor(
             maxRetries = config.maxExportRetries
         )
 
-        // OTLP/gRPC metric exporter. Unified with logs + traces on the same
-        // transport so a single `collectorEndpoint` (pointing at a gRPC port,
-        // typically :4317) is sufficient. The prior HTTP exporter required a
-        // separate port (:4318) that the single-endpoint API didn't expose,
-        // silently producing HTTP-415s when the user's endpoint was :4317.
-        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = OtlpGrpcMetricExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
-            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-            .apply {
-                config.headers?.forEach { (key, value) ->
-                    addHeader(key, value)
-                }
-            }
-            .build()
+        // Metric exporter on the same transport as logs + traces. With
+        // OTLP/HTTP (default) metrics POST to <endpoint>/v1/metrics, matching
+        // iOS. With OTLP/gRPC a single collectorEndpoint (a gRPC port, typically
+        // :4317) is sufficient.
+        var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = when (config.protocol) {
+            OtlpProtocol.HTTP_PROTOBUF ->
+                OtlpHttpMetricExporter.builder()
+                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/metrics"))
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+            OtlpProtocol.GRPC ->
+                OtlpGrpcMetricExporter.builder()
+                    .setEndpoint(config.collectorEndpoint)
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+        }
         for (c in customizers.metric) { baseMetricExporter = c(baseMetricExporter) }
 
         // Build SDK Meter Provider with mode-appropriate configuration
@@ -174,16 +204,27 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // OTLP/gRPC span exporter — same transport as logs and metrics.
-        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = OtlpGrpcSpanExporter.builder()
-            .setEndpoint(config.collectorEndpoint)
-            .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-            .apply {
-                config.headers?.forEach { (key, value) ->
-                    addHeader(key, value)
-                }
-            }
-            .build()
+        // Span exporter — same transport as logs and metrics. OTLP/HTTP
+        // (default) POSTs to <endpoint>/v1/traces (matches iOS); OTLP/gRPC
+        // exports to the single collectorEndpoint.
+        var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = when (config.protocol) {
+            OtlpProtocol.HTTP_PROTOBUF ->
+                OtlpHttpSpanExporter.builder()
+                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/traces"))
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+            OtlpProtocol.GRPC ->
+                OtlpGrpcSpanExporter.builder()
+                    .setEndpoint(config.collectorEndpoint)
+                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                    .apply {
+                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                    }
+                    .build()
+        }
         for (c in customizers.span) { baseSpanExporter = c(baseSpanExporter) }
 
         val tracerProvider = SdkTracerProvider.builder()
@@ -212,11 +253,19 @@ class MobileLoggerProvider private constructor(
             )
             .build()
 
-        // Create mobile log processor with ring buffer
+        // Create mobile log processor with ring buffer. It shares the same remoteGate as
+        // the sampler above; the processor passes it to its PolicyEvaluator, which is the
+        // component that fetches the `sdk` block and pushes it into the gate.
         mobileProcessor = MobileLogRecordProcessor.builder(context)
             .setExporter(retryableExporter)
             .setConfig(config)
             .setMeter(meterProvider.get("io.opentelemetry.android.mobile.device-metrics"))
+            .setRamBufferSize(config.ramBufferSize)
+            .setRamBufferMaxTotalBytes(config.ramBufferMaxTotalBytes)
+            .setRamBufferMaxEventBytes(config.ramBufferMaxEventBytes)
+            .setDiskBufferMb(config.diskBufferMb)
+            .setDiskBufferTtlHours(config.diskBufferTtlHours)
+            .setRemoteGate(remoteGate)
             .build()
 
         // Build SDK Logger Provider
@@ -290,6 +339,25 @@ class MobileLoggerProvider private constructor(
         }
     }
 
+    /**
+     * Resolve the per-signal OTLP/HTTP ingest URL from the configured
+     * `collectorEndpoint`, mirroring iOS's URL-building (see
+     * [MobileConfig.buildOtlpHttpUrl]). Never throws: on any unexpected input
+     * we fall back to the raw endpoint so a malformed config degrades to a
+     * recoverable export error rather than crashing the host process.
+     */
+    private fun otlpHttpUrl(base: String, signalPath: String): String =
+        try {
+            MobileConfig.buildOtlpHttpUrl(base, signalPath)
+        } catch (t: Throwable) {
+            android.util.Log.w(
+                "MobileLoggerProvider",
+                "Failed to build OTLP/HTTP URL for $signalPath; using raw endpoint",
+                t
+            )
+            base
+        }
+
     override fun get(instrumentationScopeName: String): Logger {
         return sdkLoggerProvider.get(instrumentationScopeName)
     }
@@ -301,6 +369,13 @@ class MobileLoggerProvider private constructor(
     fun getDeviceId(): String = deviceId
 
     fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
+
+    /**
+     * Returns the shared remote kill-switch / global-sampling gate driving both the log
+     * processor and the span sampler. Operators normally control this via remote config;
+     * exposed here for inspection and tests.
+     */
+    fun getRemoteGate(): io.opentelemetry.android.mobile.policy.RemoteGate = remoteGate
 
     fun getOpenTelemetrySdk(): OpenTelemetrySdk = openTelemetrySdk
 

@@ -22,15 +22,23 @@ public final class Dash0MobileModule: NSObject {
     public static var sinkFactory: () -> BridgeCallSink = { NoopSink() }
 
     public static func installSink(_ factory: @escaping () -> BridgeCallSink) {
-        NSLog("[Dash0Mobile] installSink called")
+        Self.debugLog("installSink called")
         sinkFactory = factory
     }
 
     override init() {
         let sink = Dash0MobileModule.sinkFactory()
-        NSLog("[Dash0Mobile] Module init with sink type: \(type(of: sink))")
+        Dash0MobileModule.debugLog("Module init with sink type: \(type(of: sink))")
         self.dispatcher = Dash0MobileBridgeDispatcher(sink: sink)
         super.init()
+    }
+
+    /// Gate init/installSink diagnostics behind DEBUG so release builds don't
+    /// leak sink/config detail to the device log.
+    private static func debugLog(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        NSLog("[Dash0Mobile] %@", message())
+        #endif
     }
 
     // MARK: - For tests

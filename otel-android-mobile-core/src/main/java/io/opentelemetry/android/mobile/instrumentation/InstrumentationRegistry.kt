@@ -52,8 +52,14 @@ class InstrumentationRegistry(
                 Log.i(TAG, "Skipping ${inst.instrumentationName} -- superseded by a MobileInstrumentation module")
                 continue
             }
-            inst.install(application, context)
-            installed.add(inst)
+            // Fault-isolate each module: a single failing install() must not
+            // abort the whole SDK init nor crash the host. Skip + log, continue.
+            try {
+                inst.install(application, context)
+                installed.add(inst)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Skipping ${inst.instrumentationName} -- install() failed", t)
+            }
         }
     }
 

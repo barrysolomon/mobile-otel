@@ -19,10 +19,52 @@ public struct PolicyMatchResult: Sendable, Equatable {
     }
 }
 
+/// Remote SDK-level control delivered via the `sdk` block at the DSL v2 JSON
+/// root (sibling of `workflows`/`version`). The kill switch + global sampling
+/// override. See `docs/design/remote-kill-switch.md`.
+///
+/// - `enabled` — master kill switch. `false` drops all new telemetry at the
+///   log/span choke points. Default **true**.
+/// - `sampleRate` — global head-sampling fraction, clamped to `[0.0, 1.0]`.
+///   Default **1.0**. Applied uniformly to logs and spans.
+///
+/// Absence of the `sdk` block ⇒ `.default` (no restriction). A malformed field
+/// falls back to its individual default; the type never carries an out-of-range
+/// rate because the initializer clamps.
+public struct SDKRemoteConfig: Sendable, Equatable {
+    public let enabled: Bool
+    public let sampleRate: Double
+
+    /// Fail-open default: SDK enabled, full sampling. Used when no `sdk` block
+    /// is present and as the initial seed for a never-fed `RemoteGate`.
+    public static let `default` = SDKRemoteConfig(enabled: true, sampleRate: 1.0)
+
+    /// `sampleRate` is clamped to `[0.0, 1.0]` on construction so downstream
+    /// reads never have to re-validate. A NaN rate collapses to the `1.0`
+    /// default (treated as "no restriction") rather than poisoning comparisons.
+    public init(enabled: Bool = true, sampleRate: Double = 1.0) {
+        self.enabled = enabled
+        if sampleRate.isNaN {
+            self.sampleRate = 1.0
+        } else {
+            self.sampleRate = Swift.min(1.0, Swift.max(0.0, sampleRate))
+        }
+    }
+}
+
 /// Compiled policy configuration (the evaluator's internal model).
 public struct PolicyConfig: Sendable, Equatable {
     public let policies: [Policy]
-    public init(policies: [Policy]) { self.policies = policies }
+
+    /// Optional SDK-level remote control parsed from the root `sdk` block.
+    /// `nil` when the block is absent — callers treat `nil` as
+    /// `SDKRemoteConfig.default` (no restriction).
+    public let sdkConfig: SDKRemoteConfig?
+
+    public init(policies: [Policy], sdkConfig: SDKRemoteConfig? = nil) {
+        self.policies = policies
+        self.sdkConfig = sdkConfig
+    }
 }
 
 public struct Policy: Sendable, Equatable {

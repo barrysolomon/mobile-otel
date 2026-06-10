@@ -37,9 +37,16 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Publish to GitHub Packages
+      - name: Publish ALL SDK modules to GitHub Packages
         working-directory: examples/demo-app
-        run: ./gradlew :otel-android-mobile:publishReleasePublicationToGitHubPackagesRepository
+        # Unqualified task name → runs the "release" publication for EVERY module
+        # that defines it: the umbrella (io.opentelemetry.android:mobile), mobile-core,
+        # and all mobile-instrumentation-* modules (via the subprojects convention in
+        # this composite build's root build.gradle.kts). Previously this only published
+        # the umbrella, whose POM then referenced ~20 unpublished siblings — so no
+        # consumer could resolve the tree (reported by Loper, 2026-06). The two demo
+        # apps define no "release" publication, so they are skipped automatically.
+        run: ./gradlew publishReleasePublicationToGitHubPackagesRepository
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
