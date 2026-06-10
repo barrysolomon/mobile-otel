@@ -134,7 +134,8 @@ class MobileLogRecordProcessor private constructor(
     private val diskBuffer: DiskLogBuffer = DiskLogBuffer.getInstance(
         context,
         maxSizeMb = diskBufferMb,
-        ttlHours = diskBufferTtlHours
+        ttlHours = diskBufferTtlHours,
+        encryptAtRest = config.encryptDiskBufferAtRest
     )
 
     // Policy evaluator: determines when to flush. Shares the remote gate so the `sdk`

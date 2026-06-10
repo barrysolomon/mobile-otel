@@ -116,6 +116,14 @@ dependencies {
     // AndroidX Security for EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // SQLCipher for at-rest encryption of the Room/SQLite disk buffer.
+    // Room integrates via its openHelperFactory(SupportFactory) hook; the
+    // SQLCipher passphrase is wrapped by an Android Keystore key
+    // (see DiskBufferKeyManager). androidx.sqlite SupportFactory bridges
+    // SQLCipher's SupportSQLiteOpenHelper into Room.
+    implementation("net.zetetic:sqlcipher-android:4.6.1")
+    implementation("androidx.sqlite:sqlite-ktx:2.6.2")
+
     // HTTP client for policy fetching
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

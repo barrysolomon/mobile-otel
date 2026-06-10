@@ -545,6 +545,78 @@ class DiskLogBufferTest {
         assertEquals("trace2.event1", remaining[0].bodyValue?.asString())
     }
 
+    // ==================== At-Rest Encryption (degradation) Tests ====================
+    //
+    // Robolectric provides no SQLCipher native library and no real Android
+    // Keystore, so requesting encryption here exercises the GRACEFUL-DEGRADATION
+    // path: the buffer must fall back to a working cleartext database rather than
+    // crash, and all existing behaviors (round-trip, TTL, count) must still hold.
+    // The true encrypted round-trip + "no SQLite header" assertions live in the
+    // instrumented EncryptedDiskBufferTest (src/androidTest).
+
+    @Test
+    fun `encryption requested degrades to cleartext under Robolectric without crashing`() = runBlocking {
+        diskBuffer.close()
+        DiskLogBuffer.resetForTesting()
+        val buffer = DiskLogBuffer.getInstance(
+            context = context,
+            maxSizeMb = 10,
+            ttlHours = 1,
+            encryptAtRest = true
+        )
+
+        // SQLCipher native libs are absent under Robolectric → encryption must
+        // have degraded, not crashed.
+        assertFalse(
+            "Encryption cannot be active without SQLCipher native libs",
+            buffer.encryptionActive
+        )
+
+        // Buffer must still be fully functional.
+        buffer.persistEvents(listOf(TestUtils.createTestLogRecord("degraded.but.works")))
+        waitForCount(buffer, 1)
+        val retrieved = buffer.getAllEvents()
+        assertEquals(1, retrieved.size)
+        assertEquals("degraded.but.works", retrieved[0].bodyValue?.asString())
+
+        buffer.close()
+        DiskLogBuffer.resetForTesting()
+        diskBuffer = DiskLogBuffer.getInstance(context = context, maxSizeMb = 10, ttlHours = 1)
+    }
+
+    @Test
+    fun `TTL and count behavior unchanged when encryption requested`() = runBlocking {
+        diskBuffer.close()
+        DiskLogBuffer.resetForTesting()
+        val buffer = DiskLogBuffer.getInstance(
+            context = context,
+            maxSizeMb = 10,
+            ttlHours = 1,
+            encryptAtRest = true
+        )
+
+        val now = System.currentTimeMillis()
+        buffer.persistEvents(
+            listOf(
+                TestUtils.createTestLogRecordWithTimestamp("expired", now - (2 * 60 * 60 * 1000)),
+                TestUtils.createTestLogRecordWithTimestamp("valid", now - (5 * 60 * 1000))
+            )
+        )
+        waitForCount(buffer, 2)
+        assertEquals(2, buffer.getEventCount())
+
+        buffer.cleanupExpired()
+        delay(300)
+
+        val remaining = buffer.getAllEvents()
+        assertEquals(1, remaining.size)
+        assertEquals("valid", remaining[0].bodyValue?.asString())
+
+        buffer.close()
+        DiskLogBuffer.resetForTesting()
+        diskBuffer = DiskLogBuffer.getInstance(context = context, maxSizeMb = 10, ttlHours = 1)
+    }
+
     @Test
     fun `typed attribute round-trip - Long value stored as long retrieved as LongAttribute`() = runBlocking {
         val log = TestUtils.createTestLogRecord(

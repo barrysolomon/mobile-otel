@@ -124,6 +124,25 @@ data class MobileConfig(
     val ramBufferMaxEventBytes: Int = 256 * 1024,
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
+    /**
+     * When true (the default), the on-disk telemetry buffer
+     * (`otel_log_buffer.db`) is encrypted at rest using SQLCipher with a
+     * passphrase wrapped by an Android Keystore key. This brings Android to
+     * parity with iOS NSFileProtection: persisted spans/logs/bodies — which can
+     * contain PII — are unreadable on rooted or backed-up devices.
+     *
+     * **Default ON, with crash-safe migration.** Enabling encryption on an
+     * existing cleartext buffer (or any open failure: invalidated Keystore key,
+     * corrupt file, missing native libs) NEVER crashes the host. The buffer is
+     * transparently recreated, and if SQLCipher/Keystore are fundamentally
+     * unavailable on the device the buffer degrades to cleartext rather than
+     * failing. The one-time cost of enabling encryption is dropping any
+     * already-buffered (TTL-bounded, best-effort) telemetry on first launch.
+     *
+     * Set to `false` to keep the buffer cleartext (e.g. to avoid the SQLCipher
+     * native-library size cost where at-rest PII risk is not a concern).
+     */
+    @Incubating val encryptDiskBufferAtRest: Boolean = true,
     val exportTimeoutSeconds: Long = 30,
     /**
      * Enables polling the collector/control-plane `/config` endpoint for
@@ -272,6 +291,7 @@ data class MobileConfig(
         private var ramBufferMaxEventBytes: Int = 256 * 1024
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
+        private var encryptDiskBufferAtRest: Boolean = true
         private var exportTimeoutSeconds: Long = 30
         private var remoteConfigEnabled: Boolean = true
         private var configPollIntervalSeconds: Long = 300
@@ -307,6 +327,8 @@ data class MobileConfig(
         fun setRamBufferMaxEventBytes(bytes: Int) = apply { this.ramBufferMaxEventBytes = bytes }
         fun setDiskBufferMb(diskBufferMb: Int) = apply { this.diskBufferMb = diskBufferMb }
         fun setDiskBufferTtlHours(diskBufferTtlHours: Int) = apply { this.diskBufferTtlHours = diskBufferTtlHours }
+        /** See [MobileConfig.encryptDiskBufferAtRest]. Default `true`. */
+        fun setEncryptDiskBufferAtRest(enabled: Boolean) = apply { this.encryptDiskBufferAtRest = enabled }
         fun setExportTimeoutSeconds(exportTimeoutSeconds: Long) = apply { this.exportTimeoutSeconds = exportTimeoutSeconds }
         fun setRemoteConfigEnabled(enabled: Boolean) = apply { this.remoteConfigEnabled = enabled }
         fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long) = apply { this.configPollIntervalSeconds = configPollIntervalSeconds }
@@ -353,6 +375,7 @@ data class MobileConfig(
                 ramBufferMaxEventBytes = ramBufferMaxEventBytes,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours,
+                encryptDiskBufferAtRest = encryptDiskBufferAtRest,
                 exportTimeoutSeconds = exportTimeoutSeconds,
                 remoteConfigEnabled = remoteConfigEnabled,
                 configPollIntervalSeconds = configPollIntervalSeconds,
