@@ -1,3 +1,4 @@
+import Foundation
 import OTelMobileCore
 import ScreenshotInstrumentation
 import WireframeInstrumentation
@@ -88,6 +89,33 @@ public struct MobileConfig: Sendable {
     /// `MobileConfig.wireframeConfig`.
     public let wireframeConfig: WireframeConfig
 
+    /// Permit cleartext (`http://`) transport to a non-loopback host for the
+    /// OTLP exporters AND the config poller. **Default false** — a cleartext
+    /// non-localhost endpoint is rejected and the corresponding pipeline is
+    /// disabled (the SDK never crashes the host). Loopback/localhost endpoints
+    /// are always permitted for local-collector development regardless of this
+    /// flag. Set `true` only for a deliberate, network-isolated deployment.
+    /// Mirrors Android's `MobileConfig.allowInsecureTransport`.
+    public let allowInsecureTransport: Bool
+
+    /// Optional certificate / public-key pinning applied to BOTH the OTLP
+    /// export connections and the config-poller connection. When `nil` (the
+    /// default) no pinning is performed. A pin mismatch fails only that
+    /// connection (fail-closed for the connection), never the host. Mirrors
+    /// Android's `MobileConfig.pinningConfig`.
+    public let pinning: TransportSecurity.PinningConfig?
+
+    /// Optional HMAC-SHA256 shared secret used to verify the integrity of
+    /// fetched remote-config payloads before applying them (closes the
+    /// kill-switch MITM/OTA-abuse vector — see
+    /// `docs/design/remote-kill-switch.md` §Config integrity). When `nil` (the
+    /// default) config is applied as before (backward compatible). When set,
+    /// the poller verifies the `X-Dash0-Config-Signature` header over the raw
+    /// body and **keeps the last-applied config** on verification failure
+    /// (fail toward availability — never disables telemetry on a bad
+    /// signature). Mirrors Android's `MobileConfig.configSigningKey`.
+    public let configSigningKey: Data?
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -109,7 +137,10 @@ public struct MobileConfig: Sendable {
         offlineBudgetConfig: OfflineBudgetConfig = .default,
         offlinePolicy: OfflinePolicy = .bufferAll,
         screenshotConfig: ScreenshotConfig = ScreenshotConfig(),
-        wireframeConfig: WireframeConfig = WireframeConfig()
+        wireframeConfig: WireframeConfig = WireframeConfig(),
+        allowInsecureTransport: Bool = false,
+        pinning: TransportSecurity.PinningConfig? = nil,
+        configSigningKey: Data? = nil
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -132,5 +163,8 @@ public struct MobileConfig: Sendable {
         self.offlinePolicy = offlinePolicy
         self.screenshotConfig = screenshotConfig
         self.wireframeConfig = wireframeConfig
+        self.allowInsecureTransport = allowInsecureTransport
+        self.pinning = pinning
+        self.configSigningKey = configSigningKey
     }
 }

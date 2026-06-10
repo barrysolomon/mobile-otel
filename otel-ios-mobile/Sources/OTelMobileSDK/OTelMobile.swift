@@ -265,21 +265,48 @@ public final class OTelMobile: @unchecked Sendable {
         // `HTTPClient`, so `export(...)` returns the REAL send result
         // instead of the upstream always-`.success` that breaks every
         // downstream retry/persist decorator. See the class doc for why.
-        let logsEndpointURL = try OTLPExporterFactory.buildLogsEndpointURL(
-            from: config.endpoint
-        )
-        let baseLogExporter = SynchronousLogRecordExporter(
-            endpoint: logsEndpointURL,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders
-        )
-        // Decorate with RetryableExporter so transient failures get
-        // exponential-backoff retries (3 attempts, 1s → 60s ceiling) and
-        // every transition publishes through `ExportStatusManager`.
-        // Mirrors Android: only the log exporter is wrapped — span and
-        // metric retry behaviour stays delegated to the upstream batch
-        // processors.
-        let otlpLogExporter = RetryableExporter(delegate: baseLogExporter)
+        // Transport-security gate (task §1). Validate the export endpoint's
+        // transport ONCE up front. A cleartext `http://` endpoint to a
+        // non-loopback host with `allowInsecureTransport == false` is REJECTED:
+        // we substitute no-op exporters so the SDK still constructs and the
+        // host keeps running (graceful disable, never a throw into the app).
+        // Loopback/localhost and explicit opt-in are permitted.
+        let transportAllowed: Bool = {
+            guard let url = URL(string: config.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return true // malformed URL is handled by the factory's invalidEndpoint path
+            }
+            do {
+                try TransportSecurity.enforceHTTPS(url, allowInsecure: config.allowInsecureTransport)
+                return true
+            } catch {
+                NSLog("[Dash0] Export DISABLED: %@. Set allowInsecureTransport=true (dev only) or use https://.",
+                      String(describing: error))
+                return false
+            }
+        }()
+
+        let otlpLogExporter: LogRecordExporter
+        if transportAllowed {
+            let logsEndpointURL = try OTLPExporterFactory.buildLogsEndpointURL(
+                from: config.endpoint,
+                allowInsecure: config.allowInsecureTransport
+            )
+            let baseLogExporter = SynchronousLogRecordExporter(
+                endpoint: logsEndpointURL,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                pinning: config.pinning
+            )
+            // Decorate with RetryableExporter so transient failures get
+            // exponential-backoff retries (3 attempts, 1s → 60s ceiling) and
+            // every transition publishes through `ExportStatusManager`.
+            // Mirrors Android: only the log exporter is wrapped — span and
+            // metric retry behaviour stays delegated to the upstream batch
+            // processors.
+            otlpLogExporter = RetryableExporter(delegate: baseLogExporter)
+        } else {
+            otlpLogExporter = DisabledLogRecordExporter()
+        }
 
         // Policy evaluator is created once and shared between the processor
         // (which consults it on every onEmit) and the OTelMobile instance
@@ -353,23 +380,45 @@ public final class OTelMobile: @unchecked Sendable {
         // the HTTP callback. A SpanExporter-level decorator sees only
         // .success and cannot trigger persist. See the PersistingTraceHTTPClient
         // doc comment for the full rationale.
+        // When pinning is configured, the persisting client must wrap a PINNED
+        // BaseHTTPClient so failed-batch persistence AND pin enforcement both
+        // apply on the same connection. With no pinning, the persisting client
+        // keeps its default BaseHTTPClient.
         let traceHTTPClient: HTTPClient? = spanDiskBuffer.map { buffer in
-            PersistingTraceHTTPClient(
+            if let pinnedDelegate = OTLPExporterFactory.makePinnedHTTPClient(pinning: config.pinning) {
+                return PersistingTraceHTTPClient(
+                    delegate: pinnedDelegate,
+                    diskBuffer: buffer,
+                    sessionProvider: sessionProvider
+                )
+            }
+            return PersistingTraceHTTPClient(
                 diskBuffer: buffer,
                 sessionProvider: sessionProvider
             )
         }
-        let otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
-            endpoint: config.endpoint,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders,
-            httpClient: traceHTTPClient
-        )
-        let otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
-            endpoint: config.endpoint,
-            authToken: config.authToken,
-            extraHeaders: config.extraHeaders
-        )
+        let otlpTraceExporter: SpanExporter
+        let otlpMetricExporter: MetricExporter
+        if transportAllowed {
+            otlpTraceExporter = try OTLPExporterFactory.makeHttpTraceExporter(
+                endpoint: config.endpoint,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                httpClient: traceHTTPClient,
+                allowInsecure: config.allowInsecureTransport,
+                pinning: config.pinning
+            )
+            otlpMetricExporter = try OTLPExporterFactory.makeHttpMetricExporter(
+                endpoint: config.endpoint,
+                authToken: config.authToken,
+                extraHeaders: config.extraHeaders,
+                allowInsecure: config.allowInsecureTransport,
+                pinning: config.pinning
+            )
+        } else {
+            otlpTraceExporter = DisabledSpanExporter()
+            otlpMetricExporter = DisabledMetricExporter()
+        }
 
         // Spans still go through upstream's BatchSpanProcessor — the iOS
         // MobileLogRecordProcessor analogue for traces doesn't exist yet,
@@ -596,6 +645,12 @@ public final class OTelMobile: @unchecked Sendable {
             // start it. Any failure is logged via the poller itself; we
             // never want a bad gateway URL to crash startup.
             if config.enablePolicyPolling {
+                // Transport security is threaded through to the poller too:
+                // HTTPS enforcement (a rejected cleartext endpoint makes the
+                // `try?` fail, so the poller simply doesn't start — last-applied
+                // config keeps running), the same `pinning` as the OTLP
+                // exporters, and the optional HMAC `configSigningKey` that gates
+                // applying a fetched payload.
                 if let poller = try? ConfigPoller(
                     gatewayEndpoint: config.endpoint,
                     authToken: config.authToken,
@@ -603,7 +658,10 @@ public final class OTelMobile: @unchecked Sendable {
                     pollingIntervalSeconds: TimeInterval(config.pollingIntervalSeconds),
                     evaluator: instance.policyEvaluator,
                     remoteGate: instance.remoteGate,
-                    logger: logger
+                    logger: logger,
+                    allowInsecureTransport: config.allowInsecureTransport,
+                    pinning: config.pinning,
+                    configSigningKey: config.configSigningKey
                 ) {
                     poller.start()
                 }
@@ -657,19 +715,36 @@ public final class OTelMobile: @unchecked Sendable {
                         // rotation, region migration, and dataset rename
                         // therefore "just work."
                         //
-                        // Use a vanilla BaseHTTPClient (NOT
-                        // PersistingTraceHTTPClient) so retry failures
-                        // during replay don't re-persist the same rows
-                        // we're trying to drain.
-                        if let replayURL = try? OTLPExporterFactory.buildTracesEndpointURL(from: config.endpoint) {
+                        // Transport-security gate (task §1): only replay when
+                        // the configured endpoint passed the HTTPS policy up
+                        // front. If export was disabled (cleartext to a
+                        // non-loopback host without opt-in), persisted spans
+                        // stay on disk rather than being POSTed in cleartext.
+                        // `buildTracesEndpointURL` re-applies `enforceHTTPS`
+                        // (via `allowInsecure`) and throws on a rejected
+                        // endpoint, so the `try?` also fails closed.
+                        //
+                        // Use a vanilla client (NOT PersistingTraceHTTPClient)
+                        // so retry failures during replay don't re-persist the
+                        // same rows we're trying to drain — but apply the SAME
+                        // pinning as the live exporters so a pinned deployment
+                        // enforces pins on the replay connection too. With no
+                        // pinning, this is the prior BaseHTTPClient behaviour.
+                        if transportAllowed,
+                           let replayURL = try? OTLPExporterFactory.buildTracesEndpointURL(
+                               from: config.endpoint,
+                               allowInsecure: config.allowInsecureTransport) {
                             let replayHeaders = Self.buildReplayHeaders(
                                 authToken: config.authToken,
                                 extraHeaders: config.extraHeaders)
+                            let replayClient: HTTPClient =
+                                OTLPExporterFactory.makePinnedHTTPClient(pinning: config.pinning)
+                                ?? BaseHTTPClient()
                             _ = await OTelMobile.recoverSpanRequests(
                                 from: b,
                                 endpoint: replayURL,
                                 headers: replayHeaders,
-                                httpClient: BaseHTTPClient(),
+                                httpClient: replayClient,
                                 batchSize: 64)
                         }
                     }

@@ -33,6 +33,23 @@ public final class ConfigPoller: @unchecked Sendable {
     private let remoteGate: RemoteGate?
     private let logger: Logger?
 
+    /// Optional HMAC-SHA256 shared secret. When non-nil/non-empty, a fetched
+    /// gateway payload is applied ONLY if its `X-Dash0-Config-Signature`
+    /// header verifies against the raw body. A missing or mismatched signature
+    /// is treated as a fetch failure: the last-applied config (evaluator +
+    /// gate + persisted snapshot) is left untouched and the poll is retried
+    /// with backoff — fail toward availability, never disable telemetry on a
+    /// bad signature. Persisted (warm-start) payloads are NOT re-verified:
+    /// they were verified before being persisted, and re-verifying would
+    /// require persisting the signature too. `nil` preserves prior behaviour
+    /// (apply any parseable config).
+    private let configSigningKey: Data?
+
+    /// Header the gateway sends carrying the HMAC-SHA256 signature (hex or
+    /// base64) over the raw response body. Matched case-insensitively against
+    /// the response headers.
+    private static let signatureHeaderName = "X-Dash0-Config-Signature"
+
     private let lock = NSLock()
     private var timer: DispatchSourceTimer?
     private var consecutiveFailures = 0
@@ -60,21 +77,24 @@ public final class ConfigPoller: @unchecked Sendable {
         evaluator: PolicyEvaluator,
         remoteGate: RemoteGate? = nil,
         logger: Logger? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        allowInsecureTransport: Bool = false,
+        pinning: TransportSecurity.PinningConfig? = nil,
+        configSigningKey: Data? = nil
     ) throws {
         guard let base = URL(string: gatewayEndpoint) else {
             throw PollerError.invalidEndpoint(gatewayEndpoint)
         }
-        // Warn (never crash) on cleartext config polling to a non-localhost
-        // host. Policy config is fetched over this transport; http:// exposes
-        // it to tampering / interception. localhost is allowed for local dev.
-        if (base.scheme?.lowercased() ?? "") == "http" {
-            let host = base.host?.lowercased() ?? ""
-            let isLocal = host == "localhost" || host == "127.0.0.1" || host == "::1" || host.hasSuffix(".local")
-            if !isLocal {
-                NSLog("[Dash0] policy config endpoint '%@' uses cleartext http:// to a non-localhost host. Config will be fetched UNENCRYPTED. Use https://.", gatewayEndpoint)
-            }
-        }
+        // HTTPS enforcement (task §1), consistent with the OTLP exporters:
+        // reject cleartext `http://` config polling to a non-loopback host
+        // unless `allowInsecureTransport` is set. Policy config is fetched over
+        // this transport; cleartext exposes it to tampering / interception (the
+        // kill-switch MITM vector). Loopback/localhost stays exempt for local
+        // dev. Rejection throws here so the SDK simply does NOT start polling —
+        // the last-applied / persisted config keeps running (telemetry is never
+        // disabled). When `allowInsecure` is set, `enforceHTTPS` logs a loud
+        // warning and permits the cleartext fetch.
+        try TransportSecurity.enforceHTTPS(base, allowInsecure: allowInsecureTransport)
         // Normalize to `<base>/config?dsl_version=2`, adding /config if not
         // already present.
         let configURL: URL = {
@@ -93,13 +113,19 @@ public final class ConfigPoller: @unchecked Sendable {
         self.evaluator = evaluator
         self.remoteGate = remoteGate
         self.logger = logger
+        self.configSigningKey = configSigningKey
 
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 15
         cfg.timeoutIntervalForResource = 30
         // Don't let our poller get captured by an app's URLProtocol stack.
         cfg.protocolClasses = []
-        self.session = URLSession(configuration: cfg)
+        // Apply the SAME pinning as the OTLP exporters to the config-fetch
+        // connection. When `pinning` is nil/empty this is an ordinary
+        // (delegate-less) ephemeral session — prior behaviour. On a pin
+        // mismatch the handshake fails (fail-closed for the connection); the
+        // poller surfaces it as a network failure and retries with backoff.
+        self.session = TransportSecurity.makePinnedSession(pinning: pinning, configuration: cfg)
     }
 
     /// Start polling. First poll runs immediately on a background queue;
@@ -185,6 +211,25 @@ public final class ConfigPoller: @unchecked Sendable {
                 self.logFetchFailure("http", error: "status \(http.statusCode)")
                 self.scheduleNextAfter(success: false)
                 return
+            }
+            // Config-integrity gate (task §1): when a signing key is configured,
+            // verify the HMAC-SHA256 signature over the RAW body BEFORE applying.
+            // A missing/bad signature is a fetch failure — the last-applied
+            // config (evaluator + gate + persisted snapshot) is left untouched
+            // and the poll retries with backoff. This closes the kill-switch
+            // MITM/OTA vector without ever disabling telemetry on a bad payload.
+            if let key = self.configSigningKey, !key.isEmpty {
+                let signature = Self.signatureHeader(from: http)
+                guard let signature, !signature.isEmpty else {
+                    self.logFetchFailure("signature", error: "missing \(Self.signatureHeaderName) header")
+                    self.scheduleNextAfter(success: false)
+                    return
+                }
+                guard TransportSecurity.verifyHMAC(payload: data, key: key, expectedSignature: signature) else {
+                    self.logFetchFailure("signature", error: "HMAC verification failed; keeping last-applied config")
+                    self.scheduleNextAfter(success: false)
+                    return
+                }
             }
             Task.detached { [weak self] in
                 let applied = await (self?.applyConfig(data: data, source: "gateway") ?? false)
@@ -287,6 +332,24 @@ public final class ConfigPoller: @unchecked Sendable {
     }
 
     // MARK: - URL helpers
+
+    /// Case-insensitively read the config-signature header from a response.
+    /// `value(forHTTPHeaderField:)` is documented case-insensitive on modern
+    /// Apple platforms, but we fall back to scanning `allHeaderFields` so the
+    /// lookup is robust across platforms (e.g. Linux CI / FoundationNetworking).
+    static func signatureHeader(from response: HTTPURLResponse) -> String? {
+        if let direct = response.value(forHTTPHeaderField: signatureHeaderName),
+           !direct.isEmpty {
+            return direct
+        }
+        for (rawKey, rawValue) in response.allHeaderFields {
+            if let key = rawKey as? String,
+               key.caseInsensitiveCompare(signatureHeaderName) == .orderedSame {
+                return (rawValue as? String) ?? String(describing: rawValue)
+            }
+        }
+        return nil
+    }
 
     static func appendQuery(_ url: URL, key: String, value: String) -> URL {
         guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

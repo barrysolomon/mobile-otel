@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import OTelMobileSDK
 import OTelMobileCore
 
@@ -82,5 +83,32 @@ struct MobileConfigTests {
         // §Polling defaults.
         let config = MobileConfig(serviceName: "test-app", endpoint: "https://collector:4317")
         #expect(config.enablePolicyPolling)
+    }
+
+    @Test("transport-security fields are secure-by-default")
+    func transportSecurityDefaults() {
+        // Secure defaults: cleartext disallowed, no pinning, no signing key —
+        // an https endpoint just works while a cleartext one is rejected (the
+        // rejection itself is enforced in OTelMobile.start / ConfigPoller).
+        let config = MobileConfig(serviceName: "test-app", endpoint: "https://collector:4317")
+        #expect(config.allowInsecureTransport == false)
+        #expect(config.pinning == nil)
+        #expect(config.configSigningKey == nil)
+    }
+
+    @Test("transport-security fields round-trip when set")
+    func transportSecurityOverrides() {
+        let pinning = TransportSecurity.PinningConfig(spkiSHA256Pins: ["AAAA"])
+        let key = Data("config-signing-secret".utf8)
+        let config = MobileConfig(
+            serviceName: "test-app",
+            endpoint: "https://collector:4317",
+            allowInsecureTransport: true,
+            pinning: pinning,
+            configSigningKey: key
+        )
+        #expect(config.allowInsecureTransport == true)
+        #expect(config.pinning == pinning)
+        #expect(config.configSigningKey == key)
     }
 }

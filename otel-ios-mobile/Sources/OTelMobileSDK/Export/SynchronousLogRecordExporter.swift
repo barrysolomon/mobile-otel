@@ -24,10 +24,19 @@ final class SynchronousHTTPClient: NSObject, HTTPClient, @unchecked Sendable {
     private let lock = NSLock()
     private var _lastResult: Result<HTTPURLResponse, Error>?
 
-    override init() {
+    /// - Parameter pinning: optional certificate / public-key pinning. When
+    ///   non-nil and non-empty the session is built with the pinning
+    ///   `URLSessionDelegate` (`TransportSecurity.makePinnedSession`), so a pin
+    ///   mismatch fails this connection (fail-closed) without crashing the
+    ///   host. When `nil`/empty the session is built exactly as before — an
+    ///   ephemeral, cache-disabled session with no delegate.
+    init(pinning: TransportSecurity.PinningConfig? = nil) {
         let configuration: URLSessionConfiguration = .ephemeral
         configuration.urlCache = nil
-        self.session = URLSession(configuration: configuration)
+        self.session = TransportSecurity.makePinnedSession(
+            pinning: pinning,
+            configuration: configuration
+        )
         super.init()
     }
 
@@ -107,10 +116,15 @@ public final class SynchronousLogRecordExporter: LogRecordExporter, @unchecked S
     /// Build a synchronous log exporter pointing at `endpoint`. Mirrors
     /// the parameter surface of `OTLPExporterFactory.makeHttpLogExporter`
     /// so callers substitute this in one spot.
+    ///
+    /// - Parameter pinning: optional certificate / public-key pinning applied
+    ///   to the underlying `URLSession`, consistent with the OTLP trace/metric
+    ///   exporters. `nil`/empty means no pinning (current behaviour).
     public init(endpoint: URL,
                 authToken: String?,
-                extraHeaders: [String: String]) {
-        let client = SynchronousHTTPClient()
+                extraHeaders: [String: String],
+                pinning: TransportSecurity.PinningConfig? = nil) {
+        let client = SynchronousHTTPClient(pinning: pinning)
         self.httpClient = client
         var headers: [(String, String)] = []
         if let authToken = authToken, !authToken.isEmpty {
