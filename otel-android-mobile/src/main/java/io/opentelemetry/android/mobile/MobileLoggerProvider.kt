@@ -218,6 +218,11 @@ class MobileLoggerProvider private constructor(
             .setExporter(retryableExporter)
             .setConfig(config)
             .setMeter(meterProvider.get("io.opentelemetry.android.mobile.device-metrics"))
+            .setRamBufferSize(config.ramBufferSize)
+            .setRamBufferMaxTotalBytes(config.ramBufferMaxTotalBytes)
+            .setRamBufferMaxEventBytes(config.ramBufferMaxEventBytes)
+            .setDiskBufferMb(config.diskBufferMb)
+            .setDiskBufferTtlHours(config.diskBufferTtlHours)
             .build()
 
         // Build SDK Logger Provider

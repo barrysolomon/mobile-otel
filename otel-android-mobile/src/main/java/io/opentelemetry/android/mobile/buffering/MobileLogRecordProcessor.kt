@@ -84,6 +84,10 @@ class MobileLogRecordProcessor private constructor(
     private val config: io.opentelemetry.android.mobile.config.MobileConfig,
     private val meter: io.opentelemetry.api.metrics.Meter,
     private val ramBufferSize: Int,
+    // RAM byte caps (SDK_SAFETY non-negotiable #3, iOS parity). maxTotalBytes is
+    // the cumulative-size budget; maxEventBytes is the per-event drop threshold.
+    private val ramBufferMaxTotalBytes: Long,
+    private val ramBufferMaxEventBytes: Int,
     private val diskBufferMb: Int,
     private val diskBufferTtlHours: Int,
     // Used only in HYBRID mode to emit device.heartbeat log records.
@@ -108,24 +112,17 @@ class MobileLogRecordProcessor private constructor(
     private val ramBuffer = ConcurrentLinkedQueue<BufferedEvent>()
     private val ramBufferCount = AtomicInteger(0)
 
+    // Cumulative estimated byte size of all events currently in [ramBuffer].
+    // Kept in lock-step with adds/removes so the total-byte budget is O(1) to
+    // check. May drift by a tiny amount under concurrent removal races, which
+    // is harmless — it is a soft budget, re-floored to >=0 on every read.
     // SDK_SAFETY.md non-negotiable #3: the RAM tier must be byte-bounded, not just
-    // count-bounded. Tracks the estimated total bytes currently held in RAM, kept in
-    // sync with [ramBuffer] at every mutation site via [recomputeRamBytes].
-    private val ramBufferBytes = AtomicLong(0L)
-    // Counters for observability into what the byte caps reject.
-    private val droppedOversizeEvents = AtomicLong(0L)
-    private val droppedBufferFullEvents = AtomicLong(0L)
+    // count-bounded.
+    private val ramBufferBytes = AtomicLong(0)
 
-    /**
-     * Recomputes [ramBufferBytes] from the live buffer. Called after bulk removals
-     * (overflow/flush/clear) which are already O(n); the hot path ([onEmit]) instead
-     * increments cheaply. Cheap enough given those paths walk the buffer anyway.
-     */
-    private fun recomputeRamBytes() {
-        var total = 0L
-        ramBuffer.forEach { total += it.estimatedBytes }
-        ramBufferBytes.set(total)
-    }
+    // Count of events dropped because their estimated size exceeded
+    // [ramBufferMaxEventBytes]. iOS parity with RAMEventBuffer.droppedOversizeCount.
+    private val droppedOversizeCount = AtomicLong(0)
 
     // Disk buffer: persistent storage with Room
     private val diskBuffer: DiskLogBuffer = DiskLogBuffer.getInstance(
@@ -191,6 +188,16 @@ class MobileLogRecordProcessor private constructor(
         .setUnit("{events}")
         .ofLongs()
         .buildWithCallback { obs -> obs.record(diskBuffer.getEventCount().toLong()) }
+    private val ramBytesGauge = meter.gaugeBuilder("buffer.ram.bytes")
+        .setDescription("Estimated cumulative bytes held in the RAM ring buffer")
+        .setUnit("By")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(maxOf(0L, ramBufferBytes.get())) }
+    private val ramDroppedOversizeGauge = meter.gaugeBuilder("buffer.ram.dropped_oversize")
+        .setDescription("Events dropped because they exceeded the per-event byte cap")
+        .setUnit("{events}")
+        .ofLongs()
+        .buildWithCallback { obs -> obs.record(droppedOversizeCount.get()) }
 
     init {
         // Seed the seqId counter from the max seqId on disk so that new events in
@@ -388,33 +395,38 @@ class MobileLogRecordProcessor private constructor(
         // Add to RAM buffer wrapped with monotonic timestamp
         val bufferedEvent = BufferedEvent(logRecordData)
 
-        // SDK_SAFETY.md non-negotiable #3: enforce RAM byte caps before buffering.
-        // Per-event cap: a single oversized event is dropped + counted, never buffered.
-        val eventBytes = bufferedEvent.estimatedBytes
-        if (eventBytes > config.ramBufferMaxEventBytes) {
-            val dropped = droppedOversizeEvents.incrementAndGet()
-            Log.w(TAG, "Dropping oversize event ($eventBytes B > ${config.ramBufferMaxEventBytes} B cap): $body (total oversize drops=$dropped)")
-            return
-        }
-        // Total-bytes cap: if this event would exceed the RAM budget, drop + count it.
-        // Overflow-to-disk is driven by the count cap below; we never let RAM exceed bytes.
-        if (ramBufferBytes.get() + eventBytes > config.ramBufferMaxBytes) {
-            val dropped = droppedBufferFullEvents.incrementAndGet()
-            Log.w(TAG, "RAM buffer byte cap reached (${ramBufferBytes.get()} B + $eventBytes B > ${config.ramBufferMaxBytes} B); dropping $body (total full drops=$dropped)")
+        // Per-event byte cap (SDK_SAFETY non-negotiable #3, iOS parity). A
+        // single oversized event (e.g. a giant screenshot/wireframe payload) is
+        // dropped and counted rather than allowed to balloon RAM. We still
+        // persist it to disk so the signal isn't lost entirely — disk has its
+        // own size/TTL budget and is the right place for large blobs.
+        if (bufferedEvent.sizeBytes > ramBufferMaxEventBytes) {
+            droppedOversizeCount.incrementAndGet()
+            Log.w(TAG, "Dropping oversize event from RAM (${bufferedEvent.sizeBytes}B > ${ramBufferMaxEventBytes}B): $body")
+            executor.submit {
+                try {
+                    diskBuffer.persistBufferedEvents(listOf(bufferedEvent))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to persist oversize event to disk", e)
+                }
+            }
             return
         }
 
         ramBuffer.offer(bufferedEvent)
-        ramBufferBytes.addAndGet(eventBytes)
         val count = ramBufferCount.incrementAndGet()
+        ramBufferBytes.addAndGet(bufferedEvent.sizeBytes.toLong())
 
         // Track screen start for window extension (monotonic time)
         if (body == "screen.view") {
             currentScreenStartMonoMs.set(bufferedEvent.monotonicMs)
         }
 
-        // Check if we need to overflow to disk
-        if (count > ramBufferSize) {
+        // Check if we need to overflow to disk — either the count cap OR the
+        // total-byte budget (whichever trips first). The byte budget is an
+        // independent defense so a few large events overflow before the count
+        // cap would, matching iOS RAMEventBuffer's maxTotalBytes behavior.
+        if (count > ramBufferSize || ramBufferBytes.get() > ramBufferMaxTotalBytes) {
             executor.submit { overflowToDisk() }
         }
 
@@ -654,13 +666,14 @@ class MobileLogRecordProcessor private constructor(
                                 exportedIds.addAll(ramEventsToFlush)
 
                                 var removed = 0
+                                var removedBytes = 0L
                                 ramBuffer.removeIf { event ->
                                     exportedIds.contains(event).also { matched ->
-                                        if (matched) removed++
+                                        if (matched) { removed++; removedBytes += event.sizeBytes }
                                     }
                                 }
                                 ramBufferCount.addAndGet(-removed)
-                                recomputeRamBytes()
+                                ramBufferBytes.addAndGet(-removedBytes)
                                 synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
 
                                 runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
@@ -736,11 +749,12 @@ class MobileLogRecordProcessor private constructor(
                         val exportedIds = Collections.newSetFromMap(IdentityHashMap<BufferedEvent, Boolean>())
                         exportedIds.addAll(ramEventsToFlush)
                         var removed = 0
+                        var removedBytes = 0L
                         ramBuffer.removeIf { event ->
-                            exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                            exportedIds.contains(event).also { matched -> if (matched) { removed++; removedBytes += event.sizeBytes } }
                         }
                         ramBufferCount.addAndGet(-removed)
-                        recomputeRamBytes()
+                        ramBufferBytes.addAndGet(-removedBytes)
                         synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                         runBlocking { diskBuffer.deleteEventsByTraceId(traceId) }
                         Log.i(TAG, "flushByTraceId: cleared $removed RAM + ${diskEventsToFlush.size} disk events for trace $traceId")
@@ -794,17 +808,28 @@ class MobileLogRecordProcessor private constructor(
         if (isShutdown.get()) return
 
         try {
-            val currentCount = ramBufferCount.get()
-            if (currentCount <= ramBufferSize) {
-                return // No overflow needed
+            val overCount = ramBufferCount.get() > ramBufferSize
+            val overBytes = ramBufferBytes.get() > ramBufferMaxTotalBytes
+            if (!overCount && !overBytes) {
+                return // No overflow needed (under both count cap and byte budget)
             }
 
-            val overflowCount = currentCount - ramBufferSize
             val eventsToMove = mutableListOf<BufferedEvent>()
+            var movedBytes = 0L
 
-            // Remove oldest events from RAM (FIFO)
-            repeat(overflowCount) {
-                ramBuffer.poll()?.let { eventsToMove.add(it) }
+            // Evict oldest events (FIFO) until BOTH caps are satisfied:
+            //   - count back to <= ramBufferSize
+            //   - cumulative bytes back to <= ramBufferMaxTotalBytes
+            // Decrement the atomics AS WE POLL (not in one batch at the end) so
+            // concurrent overflowToDisk tasks — one is submitted per over-cap
+            // onEmit — see an accurate count/byte total and don't all over-evict
+            // the same shared queue. Stop if the queue drains (poll returns null).
+            while (ramBufferCount.get() > ramBufferSize || ramBufferBytes.get() > ramBufferMaxTotalBytes) {
+                val polled = ramBuffer.poll() ?: break
+                eventsToMove.add(polled)
+                movedBytes += polled.sizeBytes
+                ramBufferCount.decrementAndGet()
+                ramBufferBytes.addAndGet(-polled.sizeBytes.toLong())
             }
 
             // Persist to disk (already mirrored by crash-safety task, but persistEvents is idempotent
@@ -812,9 +837,7 @@ class MobileLogRecordProcessor private constructor(
             if (eventsToMove.isNotEmpty()) {
                 synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
                 diskBuffer.persistBufferedEvents(eventsToMove)
-                ramBufferCount.addAndGet(-eventsToMove.size)
-                recomputeRamBytes()
-                Log.d(TAG, "Overflowed ${eventsToMove.size} events to disk")
+                Log.d(TAG, "Overflowed ${eventsToMove.size} events (${movedBytes}B) to disk")
             }
 
         } catch (e: Exception) {
@@ -912,11 +935,12 @@ class MobileLogRecordProcessor private constructor(
                             )
                             exportedIds.addAll(ramSnapshot)
                             var removed = 0
+                            var removedBytes = 0L
                             ramBuffer.removeIf { event ->
-                                exportedIds.contains(event).also { matched -> if (matched) removed++ }
+                                exportedIds.contains(event).also { matched -> if (matched) { removed++; removedBytes += event.sizeBytes } }
                             }
                             ramBufferCount.addAndGet(-removed)
-                            recomputeRamBytes()
+                            ramBufferBytes.addAndGet(-removedBytes)
                             synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
                             runBlocking { diskBuffer.clearAll() }
                             Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
@@ -1002,7 +1026,7 @@ class MobileLogRecordProcessor private constructor(
             val ramEvents = ramBuffer.toList()
             ramBuffer.clear()
             ramBufferCount.set(0)
-            ramBufferBytes.set(0L)
+            ramBufferBytes.set(0)
             synchronized(persistedToDisk) { persistedToDisk.clear() }
 
             val flushResult = if (ramEvents.isNotEmpty()) {
@@ -1062,7 +1086,11 @@ class MobileLogRecordProcessor private constructor(
             ramBufferSize = ramBufferCount.get(),
             diskBufferSize = diskBuffer.getEventCount(),
             ramBufferCapacity = ramBufferSize,
-            diskBufferCapacityMb = diskBufferMb
+            diskBufferCapacityMb = diskBufferMb,
+            ramBufferBytes = maxOf(0L, ramBufferBytes.get()),
+            ramBufferMaxTotalBytes = ramBufferMaxTotalBytes,
+            ramBufferMaxEventBytes = ramBufferMaxEventBytes,
+            droppedOversizeCount = droppedOversizeCount.get()
         )
     }
 
@@ -1073,7 +1101,15 @@ class MobileLogRecordProcessor private constructor(
         val ramBufferSize: Int,
         val diskBufferSize: Int,
         val ramBufferCapacity: Int,
-        val diskBufferCapacityMb: Int
+        val diskBufferCapacityMb: Int,
+        /** Estimated cumulative bytes currently held in the RAM buffer. */
+        val ramBufferBytes: Long = 0,
+        /** Configured total-byte budget for the RAM buffer. */
+        val ramBufferMaxTotalBytes: Long = 0,
+        /** Configured per-event byte cap for the RAM buffer. */
+        val ramBufferMaxEventBytes: Int = 0,
+        /** Events dropped because they exceeded [ramBufferMaxEventBytes]. */
+        val droppedOversizeCount: Long = 0
     )
 
     /**
@@ -1084,6 +1120,8 @@ class MobileLogRecordProcessor private constructor(
         private var config: io.opentelemetry.android.mobile.config.MobileConfig? = null
         private var meter: io.opentelemetry.api.metrics.Meter? = null
         private var ramBufferSize: Int = 5000
+        private var ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024
+        private var ramBufferMaxEventBytes: Int = 256 * 1024
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
 
@@ -1091,6 +1129,8 @@ class MobileLogRecordProcessor private constructor(
         fun setConfig(config: io.opentelemetry.android.mobile.config.MobileConfig) = apply { this.config = config }
         fun setMeter(meter: io.opentelemetry.api.metrics.Meter) = apply { this.meter = meter }
         fun setRamBufferSize(size: Int) = apply { this.ramBufferSize = size }
+        fun setRamBufferMaxTotalBytes(bytes: Long) = apply { this.ramBufferMaxTotalBytes = bytes }
+        fun setRamBufferMaxEventBytes(bytes: Int) = apply { this.ramBufferMaxEventBytes = bytes }
         fun setDiskBufferMb(sizeMb: Int) = apply { this.diskBufferMb = sizeMb }
         fun setDiskBufferTtlHours(hours: Int) = apply { this.diskBufferTtlHours = hours }
 
@@ -1101,6 +1141,8 @@ class MobileLogRecordProcessor private constructor(
                 config = requireNotNull(config) { "Config is required" },
                 meter = requireNotNull(meter) { "Meter is required" },
                 ramBufferSize = ramBufferSize,
+                ramBufferMaxTotalBytes = ramBufferMaxTotalBytes,
+                ramBufferMaxEventBytes = ramBufferMaxEventBytes,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours
             )

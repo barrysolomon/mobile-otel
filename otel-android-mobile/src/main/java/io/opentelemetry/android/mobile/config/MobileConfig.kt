@@ -108,18 +108,20 @@ data class MobileConfig(
     val predictionIntervalSeconds: Long = 30,
     val ramBufferSize: Int = 5000,
     /**
-     * Hard cap on the total estimated bytes held in the RAM buffer (SDK_SAFETY.md
-     * non-negotiable #3 — the RAM tier must be byte-bounded, not just count-bounded).
-     * Mirrors the iOS default of 10 MB. New events that would push the buffer past
-     * this cap are dropped (and counted) until the buffer drains.
-     */
-    val ramBufferMaxBytes: Long = 10L * 1024 * 1024,
+     * Total-byte budget for the RAM ring buffer (SDK_SAFETY non-negotiable #3,
+     * iOS parity with `RAMEventBuffer.maxTotalBytes`). When adding an event
+     * would push the cumulative estimated size over this budget, oldest events
+     * are overflowed to disk (FIFO) until the buffer is back under budget. This
+     * caps RAM independently of [ramBufferSize] (the count cap), so a handful of
+     * large screenshot/wireframe events can't balloon memory. Default 10 MB. */
+    val ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024,
     /**
-     * Per-event cap on estimated serialized size (body + attributes). Mirrors the
-     * iOS default of 256 KB. Events larger than this are dropped and counted —
-     * a single oversized event can otherwise blow the buffer budget.
-     */
-    val ramBufferMaxEventBytes: Long = 256L * 1024,
+     * Per-event byte cap for the RAM ring buffer (iOS parity with
+     * `RAMEventBuffer.maxEventBytes`). A single event whose estimated size
+     * exceeds this is dropped and counted (see [MobileLogRecordProcessor]
+     * `droppedOversizeCount` / the `buffer.ram.dropped_oversize` gauge) rather
+     * than buffered. Default 256 KB. */
+    val ramBufferMaxEventBytes: Int = 256 * 1024,
     val diskBufferMb: Int = 50,
     val diskBufferTtlHours: Int = 24,
     val exportTimeoutSeconds: Long = 30,
@@ -198,8 +200,10 @@ data class MobileConfig(
         require(metricExportIntervalSeconds > 0) { "metricExportIntervalSeconds must be positive" }
         require(predictionIntervalSeconds > 0) { "predictionIntervalSeconds must be positive" }
         require(ramBufferSize in 1..100_000) { "ramBufferSize must be between 1 and 100,000" }
-        require(ramBufferMaxBytes > 0) { "ramBufferMaxBytes must be positive" }
-        require(ramBufferMaxEventBytes in 1..ramBufferMaxBytes) { "ramBufferMaxEventBytes must be between 1 and ramBufferMaxBytes" }
+        require(ramBufferMaxEventBytes > 0) { "ramBufferMaxEventBytes must be positive" }
+        require(ramBufferMaxTotalBytes >= ramBufferMaxEventBytes) {
+            "ramBufferMaxTotalBytes ($ramBufferMaxTotalBytes) must be >= ramBufferMaxEventBytes ($ramBufferMaxEventBytes)"
+        }
         require(diskBufferMb in 1..500) { "diskBufferMb must be between 1 and 500" }
         require(diskBufferTtlHours in 1..168) { "diskBufferTtlHours must be between 1 and 168 (7 days)" }
         require(exportTimeoutSeconds > 0) { "exportTimeoutSeconds must be positive" }
@@ -264,6 +268,8 @@ data class MobileConfig(
         private var metricExportIntervalSeconds: Long = 60
         private var predictionIntervalSeconds: Long = 30
         private var ramBufferSize: Int = 5000
+        private var ramBufferMaxTotalBytes: Long = 10L * 1024 * 1024
+        private var ramBufferMaxEventBytes: Int = 256 * 1024
         private var diskBufferMb: Int = 50
         private var diskBufferTtlHours: Int = 24
         private var exportTimeoutSeconds: Long = 30
@@ -295,6 +301,10 @@ data class MobileConfig(
         fun setMetricExportIntervalSeconds(interval: Long) = apply { this.metricExportIntervalSeconds = interval }
         fun setPredictionIntervalSeconds(seconds: Long) = apply { this.predictionIntervalSeconds = seconds }
         fun setRamBufferSize(ramBufferSize: Int) = apply { this.ramBufferSize = ramBufferSize }
+        /** See [MobileConfig.ramBufferMaxTotalBytes]. Default 10 MB. */
+        fun setRamBufferMaxTotalBytes(bytes: Long) = apply { this.ramBufferMaxTotalBytes = bytes }
+        /** See [MobileConfig.ramBufferMaxEventBytes]. Default 256 KB. */
+        fun setRamBufferMaxEventBytes(bytes: Int) = apply { this.ramBufferMaxEventBytes = bytes }
         fun setDiskBufferMb(diskBufferMb: Int) = apply { this.diskBufferMb = diskBufferMb }
         fun setDiskBufferTtlHours(diskBufferTtlHours: Int) = apply { this.diskBufferTtlHours = diskBufferTtlHours }
         fun setExportTimeoutSeconds(exportTimeoutSeconds: Long) = apply { this.exportTimeoutSeconds = exportTimeoutSeconds }
@@ -339,6 +349,8 @@ data class MobileConfig(
                 metricExportIntervalSeconds = metricExportIntervalSeconds,
                 predictionIntervalSeconds = predictionIntervalSeconds,
                 ramBufferSize = ramBufferSize,
+                ramBufferMaxTotalBytes = ramBufferMaxTotalBytes,
+                ramBufferMaxEventBytes = ramBufferMaxEventBytes,
                 diskBufferMb = diskBufferMb,
                 diskBufferTtlHours = diskBufferTtlHours,
                 exportTimeoutSeconds = exportTimeoutSeconds,

@@ -13,15 +13,16 @@ import OTelMobileSDK
 final class OTelMobileCallSink: BridgeCallSink {
     private var otel: OTelMobile?
     private let spanLock = NSLock()
-    private var liveSpans: [String: Span] = [:]
-    // Insertion-order list mirroring liveSpans keys for O(1)-amortized LRU
-    // eviction. Guarded by `spanLock` together with `liveSpans`.
-    private var liveSpanOrder: [String] = []
-    // Cap on concurrently-tracked spans. Orphaned spanStart (a spanEnd that
-    // never arrives — JS crash mid-request, dropped batch) would otherwise
-    // grow liveSpans without bound. When exceeded we evict + end the oldest
-    // as a timed-out error.
+    /// Upper bound on concurrently-live (started-but-not-ended) spans. A
+    /// misbehaving JS layer that starts spans without ending them must not
+    /// balloon native memory. Matches the historical ~2048 ceiling.
     private static let maxLiveSpans = 2048
+
+    /// O(1) lookup-by-id AND O(1) oldest-eviction. Replaces the previous
+    /// unbounded `[String: Span]` (which leaked on never-ended spans) — and
+    /// avoids the O(n) `firstIndex` scan a naive bounded list would need on
+    /// eviction. All access is serialized under `spanLock`.
+    private let liveSpans = BoundedLiveSpanStore<String, Span>(capacity: maxLiveSpans)
 
     func start(_ config: BridgeStartConfig) {
         guard otel == nil else { return }
@@ -108,7 +109,7 @@ final class OTelMobileCallSink: BridgeCallSink {
         var parentSpan: Span?
         if let parentSpanId = parentSpanId {
             spanLock.lock()
-            parentSpan = liveSpans[parentSpanId]
+            parentSpan = liveSpans.value(forKey: parentSpanId)
             spanLock.unlock()
         }
 
@@ -131,21 +132,16 @@ final class OTelMobileCallSink: BridgeCallSink {
 
         // Insert + enforce the LRU cap. Capture any victim under the lock,
         // then end it OUTSIDE the lock (span.end / status are OTel calls).
-        var evicted: Span?
-        var evictedTime: UInt64 = startTimeUnixNano
+        let evictedTime: UInt64 = startTimeUnixNano
         spanLock.lock()
-        if liveSpans[spanId] == nil {
-            liveSpanOrder.append(spanId)
-        }
-        liveSpans[spanId] = span
-        if liveSpans.count > Self.maxLiveSpans, let oldestId = liveSpanOrder.first {
-            liveSpanOrder.removeFirst()
-            evicted = liveSpans.removeValue(forKey: oldestId)
-        }
+        // Inserting at capacity evicts the oldest live span (O(1)). End it so it
+        // is not leaked (the JS side never called endSpan for the orphaned
+        // spanStart). Marked ERROR so the dropped span is visibly attributable
+        // rather than silently OK.
+        let evicted = liveSpans.put(spanId, span)
         spanLock.unlock()
-
         if let evicted = evicted {
-            evicted.status = .error(description: "span evicted: liveSpans cap exceeded (orphaned spanStart)")
+            evicted.status = .error(description: "span evicted: liveSpans cap (\(Self.maxLiveSpans)) reached (orphaned spanStart)")
             evicted.end(time: Self.dateFromUnixNano(evictedTime))
         }
     }
@@ -159,9 +155,6 @@ final class OTelMobileCallSink: BridgeCallSink {
     ) {
         spanLock.lock()
         let span = liveSpans.removeValue(forKey: spanId)
-        if span != nil, let idx = liveSpanOrder.firstIndex(of: spanId) {
-            liveSpanOrder.remove(at: idx)
-        }
         spanLock.unlock()
         guard let span = span else { return }
 
@@ -230,8 +223,7 @@ final class OTelMobileCallSink: BridgeCallSink {
     func shutdown() {
         otel = nil
         spanLock.lock()
-        liveSpans.removeAll()
-        liveSpanOrder.removeAll()
+        _ = liveSpans.removeAll()
         spanLock.unlock()
     }
 

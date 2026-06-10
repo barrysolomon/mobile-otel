@@ -41,6 +41,34 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     private var installed = false
     private var logger: Logger?
 
+    /// Throttle for `recordError`: rolling per-minute rate limit + identical-
+    /// error dedup, matching Android's `ErrorConfig` (10/min, 5-min dedup).
+    /// Guarded by `lock` when swapped via `configureRecording`. Built once with
+    /// the default Android-matching limits; replace via `configureRecording`
+    /// to widen/disable for debug builds.
+    private var throttle = ErrorRecordingThrottle(config: .default)
+
+    /// Reconfigure the `recordError` rate-limit + dedup behavior. Safe to call
+    /// before or after `install`. Passing `.unlimited` restores the legacy
+    /// unbounded behavior. Resets any in-flight throttle counters.
+    public func configureRecording(_ config: ErrorRecordingConfig) {
+        lock.lock(); defer { lock.unlock() }
+        throttle = ErrorRecordingThrottle(config: config)
+    }
+
+    /// Test seam: snapshot of how many `recordError` calls were dropped by the
+    /// rate limiter vs the deduplicator.
+    func droppedCountsForTesting() -> (rateLimit: Int, dedup: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (throttle.droppedByRateLimit, throttle.droppedByDedup)
+    }
+
+    /// Test seam: reset throttle state between tests.
+    func resetThrottleForTesting() {
+        lock.lock(); defer { lock.unlock() }
+        throttle.reset()
+    }
+
     /// Called after a `recordError` log is emitted. `OTelMobile` sets this
     /// during wiring so the screenshot + wireframe modules can capture the
     /// visual state at error time. NOT called from signal/exception
@@ -125,15 +153,27 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     ) {
         lock.lock()
         let logger = self.logger
+        let throttle = self.throttle
         lock.unlock()
         guard let logger = logger else { return }
-        var attrs = attributes
-        attrs["error.type"] = .string(String(describing: type(of: error)))
+
+        let errorType = String(describing: type(of: error))
         // Always scrub the message — `localizedDescription` is the most likely
         // place for an email / phone / token to leak through (e.g.
         // "could not authenticate alice@example.com"). Match Android's
         // default-on stack-trace scrubbing posture.
-        attrs["error.message"] = .string(PiiScrubber.scrubExceptionMessage(error.localizedDescription))
+        let scrubbedMessage = PiiScrubber.scrubExceptionMessage(error.localizedDescription)
+
+        // Rate-limit + dedup gate (Android parity). An unbounded crash/error
+        // loop must not flood the pipeline. Dedup keys on type + scrubbed
+        // message — same fields Android fingerprints on. The throttle is
+        // self-contained and thread-safe, so we call it outside our lock.
+        let fingerprint = ErrorRecordingThrottle.fingerprint(type: errorType, message: scrubbedMessage)
+        guard throttle.shouldEmit(fingerprint: fingerprint) else { return }
+
+        var attrs = attributes
+        attrs["error.type"] = .string(errorType)
+        attrs["error.message"] = .string(scrubbedMessage)
         attrs["event.name"] = .string("app.error")
         logger.logRecordBuilder()
             .setBody(AttributeValue.string("app.error"))
