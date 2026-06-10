@@ -53,6 +53,13 @@ dependencies {
     implementation "com.facebook.react:react-android:+"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
 
+    // react-android bundles OkHttp and exposes OkHttpClientProvider /
+    // OkHttpClientFactory (com.facebook.react.modules.network). We compile
+    // against okhttp3 directly for the network interceptor; declare it
+    // `compileOnly` so we don't pin a version that conflicts with the one
+    // react-android already puts on the host runtime classpath.
+    compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
+
     // Depend on the existing native Android SDK. Must be `implementation`
     // (not `compileOnly`) so Kotlin can resolve transitive config classes
     // (TextInputConfig, BreadcrumbConfig, VitalsConfig, etc.) referenced
@@ -65,4 +72,11 @@ dependencies {
     testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
     testImplementation 'io.opentelemetry.android:mobile:0.1.0-alpha'
     testImplementation 'io.opentelemetry:opentelemetry-api:1.58.0'
+
+    // Network-interceptor unit tests: real OkHttp + the OTel SDK in-memory
+    // span exporter so we can assert the span the interceptor produced and the
+    // traceparent it injected, all on a pure JVM (no emulator).
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'io.opentelemetry:opentelemetry-sdk:1.58.0'
+    testImplementation 'io.opentelemetry:opentelemetry-sdk-testing:1.58.0'
 }

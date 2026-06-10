@@ -59,6 +59,23 @@ internal class OTelMobileCallSink(
                 extraResourceAttributes = config.extraResourceAttributes,
             ),
         )
+
+        // Arm the native OkHttp interceptor now that OTelMobile is up and a
+        // tracer exists. The interceptor was installed on RN's OkHttp client
+        // pre-JS (Dash0MobilePackage) but stayed a pass-through no-op until
+        // this moment. Pass the collector endpoint so the interceptor adds our
+        // own ingress host to its ignore list — we must never instrument (or
+        // recurse on) telemetry exports. Wrapped defensively: a failure to arm
+        // network capture must not fail `Dash0Mobile.start`.
+        try {
+            NetworkInstrumentation.interceptor.arm(
+                tracer = OTelMobile.getTracer(SCOPE),
+                collectorEndpoint = config.endpoint,
+            )
+        } catch (_: Throwable) {
+            // No native network capture this session — but start() still
+            // succeeds and JS-side telemetry keeps working.
+        }
     }
 
     override fun emitLog(
@@ -154,6 +171,12 @@ internal class OTelMobileCallSink(
     }
 
     override fun shutdown() {
+        // Return the interceptor to pass-through BEFORE stopping the SDK so no
+        // in-flight request tries to start a span on a torn-down tracer.
+        try {
+            NetworkInstrumentation.interceptor.disarm()
+        } catch (_: Throwable) {
+        }
         OTelMobile.stop()
     }
 

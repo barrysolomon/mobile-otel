@@ -202,7 +202,22 @@ export const Dash0Mobile = {
       if (!isReactNative()) {
         autoInstrUninstallers.push(installFetchInstrumentation({ ignoredHosts }));
       }
-      autoInstrUninstallers.push(installXhrInstrumentation({ ignoredHosts }));
+      // Android network capture is owned by the native OkHttp interceptor
+      // (OTelNetworkInterceptor), installed pre-JS in Dash0MobilePackage. The
+      // native layer is the only one that sees traffic under Expo SDK 52+ —
+      // expo/fetch routes through OkHttp directly and never touches the JS
+      // `fetch`/`XMLHttpRequest` globals these shims wrap, so the JS XHR shim
+      // sees zero traffic there. The native interceptor also injects a
+      // W3C `traceparent` built from the real native span context, which the
+      // JS shim cannot do. Installing the JS XHR shim on Android on top of the
+      // native interceptor would (for non-Expo apps) double-count every
+      // request. So: gate the JS XHR shim OFF on Android. iOS keeps the JS XHR
+      // shim — its native URLProtocol is opt-in (off by default for RN), and
+      // RN iOS fetch is XHR-backed, so XHR remains the authoritative JS layer
+      // there.
+      if (!isAndroid()) {
+        autoInstrUninstallers.push(installXhrInstrumentation({ ignoredHosts }));
+      }
     }
     if (auto.errors !== false) {
       autoInstrUninstallers.push(installErrorInstrumentation());
@@ -400,6 +415,23 @@ function hostFromEndpoint(endpoint: string): string | null {
 function isReactNative(): boolean {
   const nav = (globalThis as unknown as { navigator?: { product?: string } }).navigator;
   return nav?.product === 'ReactNative';
+}
+
+// True only on React Native running on Android. Reads `Platform.OS` from the
+// react-native module rather than a global so it's accurate on both old and
+// new arch. Used to gate OFF the JS `XMLHttpRequest` shim on Android, where
+// the native OkHttp interceptor (OTelNetworkInterceptor) owns network capture
+// and traceparent injection. Any failure to resolve `Platform` (Jest, SSR,
+// non-RN) returns false so those environments keep the JS shim — exactly the
+// behavior the dedup test pins.
+function isAndroid(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const rn = require('react-native') as { Platform?: { OS?: string } };
+    return rn?.Platform?.OS === 'android';
+  } catch {
+    return false;
+  }
 }
 
 // Map JS autoCapture flags onto native-capability tokens the bridge
