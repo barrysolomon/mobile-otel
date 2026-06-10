@@ -45,9 +45,27 @@ subprojects {
                         } else {
                             "mobile-instrumentation-${path.removePrefix(":instrumentation-")}"
                         }
-                        version = "0.1.0-alpha"
+                        version = "0.2.0-alpha"
                         afterEvaluate {
                             from(components.findByName("release"))
+                        }
+                    }
+                }
+                // Publish core + every instrumentation module to GitHub Packages,
+                // not just mavenLocal. The umbrella `io.opentelemetry.android:mobile`
+                // POM declares ~20 sibling deps (mobile-core + mobile-instrumentation-*);
+                // without this repo those siblings only landed in mavenLocal, so external
+                // consumers hit `Could not find io.opentelemetry.android:mobile-core`
+                // (reported by Loper, 2026-06). Same repo name ("GitHubPackages") as the
+                // umbrella module, so one `publishReleasePublicationToGitHubPackagesRepository`
+                // run publishes the whole tree. mavenLocal stays available for dev.
+                repositories {
+                    maven {
+                        name = "GitHubPackages"
+                        url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+                        credentials {
+                            username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                            password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
                         }
                     }
                 }
