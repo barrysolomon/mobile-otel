@@ -144,6 +144,13 @@ class DiskLogBuffer private constructor(
      * a way that NEVER crashes the host on a failed open.
      *
      * Failure modes handled:
+     * - **SQLCipher native library unavailable** (`UnsatisfiedLinkError` — the
+     *   `.so` is missing for this ABI, e.g. some emulators): encryption can never
+     *   succeed, and any existing DB file is plain *cleartext* written by a prior
+     *   fallback run — fully readable. We open it as cleartext WITHOUT deleting.
+     *   Deleting here (the old behaviour) silently wiped crash-persisted and
+     *   offline-buffered telemetry on EVERY launch, so the crash/offline durability
+     *   guarantee was broken on any device lacking the native lib.
      * - **Wrong/invalidated SQLCipher key or corrupt encrypted file**: opening
      *   the database throws (SQLCipher reports `file is not a database`). We log,
      *   delete the on-disk files, clear the Keystore-wrapped passphrase, and
@@ -164,41 +171,71 @@ class DiskLogBuffer private constructor(
             prewarm(first)
             first
         } catch (e: Throwable) {
-            // Open or checkpoint failed — almost always a key/format mismatch on
-            // the existing file. Recreate destructively rather than crash.
-            Log.w(TAG, "Disk buffer open failed (encrypt=$encryptAtRest); recreating database", e)
             try {
                 first.close()
             } catch (_: Throwable) {
                 // Best-effort close of the half-open handle.
             }
-            deleteDatabaseFiles()
-            if (encryptAtRest) {
+
+            // WHY the open failed decides whether the existing file is salvageable.
+            // UnsatisfiedLinkError == SQLCipher native lib missing on this ABI:
+            // encryption can never work, and any existing file is cleartext and
+            // readable. Deleting it would destroy prior crash/offline telemetry on
+            // every launch — so DO NOT delete; open the existing file as cleartext.
+            val nativeUnavailable = e.causedByUnsatisfiedLink()
+
+            if (encryptAtRest && !nativeUnavailable) {
+                // Genuine key/format mismatch on an encrypted file we cannot read —
+                // recreate destructively rather than crash.
+                Log.w(TAG, "Encrypted disk buffer open failed; recreating database", e)
+                deleteDatabaseFiles()
                 // The wrapped passphrase may be stale/invalidated; reset it so the
                 // rebuild mints a fresh key + passphrase.
                 runCatching { DiskBufferKeyManager.create(context).reset() }
-            }
-            val rebuilt = buildDatabase(encrypt = encryptAtRest)
-            try {
-                prewarm(rebuilt)
-            } catch (e2: Throwable) {
-                // Encryption is still failing on a brand-new file — fall back to
-                // cleartext so the host keeps functioning. This is the last resort
-                // and only reachable if SQLCipher/Keystore are fundamentally broken
-                // on this device.
-                Log.e(TAG, "Encrypted disk buffer unusable on this device; falling back to cleartext", e2)
+                val rebuilt = buildDatabase(encrypt = true)
                 try {
-                    rebuilt.close()
+                    prewarm(rebuilt)
+                    return rebuilt
+                } catch (e2: Throwable) {
+                    Log.e(TAG, "Encrypted disk buffer unusable on this device; falling back to cleartext", e2)
+                    try {
+                        rebuilt.close()
+                    } catch (_: Throwable) {
+                    }
+                    // fall through to the cleartext path below (data preserved)
+                }
+            } else {
+                Log.w(TAG, "SQLCipher native library unavailable; using cleartext disk buffer (existing data preserved)", e)
+            }
+
+            // Cleartext fallback. Preserve the existing file — it holds prior
+            // crash/offline events. Only recreate if even a cleartext open fails
+            // (genuine corruption), never merely because encryption was unavailable.
+            val cleartext = buildDatabase(encrypt = false)
+            try {
+                prewarm(cleartext)
+                cleartext
+            } catch (e3: Throwable) {
+                Log.e(TAG, "Cleartext disk buffer open failed; recreating empty buffer", e3)
+                try {
+                    cleartext.close()
                 } catch (_: Throwable) {
                 }
                 deleteDatabaseFiles()
-                val cleartext = buildDatabase(encrypt = false)
-                prewarm(cleartext)
-                return cleartext
+                val fresh = buildDatabase(encrypt = false)
+                prewarm(fresh)
+                fresh
             }
-            rebuilt
         }
     }
+
+    /**
+     * True if this throwable or any of its causes is an [UnsatisfiedLinkError],
+     * i.e. SQLCipher's native library could not be loaded for this ABI. In that
+     * case the on-disk file is cleartext and must be preserved, not deleted.
+     */
+    private fun Throwable.causedByUnsatisfiedLink(): Boolean =
+        generateSequence(this as Throwable?) { it.cause }.any { it is UnsatisfiedLinkError }
 
     /**
      * Constructs the Room database, attaching the SQLCipher
