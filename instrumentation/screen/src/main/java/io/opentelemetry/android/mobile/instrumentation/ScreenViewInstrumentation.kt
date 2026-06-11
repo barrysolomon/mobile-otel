@@ -189,10 +189,25 @@ class ScreenViewInstrumentation(
         // resolved screen name is known (and so app-managed mode can skip it).
         val startedAt = java.time.Instant.now()
 
-        val observer = root.viewTreeObserver
         val listener = object : ViewTreeObserver.OnPreDrawListener {
+            // Single-shot guard. A screen renders its first frame exactly once;
+            // emit one render span for it, then never again for this resume.
+            private var fired = false
+
             override fun onPreDraw(): Boolean {
-                if (observer.isAlive) observer.removeOnPreDrawListener(this)
+                if (fired) return true
+                fired = true
+                // Unregister from the CURRENTLY-LIVE observer — the one actually
+                // dispatching this callback — fetched fresh from the decorView.
+                // The decorView's ViewTreeObserver can be swapped between when we
+                // register and the first draw; removing via a stale reference
+                // captured at registration silently no-ops, leaving this listener
+                // attached and firing on EVERY frame. That produced a flood of
+                // screen.render spans whose durations grew without bound (they all
+                // shared this single `startedAt` but ended at successive frames),
+                // even producing children longer than their parent page span.
+                // The `fired` flag is the backstop if removal still fails.
+                root.viewTreeObserver.takeIf { it.isAlive }?.removeOnPreDrawListener(this)
                 // Resolve at DRAW time: a logical screen the app reported during
                 // composition (via reportScreen) wins over the host Activity name
                 // captured at resume ("MainActivity").
@@ -211,7 +226,7 @@ class ScreenViewInstrumentation(
                 return true
             }
         }
-        observer.addOnPreDrawListener(listener)
+        root.viewTreeObserver.addOnPreDrawListener(listener)
     }
 
     private fun attachFragmentCallbacks(activity: Activity, context: InstrumentationContext) {
