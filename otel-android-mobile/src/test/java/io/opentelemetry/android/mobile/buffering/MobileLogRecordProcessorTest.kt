@@ -379,6 +379,42 @@ class MobileLogRecordProcessorTest {
         // Should not crash
     }
 
+    @Test
+    fun `forceFlush defers to an in-progress flush instead of double-exporting`() {
+        // Regression: forceFlush() used to "proceed anyway" when a flushWindow() was
+        // mid-export. A window flush removes its RAM events only AFTER its async export
+        // completes, so forceFlush snapshotted the SAME still-in-RAM events and exported
+        // them a second time — duplicate records with identical timestamps in the backend
+        // (observed in Dash0: app.recovery, buffer.snapshot, etc. each appearing x2).
+        // forceFlush must now defer to the in-progress flush.
+        repeat(10) { i ->
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("dup.$i")))
+        }
+
+        // Make the window flush's export slow so it holds the flush gate while we call
+        // forceFlush concurrently.
+        mockExporter.simulatedDelayMs = 500
+
+        val windowThread = Thread { processor.flushWindow(5) }
+        windowThread.start()
+        // Let the window flush acquire the gate and enter its (slow) export.
+        Thread.sleep(150)
+
+        // With the bug this exported the same 10 events again; with the fix it defers.
+        processor.forceFlush()
+
+        windowThread.join(5_000)
+        // Give the async completion (RAM clear + gate release) a moment to settle.
+        Thread.sleep(800)
+
+        // Each event must be exported exactly once — no duplicates from the double flush.
+        assertEquals(
+            "forceFlush must defer to the in-progress window flush, not re-export its events",
+            10,
+            mockExporter.exportedLogs.size
+        )
+    }
+
     // ==================== Shutdown Tests ====================
 
     @Test
