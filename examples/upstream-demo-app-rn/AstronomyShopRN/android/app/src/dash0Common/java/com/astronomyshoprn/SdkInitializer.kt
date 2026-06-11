@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import io.opentelemetry.android.mobile.MobileOtel
 import io.opentelemetry.android.mobile.config.ExportMode
+import io.opentelemetry.android.mobile.config.OtlpProtocol
 
 object SdkInitializer {
     fun initialize(app: Application, cellId: String? = null) {
@@ -19,6 +20,7 @@ object SdkInitializer {
                 }
                 export {
                     endpoint = ExportConfig.grpcEndpoint
+                    protocol = OtlpProtocol.GRPC
                     mode = ExportMode.valueOf(BuildConfig.DASH0_EXPORT_MODE_ENUM)
                     headers = ExportConfig.headers
                 }
