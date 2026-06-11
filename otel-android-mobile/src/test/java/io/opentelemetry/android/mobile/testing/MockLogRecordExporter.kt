@@ -9,6 +9,8 @@ import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.logs.data.LogRecordData
 import io.opentelemetry.sdk.logs.export.LogRecordExporter
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Mock LogRecordExporter for testing.
@@ -46,8 +48,19 @@ class MockLogRecordExporter : LogRecordExporter {
      */
     var simulatedDelayMs = 0L
 
+    /**
+     * Deterministic in-flight control (preferred over [simulatedDelayMs] sleeps):
+     * when [blockExports] is set, export() signals [exportStarted] and then blocks
+     * until the latch is released. Lets a test hold an export mid-flight, do
+     * something concurrently, then release — no wall-clock guessing.
+     */
+    @Volatile var blockExports: CountDownLatch? = null
+    @Volatile var exportStarted: CountDownLatch = CountDownLatch(1)
+
     override fun export(logs: Collection<LogRecordData>): CompletableResultCode {
         exportCallCount++
+        exportStarted.countDown()
+        blockExports?.await(10, TimeUnit.SECONDS)
 
         return if (shouldFail) {
             CompletableResultCode.ofFailure()

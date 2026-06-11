@@ -205,8 +205,9 @@ class MobileLogRecordProcessorTest {
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("flush.$i")))
         }
 
-        // Force flush
+        // Force flush — the result completes after export AND cleanup settle
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue(result.isSuccess)
 
         // Verify events were exported
@@ -220,14 +221,13 @@ class MobileLogRecordProcessorTest {
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("disk.$i")))
         }
 
-        Thread.sleep(500) // Wait for disk writes
-
-        // Force flush
+        // Force flush — RAM→disk moves are snapshot-atomic, no sleep needed
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue(result.isSuccess)
 
-        // Verify all events were exported
-        assertTrue(mockExporter.exportedLogs.size >= 150)
+        // Verify all events were exported exactly once
+        assertEquals(150, mockExporter.exportedLogs.size)
     }
 
     @Test
@@ -236,8 +236,8 @@ class MobileLogRecordProcessorTest {
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("clear.$i")))
         }
 
-        processor.forceFlush()
-        Thread.sleep(200) // Wait for async post-export cleanup on executor
+        // The result completes only after the async post-export cleanup settles
+        processor.forceFlush().join(10, TimeUnit.SECONDS)
 
         val stats = processor.getBufferStats()
         assertEquals(0, stats.ramBufferSize)
@@ -391,26 +391,89 @@ class MobileLogRecordProcessorTest {
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("dup.$i")))
         }
 
-        // Make the window flush's export slow so it holds the flush gate while we call
-        // forceFlush concurrently.
-        mockExporter.simulatedDelayMs = 500
+        // Hold the window flush's export in-flight deterministically (no sleeps):
+        // exportStarted fires once the window flush is inside export() holding the gate.
+        val release = CountDownLatch(1)
+        mockExporter.exportStarted = CountDownLatch(1)
+        mockExporter.blockExports = release
 
         val windowThread = Thread { processor.flushWindow(5) }
         windowThread.start()
-        // Let the window flush acquire the gate and enter its (slow) export.
-        Thread.sleep(150)
+        assertTrue(
+            "window flush should enter its export",
+            mockExporter.exportStarted.await(5, TimeUnit.SECONDS)
+        )
 
-        // With the bug this exported the same 10 events again; with the fix it defers.
-        processor.forceFlush()
+        // With the bug this exported the same 10 events again; with the fix it defers
+        // and returns the in-progress flush's completion.
+        val deferred = processor.forceFlush()
 
+        release.countDown()
+        mockExporter.blockExports = null
         windowThread.join(5_000)
-        // Give the async completion (RAM clear + gate release) a moment to settle.
-        Thread.sleep(800)
+
+        // The deferred result completes only when the window flush (incl. RAM clear
+        // + gate release) has fully settled — no wall-clock guessing.
+        deferred.join(10, TimeUnit.SECONDS)
+        assertTrue("deferred forceFlush must report the window flush's outcome", deferred.isSuccess)
 
         // Each event must be exported exactly once — no duplicates from the double flush.
         assertEquals(
             "forceFlush must defer to the in-progress window flush, not re-export its events",
             10,
+            mockExporter.exportedLogs.size
+        )
+    }
+
+    @Test
+    fun `flush cleanup deletes only the disk rows it exported, not late arrivals`() {
+        // Regression: forceFlush() cleanup used to clearAll() the disk buffer. Any row
+        // persisted AFTER the flush snapshot (e.g. an overflow batch landing mid-export)
+        // was deleted without ever being exported — silent data loss.
+        repeat(5) { i ->
+            processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("pre.$i")))
+        }
+
+        // Hold the force flush's export in-flight.
+        val release = CountDownLatch(1)
+        mockExporter.exportStarted = CountDownLatch(1)
+        mockExporter.blockExports = release
+
+        var flushResult: io.opentelemetry.sdk.common.CompletableResultCode? = null
+        val flushThread = Thread { flushResult = processor.forceFlush() }
+        flushThread.start()
+        assertTrue(
+            "force flush should enter its export",
+            mockExporter.exportStarted.await(5, TimeUnit.SECONDS)
+        )
+
+        // While the export is in-flight, a new event lands directly on disk — exactly
+        // what an overflow batch does. It is NOT in the flush snapshot.
+        val diskBuffer = DiskLogBuffer.getInstance(context, 10, 1, encryptAtRest = false)
+        diskBuffer.persistBufferedEventsBlocking(
+            listOf(BufferedEvent(TestUtils.createTestLogRecord("late.arrival")))
+        )
+
+        release.countDown()
+        mockExporter.blockExports = null
+        flushThread.join(10_000)
+        flushResult!!.join(10, TimeUnit.SECONDS)
+
+        // The snapshot's 5 events exported; the late arrival did not (it wasn't in the
+        // snapshot) — but it MUST still be on disk for the next flush, not clearAll()'d.
+        assertEquals("Snapshot events export exactly once", 5, mockExporter.exportedLogs.size)
+        assertEquals(
+            "Late-arriving disk row must survive the flush cleanup",
+            1,
+            processor.getBufferStats().diskBufferSize
+        )
+
+        // And the next flush exports it.
+        val second = processor.forceFlush()
+        second.join(10, TimeUnit.SECONDS)
+        assertEquals(
+            "Late arrival exports on the next flush",
+            6,
             mockExporter.exportedLogs.size
         )
     }
@@ -667,13 +730,14 @@ class MobileLogRecordProcessorTest {
         assertEquals(50, processor.getBufferStats().ramBufferSize)
 
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue(result.isSuccess)
-        Thread.sleep(300)
 
         assertEquals(0, processor.getBufferStats().ramBufferSize)
-        assertTrue(
-            "All 50 events should have been exported",
-            mockExporter.exportedLogs.size >= 50
+        assertEquals(
+            "All 50 events should have been exported exactly once",
+            50,
+            mockExporter.exportedLogs.size
         )
     }
 }

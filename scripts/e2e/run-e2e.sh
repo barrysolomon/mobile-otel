@@ -46,6 +46,7 @@ RUN_TESTS=true
 HEADLESS=false
 EMU_COUNT=2
 TEARDOWN=false
+ALLOW_NO_DASH0=false          # --allow-no-dash0: missing token degrades to warning, not failure
 AVD_PRIMARY="Pixel_7"
 AVD_SECONDARY="Pixel_3a"
 BOOT_TIMEOUT=300              # 5 minutes max wait for emulator boot
@@ -58,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --skip-tests)      RUN_TESTS=false; shift ;;
         --headless)        HEADLESS=true; shift ;;
         --one-emulator)    EMU_COUNT=1; shift ;;
+        --allow-no-dash0)  ALLOW_NO_DASH0=true; shift ;;
         --teardown)        TEARDOWN=true; shift ;;
         --help|-h)
             sed -n '/^# Usage:/,/^# =====/p' "$0" | head -n -1 | sed 's/^# //'
@@ -434,6 +436,9 @@ done
 # ── Step 6: Run tests ───────────────────────────────────────────────────────
 if [[ "$RUN_TESTS" == true ]]; then
     FAILURES=0
+    # Captured BEFORE any suite runs: the Dash0 receipt gate only counts telemetry
+    # emitted after this instant, so a previous run's data can't green this one.
+    RUN_START_EPOCH=$(date +%s)
 
     # Unit tests
     step "Running unit tests"
@@ -481,14 +486,28 @@ if [[ "$RUN_TESTS" == true ]]; then
     # REST-based (no `dash0` CLI needed); skipped only if no token is configured.
     if [[ -n "${DASH0_AUTH_TOKEN:-}" ]] || [[ -f "$APP_DIR/.env" ]]; then
         step "Verifying telemetry reached Dash0 (green = data in Dash0)"
-        if "$SCRIPT_DIR/verify-dash0.sh" android-native --window-min "${DASH0_WINDOW_MIN:-20}"; then
+        # RUN_START_EPOCH (set before the test suites ran) scopes the gate to THIS
+        # run's telemetry — leftovers from a previous run can't green a broken SDK.
+        if "$SCRIPT_DIR/verify-dash0.sh" android-native --window-min "${DASH0_WINDOW_MIN:-20}" \
+              --since "${RUN_START_EPOCH:-0}" --retry-for "${DASH0_RETRY_FOR:-90}"; then
             ok "Dash0 telemetry verified"
         else
             fail "Dash0 telemetry verification FAILED — device tests passed but data did not arrive"
             FAILURES=$((FAILURES + 1))
         fi
+    elif [[ "$ALLOW_NO_DASH0" == "true" ]]; then
+        echo ""
+        echo -e "${YELLOW}${BOLD}  ⚠ Dash0 receipt gate SKIPPED (--allow-no-dash0): end-to-end delivery NOT verified${NC}"
+        echo ""
     else
-        echo "  (skipping Dash0 receipt gate — set DASH0_AUTH_TOKEN to enable)"
+        # A silently skipped gate is a gate that lies: without the receipt check the
+        # suite can go green while no telemetry ever reaches Dash0. Skipping must be
+        # an explicit, visible decision — not a side effect of a missing token.
+        fail "Dash0 receipt gate cannot run: DASH0_AUTH_TOKEN is not set and no $APP_DIR/.env exists."
+        echo "  End-to-end delivery was NOT verified. Either:"
+        echo "    - export DASH0_AUTH_TOKEN (or create $APP_DIR/.env), or"
+        echo "    - pass --allow-no-dash0 to explicitly accept skipping the gate"
+        FAILURES=$((FAILURES + 1))
     fi
 
     # Summary
@@ -514,3 +533,10 @@ echo "  Simulate:    curl -X POST localhost:3001/api/admin/simulate -H 'Content-
 echo "  Reset:       curl -X DELETE localhost:3001/api/admin/simulate"
 echo "  Teardown:    ./run-e2e.sh --teardown"
 echo ""
+
+# Propagate the verdict. Without this the script ends on an echo and exits 0
+# even when suites failed — a CI caller would read failure as success.
+if [[ "${RUN_TESTS}" == "true" && "${FAILURES:-0}" -gt 0 ]]; then
+    exit 1
+fi
+exit 0

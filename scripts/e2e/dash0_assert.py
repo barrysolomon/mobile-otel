@@ -141,6 +141,15 @@ def main():
     p = argparse.ArgumentParser(description="Assert telemetry is present in Dash0.")
     p.add_argument("--service", help="service.name to scope to (exact match)")
     p.add_argument("--window-min", type=float, default=15, help="look-back window in minutes")
+    p.add_argument("--since", type=float, default=0,
+                   help="epoch seconds; only count telemetry AFTER this instant (e.g. the "
+                        "test run's start). Without it, leftovers from a previous run inside "
+                        "the look-back window can satisfy the assertion — a false green.")
+    p.add_argument("--retry-for", type=float, default=0, metavar="SEC",
+                   help="poll until assertions pass or SEC elapse (default 0 = single shot). "
+                        "Absorbs Dash0 ingestion latency and transient API errors.")
+    p.add_argument("--retry-interval", type=float, default=10, metavar="SEC",
+                   help="seconds between polls when --retry-for is set (default 10)")
     p.add_argument("--log", action="append", default=[], metavar="BODY[:MIN]",
                    help="required log body, optional :minCount (default 1). Repeatable.")
     p.add_argument("--span", action="append", default=[], metavar="NAME[:MIN]",
@@ -154,45 +163,83 @@ def main():
         print("ERROR: DASH0_AUTH_TOKEN not set", file=sys.stderr)
         return 2
 
-    now = time.time()
-    frm = now - args.window_min * 60
     pre = f"[{args.label}] " if args.label else ""
-    print(f"{pre}Dash0 check — service={args.service or '*'} dataset={DATASET} "
-          f"window={args.window_min:g}m")
 
-    failures = 0
-    try:
+    def check():
+        """One assertion pass. Returns (failures, report_lines)."""
+        now = time.time()
+        frm = now - args.window_min * 60
+        if args.since:
+            # Run-scoped window: never count telemetry older than the run start,
+            # no matter how wide the look-back window is.
+            frm = max(frm, args.since)
+        fails = 0
+        lines = []
         if args.log:
             logs = count_logs(args.service, frm, now)
             for name, need in _parse_reqs(args.log):
                 got = logs.get(name, 0)
                 ok = got >= need
-                failures += not ok
-                print(f"  {'PASS' if ok else 'FAIL'}: log  {name} >= {need}  (got {got})")
+                fails += not ok
+                lines.append(f"  {'PASS' if ok else 'FAIL'}: log  {name} >= {need}  (got {got})")
         if args.span:
             spans = count_spans(args.service, frm, now)
             for name, need in _parse_reqs(args.span):
                 got = spans.get(name, 0)
                 ok = got >= need
-                failures += not ok
-                print(f"  {'PASS' if ok else 'FAIL'}: span {name} >= {need}  (got {got})")
+                fails += not ok
+                lines.append(f"  {'PASS' if ok else 'FAIL'}: span {name} >= {need}  (got {got})")
         for name in args.metric:
             ok = metric_has_data(name)
-            failures += not ok
-            print(f"  {'PASS' if ok else 'FAIL'}: metric {name} has datapoints")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()[:200]
-        print(f"ERROR: Dash0 API {e.code}: {body}", file=sys.stderr)
-        return 2
-    except Exception as e:  # noqa: BLE001 - surface any query failure as a hard error
-        print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
-        return 2
+            fails += not ok
+            lines.append(f"  {'PASS' if ok else 'FAIL'}: metric {name} has datapoints")
+        return fails, lines
 
-    if failures:
-        print(f"{pre}RESULT: FAIL ({failures} missing) — telemetry not confirmed in Dash0")
-        return 1
-    print(f"{pre}RESULT: PASS — all expected telemetry present in Dash0")
-    return 0
+    print(f"{pre}Dash0 check — service={args.service or '*'} dataset={DATASET} "
+          f"window={args.window_min:g}m"
+          + (f" since={_iso(args.since)}" if args.since else "")
+          + (f" retry-for={args.retry_for:g}s" if args.retry_for else ""))
+
+    deadline = time.time() + args.retry_for
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            failures, lines = check()
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                # Auth problems never heal by retrying — fail fast and loud.
+                print(f"ERROR: Dash0 API {e.code} (auth): {e.read().decode()[:200]}", file=sys.stderr)
+                return 2
+            if time.time() < deadline:
+                print(f"{pre}transient Dash0 API {e.code}; retrying in {args.retry_interval:g}s")
+                time.sleep(args.retry_interval)
+                continue
+            print(f"ERROR: Dash0 API {e.code}: {e.read().decode()[:200]}", file=sys.stderr)
+            return 2
+        except Exception as e:  # noqa: BLE001 - surface any query failure as a hard error
+            if time.time() < deadline:
+                print(f"{pre}transient error {type(e).__name__}; retrying in {args.retry_interval:g}s")
+                time.sleep(args.retry_interval)
+                continue
+            print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
+            return 2
+
+        if failures == 0:
+            for ln in lines:
+                print(ln)
+            print(f"{pre}RESULT: PASS — all expected telemetry present in Dash0"
+                  + (f" (attempt {attempt})" if attempt > 1 else ""))
+            return 0
+        if time.time() >= deadline:
+            for ln in lines:
+                print(ln)
+            print(f"{pre}RESULT: FAIL ({failures} missing) — telemetry not confirmed in Dash0"
+                  + (f" after {attempt} attempt(s)" if args.retry_for else ""))
+            return 1
+        print(f"{pre}{failures} assertion(s) not yet satisfied (attempt {attempt}); "
+              f"retrying in {args.retry_interval:g}s")
+        time.sleep(args.retry_interval)
 
 
 if __name__ == "__main__":

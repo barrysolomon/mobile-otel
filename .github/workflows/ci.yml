@@ -23,7 +23,7 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Scan tracked files for leaked ingest tokens / secrets
         # Dependency-free guard against committing Dash0 ingest tokens
         # (auth_…) or common private-key material. Scans only git-tracked
@@ -45,8 +45,8 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -62,10 +62,13 @@ jobs:
   go-processor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          # Track go.mod instead of a hardcoded pin: setup-go@v6 sets
+          # GOTOOLCHAIN=local, so a pin older than go.mod's requirement
+          # hard-fails instead of silently auto-downloading a newer toolchain.
+          go-version-file: collector-processor/mobilepolicyprocessor/go.mod
       - name: Go tests with race detection
         working-directory: collector-processor/mobilepolicyprocessor
         run: |
@@ -78,8 +81,8 @@ jobs:
   react-native:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: RN package tests
@@ -100,12 +103,12 @@ jobs:
   react-native-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - name: Install Android platform 36
         # react-android 0.76 + the OTel SDK pull androidx.core 1.17.x, which
         # requires compiling against android-36 (the standalone build sets

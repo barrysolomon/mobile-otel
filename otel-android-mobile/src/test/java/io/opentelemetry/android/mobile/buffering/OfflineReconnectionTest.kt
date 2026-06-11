@@ -19,6 +19,7 @@ import io.opentelemetry.sdk.logs.data.LogRecordData
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import java.util.concurrent.TimeUnit
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -105,12 +106,13 @@ class OfflineReconnectionTest {
         mockExporter.shouldFail = false
 
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue("Force flush should succeed after reconnection", result.isSuccess)
-        Thread.sleep(500)
 
-        assertTrue(
-            "All 10 events should be exported after reconnection",
-            mockExporter.exportedLogs.size >= 10
+        assertEquals(
+            "All 10 events should be exported after reconnection, exactly once",
+            10,
+            mockExporter.exportedLogs.size
         )
     }
 
