@@ -52,6 +52,7 @@ class MobileOtelDsl {
         serviceName = serviceConfig.name ?: error("service { name = ... } is required"),
         serviceVersion = serviceConfig.version ?: error("service { version = ... } is required"),
         collectorEndpoint = exportConfig.endpoint ?: error("export { endpoint = ... } is required"),
+        protocol = exportConfig.protocol,
         exportMode = exportConfig.mode,
         uiTelemetryMode = uiTelemetryMode,
         traceExportIntervalSeconds = exportConfig.traceIntervalSeconds,
