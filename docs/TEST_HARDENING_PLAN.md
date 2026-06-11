@@ -57,10 +57,12 @@ the disk rows it exported", latch-based defer test), exact-count assertions in
 
 ## 2. P0 — before public launch
 
-1. **R8/ProGuard consumer test.** `consumer-rules.pro` ships untested. Add a
-   minified demo-app variant (`minifyEnabled true`) to CI and run the smoke
-   scenario against it. The most common day-1 SDK integration failure is
-   "crashes when minified."
+1. **R8/ProGuard consumer test.** ✅ Build gate DONE: the demo app's release
+   build now runs with `minifyEnabled = true` and CI's `android-minified` job
+   builds it on every push, asserting the public entry points survive
+   shrinking identity-mapped. Remaining (P1): runtime smoke of the minified
+   APK on an emulator — R8 build success doesn't catch reflection-at-runtime
+   breakage.
 2. **Crash-handler chaining test.** Install Crashlytics (or a stub
    `UncaughtExceptionHandler`) alongside the SDK; assert both handlers run,
    ordering is preserved, and the crash is reported exactly once. Mirror on

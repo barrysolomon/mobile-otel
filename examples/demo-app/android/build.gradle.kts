@@ -72,7 +72,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 ON, deliberately: this demo is the SDK's reference consumer, so its
+            // release build is the gate that proves consumer-rules.pro actually works
+            // in a minified app (CI builds it on every push). Real consumer apps ship
+            // minified — an SDK that has never met R8 fails on integration day 1.
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
