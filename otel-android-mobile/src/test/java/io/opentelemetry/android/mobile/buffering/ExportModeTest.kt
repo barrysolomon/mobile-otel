@@ -20,6 +20,7 @@ import io.opentelemetry.sdk.logs.data.LogRecordData
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import java.util.concurrent.TimeUnit
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -207,6 +208,7 @@ class ExportModeTest {
             }
 
             val result = processor.forceFlush()
+            result.join(10, TimeUnit.SECONDS)
             assertTrue(result.isSuccess)
             assertEquals(8, mockExporter.exportedLogs.size)
         } finally {
@@ -367,8 +369,9 @@ class ExportModeTest {
             }
 
             val result = processor.forceFlush()
+            result.join(10, TimeUnit.SECONDS)
             assertTrue(result.isSuccess)
-            assertTrue(mockExporter.exportedLogs.size >= 7)
+            assertEquals(7, mockExporter.exportedLogs.size)
         } finally {
             processor.shutdown()
         }

@@ -264,11 +264,16 @@ class OfflinePolicyTest {
         setNetworkOnline()
         val processor = createProcessor(OfflinePolicy.BUFFER_ALL)
 
-        // Emit the same error 5 times rapidly
+        // Emit the same error 5 times rapidly. The coalescer keys on
+        // exception.type|exception.message, not the body — so use a body that does
+        // NOT match the built-in crash-recovery policy ("app.crash"): that policy
+        // fires an async flushWindow() which races this test's buffer assertion
+        // (the export could clear RAM before getBufferStats() reads it). This test
+        // is about coalescing in onEmit, not policy-triggered export.
         repeat(5) {
             processor.onEmit(OtelContext.root(), wrap(
                 TestUtils.createTestLogRecord(
-                    body = "app.crash",
+                    body = "app.error",
                     attributes = mapOf(
                         "exception.type" to "NullPointerException",
                         "exception.message" to "null reference"

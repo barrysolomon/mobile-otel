@@ -134,8 +134,9 @@ class BufferCrashPathTest {
         val stats = processor.getBufferStats()
         assertEquals("All $count events should be in RAM", count, stats.ramBufferSize)
 
-        // Force flush and verify all exported
+        // Force flush and verify all exported — the result completes after cleanup settles
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue("Force flush should succeed", result.isSuccess)
         assertEquals("All $count events should be exported", count, mockExporter.exportedLogs.size)
     }
@@ -220,11 +221,14 @@ class BufferCrashPathTest {
         assertTrue("Events should remain in buffer after failed export (ram=${statsAfterFail.ramBufferSize})",
             statsAfterFail.ramBufferSize > 0 || statsAfterFail.diskBufferSize > 0)
 
-        // Now fix the exporter and retry
+        // Now fix the exporter and retry. The failed flush released the gate
+        // synchronously in its completion callback, so this retry must actually
+        // export — a deferred no-op returning fake success was the old race.
         mockExporter.shouldFail = false
         val retryResult = processor.forceFlush()
+        retryResult.join(10, TimeUnit.SECONDS)
         assertTrue("Retry flush should succeed", retryResult.isSuccess)
-        assertTrue("Events should be exported on retry", mockExporter.exportedLogs.size >= 20)
+        assertEquals("Events should be exported exactly once on retry", 20, mockExporter.exportedLogs.size)
     }
 
     // ==================== 5. Export Partial Failure ====================
@@ -251,9 +255,10 @@ class BufferCrashPathTest {
         mockExporter.shouldFail = false
         mockExporter.clear()
         val result = processor.forceFlush()
+        result.join(10, TimeUnit.SECONDS)
         assertTrue("Second flush should succeed", result.isSuccess)
-        assertTrue("Events should now be exported (count=${mockExporter.exportedLogs.size})",
-            mockExporter.exportedLogs.size >= 10)
+        assertEquals("Events should be re-exported exactly once (count=${mockExporter.exportedLogs.size})",
+            10, mockExporter.exportedLogs.size)
     }
 
     // ==================== 6. seqId Monotonicity ====================

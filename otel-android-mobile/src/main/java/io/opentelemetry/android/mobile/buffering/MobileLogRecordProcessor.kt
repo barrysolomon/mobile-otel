@@ -165,6 +165,17 @@ class MobileLogRecordProcessor private constructor(
     // CAS from false→true to start a flush; reset to false when the export completes/fails.
     private val flushInProgress = AtomicBoolean(false)
 
+    // Completion of the flush currently holding [flushInProgress]. A forceFlush() that
+    // defers to an in-progress flush returns THIS instead of an instant fake success, so
+    // callers observe real settlement (and a failed flush reports failure, enabling retry).
+    private val activeFlushResult = java.util.concurrent.atomic.AtomicReference<CompletableResultCode?>(null)
+
+    // Makes the RAM→disk eviction move atomic with respect to flush snapshots. Without it,
+    // overflowToDisk() polls events out of RAM and persists them asynchronously — during
+    // that window the events are visible in NEITHER tier, so a concurrent flush snapshot
+    // silently under-exports them (observed: 245 of 500 burst events exported).
+    private val bufferMoveLock = Any()
+
     // NF-003: Holds the active network-restored listener so [shutdown] can detach it.
     // Null when no watcher is attached. Only one attachment at a time — re-attaching swaps.
     @Volatile
@@ -606,6 +617,11 @@ class MobileLogRecordProcessor private constructor(
             return CompletableResultCode.ofSuccess()
         }
 
+        // Completes only after export AND buffer cleanup have settled (or on failure).
+        // Stored in activeFlushResult so a deferring forceFlush() can return it.
+        val flushDone = CompletableResultCode()
+        activeFlushResult.set(flushDone)
+
         try {
             // Use monotonic time for window calculations — immune to wall-clock changes.
             // See docs/design/MONOTONIC_FLUSH_WINDOW.md for rationale.
@@ -620,7 +636,8 @@ class MobileLogRecordProcessor private constructor(
                 if (proposedStartMono < lastEndMono && monoNow > lastStartMono) {
                     Log.d(TAG, "flushWindow: suppressed duplicate flush — last flush ended ${monoNow - lastEndMono}ms ago and window overlaps")
                     flushInProgress.set(false)
-                    return CompletableResultCode.ofSuccess()
+                    flushDone.succeed()
+                    return flushDone
                 }
             }
 
@@ -641,34 +658,46 @@ class MobileLogRecordProcessor private constructor(
 
             // Snapshot the RAM events to export using monotonic timestamps.
             // Track by object identity so we can remove exactly these after export.
-            val ramEventsToFlush = mutableListOf<BufferedEvent>()
-            ramBuffer.forEach { event ->
-                if (event.monotonicMs >= effectiveMonoStart) {
-                    ramEventsToFlush.add(event)
-                }
-            }
-
-            // Disk: use monotonic for same-boot events, wall-clock fallback for cross-boot.
-            // Use seqId to deduplicate crash-safety mirrors that are still in RAM.
+            //
+            // Snapshot under bufferMoveLock so an in-flight RAM→disk eviction is atomic
+            // from our perspective: every event is in exactly one tier, never in limbo.
             val wallNow = System.currentTimeMillis()
             val wallWindowStart = wallNow - (windowMinutes * 60 * 1000L)
-            val diskEventsWithSeq = runBlocking {
-                diskBuffer.getEventsInWindowWithSeqId(
-                    monoStartMs = effectiveMonoStart,
-                    wallStartMs = wallWindowStart,
-                    currentBootId = BootTracker.currentBootId
-                )
+            val ramEventsToFlush = mutableListOf<BufferedEvent>()
+            val allRamSeqIds = HashSet<Long>()
+            val diskRows: List<DiskLogBuffer.DiskRow>
+            synchronized(bufferMoveLock) {
+                ramBuffer.forEach { event ->
+                    if (event.monotonicMs >= effectiveMonoStart) {
+                        ramEventsToFlush.add(event)
+                    }
+                    allRamSeqIds.add(event.seqId)
+                }
+
+                // Disk: use monotonic for same-boot events, wall-clock fallback for cross-boot.
+                // Use seqId to deduplicate crash-safety mirrors that are still in RAM.
+                diskRows = runBlocking {
+                    diskBuffer.getEventsInWindowWithIds(
+                        monoStartMs = effectiveMonoStart,
+                        wallStartMs = wallWindowStart,
+                        currentBootId = BootTracker.currentBootId
+                    )
+                }
             }
-            val allRamSeqIds = HashSet<Long>(ramBuffer.size)
-            ramBuffer.forEach { allRamSeqIds.add(it.seqId) }
-            val diskOverflowOnly = diskEventsWithSeq
-                .filter { (_, seqId) -> seqId == 0L || seqId !in allRamSeqIds }
-                .map { (record, _) -> record }
+            val diskOverflowOnly = diskRows
+                .filter { row -> row.seqId == 0L || row.seqId !in allRamSeqIds }
+                .map { it.record }
             val allEventsToFlush = ramEventsToFlush.map { it.logRecord } + diskOverflowOnly
+
+            // Cleanup deletes exactly the snapshotted disk rows — never rows persisted
+            // after the snapshot (the old deleteEventsInWindow(start) wiped those too,
+            // dropping events that arrived during the export without exporting them).
+            val exportedDiskIds = diskRows.map { it.id }
 
             if (allEventsToFlush.isEmpty()) {
                 flushInProgress.set(false)
-                return CompletableResultCode.ofSuccess()
+                flushDone.succeed()
+                return flushDone
             }
 
             Log.i(TAG, "Flushing ${allEventsToFlush.size} events " +
@@ -679,11 +708,19 @@ class MobileLogRecordProcessor private constructor(
             val result = CompletableResultCode.ofAll(results)
 
             result.whenComplete {
-                // whenComplete may fire on the exporter's completion thread (potentially the
-                // main thread for synchronous exporters). Submit all I/O back to the executor
-                // so we never block whichever thread delivers this callback.
-                executor.submit {
-                    if (result.isSuccess) {
+                if (!result.isSuccess) {
+                    // Failure: events stay buffered; there is no cleanup I/O to do. Release
+                    // the gate HERE (an atomic set, safe on any thread) instead of via
+                    // executor.submit — otherwise a retry races the executor and silently
+                    // no-ops against a flush that is already over.
+                    Log.w(TAG, "Window flush failed, keeping events in buffer for retry")
+                    flushInProgress.set(false)
+                    flushDone.fail()
+                } else {
+                    // whenComplete may fire on the exporter's completion thread (potentially
+                    // the main thread for synchronous exporters). Submit cleanup I/O back to
+                    // the executor so we never block whichever thread delivers this callback.
+                    executor.submit {
                         try {
                             if (isShutdown.get()) {
                                 Log.i(TAG, "Window flush exported but skipping buffer clear (shutdown/crash)")
@@ -707,18 +744,23 @@ class MobileLogRecordProcessor private constructor(
                                 ramBufferBytes.addAndGet(-removedBytes)
                                 synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
 
-                                runBlocking { diskBuffer.deleteEventsInWindow(wallWindowStart) }
+                                val deletedDisk = runBlocking {
+                                    // Snapshot rows by id, PLUS any crash-mirror rows written
+                                    // during the export whose RAM originals we just exported
+                                    // (same seqId) — orphaned mirrors would re-export as
+                                    // duplicates on the next flush.
+                                    diskBuffer.deleteByIds(exportedDiskIds) +
+                                        diskBuffer.deleteBySeqIds(ramEventsToFlush.map { it.seqId })
+                                }
 
-                                Log.i(TAG, "Cleared $removed RAM + disk events after successful flush")
+                                Log.i(TAG, "Cleared $removed RAM + $deletedDisk disk events after successful flush")
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Error clearing events after successful flush", e)
                         } finally {
                             flushInProgress.set(false)
+                            flushDone.succeed()
                         }
-                    } else {
-                        Log.w(TAG, "Window flush failed, keeping events in buffer for retry")
-                        flushInProgress.set(false)
                     }
                 }
             }
@@ -728,6 +770,7 @@ class MobileLogRecordProcessor private constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error flushing window", e)
             flushInProgress.set(false)
+            flushDone.fail()
             return CompletableResultCode.ofFailure()
         }
     }
@@ -845,30 +888,37 @@ class MobileLogRecordProcessor private constructor(
                 return // No overflow needed (under both count cap and byte budget)
             }
 
-            val eventsToMove = mutableListOf<BufferedEvent>()
-            var movedBytes = 0L
+            // The whole poll+persist move runs under bufferMoveLock, and the persist is
+            // BLOCKING: from a flush snapshot's perspective (which takes the same lock)
+            // the move is atomic — every event is visible in exactly one tier. The old
+            // async persist left polled events invisible to a concurrent flush snapshot
+            // (gone from RAM, not yet on disk), silently under-exporting them.
+            synchronized(bufferMoveLock) {
+                val eventsToMove = mutableListOf<BufferedEvent>()
+                var movedBytes = 0L
 
-            // Evict oldest events (FIFO) until BOTH caps are satisfied:
-            //   - count back to <= ramBufferSize
-            //   - cumulative bytes back to <= ramBufferMaxTotalBytes
-            // Decrement the atomics AS WE POLL (not in one batch at the end) so
-            // concurrent overflowToDisk tasks — one is submitted per over-cap
-            // onEmit — see an accurate count/byte total and don't all over-evict
-            // the same shared queue. Stop if the queue drains (poll returns null).
-            while (ramBufferCount.get() > ramBufferSize || ramBufferBytes.get() > ramBufferMaxTotalBytes) {
-                val polled = ramBuffer.poll() ?: break
-                eventsToMove.add(polled)
-                movedBytes += polled.sizeBytes
-                ramBufferCount.decrementAndGet()
-                ramBufferBytes.addAndGet(-polled.sizeBytes.toLong())
-            }
+                // Evict oldest events (FIFO) until BOTH caps are satisfied:
+                //   - count back to <= ramBufferSize
+                //   - cumulative bytes back to <= ramBufferMaxTotalBytes
+                // Decrement the atomics AS WE POLL (not in one batch at the end) so
+                // concurrent overflowToDisk tasks — one is submitted per over-cap
+                // onEmit — see an accurate count/byte total and don't all over-evict
+                // the same shared queue. Stop if the queue drains (poll returns null).
+                while (ramBufferCount.get() > ramBufferSize || ramBufferBytes.get() > ramBufferMaxTotalBytes) {
+                    val polled = ramBuffer.poll() ?: break
+                    eventsToMove.add(polled)
+                    movedBytes += polled.sizeBytes
+                    ramBufferCount.decrementAndGet()
+                    ramBufferBytes.addAndGet(-polled.sizeBytes.toLong())
+                }
 
-            // Persist to disk (already mirrored by crash-safety task, but persistEvents is idempotent
-            // here because these are being removed from RAM — the crash-mirror set is cleaned up too)
-            if (eventsToMove.isNotEmpty()) {
-                synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
-                diskBuffer.persistBufferedEvents(eventsToMove)
-                Log.d(TAG, "Overflowed ${eventsToMove.size} events (${movedBytes}B) to disk")
+                // Persist to disk (already mirrored by crash-safety task, but persistEvents is idempotent
+                // here because these are being removed from RAM — the crash-mirror set is cleaned up too)
+                if (eventsToMove.isNotEmpty()) {
+                    synchronized(persistedToDisk) { persistedToDisk.removeAll(eventsToMove.toSet()) }
+                    diskBuffer.persistBufferedEventsBlocking(eventsToMove, enforceSize = true)
+                    Log.d(TAG, "Overflowed ${eventsToMove.size} events (${movedBytes}B) to disk")
+                }
             }
 
         } catch (e: Exception) {
@@ -934,9 +984,14 @@ class MobileLogRecordProcessor private constructor(
         // threads also run the gate-releasing completion, so a blocking wait could deadlock.
         if (!flushInProgress.compareAndSet(false, true)) {
             Log.d(TAG, "Force flush: deferred — a flush is already in progress (avoids double-export)")
-            return CompletableResultCode.ofSuccess()
+            // Return the in-progress flush's completion, NOT an instant fake success.
+            // Callers (and tests) can join() it to observe real settlement, and a
+            // deferred-onto-a-failing-flush correctly reports failure so retry works.
+            return activeFlushResult.get() ?: CompletableResultCode.ofSuccess()
         }
-        val acquired = true
+        // Completes only after export AND buffer cleanup have settled (or on failure).
+        val flushDone = CompletableResultCode()
+        activeFlushResult.set(flushDone)
 
         try {
             Log.i(TAG, "Force flush: exporting all buffered events")
@@ -944,62 +999,96 @@ class MobileLogRecordProcessor private constructor(
             // Snapshot the RAM buffer before exporting. New events that arrive during the
             // export must not be lost — we remove only the exact snapshotted objects via
             // identity equality, the same pattern used in flushWindow().
-            val ramSnapshot = ramBuffer.toList()
+            //
+            // Snapshot under bufferMoveLock so an in-flight RAM→disk eviction is atomic
+            // from our perspective: every event is in exactly one tier, never in limbo.
+            val ramSnapshot: List<BufferedEvent>
+            val diskRows: List<DiskLogBuffer.DiskRow>
+            synchronized(bufferMoveLock) {
+                ramSnapshot = ramBuffer.toList()
+                diskRows = runBlocking { diskBuffer.getAllEventsWithIds() }
+            }
 
             // Disk may contain crash-safety mirrors of events still in RAM.
             // Use seqId to deduplicate: skip disk events whose seqId matches a RAM event.
-            val diskEventsWithSeq = runBlocking { diskBuffer.getAllEventsWithSeqId() }
             val ramSeqIds = HashSet<Long>(ramSnapshot.size)
             ramSnapshot.forEach { ramSeqIds.add(it.seqId) }
-            val diskOverflowOnly = diskEventsWithSeq
-                .filter { (_, seqId) -> seqId == 0L || seqId !in ramSeqIds }
-                .map { (record, _) -> record }
+            val diskOverflowOnly = diskRows
+                .filter { row -> row.seqId == 0L || row.seqId !in ramSeqIds }
+                .map { it.record }
             val allEvents = ramSnapshot.map { it.logRecord } + diskOverflowOnly
+
+            // Every disk row in the snapshot is covered by this export (overflow rows
+            // directly, crash-mirror rows via their RAM copies) — so cleanup deletes
+            // exactly these row ids and ONLY these. Rows persisted after the snapshot
+            // were NOT exported and must survive (clearAll() here used to drop them).
+            val exportedDiskIds = diskRows.map { it.id }
 
             Log.i(TAG, "Force flushing ${allEvents.size} events (${ramSnapshot.size} RAM + ${diskOverflowOnly.size} disk-overflow)")
 
             if (allEvents.isEmpty()) {
-                if (acquired) flushInProgress.set(false)
-                return CompletableResultCode.ofSuccess()
+                flushInProgress.set(false)
+                flushDone.succeed()
+                return flushDone
             }
 
             val results = allEvents.chunked(100).map { batch -> exporter.export(batch) }
             val result = CompletableResultCode.ofAll(results)
 
             result.whenComplete {
-                executor.submit {
-                    if (result.isSuccess) {
-                        if (isShutdown.get()) {
-                            Log.i(TAG, "Force flush exported but skipping buffer clear (shutdown/crash)")
-                        } else {
-                            val exportedIds = Collections.newSetFromMap(
-                                IdentityHashMap<BufferedEvent, Boolean>()
-                            )
-                            exportedIds.addAll(ramSnapshot)
-                            var removed = 0
-                            var removedBytes = 0L
-                            ramBuffer.removeIf { event ->
-                                exportedIds.contains(event).also { matched -> if (matched) { removed++; removedBytes += event.sizeBytes } }
+                if (!result.isSuccess) {
+                    // Failure: events stay buffered; there is no cleanup I/O to do. Release
+                    // the gate HERE (an atomic set, safe on any thread) instead of via
+                    // executor.submit — otherwise an immediate retry forceFlush() races the
+                    // executor and silently defers against a flush that is already over.
+                    Log.w(TAG, "Force flush failed, keeping events in buffer")
+                    flushInProgress.set(false)
+                    flushDone.fail()
+                } else {
+                    executor.submit {
+                        try {
+                            if (isShutdown.get()) {
+                                Log.i(TAG, "Force flush exported but skipping buffer clear (shutdown/crash)")
+                            } else {
+                                val exportedIds = Collections.newSetFromMap(
+                                    IdentityHashMap<BufferedEvent, Boolean>()
+                                )
+                                exportedIds.addAll(ramSnapshot)
+                                var removed = 0
+                                var removedBytes = 0L
+                                ramBuffer.removeIf { event ->
+                                    exportedIds.contains(event).also { matched -> if (matched) { removed++; removedBytes += event.sizeBytes } }
+                                }
+                                ramBufferCount.addAndGet(-removed)
+                                ramBufferBytes.addAndGet(-removedBytes)
+                                synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
+                                val deletedDisk = runBlocking {
+                                    // Snapshot rows by id, PLUS any crash-mirror rows written
+                                    // during the export whose RAM originals we just exported
+                                    // (same seqId) — orphaned mirrors would re-export as
+                                    // duplicates on the next flush.
+                                    diskBuffer.deleteByIds(exportedDiskIds) +
+                                        diskBuffer.deleteBySeqIds(ramSnapshot.map { it.seqId })
+                                }
+                                Log.i(TAG, "Force flush completed: removed $removed RAM + deleted $deletedDisk exported disk rows")
                             }
-                            ramBufferCount.addAndGet(-removed)
-                            ramBufferBytes.addAndGet(-removedBytes)
-                            synchronized(persistedToDisk) { persistedToDisk.removeAll(exportedIds) }
-                            runBlocking { diskBuffer.clearAll() }
-                            Log.i(TAG, "Force flush completed: removed $removed RAM + cleared disk")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error clearing buffers after force flush", e)
+                        } finally {
+                            flushInProgress.set(false)
+                            flushDone.succeed()
                         }
-                    } else {
-                        Log.w(TAG, "Force flush failed, keeping events in buffer")
                     }
-                    if (acquired) flushInProgress.set(false)
                 }
             }
 
-            return result
+            return flushDone
 
         } catch (e: Exception) {
             Log.e(TAG, "Error during force flush", e)
-            if (acquired) flushInProgress.set(false)
-            return CompletableResultCode.ofFailure()
+            flushInProgress.set(false)
+            flushDone.fail()
+            return flushDone
         }
     }
 

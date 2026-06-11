@@ -371,16 +371,96 @@ class DiskLogBuffer private constructor(
      * possible; size enforcement runs on next normal launch via the existing
      * `prune*` paths.
      */
-    internal fun persistBufferedEventsBlocking(events: List<BufferedEvent>) {
+    internal fun persistBufferedEventsBlocking(events: List<BufferedEvent>, enforceSize: Boolean = false) {
         if (events.isEmpty()) return
         adjustCachedCount(events.size)
         try {
             val entities = events.map { it.toEntity() }
             runBlocking { logDao.insertAll(entities) }
-            Log.d(TAG, "Persisted ${entities.size} buffered events to disk (blocking, crash path)")
+            Log.d(TAG, "Persisted ${entities.size} buffered events to disk (blocking)")
+            if (enforceSize) {
+                // Size enforcement off the blocking path — callers that need the insert
+                // to be synchronous (overflow under the buffer-move lock) still get cap
+                // enforcement, just asynchronously like the non-blocking persist path.
+                scope.launch { enforceSizeLimit() }
+            }
         } catch (e: Exception) {
             adjustCachedCount(-events.size)
             Log.e(TAG, "Error persisting buffered events (blocking)", e)
+        }
+    }
+
+    /**
+     * One disk row with its Room primary key. The id is what makes exactly-once
+     * cleanup possible: a flush deletes precisely the rows it exported, never rows
+     * that were persisted after its snapshot.
+     */
+    internal data class DiskRow(val id: Long, val record: LogRecordData, val seqId: Long)
+
+    /** All disk rows with ids and seqIds (for force flush snapshot + precise cleanup). */
+    internal suspend fun getAllEventsWithIds(): List<DiskRow> = withContext(Dispatchers.IO) {
+        try {
+            logDao.getAllEvents().mapNotNull { entity ->
+                entity.toLogRecordData()?.let { DiskRow(entity.id, it, entity.seqId) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving events with ids", e)
+            emptyList()
+        }
+    }
+
+    /** Windowed disk rows with ids and seqIds (for window flush snapshot + precise cleanup). */
+    internal suspend fun getEventsInWindowWithIds(
+        monoStartMs: Long,
+        wallStartMs: Long,
+        currentBootId: String
+    ): List<DiskRow> = withContext(Dispatchers.IO) {
+        try {
+            logDao.getEventsInWindowDualClock(monoStartMs, wallStartMs, currentBootId)
+                .mapNotNull { entity ->
+                    entity.toLogRecordData()?.let { DiskRow(entity.id, it, entity.seqId) }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving windowed events with ids", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Deletes exactly the given rows. Chunked to stay under SQLite's bind-variable
+     * limit. Returns the number of rows actually deleted.
+     */
+    internal suspend fun deleteByIds(ids: List<Long>): Int = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext 0
+        try {
+            var deleted = 0
+            ids.chunked(500).forEach { chunk -> deleted += logDao.deleteByIds(chunk) }
+            adjustCachedCount(-deleted)
+            Log.d(TAG, "Deleted $deleted exported events from disk (by id)")
+            deleted
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting events by id", e)
+            0
+        }
+    }
+
+    /**
+     * Deletes rows whose seqId matches an exported RAM event. Covers crash-safety
+     * mirror rows written DURING an export: their RAM originals were exported and
+     * removed, so without this the orphaned mirrors would re-export as duplicates
+     * on the next flush. seqId==0 rows (pre-migration) are never matched.
+     */
+    internal suspend fun deleteBySeqIds(seqIds: List<Long>): Int = withContext(Dispatchers.IO) {
+        if (seqIds.isEmpty()) return@withContext 0
+        try {
+            var deleted = 0
+            seqIds.chunked(500).forEach { chunk -> deleted += logDao.deleteBySeqIds(chunk) }
+            adjustCachedCount(-deleted)
+            if (deleted > 0) Log.d(TAG, "Deleted $deleted mirror rows from disk (by seqId)")
+            deleted
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting events by seqId", e)
+            0
         }
     }
 
@@ -426,39 +506,6 @@ class DiskLogBuffer private constructor(
             entities.mapNotNull { it.toLogRecordData() }
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving all events", e)
-            emptyList()
-        }
-    }
-
-    /**
-     * Retrieves all events with their seqIds for dedup against RAM.
-     */
-    suspend fun getAllEventsWithSeqId(): List<Pair<LogRecordData, Long>> = withContext(Dispatchers.IO) {
-        try {
-            logDao.getAllEvents().mapNotNull { entity ->
-                entity.toLogRecordData()?.let { it to entity.seqId }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error retrieving events with seqId", e)
-            emptyList()
-        }
-    }
-
-    /**
-     * Retrieves windowed events with their seqIds for dedup against RAM.
-     */
-    suspend fun getEventsInWindowWithSeqId(
-        monoStartMs: Long,
-        wallStartMs: Long,
-        currentBootId: String
-    ): List<Pair<LogRecordData, Long>> = withContext(Dispatchers.IO) {
-        try {
-            logDao.getEventsInWindowDualClock(monoStartMs, wallStartMs, currentBootId)
-                .mapNotNull { entity ->
-                    entity.toLogRecordData()?.let { it to entity.seqId }
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error retrieving windowed events with seqId", e)
             emptyList()
         }
     }
@@ -797,6 +844,12 @@ interface LogDao {
 
     @Query("DELETE FROM log_records WHERE timestampMs >= :startMs")
     suspend fun deleteEventsAfter(startMs: Long): Int
+
+    @Query("DELETE FROM log_records WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>): Int
+
+    @Query("DELETE FROM log_records WHERE seqId IN (:seqIds) AND seqId > 0")
+    suspend fun deleteBySeqIds(seqIds: List<Long>): Int
 
     @Query("DELETE FROM log_records WHERE id IN (SELECT id FROM log_records ORDER BY timestampMs ASC LIMIT :count)")
     suspend fun deleteOldest(count: Int): Int

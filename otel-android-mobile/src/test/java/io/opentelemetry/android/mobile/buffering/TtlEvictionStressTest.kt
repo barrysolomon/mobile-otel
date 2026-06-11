@@ -16,6 +16,7 @@ import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.context.Context as OtelContext
 import io.opentelemetry.sdk.logs.ReadWriteLogRecord
 import io.opentelemetry.sdk.logs.data.LogRecordData
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -108,7 +109,8 @@ class TtlEvictionStressTest {
     fun `sustained load with concurrent flush does not corrupt data`() {
         processor = buildProcessor(ramSize = 30, diskMb = 5)
 
-        // Interleave writes and flushes
+        // Interleave writes and flushes; join each flush so the next round never
+        // defers against an in-flight cleanup (deterministic, no sleeps).
         repeat(5) { round ->
             repeat(20) { i ->
                 processor.onEmit(
@@ -116,16 +118,15 @@ class TtlEvictionStressTest {
                     wrap(TestUtils.createTestLogRecord("round$round.event$i"))
                 )
             }
-            processor.forceFlush()
-            Thread.sleep(200)
+            processor.forceFlush().join(5, TimeUnit.SECONDS)
         }
-        // Final flush
-        processor.forceFlush()
-        Thread.sleep(500)
+        // Final flush picks up anything still buffered
+        processor.forceFlush().join(5, TimeUnit.SECONDS)
 
-        assertTrue(
-            "All 100 events should be exported across rounds, got ${mockExporter.exportedLogs.size}",
-            mockExporter.exportedLogs.size >= 100
+        assertEquals(
+            "All 100 events should be exported across rounds, exactly once each",
+            100,
+            mockExporter.exportedLogs.size
         )
 
         // Verify no duplicate seqIds
@@ -146,15 +147,18 @@ class TtlEvictionStressTest {
             processor.onEmit(OtelContext.root(), wrap(TestUtils.createTestLogRecord("spill.$i")))
         }
 
-        // Flush all — should drain both RAM and disk
-        // Disk spill is async (coroutine-based); Robolectric may not advance all schedulers
-        processor.forceFlush()
-        Thread.sleep(2000)
+        // Flush all — should drain both RAM and disk. The returned result completes
+        // only after export AND buffer cleanup settle, so we join instead of sleeping.
+        // RAM→disk moves are atomic w.r.t. the flush snapshot (bufferMoveLock), so
+        // every event is visible to the flush in exactly one tier.
+        val flushResult = processor.forceFlush()
+        flushResult.join(10, TimeUnit.SECONDS)
 
-        assertTrue(
-            "Events should export after spill+flush, got ${mockExporter.exportedLogs.size} of 30 " +
-                "(some may still be in async disk pipeline under Robolectric)",
-            mockExporter.exportedLogs.size >= 10
+        assertTrue("Flush should succeed", flushResult.isSuccess)
+        assertEquals(
+            "Every event must export exactly once after spill+flush",
+            30,
+            mockExporter.exportedLogs.size
         )
     }
 
@@ -177,13 +181,19 @@ class TtlEvictionStressTest {
             buffered >= 400
         )
 
-        // Flush and verify export
-        processor.forceFlush()
-        Thread.sleep(1500)
+        // Flush and await settlement. Regression context: in-flight RAM→disk moves used
+        // to be invisible to the flush snapshot (gone from RAM, not yet on disk), so this
+        // exported ~245 of 500 — and cleanup's clearAll() then deleted the stragglers
+        // from disk without ever exporting them (silent loss). With atomic moves and
+        // precise by-id cleanup, exactly 500 must export.
+        val flushResult = processor.forceFlush()
+        flushResult.join(10, TimeUnit.SECONDS)
 
-        assertTrue(
-            "Most burst events should export, got ${mockExporter.exportedLogs.size}",
-            mockExporter.exportedLogs.size >= 400
+        assertTrue("Flush should succeed", flushResult.isSuccess)
+        assertEquals(
+            "Every burst event must export exactly once",
+            500,
+            mockExporter.exportedLogs.size
         )
     }
 
