@@ -8,6 +8,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.config.ExportMode
+import io.opentelemetry.android.mobile.config.OtlpProtocol
 import io.opentelemetry.android.mobile.config.UiTelemetryMode
 import io.opentelemetry.android.mobile.instrumentation.TextInputConfig
 import io.opentelemetry.android.mobile.core.SessionConfig
@@ -255,6 +256,17 @@ object ConfigManager {
             headers["Dash0-Dataset"] = dataset
         }
 
+        // Map the saved protocol preference (grpc | http) to the SDK's OtlpProtocol.
+        // Without this the SDK falls back to its own default — which became
+        // HTTP_PROTOBUF in 0.2.0 — so a grpc-port endpoint (:4317) would receive
+        // HTTP and fail. Default grpc matches the default :4317 endpoint.
+        val otlpProtocol =
+            if ((prefs.getString(KEY_PROTOCOL, DEFAULT_PROTOCOL) ?: DEFAULT_PROTOCOL).equals("http", ignoreCase = true)) {
+                OtlpProtocol.HTTP_PROTOBUF
+            } else {
+                OtlpProtocol.GRPC
+            }
+
         val samplingRate = prefs.getFloat(KEY_SAMPLING_RATE, DEFAULT_SAMPLING_RATE).toDouble()
 
         val uiTelemetryModeStr = prefs.getString(KEY_UI_TELEMETRY_MODE, DEFAULT_UI_TELEMETRY_MODE) ?: DEFAULT_UI_TELEMETRY_MODE
@@ -274,6 +286,7 @@ object ConfigManager {
             serviceName = prefs.getString(KEY_SERVICE_NAME, DEFAULT_SERVICE_NAME)!!,
             serviceVersion = prefs.getString(KEY_SERVICE_VERSION, DEFAULT_SERVICE_VERSION)!!,
             collectorEndpoint = prefs.getString(KEY_COLLECTOR_ENDPOINT, DEFAULT_COLLECTOR_ENDPOINT)!!,
+            protocol = otlpProtocol,
             exportMode = exportMode,
             uiTelemetryMode = uiTelemetryMode,
             textInputConfig = textInputConfig,
@@ -699,10 +712,18 @@ object ConfigManager {
         val wireframeDedupeByContentHash = wireframeObj?.optBoolean("dedupeByContentHash", DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH)
             ?: DEFAULT_WIREFRAME_DEDUPE_BY_CONTENT_HASH
 
+        val jsonProtocol =
+            if (jsonObj.optString("protocol", DEFAULT_PROTOCOL).equals("http", ignoreCase = true)) {
+                OtlpProtocol.HTTP_PROTOBUF
+            } else {
+                OtlpProtocol.GRPC
+            }
+
         val config = MobileConfig(
             serviceName = jsonObj.optString("serviceName", DEFAULT_SERVICE_NAME),
             serviceVersion = jsonObj.optString("serviceVersion", DEFAULT_SERVICE_VERSION),
             collectorEndpoint = jsonObj.optString("collectorEndpoint", DEFAULT_COLLECTOR_ENDPOINT),
+            protocol = jsonProtocol,
             exportMode = exportMode,
             uiTelemetryMode = uiTelemetryMode,
             samplingConfig = io.opentelemetry.android.mobile.sampling.SamplingConfig.dynamic(
