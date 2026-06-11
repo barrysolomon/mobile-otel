@@ -923,9 +923,20 @@ class MobileLogRecordProcessor private constructor(
         // Block any concurrent flushWindow() calls — forceFlush exports everything so
         // a simultaneous policy-triggered window flush would double-export the same events.
         // If a window flush is already running, wait for it to finish first (brief spin).
-        val acquired = flushInProgress.compareAndSet(false, true)
-        // If we couldn't acquire (window flush in progress), proceed anyway — forceFlush
-        // takes priority on crash paths and the window flush will have already cleared RAM.
+        // Serialize against flushWindow(). A window flush removes its RAM events only
+        // AFTER its async export completes, so proceeding while one is in progress would
+        // snapshot the SAME still-in-RAM events and export them a SECOND time — duplicates
+        // with identical timestamps (the bug). Previously this "proceeded anyway"; instead
+        // defer to the in-progress flush, which exports the current RAM buffer — our events
+        // ride along or flush on the next cycle (never lost, just not double-sent).
+        //
+        // We must NOT block here: forceFlush runs on the shared scheduled executor whose
+        // threads also run the gate-releasing completion, so a blocking wait could deadlock.
+        if (!flushInProgress.compareAndSet(false, true)) {
+            Log.d(TAG, "Force flush: deferred — a flush is already in progress (avoids double-export)")
+            return CompletableResultCode.ofSuccess()
+        }
+        val acquired = true
 
         try {
             Log.i(TAG, "Force flush: exporting all buffered events")
