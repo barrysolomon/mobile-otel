@@ -9,7 +9,7 @@ Canonical home for all automation in this repo. Bash 3.2 compatible (works on st
 | [`ci/`](ci/) | `run-tests.sh`, `run-demo-ci.sh` — drivers used by GitHub Actions (and locally) |
 | [`demo/`](demo/) | `run-demo-{full,quick,scenarios,single,backend}.sh`, `run-dash0-scenarios.sh`, `run-dual-platform-demo.sh`, `demo-control-center-ios.sh` |
 | [`test/`](test/) | Unit/integration/E2E runners, the `validate-us*` UAT family (~28 scenarios), `demo-control-center.sh` (interactive crash menu), `uat/` orchestrator |
-| [`e2e/`](e2e/) | `run-e2e.sh` plus end-to-end orchestration helpers |
+| [`e2e/`](e2e/) | `run-e2e.sh` plus end-to-end orchestration helpers, and the **Dash0 receipt gate** (`verify-dash0.sh` + `dash0_assert.py`) — asserts telemetry actually arrived in Dash0 (REST, no `dash0` CLI needed) so tests are green only when data lands |
 | [`setup/`](setup/) | `verify-setup.sh` — sanity-check your machine has the right toolchains |
 | [`lib/`](lib/) | Shared bash helpers sourced by the runners |
 | [`test/lib/`](test/lib/) and [`test/lib-ios/`](test/lib-ios/) | Shared test helpers, split per platform |

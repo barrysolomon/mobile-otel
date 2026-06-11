@@ -476,6 +476,21 @@ if [[ "$RUN_TESTS" == true ]]; then
         FAILURES=$((FAILURES + 1))
     fi
 
+    # Dash0 receipt gate — tests are NOT green unless the telemetry the
+    # scenarios drove (normal + crash + offline) actually arrived in Dash0.
+    # REST-based (no `dash0` CLI needed); skipped only if no token is configured.
+    if [[ -n "${DASH0_AUTH_TOKEN:-}" ]] || [[ -f "$APP_DIR/.env" ]]; then
+        step "Verifying telemetry reached Dash0 (green = data in Dash0)"
+        if "$SCRIPT_DIR/verify-dash0.sh" android-native --window-min "${DASH0_WINDOW_MIN:-20}"; then
+            ok "Dash0 telemetry verified"
+        else
+            fail "Dash0 telemetry verification FAILED — device tests passed but data did not arrive"
+            FAILURES=$((FAILURES + 1))
+        fi
+    else
+        echo "  (skipping Dash0 receipt gate — set DASH0_AUTH_TOKEN to enable)"
+    fi
+
     # Summary
     echo ""
     echo -e "${BOLD}══════════════════════════════════════════════════════════${NC}"
