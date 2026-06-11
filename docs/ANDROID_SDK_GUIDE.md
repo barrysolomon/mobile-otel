@@ -153,10 +153,21 @@ MobileConfig(
 )
 ```
 
-> **Transport security:** a non-HTTPS `collectorEndpoint` (other than localhost / the
-> `10.0.2.2` emulator loopback) logs a prominent `MobileConfig` security error — the auth
-> token and telemetry would otherwise travel in plaintext — but does not crash the host.
-> Use `https://` in production.
+> **Transport security (parity with iOS as of 0.2.1-alpha):**
+> - **HTTPS enforcement** — a cleartext `http://` `collectorEndpoint` to a non-loopback host
+>   (loopback / `10.0.2.2` emulator exempt) is **rejected**: export is disabled gracefully
+>   (no-op exporters) and the config poller is skipped, so the auth token + telemetry never
+>   travel in plaintext. Set `allowInsecureTransport = true` to permit it (dev only); the
+>   host app is never crashed by a rejection.
+> - **Certificate / public-key pinning** — set `pinningConfig` (`TransportSecurity.PinningConfig`:
+>   SPKI SHA-256 pins and/or DER certs), applied to the OTLP/HTTP exporter + the config poller;
+>   a pin mismatch fails only that connection. Pinning requires `HTTP_PROTOBUF` (the default) —
+>   it is not applied on the gRPC path (a warning is logged if set with `GRPC`).
+> - **Signed remote config** — set `configSigningKey` (HMAC-SHA256 secret); the SDK verifies the
+>   `X-Dash0-Config-Signature` header (constant-time) before applying remote config. A bad/missing
+>   signature keeps the last-applied config, so a MITM/OTA payload can't flip the kill switch.
+>
+> All three default off/permissive (backward compatible) and never crash the host on failure.
 
 ### Full MobileConfig Options
 

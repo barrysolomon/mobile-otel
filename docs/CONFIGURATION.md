@@ -343,7 +343,7 @@ The same payload carries two control-plane overrides honored on all platforms (a
 - **`sdk.enabled`** — a remote **kill switch**. When the control plane returns `sdk.enabled = false`, the SDK stops emitting/exporting telemetry without an app update.
 - **`sdk.sample_rate`** — a **global sampling override** applied on top of the local `samplingConfig`.
 
-To defend the kill switch against MITM / OTA tampering, the payload can be HMAC-signed; see [docs/design/remote-kill-switch.md](./design/remote-kill-switch.md). On iOS the signing key is `MobileConfig.configSigningKey`; transport security (HTTPS enforcement, optional cert/public-key pinning via `MobileConfig.pinning`, and `allowInsecureTransport`) is configured on the iOS `MobileConfig`.
+To defend the kill switch against MITM / OTA tampering, the payload can be HMAC-signed; see [docs/design/remote-kill-switch.md](./design/remote-kill-switch.md). Transport security is configured on `MobileConfig` on **both platforms** (parity as of 0.2.1-alpha): HTTPS enforcement (cleartext rejected unless `allowInsecureTransport`), optional cert/public-key pinning, and an HMAC `configSigningKey` that verifies the remote-config signature before applying it. The pinning field is named `pinning` on iOS and `pinningConfig` on Android; `allowInsecureTransport` and `configSigningKey` are identical on both.
 
 ## Credential Configuration
 

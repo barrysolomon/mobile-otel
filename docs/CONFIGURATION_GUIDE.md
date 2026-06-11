@@ -119,6 +119,9 @@ Most production apps use Strategy A. The demo app uses Strategy B so that config
 | `encryptDiskBufferAtRest` | Boolean | `true` | Encrypt the on-disk buffer at rest (SQLCipher + Android Keystore) — parity with iOS `NSFileProtection`. Crash-safe: degrades to cleartext rather than failing if SQLCipher/Keystore are unavailable. Set `false` to keep the buffer cleartext. |
 | `exportTimeoutSeconds` | Long | `30` | Must be > 0. Per-export request timeout. |
 | `remoteConfigEnabled` | Boolean | `true` | Poll the control-plane `/config?dsl_version=2` endpoint for policy DSL updates + the remote kill switch (`sdk.enabled`) / global sampling (`sdk.sample_rate`). Set `false` when `collectorEndpoint` points at a plain OTLP ingest endpoint that does not serve config. |
+| `allowInsecureTransport` | Boolean | `false` | Transport security (parity with iOS, 0.2.1-alpha). When `false`, a cleartext `http://` endpoint to a non-loopback host is rejected — export disabled gracefully (never crashes), poller skipped. Loopback / `10.0.2.2` exempt. Set `true` for dev. |
+| `pinningConfig` | `TransportSecurity.PinningConfig?` | `null` | Certificate / public-key pinning (SPKI SHA-256 and/or DER) for the OTLP/HTTP exporter + config poller; mismatch fails only that connection. Requires `HTTP_PROTOBUF` (not applied on gRPC). |
+| `configSigningKey` | `ByteArray?` | `null` | HMAC-SHA256 secret; verifies the remote-config `X-Dash0-Config-Signature` (constant-time) before applying. Bad/missing signature ⇒ keep last-applied config (kill switch can't be flipped by a MITM/OTA payload). |
 | `configPollIntervalSeconds` | Long | `300` | Must be > 0. How often the SDK polls the gateway for updated export policies. |
 | `maxExportRetries` | Int | `3` | 0–10. Retry count on export failure. |
 | `attachContextAttributes` | Boolean | `false` | Attach additional context attributes (e.g., thread, activity) to every log record. |

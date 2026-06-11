@@ -170,6 +170,9 @@ Mobile App (Your Code)
 | `diskBufferMb` | Int | 50 | Maximum disk buffer size (MB) |
 | `diskBufferTtlHours` | Int | 24 | Maximum age (hours) for buffered events |
 | `encryptDiskBufferAtRest` | Boolean | `true` | Encrypt the on-disk buffer at rest (SQLCipher + Android Keystore). Crash-safe; degrades to cleartext if unavailable. Set `false` to skip the SQLCipher native-library cost. |
+| `allowInsecureTransport` | Boolean | `false` | When `false`, a cleartext `http://` endpoint to a non-loopback host is rejected (export disabled gracefully, never crashes). Set `true` for dev/local collectors. Loopback / `10.0.2.2` exempt. |
+| `pinningConfig` | `TransportSecurity.PinningConfig?` | `null` | Certificate / public-key pinning (SPKI SHA-256 pins and/or DER certs) for the OTLP/HTTP exporter + config poller. Pin mismatch fails only that connection. Requires `HTTP_PROTOBUF` (not applied on gRPC). |
+| `configSigningKey` | `ByteArray?` | `null` | HMAC-SHA256 secret; when set, remote config's `X-Dash0-Config-Signature` is verified (constant-time) before applying — a bad/missing signature keeps the last-applied config. |
 
 ## Use Cases
 
