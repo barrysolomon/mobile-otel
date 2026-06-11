@@ -21,21 +21,36 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Publish to npm under the correct dist-tag
-        # Prereleases (-alpha/-beta/-rc) MUST go to a matching dist-tag, NEVER
-        # 'latest' — otherwise a plain `npm install @barrysolomon/mobile-react-native`
-        # pulls a prerelease. (That is how `latest` previously ended up pinned to
-        # 0.1.0-alpha.) Derive the tag from package.json's version; stable
-        # versions (no prerelease suffix) publish to 'latest'.
+        # Dist-tag policy:
+        #   * Stable versions (no prerelease suffix) publish to `latest`.
+        #   * Prereleases publish to a matching channel tag (alpha/beta/rc) so a
+        #     post-1.0 `npm install <pkg>` never pulls a prerelease.
+        #   * PRE-1.0 EXCEPTION: while the major version is 0, EVERY release is a
+        #     prerelease, so also point `latest` at it. Otherwise `latest` stays
+        #     stuck at the first 0.x ever published (that is how it ended up
+        #     pinned to 0.1.0-alpha) and a bare `npm install` gets the oldest
+        #     version. Once a stable 1.0 ships, `latest` is owned solely by
+        #     stable publishes and this exception no longer applies.
         run: |
+          set -euo pipefail
+          PKG="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
+          MAJOR="${VERSION%%.*}"
           case "$VERSION" in
             *-alpha*) TAG=alpha ;;
             *-beta*)  TAG=beta ;;
             *-rc*)    TAG=rc ;;
             *)        TAG=latest ;;
           esac
-          echo "Publishing $VERSION to dist-tag '$TAG'"
+          echo "Publishing $PKG@$VERSION to dist-tag '$TAG'"
           npm publish --access public --tag "$TAG"
+          # Pre-1.0 only: also make this the `latest` so the npm page + bare
+          # install reflect the newest 0.x. (No-op for stable releases, which
+          # already published to `latest` above.)
+          if [ "$TAG" != "latest" ] && [ "$MAJOR" = "0" ]; then
+            echo "Pre-1.0 release — also pointing 'latest' at $VERSION"
+            npm dist-tag add "$PKG@$VERSION" latest
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
