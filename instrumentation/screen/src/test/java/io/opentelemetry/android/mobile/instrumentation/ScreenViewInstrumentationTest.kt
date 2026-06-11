@@ -7,6 +7,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.Window
 import io.mockk.every
 import io.mockk.just
@@ -317,6 +318,54 @@ class ScreenViewInstrumentationTest {
         assertTrue(
             logs.any { it.bodyValue?.asString() == MobileSemconv.UI_SCREEN_VIEW },
             "In BOTH mode, ui.screen_view log must be emitted"
+        )
+    }
+
+    // ── Render span (single-shot) ─────────────────────────────────────────────
+
+    /**
+     * Drives a live ViewTreeObserver and dispatches onPreDraw on many frames, the
+     * way the framework does. Regression guard for the screen.render storm: before
+     * the single-shot fix, the OnPreDrawListener unregistered itself via a stale
+     * observer reference (silent no-op), so it fired on every frame and emitted one
+     * screen.render span per frame — each with an ever-growing duration.
+     */
+    @Test fun `screen render span is emitted exactly once across many frames`() {
+        val app = mockk<Application>(relaxed = true)
+        val callbackSlot = slot<Application.ActivityLifecycleCallbacks>()
+        every { app.registerActivityLifecycleCallbacks(capture(callbackSlot)) } just runs
+
+        val activity = mockk<Activity>(relaxed = true)
+        val window = mockk<Window>(relaxed = true)
+        val decorView = mockk<View>(relaxed = true)
+        val vto = mockk<ViewTreeObserver>(relaxed = true)
+        every { activity.window } returns window
+        every { window.decorView } returns decorView
+        every { decorView.viewTreeObserver } returns vto
+        every { vto.isAlive } returns true
+        val preDrawSlot = slot<ViewTreeObserver.OnPreDrawListener>()
+        every { vto.addOnPreDrawListener(capture(preDrawSlot)) } just runs
+        every { vto.removeOnPreDrawListener(any()) } just runs
+
+        val inst = ScreenViewInstrumentation()
+        inst.install(app, makeContext(app))
+        callbackSlot.captured.onActivityResumed(activity)
+
+        // Framework dispatches onPreDraw once per frame; simulate 60 frames.
+        repeat(60) { preDrawSlot.captured.onPreDraw() }
+
+        val renderSpans = otelRule.spans.filter { it.name == MobileSemconv.SCREEN_RENDER }
+        assertEquals(
+            1, renderSpans.size,
+            "Exactly one screen.render span per resume; got ${renderSpans.size} (storm regression)"
+        )
+        // The listener must unregister itself after the first frame.
+        verify(atLeast = 1) { vto.removeOnPreDrawListener(any()) }
+        // Sane duration: end no earlier than start (never a bogus ballooned span).
+        val render = renderSpans.first()
+        assertTrue(
+            render.endEpochNanos >= render.startEpochNanos,
+            "screen.render must not end before it starts"
         )
     }
 
