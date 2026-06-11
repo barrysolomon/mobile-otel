@@ -26,11 +26,20 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSERT="$SCRIPT_DIR/dash0_assert.py"
 WINDOW_MIN="${DASH0_WINDOW_MIN:-30}"
+# Poll Dash0 for up to this long before declaring signals missing — absorbs
+# ingestion latency instead of failing a query that ran too early.
+RETRY_FOR="${DASH0_RETRY_FOR:-90}"
+# Run correlation: only count telemetry emitted after this epoch instant
+# (export DASH0_SINCE=$(date +%s) before driving the demos). Without it,
+# leftovers from a previous run inside the window can green a broken SDK.
+SINCE="${DASH0_SINCE:-0}"
 PLATFORMS_ARG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --window-min) WINDOW_MIN="$2"; shift 2 ;;
+    --retry-for)  RETRY_FOR="$2"; shift 2 ;;
+    --since)      SINCE="$2"; shift 2 ;;
     *) PLATFORMS_ARG="$PLATFORMS_ARG $1"; shift ;;
   esac
 done
@@ -47,22 +56,22 @@ fi
 assert_platform() {
   case "$1" in
     android-native)
-      python3 "$ASSERT" --label android-native --window-min "$WINDOW_MIN" \
+      python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label android-native --window-min "$WINDOW_MIN" \
         --service otel-mobile-demo \
         --log app.start --log ui.tap --log app.crash \
         --span screen.render --span page.CalendarFragment ;;
     ios-native)
-      python3 "$ASSERT" --label ios-native --window-min "$WINDOW_MIN" \
+      python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label ios-native --window-min "$WINDOW_MIN" \
         --service otel-ios-schedulr \
         --log app.start --log app.foreground --log app.crash \
         --span app.startup ;;
     rn-android)
-      python3 "$ASSERT" --label rn-android --window-min "$WINDOW_MIN" \
+      python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label rn-android --window-min "$WINDOW_MIN" \
         --service otel-rn-android-astronomy-shop \
         --log app.start --log ui.screen_view --log app.crash \
         --span screen.render ;;
     rn-ios)
-      python3 "$ASSERT" --label rn-ios --window-min "$WINDOW_MIN" \
+      python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label rn-ios --window-min "$WINDOW_MIN" \
         --service otel-rn-ios-astronomy-shop \
         --log app.launch --log app.foreground --log app.crash ;;
     *) echo "Unknown platform: $1 (android-native|ios-native|rn-android|rn-ios)"; return 2 ;;
