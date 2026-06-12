@@ -113,6 +113,11 @@ internal class MobileLogRecordProcessor private constructor(
 
     private val TAG = "MobileLogRecordProcessor"
 
+    private val LEGACY_SESSION_ID_ATTR =
+        io.opentelemetry.api.common.AttributeKey.stringKey("mobile.session.id")
+    private val SEMCONV_SESSION_ID_ATTR =
+        io.opentelemetry.api.common.AttributeKey.stringKey("session.id")
+
     // RAM buffer: fast, in-memory, bounded queue (wrapped with monotonic timestamp)
     private val ramBuffer = ConcurrentLinkedQueue<BufferedEvent>()
     private val ramBufferCount = AtomicInteger(0)
@@ -394,6 +399,24 @@ internal class MobileLogRecordProcessor private constructor(
         if (isShutdown.get()) {
             Log.w(TAG, "Processor is shutdown, dropping log record")
             return
+        }
+
+        // Semconv session-id convergence (docs/SEMCONV_AUDIT.md): every record
+        // carrying the legacy `mobile.session.id` also gets the semconv
+        // `session.id` — ONE choke point instead of N emit sites, so no
+        // instrumentation can drift. The alias drops at 1.0. (Spans attach
+        // session ids at far fewer sites; they keep the alias until the 1.0
+        // flip — tracked in the audit doc.)
+        try {
+            logRecord.attributes.get(LEGACY_SESSION_ID_ATTR)?.let { sid ->
+                if (logRecord.attributes.get(SEMCONV_SESSION_ID_ATTR) == null) {
+                    logRecord.setAttribute(SEMCONV_SESSION_ID_ATTR, sid)
+                }
+            }
+        } catch (_: ClassCastException) {
+            // A non-String value stored under the mobile.session.id name
+            // (type-erased Attributes impls allow it). Skip the mirror —
+            // the emit path must never throw on odd input.
         }
 
         // Remote kill switch / global sampling — consulted BEFORE any buffering,
