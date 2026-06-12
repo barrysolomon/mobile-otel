@@ -136,9 +136,25 @@ the disk rows it exported", latch-based defer test), exact-count assertions in
   enforces a 700 KB budget on the umbrella AAR (582 KB today; raising the
   budget is a same-PR reviewed decision). CONTINUOUS-mode CPU/battery
   profile harness still open.
-- **PII property tests.** Generative corpus through PiiScrubber; ReDoS guard.
-- **429/jitter retry test.** Backoff exists; assert jitter and respect for
-  Retry-After to avoid fleet-synchronized retry storms.
+- **PII property tests.** ✅ DONE — `PiiScrubberPropertyTest`: seeded
+  generative corpus (emails/phones/cards/SSNs in noise, none may survive),
+  idempotence, scrubUrl totality, and a ReDoS guard with wall-clock budgets.
+  The guard found a real one: the uncapped regex passes took **20–85 s** on
+  100 KB adversarial inputs (digit runs, unterminated emails) — a hostile
+  exception message could stall the pipeline for minutes. Fixed two ways:
+  `MAX_SCRUB_LENGTH` (8 KB) input cap with a truncation marker, and
+  possessive quantifiers where giving characters back can never help.
+  Cap-boundary adversarial inputs now scrub in milliseconds.
+- **429/jitter retry test.** ✅ DONE (with a pinned upstream gap) —
+  `Otlp429RetryAfterTest` drives the OTLP exporter exactly as
+  MobileLoggerProvider builds it against a real local HTTP server: a 429 is
+  retried with backoff (not dropped) and a 400 is not retried. KNOWN GAP,
+  pinned by a deliberate assertion: otel-java's OkHttp sender does NOT read
+  `Retry-After` (verified in the sender jar through 1.59), and our layer
+  never sees response headers — fleet-storm mitigation is therefore
+  RetryableExporter's full-jitter backoff (SR-009, already tested). If an
+  upgrade starts honoring Retry-After, the pinned assertion fails on purpose
+  so the test gets tightened into a conformance check.
 - **Sleep eradication.** ~170 `Thread.sleep` calls remain across the suite.
   Convert opportunistically to the `join()`/latch patterns introduced here —
   every sleep is a future CI flake.
