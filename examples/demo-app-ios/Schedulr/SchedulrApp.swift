@@ -63,6 +63,21 @@ final class SchedulrBootstrap: ObservableObject {
             )
             self.diskBuffer = buffer
             self.mobile = m
+
+            // Test hook: if launched with -DASH0_CRASH_NOW, crash shortly
+            // after the SDK is up — same flag the AstronomyShop demos honor,
+            // so scripted drivers (scripts/e2e/run-platform-e2e.sh) can
+            // exercise the crash → marker → next-launch `app.crash` path
+            // without tapping the BufferDebugView button. Scheduled here
+            // (after `OTelMobile.start` returned) rather than at a fixed
+            // delay from boot, so the signal handler is guaranteed installed
+            // before the trap fires.
+            if CommandLine.arguments.contains("-DASH0_CRASH_NOW") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    let arr: [Int] = []
+                    _ = arr[42]  // EXC_BREAKPOINT / SIGTRAP, as in AstronomyShop
+                }
+            }
         } catch {
             // Print to stderr so the simulator console catches it. Don't
             // crash — a missing token / disk-buffer failure shouldn't

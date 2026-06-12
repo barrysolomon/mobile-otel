@@ -137,6 +137,19 @@ def _parse_reqs(items):
     return out
 
 
+def _count_matching(counter, name):
+    """Exact-name count, or — when `name` ends with '*' — the sum over all
+    keys with that prefix. Lets a gate assert a *deterministic family* like
+    'page.*' (always-sampled by DynamicSampler) instead of pinning one
+    dynamic route name, and avoids asserting names that ride a sampled
+    path (e.g. screen.render at dynamic(0.1), where >=1 in a short run is
+    a coin flip, not a contract)."""
+    if name.endswith("*"):
+        prefix = name[:-1]
+        return sum(v for k, v in counter.items() if k and k.startswith(prefix))
+    return counter.get(name, 0)
+
+
 def main():
     p = argparse.ArgumentParser(description="Assert telemetry is present in Dash0.")
     p.add_argument("--service", help="service.name to scope to (exact match)")
@@ -178,14 +191,14 @@ def main():
         if args.log:
             logs = count_logs(args.service, frm, now)
             for name, need in _parse_reqs(args.log):
-                got = logs.get(name, 0)
+                got = _count_matching(logs, name)
                 ok = got >= need
                 fails += not ok
                 lines.append(f"  {'PASS' if ok else 'FAIL'}: log  {name} >= {need}  (got {got})")
         if args.span:
             spans = count_spans(args.service, frm, now)
             for name, need in _parse_reqs(args.span):
-                got = spans.get(name, 0)
+                got = _count_matching(spans, name)
                 ok = got >= need
                 fails += not ok
                 lines.append(f"  {'PASS' if ok else 'FAIL'}: span {name} >= {need}  (got {got})")

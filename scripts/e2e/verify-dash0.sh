@@ -66,10 +66,16 @@ assert_platform() {
         --log app.start --log app.foreground --log app.crash \
         --span app.startup ;;
     rn-android)
+      # Logs-only, like rn-ios — no span assertion. Why: screen.render rides
+      # the native dynamic(0.1) sampler (>=1 in a short run is a coin flip),
+      # and page.* spans only export when they END (on route change) — a
+      # scripted no-navigation drive never ends one, and open spans are NOT
+      # crash-persisted (the disk buffer is a LOG buffer). Span delivery is
+      # gated deterministically on android-native (screen.render +
+      # page.CalendarFragment via run-e2e.sh) and ios-native (app.startup).
       python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label rn-android --window-min "$WINDOW_MIN" \
         --service otel-rn-android-astronomy-shop \
-        --log app.start --log ui.screen_view --log app.crash \
-        --span screen.render ;;
+        --log app.start --log ui.screen_view --log app.crash ;;
     rn-ios)
       python3 "$ASSERT" --retry-for "$RETRY_FOR" --since "$SINCE" --label rn-ios --window-min "$WINDOW_MIN" \
         --service otel-rn-ios-astronomy-shop \
