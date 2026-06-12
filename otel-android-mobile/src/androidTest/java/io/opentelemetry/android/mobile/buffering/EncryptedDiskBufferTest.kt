@@ -88,6 +88,26 @@ class EncryptedDiskBufferTest {
             override fun getTotalAttributeCount(): Int = 0
         }
 
+    /**
+     * persistEvents() is fire-and-forget (scope.launch); a wall-clock sleep
+     * after it is a race against emulator I/O — the exact flake class
+     * TEST_HARDENING_PLAN bans ("every sleep is a future CI flake"; this
+     * class's sleeps DID flake on a cold CI emulator). Poll the disk count
+     * to a deadline instead.
+     */
+    private suspend fun awaitDiskCount(buffer: DiskLogBuffer, expected: Int, timeoutMs: Long = 10_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (buffer.getAllEvents().size == expected) return
+            kotlinx.coroutines.delay(50)
+        }
+        assertEquals(
+            "Disk buffer did not reach $expected event(s) within ${timeoutMs}ms",
+            expected,
+            buffer.getAllEvents().size,
+        )
+    }
+
     @Test
     fun encryptedDatabaseHasNoSqliteHeaderOrPlaintext() = runBlocking {
         val marker = "SUPER_SECRET_PII_MARKER_42"
@@ -95,10 +115,10 @@ class EncryptedDiskBufferTest {
         assertTrue("Encryption should be active on a device with SQLCipher", buffer.encryptionActive)
 
         buffer.persistEvents(listOf(record(marker)))
-        Thread.sleep(400)
+        awaitDiskCount(buffer, 1)
         // Force a checkpoint so content is flushed from WAL to the main file.
+        // vacuum() is synchronous once the row is visible above.
         buffer.vacuum()
-        Thread.sleep(300)
 
         val bytes = dbFile().readBytes()
         assertTrue("DB file should exist and be non-empty", bytes.isNotEmpty())
@@ -119,7 +139,7 @@ class EncryptedDiskBufferTest {
         val buffer = DiskLogBuffer.getInstance(context, maxSizeMb = 10, ttlHours = 24, encryptAtRest = true)
         val bodies = (1..25).map { "encrypted.event.$it" }
         buffer.persistEvents(bodies.map { record(it) })
-        Thread.sleep(500)
+        awaitDiskCount(buffer, 25)
 
         val retrieved = buffer.getAllEvents()
         assertEquals(25, retrieved.size)
@@ -130,9 +150,14 @@ class EncryptedDiskBufferTest {
     fun passphraseIsReusedAcrossBufferInstances() = runBlocking {
         val first = DiskLogBuffer.getInstance(context, maxSizeMb = 10, ttlHours = 24, encryptAtRest = true)
         first.persistEvents(listOf(record("persisted.before.restart")))
-        Thread.sleep(400)
+        awaitDiskCount(first, 1)
         first.close()
-        DiskLogBuffer.resetForTesting() // closes + nulls the singleton, but does NOT reset the Keystore key
+        // Close + null the singleton KEEPING the encrypted file — this test
+        // asserts the next instance can decrypt it with the reused Keystore
+        // passphrase. (resetForTesting() deletes the db files for inter-test
+        // isolation, which would make this assertion vacuous: the old version
+        // of this test asserted against a freshly recreated empty DB.)
+        DiskLogBuffer.closeKeepingFilesForTesting()
 
         // A new buffer instance must decrypt the same file with the reused passphrase.
         val second = DiskLogBuffer.getInstance(context, maxSizeMb = 10, ttlHours = 24, encryptAtRest = true)
@@ -146,9 +171,11 @@ class EncryptedDiskBufferTest {
         // Create an encrypted DB with content.
         val buffer = DiskLogBuffer.getInstance(context, maxSizeMb = 10, ttlHours = 24, encryptAtRest = true)
         buffer.persistEvents(listOf(record("doomed")))
-        Thread.sleep(400)
+        awaitDiskCount(buffer, 1)
         buffer.close()
-        DiskLogBuffer.resetForTesting()
+        // Keep the encrypted file on disk — the point is that an EXISTING
+        // encrypted DB whose key was invalidated is recreated, not fatal.
+        DiskLogBuffer.closeKeepingFilesForTesting()
 
         // Simulate a key invalidation: drop the Keystore-wrapped passphrase so the
         // existing encrypted file can no longer be opened with a matching key.
@@ -160,8 +187,7 @@ class EncryptedDiskBufferTest {
 
         // And the fresh buffer is fully functional.
         recreated.persistEvents(listOf(record("after.recovery")))
-        Thread.sleep(400)
-        assertEquals(1, recreated.getAllEvents().size)
+        awaitDiskCount(recreated, 1)
     }
 
     @Test
@@ -174,10 +200,10 @@ class EncryptedDiskBufferTest {
                 record("valid", now - (10 * 60 * 1000))
             )
         )
-        Thread.sleep(400)
+        awaitDiskCount(buffer, 2)
 
         buffer.cleanupExpired()
-        Thread.sleep(400)
+        awaitDiskCount(buffer, 1)
 
         val remaining = buffer.getAllEvents()
         assertEquals(1, remaining.size)

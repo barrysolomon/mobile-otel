@@ -796,6 +796,21 @@ class DiskLogBuffer private constructor(
          * IMPORTANT: For testing only. Allows each test to start with a fresh
          * DiskLogBuffer instance and clean database state.
          */
+        /**
+         * Test-only: close + clear the singleton WITHOUT deleting the
+         * on-disk files. For tests that prove data survives an instance
+         * restart (passphrase reuse, upgrade paths) — [resetForTesting]
+         * deletes the files for inter-test isolation, which destroys
+         * exactly what those tests assert.
+         */
+        @Suppress("VisibleForTests")
+        internal fun closeKeepingFilesForTesting() {
+            synchronized(this) {
+                instance?.close()
+                instance = null
+            }
+        }
+
         @Suppress("VisibleForTests")
         internal fun resetForTesting() {
             synchronized(this) {
