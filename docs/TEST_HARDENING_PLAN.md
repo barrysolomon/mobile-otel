@@ -111,17 +111,31 @@ the disk rows it exported", latch-based defer test), exact-count assertions in
 
 ## 3. P1 — before GA
 
-- **Instrumented tests in CI.** The journey/fault/offline scenario suites run
-  only on a developer's machine. Add an emulator job (API 34, headless) on a
-  schedule or pre-release trigger if per-push cost is too high.
-- **iOS test execution in CI.** 500+ tests exist; CI compiles only. At
-  minimum run the host-safe subset; full simulator suite on release tags.
-- **Upgrade-path test.** Old-schema disk buffer (v1) → new SDK: events
-  survive Room migration and export.
-- **DB corruption recovery.** Truncate/corrupt the SQLite file; SDK falls
-  back without crashing and reports the loss.
-- **Battery/size budgets.** AAR size delta gate; CONTINUOUS-mode CPU/battery
-  profile harness.
+- **Instrumented tests in CI.** ✅ DONE — `.github/workflows/device-tests.yml`
+  runs the SDK instrumented suite (incl. the HS-001 budget and stop()
+  thread-safety gates) on an API-34 emulator nightly, on every `v*` tag, and
+  on demand. Not a publish gate (publish would wait ~30 min per tag);
+  revisit at 1.0. The full journey/fault/offline scenario suites
+  (`:android:connectedDebugAndroidTest`) still need the demo backend — they
+  remain local-only for now.
+- **iOS test execution in CI.** ✅ DONE — the same workflow runs the full
+  simulator suite (`xcodebuild test -scheme OTelMobile-Package`) on macOS
+  nightly/tags/dispatch. Per-push ios-ci.yml stays compile-only by cost
+  design.
+- **Upgrade-path test.** ✅ DONE — `DiskBufferUpgradePathTest` seeds a real
+  v1-schema database file and proves the 1→2→3→4 migration chain preserves
+  every event and the buffer keeps accepting writes. Writing it found a real
+  bug: `adjustCachedCount` seeded an unseeded count cache from its own delta,
+  permanently undercounting pre-existing disk rows (crash-mirrored events
+  from a previous process) in the stats gauge and recovery probe — fixed.
+- **DB corruption recovery.** ✅ DONE — `DiskBufferCorruptionRecoveryTest`
+  proves a garbage file, a truncated database, and a schema-foreign database
+  all recover via `openDatabaseCrashSafe()` (recreate, never crash) and the
+  buffer accepts writes afterwards.
+- **Battery/size budgets.** AAR size gate ✅ DONE — per-push `aar-size` CI job
+  enforces a 700 KB budget on the umbrella AAR (582 KB today; raising the
+  budget is a same-PR reviewed decision). CONTINUOUS-mode CPU/battery
+  profile harness still open.
 - **PII property tests.** Generative corpus through PiiScrubber; ReDoS guard.
 - **429/jitter retry test.** Backoff exists; assert jitter and respect for
   Retry-After to avoid fleet-synchronized retry storms.
