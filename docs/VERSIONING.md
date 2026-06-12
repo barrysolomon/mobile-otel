@@ -2,6 +2,7 @@
 
 ## Current state
 
+- **API tiers:** every public symbol is assigned a tier in [API_STABILITY.md](API_STABILITY.md) (gate 2, reviewed 2026-06-12); emitted telemetry names are frozen per [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md) (gate 3).
 - **Version:** `0.3.1-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.opentelemetry.android:mobile` + siblings, iOS SwiftPM tag `v0.3.1-alpha`).
 - **Stability:** pre-1.0. Public entry points are annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS). **APIs may change between `0.x` releases.**
 
@@ -41,7 +42,31 @@ Every public symbol belongs to one tier. The tier is the contract.
 4. A deprecation policy is in place (one MINOR with `@Deprecated` before removal).
 5. CI green on all platforms incl. the iOS + RN-android jobs added in `0.2.0-alpha`.
 
-Until then, continue `0.x` with the "minor may break" caveat, and keep `@Incubating` honest (annotate anything that might move; don't annotate what we intend to freeze).
+Until then, continue `0.x` with the "minor may break" caveat, and keep `@Incubating` honest (annotate anything that might move; don't annotate what we intend to freeze). Gates 2 and 3 were executed 2026-06-12 — see [API_STABILITY.md](API_STABILITY.md) and [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md); the remaining open gates are the external-integration soak (1) and full-platform CI (5).
+
+## Deprecation policy (gate 4 — in force now)
+
+Mechanics, per platform:
+
+- **Kotlin/Android:** `@Deprecated(message, ReplaceWith(...), level = WARNING)`.
+  Precedent: `OTelMobile.restartPageSpan` → `screenView`.
+- **Swift/iOS:** `@available(*, deprecated, message: "... use X")`.
+- **TypeScript/RN:** `@deprecated` JSDoc (surfaces in editors + API extractors).
+
+Rules:
+
+1. A deprecated symbol keeps WORKING for **at least one MINOR release** after
+   the release that deprecates it. Pre-1.0 that means: deprecate in `0.x`,
+   remove no earlier than `0.x+1`. Post-1.0: deprecate in a MINOR, remove
+   only at the next MAJOR.
+2. Every deprecation names its replacement in the annotation AND gets a
+   **Deprecated** section entry in CHANGELOG.md with a migration snippet.
+3. Deprecating a STABLE-AT-1.0 symbol (per API_STABILITY.md) additionally
+   requires updating API_STABILITY.md in the same PR.
+4. Telemetry names follow the same cycle via dual-emit: the old name and the
+   new name are BOTH emitted for one MINOR (so dashboards keep working),
+   then the old name is dropped — see the session-id convergence plan in
+   SEMCONV_AUDIT.md for the template.
 
 ## Release mechanics
 

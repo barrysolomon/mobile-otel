@@ -64,7 +64,6 @@ private fun ConfigUiTelemetryMode.toCore(): CoreUiTelemetryMode = when (this) {
     ConfigUiTelemetryMode.BOTH   -> CoreUiTelemetryMode.BOTH
 }
 
-@Incubating
 object OTelMobile {
     @Volatile
     private var provider: MobileLoggerProvider? = null
@@ -208,12 +207,14 @@ object OTelMobile {
      * Returns the recovery type detected at the previous app start (e.g., "crash", "anr", "low_memory"),
      * or null if the app started normally.
      */
+    @Incubating
     fun getLastRecoveryType(): String? = recoveryTracker?.getLastRecoveryType()
 
     /**
      * Persists a flag so the next app start knows the previous session ended in a crash.
      * Used by the [RecoveryTracker] to emit a crash-recovery event on launch.
      */
+    @Incubating
     fun markCrashForNextStart() {
         recoveryTracker?.markCrashForNextStart()
     }
@@ -221,6 +222,7 @@ object OTelMobile {
     /**
      * Persists a flag so the next app start knows the previous session was terminated due to low memory.
      */
+    @Incubating
     fun markLowMemoryForNextStart() {
         recoveryTracker?.markLowMemoryForNextStart()
     }
@@ -228,6 +230,7 @@ object OTelMobile {
     /**
      * Persists a flag so the next app start knows the previous session ended with an ANR.
      */
+    @Incubating
     fun markAnrForNextStart() {
         recoveryTracker?.markAnrForNextStart()
     }

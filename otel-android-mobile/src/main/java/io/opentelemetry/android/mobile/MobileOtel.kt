@@ -60,7 +60,6 @@ import io.opentelemetry.sdk.common.CompletableResultCode
  * MobileOtel.forceFlush()
  * ```
  */
-@Incubating
 object MobileOtel {
 
     private var provider: MobileLoggerProvider? = null
@@ -322,6 +321,7 @@ object MobileOtel {
      *
      * @param enabled True to enable, false to disable
      */
+    @Incubating // not yet implemented — implement or remove in 0.4.0 (API_STABILITY.md)
     fun setSessionEnabled(enabled: Boolean) {
         SessionManager.getInstance().setEnabled(enabled)
     }
@@ -486,6 +486,7 @@ object MobileOtel {
      *
      * @return Current prediction, or null if predictive policy is not initialized
      */
+    @Incubating
     fun getCurrentPrediction() = predictivePolicy?.getCurrentPrediction()
 
     // ─────────────────────────────────────────────────────────────
@@ -495,11 +496,13 @@ object MobileOtel {
     /**
      * Get error capture statistics (unique errors, rate limit status).
      */
+    @Incubating // returns Any? — must gain a typed return before promotion (API_STABILITY.md)
     fun getErrorStatistics() = errorInstrumentation?.getStatistics()
 
     /**
      * Get current buffer statistics (RAM/disk usage).
      */
+    @Incubating // returns Any? — must gain a typed return before promotion (API_STABILITY.md)
     fun getBufferStats() = provider?.getMobileProcessor()?.getBufferStats()
 
     // ─────────────────────────────────────────────────────────────

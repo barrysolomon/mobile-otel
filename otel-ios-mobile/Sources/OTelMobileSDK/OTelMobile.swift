@@ -880,6 +880,7 @@ public final class OTelMobile: @unchecked Sendable {
     /// `docs/epics/USER_JOURNEY_CAPTURES_EPIC.md`.
     ///
     /// Mirrors Android's `OTelMobile.startJourney(name)`.
+    /// - Experimental: Incubating API (docs/API_STABILITY.md) — may change in a MINOR release.
     @discardableResult
     public func startJourney(name: String) -> Span {
         let tracer = self.tracer ?? OpenTelemetry.instance.tracerProvider.get(
@@ -899,6 +900,7 @@ public final class OTelMobile: @unchecked Sendable {
     /// land in a separate Phase 2 sub-item). Always ends the span.
     ///
     /// Mirrors Android's `OTelMobile.endJourney(span)`.
+    /// - Experimental: Incubating API (docs/API_STABILITY.md) — may change in a MINOR release.
     public func endJourney(_ journey: Span) {
         captureScreenshot(trigger: "journey_end")
         captureWireframe(trigger: "journey_end")
@@ -909,6 +911,7 @@ public final class OTelMobile: @unchecked Sendable {
     /// registered. Silent no-op otherwise.
     ///
     /// Mirrors Android's `OTelMobile.captureScreenshot(trigger)`.
+    /// - Experimental: Incubating API (docs/API_STABILITY.md) — may change in a MINOR release.
     public func captureScreenshot(trigger: String = "manual") {
         screenshotInstrumentation?.capture(trigger: trigger)
     }
@@ -917,6 +920,7 @@ public final class OTelMobile: @unchecked Sendable {
     /// registered. Silent no-op otherwise.
     ///
     /// Mirrors Android's `OTelMobile.captureWireframe(trigger)`.
+    /// - Experimental: Incubating API (docs/API_STABILITY.md) — may change in a MINOR release.
     public func captureWireframe(trigger: String = "manual") {
         wireframeInstrumentation?.capture(trigger: trigger)
     }
