@@ -277,10 +277,19 @@ class DiskLogBuffer private constructor(
      */
     private fun createCipherFactory(): androidx.sqlite.db.SupportSQLiteOpenHelper.Factory? {
         return try {
-            // net.zetetic:sqlcipher-android auto-loads its native library on first
-            // database open (no explicit loadLibs() call needed). If the .so is
-            // missing for this ABI the open throws UnsatisfiedLinkError, which is
-            // caught by openDatabaseCrashSafe() and degrades to cleartext.
+            // Zetetic's sqlcipher-android REQUIRES an explicit native-library
+            // load before first use. The previous assumption that it
+            // "auto-loads on first open" held on dev emulators only by
+            // accident of class-loading order: when nothing had loaded it,
+            // the first open threw UnsatisfiedLinkError ("No implementation
+            // found for ... nativeOpen") AFTER the factory was built — and
+            // the buffer silently degraded to cleartext even though
+            // encryptAtRest=true and the Keystore passphrase provisioned
+            // fine. First caught by the device-tests CI emulator; the same
+            // failure shape applies to real devices. Loading here makes the
+            // outcome deterministic: lib loads → encryption on; lib missing
+            // for this ABI → UnsatisfiedLinkError → cleartext fallback below.
+            System.loadLibrary("sqlcipher")
             val passphrase = DiskBufferKeyManager.create(context).getOrCreatePassphrase()
                 ?: return null
             net.zetetic.database.sqlcipher.SupportOpenHelperFactory(passphrase)
