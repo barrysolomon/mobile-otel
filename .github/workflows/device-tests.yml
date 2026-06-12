@@ -90,12 +90,22 @@ jobs:
       - uses: actions/checkout@v6
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
+      # restore/save are SPLIT (not plain actions/cache) so the save runs
+      # `if: always()` — a job killed by timeout-minutes skips the implicit
+      # cache post-step but DOES run always() steps. Without this, a cold run
+      # that times out saves nothing and every subsequent run is cold again
+      # (the first bring-up runs proved it: 3-core macOS runners need >90 min
+      # for a cold grpc-swift compile). With it, each timed-out run seeds its
+      # partial build and the next one resumes incrementally until one
+      # completes; from then on runs are warm and fast.
+      - name: Restore SwiftPM build cache
+        uses: actions/cache/restore@v5
         with:
           path: otel-ios-mobile/.build-xcode
           key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}
-          restore-keys: spm-ios-sim-${{ runner.os }}-
+          restore-keys: |
+            spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}-
+            spm-ios-sim-${{ runner.os }}-
       - name: Run the full test suite on a simulator
         # ios-ci.yml is compile-only because `swift test` on the macOS host
         # hangs (run-loop/notification tests need the iOS environment). On a
@@ -116,6 +126,15 @@ jobs:
             -derivedDataPath .build-xcode \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+      - name: Save SwiftPM build cache (even on timeout)
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: otel-ios-mobile/.build-xcode
+          # run-id suffix: cache keys are immutable, and the restore above
+          # falls back by prefix — each run saves its own (more complete)
+          # snapshot and the next run restores the newest matching prefix.
+          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}-${{ github.run_id }}
       - name: Upload result bundle
         if: always()
         uses: actions/upload-artifact@v4
