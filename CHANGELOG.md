@@ -9,6 +9,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.3.1-alpha] — 2026-06-12
+
+Launch-readiness release: every P0 gate from the QA hardening plan is now closed, and the two real defects those gates caught are fixed — Android SDK init no longer blocks the app's main thread for ~a quarter second, and `stop()` is callable from any thread.
+
+### Fixed
+
+- **Android SDK init is ~3× faster and off the main thread.** `OTelMobile.start()` blocked the host's main thread for 205–298 ms (measured against TEST_PLAN HS-001's 50 ms budget — that cost was added to every host app's cold start). Now ~28 ms device-equivalent: EncryptedSharedPreferences/Keystore warm-up, the Room/SQLCipher disk-buffer open, OTLP exporter construction, the policy evaluator, predictive export, and the crash-recovery disk probe all moved to background threads. Semantics preserved: a single observable session id per launch (one-shot reconcile against the persisted id), crash-mirror seqId dedup (wall-clock seeding + disk re-raise), `identify()` writes still visible on return. (#42)
+- **`OTelMobile.stop()` no longer crashes off the main thread.** `LifecycleInstrumentation.uninstall` called `LifecycleRegistry.removeObserver` directly, which androidx asserts must run on main; teardown from a worker/JS thread threw `IllegalStateException`. Now hops to main, mirroring what `install()` already did. (#42)
+
+### Added — launch-gate test coverage (#41)
+
+- **Receipt gate for all four platforms:** `scripts/e2e/run-platform-e2e.sh` drives the iOS-native (Schedulr), RN-Android, and RN-iOS demos through launch → foreground-cycle → crash → recovery and fails unless the expected telemetry actually lands in Dash0, run-scoped. (Android-native was already gated via `run-e2e.sh`.) Schedulr gained the same `-DASH0_CRASH_NOW` launch-argument crash hook the AstronomyShop demos have.
+- **Kill-switch end-to-end proof:** `KillSwitchEndToEndTest` drives the real remote-config poll path over local HTTP and proves `sdk.enabled=false` stops both export choke points (logs and spans), then re-enables — the README's kill-switch claim is now backed by a test.
+- **Crash-handler chaining:** `CrashHandlerChainingTest` proves a Crashlytics-style `UncaughtExceptionHandler` installed before or after the SDK still runs, the SDK persists its buffer *before* delegating, and exactly one `app.crash` is reported per crash.
+- **Startup budget gate:** `StartupBudgetTest` enforces HS-001's 50 ms main-thread budget on every instrumented run (bare 50 ms on physical devices; documented 3× allowance on software-rendered emulators, which the pre-fix code still fails). `StopThreadSafetyTest` guards the off-main `stop()` path.
+- `dash0_assert.py` supports trailing-`*` prefix matching for span/log names.
+
 ## [0.3.0-alpha] — 2026-06-11
 
 Data-durability release: a full QA audit of the flush/buffer path found and fixed three silent data-loss bugs on Android, and the release/test gates were hardened so a regression in this class physically cannot reach a release tag again. Minor (not patch) because the flush-result contract changed behavior.

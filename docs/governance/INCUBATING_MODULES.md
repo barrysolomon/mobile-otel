@@ -9,12 +9,12 @@
 | Screenshot | Non-OTel-native, payload size concerns | E2E UAT cell, OTel semconv proposal, payload size cap validation | 0.4.0-alpha |
 | Wireframe | Non-OTel-native, control plane dependency | Journey replay viewer in control plane, size regression tests | 0.4.0-alpha |
 | Debug Widget | Dev/demo only, not OTel-native | Stays incubating permanently (dev tool, not production feature) | N/A |
-| Database | OTel-native but limited validation | Real-world Room query validation, slow-query threshold tuning | 0.3.0-alpha |
-| File I/O | OTel-native but limited validation | Real-world file operation profiling, performance impact measurement | 0.3.0-alpha |
-| System Events | OTel-native but battery impact unknown | Battery drain measurement on 3+ device models | 0.3.0-alpha |
-| Timber | OTel-native, niche dependency | Validate graceful no-op when Timber not on classpath | 0.3.0-alpha |
+| Database | OTel-native but limited validation | Real-world Room query validation, slow-query threshold tuning | 0.3.1-alpha |
+| File I/O | OTel-native but limited validation | Real-world file operation profiling, performance impact measurement | 0.3.1-alpha |
+| System Events | OTel-native but battery impact unknown | Battery drain measurement on 3+ device models | 0.3.1-alpha |
+| Timber | OTel-native, niche dependency | Validate graceful no-op when Timber not on classpath | 0.3.1-alpha |
 | Amplify DataStore | OTel-native, niche dependency | Innovapptive beta validation, Amplify version matrix | Customer-driven |
-| Screen Orientation | OTel-native, minor feature | Bundle with next GA release | 0.3.0-alpha |
+| Screen Orientation | OTel-native, minor feature | Bundle with next GA release | 0.3.1-alpha |
 | Compose Click | OTel-native, Compose ecosystem evolving | Compose BOM 2025.01+ compatibility matrix | 0.4.0-alpha |
 | Compose Navigation | OTel-native, Compose ecosystem evolving | NavHost integration test, Compose BOM compatibility | 0.4.0-alpha |
 
