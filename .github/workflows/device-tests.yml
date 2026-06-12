@@ -52,12 +52,22 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
+          # google_apis, not the AOSP "default" image: EncryptedDiskBufferTest
+          # provisions a Keystore-wrapped SQLCipher passphrase, and the AOSP
+          # image's keymaster failed provisioning on the first real run of
+          # this job (encryption silently degraded to cleartext, which the
+          # test rightly refuses to accept).
+          target: google_apis
           arch: x86_64
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           working-directory: examples/demo-app
-          script: ./gradlew :otel-android-mobile:connectedDebugAndroidTest
+          # NOTE: the runner executes each script line as its own `sh -c`, so
+          # multi-line shell constructs must stay on one line.
+          script: |
+            adb logcat -c || true
+            ./gradlew :otel-android-mobile:connectedDebugAndroidTest || (echo '=== SDK logcat (encryption/buffer/keystore diagnostics) ==='; adb logcat -d -s DiskLogBuffer:V DiskBufferKeyManager:V MobileLoggerProvider:V SessionManager:V AndroidKeysetManager:V keystore2:V | tail -100; exit 1)
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
