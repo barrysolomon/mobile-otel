@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Thread-safe via ConcurrentHashMap.
  */
-class ErrorCoalescer(
+internal class ErrorCoalescer(
     private val windowMs: Long = 60_000L,
     private val minSeverity: Severity = Severity.ERROR
 ) {

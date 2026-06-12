@@ -366,12 +366,21 @@ class MainActivity : AppCompatActivity() {
         updateStatus("✅ OpenTelemetry initialized\nDevice ID: ${loggerProvider.getDeviceId()}\nRun ID: $demoRunId\nEndpoint: ${config.collectorEndpoint}")
         Log.i(TAG, "OpenTelemetry initialized: deviceId=${loggerProvider.getDeviceId()}, runId=$demoRunId, endpoint=${config.collectorEndpoint}")
 
-        // Hook into export results to display status
-        io.opentelemetry.android.mobile.export.LoggingHttpExporter.onExportResult = { success, message ->
+        // Hook into export results to display status — via the public debug
+        // surface (ExportStatusManager); LoggingHttpExporter went internal in 0.4.0.
+        io.opentelemetry.android.mobile.export.ExportStatusManager.addListener { status ->
             runOnUiThread {
-                val currentStatus = statusText.text.toString()
-                val exportStatus = "\n\n📡 Last Export:\n$message"
-                updateStatus(currentStatus + exportStatus)
+                val message = when (status) {
+                    is io.opentelemetry.android.mobile.export.ExportStatus.Success ->
+                        "✅ exported ${status.eventCount} events"
+                    is io.opentelemetry.android.mobile.export.ExportStatus.Failed ->
+                        "❌ ${status.reason} (${status.eventCount} events, attempt ${status.attempt})"
+                    is io.opentelemetry.android.mobile.export.ExportStatus.AuthError ->
+                        "🔒 auth error: ${status.reason}"
+                    is io.opentelemetry.android.mobile.export.ExportStatus.Retrying ->
+                        "🔁 retry ${status.attempt}/${status.maxAttempts} in ${status.delayMs}ms"
+                }
+                updateStatus(statusText.text.toString() + "\n\n📡 Last Export:\n" + message)
             }
         }
     }

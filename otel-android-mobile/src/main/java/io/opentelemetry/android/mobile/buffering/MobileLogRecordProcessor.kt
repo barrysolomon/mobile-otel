@@ -77,8 +77,7 @@ import kotlinx.coroutines.runBlocking
  * @see DiskLogBuffer for disk persistence implementation
  * @see PolicyEvaluator for conditional export logic
  */
-@Incubating
-class MobileLogRecordProcessor private constructor(
+internal class MobileLogRecordProcessor private constructor(
     private val context: Context,
     private val exporter: LogRecordExporter,
     private val config: io.opentelemetry.android.mobile.config.MobileConfig,
@@ -1264,20 +1263,6 @@ class MobileLogRecordProcessor private constructor(
     /**
      * Statistics about current buffer state.
      */
-    data class BufferStats(
-        val ramBufferSize: Int,
-        val diskBufferSize: Int,
-        val ramBufferCapacity: Int,
-        val diskBufferCapacityMb: Int,
-        /** Estimated cumulative bytes currently held in the RAM buffer. */
-        val ramBufferBytes: Long = 0,
-        /** Configured total-byte budget for the RAM buffer. */
-        val ramBufferMaxTotalBytes: Long = 0,
-        /** Configured per-event byte cap for the RAM buffer. */
-        val ramBufferMaxEventBytes: Int = 0,
-        /** Events dropped because they exceeded [ramBufferMaxEventBytes]. */
-        val droppedOversizeCount: Long = 0
-    )
 
     /**
      * Builder for MobileLogRecordProcessor.

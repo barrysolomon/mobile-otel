@@ -113,9 +113,7 @@ internal object LogDatabaseMigrations {
  * @property maxSizeMb Maximum disk space in megabytes
  * @property ttlHours Time-to-live for events in hours
  */
-// INTERNAL-LEAK (docs/API_STABILITY.md): becomes `internal` in 0.4.0.
-@Incubating
-class DiskLogBuffer private constructor(
+internal class DiskLogBuffer private constructor(
     internal val context: Context,
     private val maxSizeMb: Int,
     private val ttlHours: Int,
@@ -837,7 +835,7 @@ class DiskLogBuffer private constructor(
  * Room entity for persisting log records.
  */
 @Entity(tableName = "log_records", indices = [Index("timestampMs"), Index("traceId"), Index("monotonicMs")])
-data class LogRecordEntity(
+internal data class LogRecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestampMs: Long,
     val severityText: String?,
@@ -858,7 +856,7 @@ data class LogRecordEntity(
  * Room DAO for log record operations.
  */
 @Dao
-interface LogDao {
+internal interface LogDao {
     @Insert
     suspend fun insertAll(logs: List<LogRecordEntity>)
 
@@ -939,7 +937,7 @@ interface LogDao {
  * Room database definition.
  */
 @Database(entities = [LogRecordEntity::class], version = 4, exportSchema = false)
-abstract class LogDatabase : RoomDatabase() {
+internal abstract class LogDatabase : RoomDatabase() {
     abstract fun logDao(): LogDao
 }
 

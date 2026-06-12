@@ -49,10 +49,7 @@ import io.opentelemetry.android.mobile.instrumentation.Incubating
  * )
  * ```
  */
-// INTERNAL-LEAK (docs/API_STABILITY.md): becomes `internal` in 0.4.0. Compose
-// retry behavior via ExporterCustomizers, not this class.
-@Incubating
-class RetryableExporter(
+internal class RetryableExporter(
     private val delegate: LogRecordExporter,
     private val maxRetries: Int = 3,
     private val initialDelayMs: Long = 1000,

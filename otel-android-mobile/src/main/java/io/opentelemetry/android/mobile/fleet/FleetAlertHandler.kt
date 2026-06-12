@@ -8,7 +8,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
-class FleetAlertHandler(
+internal class FleetAlertHandler(
     private val processor: MobileLogRecordProcessor,
     private val config: MobileConfig,
     private val deduplicator: FleetAlertDeduplicator,

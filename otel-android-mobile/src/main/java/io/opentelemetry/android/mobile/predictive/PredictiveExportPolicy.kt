@@ -252,7 +252,7 @@ class PredictiveExportPolicy private constructor(
         private var startOwnScheduler: Boolean = true
         private var suppressNetworkLossFlush: Boolean = false
 
-        fun setProcessor(processor: MobileLogRecordProcessor) = apply {
+        internal fun setProcessor(processor: MobileLogRecordProcessor) = apply {
             this.processor = processor
         }
 

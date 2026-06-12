@@ -131,7 +131,6 @@ class MobileLoggerProvider private constructor(
                 .put("service.name", config.serviceName)
                 .put("service.version", config.serviceVersion)
                 .put("device.id", deviceId)
-                .put("device.platform", "android")
                 .put("os.name", "android")
                 .put("os.version", android.os.Build.VERSION.RELEASE)
                 .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
@@ -426,7 +425,17 @@ class MobileLoggerProvider private constructor(
 
     fun getDeviceId(): String = deviceId
 
-    fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
+    /**
+     * Flush events from the last [minutes] minutes (selective export).
+     * Same settlement contract as [forceFlush]: the result completes only
+     * after export AND buffer cleanup settle.
+     */
+    fun flushWindow(minutes: Int): io.opentelemetry.sdk.common.CompletableResultCode = mobileProcessor.flushWindow(minutes)
+
+    /** Snapshot of RAM/disk buffer state. */
+    fun getBufferStats(): io.opentelemetry.android.mobile.buffering.BufferStats = mobileProcessor.getBufferStats()
+
+    internal fun getMobileProcessor(): MobileLogRecordProcessor = mobileProcessor
 
     /**
      * Returns the shared remote kill-switch / global-sampling gate driving both the log
