@@ -42,7 +42,7 @@ import io.opentelemetry.sdk.logs.export.LogRecordExporter
  * @property config Mobile configuration
  * @property delegate Underlying exporter to forward records to
  */
-class EnrichingLogRecordExporter(
+internal class EnrichingLogRecordExporter(
     private val context: Context,
     private val config: MobileConfig,
     private val delegate: LogRecordExporter

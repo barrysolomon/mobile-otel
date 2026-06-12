@@ -106,7 +106,7 @@ class RingBufferActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.btnForceFlush).setOnClickListener {
             performFlush("Force Flush") {
                 try {
-                    OTelMobile.getLoggerProvider().getMobileProcessor().forceFlush()
+                    OTelMobile.getLoggerProvider().forceFlush()
                 } catch (e: Exception) {
                     null
                 }
@@ -116,7 +116,7 @@ class RingBufferActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.btnFlush5min).setOnClickListener {
             performFlush("Flush 5min") {
                 try {
-                    OTelMobile.getLoggerProvider().getMobileProcessor().flushWindow(5)
+                    OTelMobile.getLoggerProvider().flushWindow(5)
                 } catch (e: Exception) {
                     null
                 }
@@ -126,7 +126,7 @@ class RingBufferActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.btnFlush2min).setOnClickListener {
             performFlush("Flush 2min") {
                 try {
-                    OTelMobile.getLoggerProvider().getMobileProcessor().flushWindow(2)
+                    OTelMobile.getLoggerProvider().flushWindow(2)
                 } catch (e: Exception) {
                     null
                 }
@@ -162,7 +162,7 @@ class RingBufferActivity : AppCompatActivity() {
     }
 
     private fun getBufferStats() = try {
-        OTelMobile.getLoggerProvider().getMobileProcessor().getBufferStats()
+        OTelMobile.getLoggerProvider().getBufferStats()
     } catch (e: Exception) {
         null
     }

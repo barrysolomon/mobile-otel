@@ -246,7 +246,8 @@ class SessionManager private constructor(
                 ?.setBody("mobile.session.started")
                 ?.setAllAttributes(
                     Attributes.builder()
-                        .put("mobile.session.id", currentSessionId)
+                        .put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
                         .put("session.start_reason", "inactivity_timeout")
                         .build()
                 )
@@ -295,7 +296,8 @@ class SessionManager private constructor(
             ?.setBody("mobile.session.terminated")
             ?.setAllAttributes(
                 Attributes.builder()
-                    .put("mobile.session.id", currentSessionId)
+                    .put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
                     .put("session.duration_ms", duration)
                     .put("session.termination_reason", reason)
                     .build()
@@ -310,7 +312,8 @@ class SessionManager private constructor(
                 ?.setBody("mobile.session.flush_requested")
                 ?.setAllAttributes(
                     Attributes.builder()
-                        .put("mobile.session.id", currentSessionId)
+                        .put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
                         .put("reason", "session_termination")
                         .build()
                 )
@@ -323,22 +326,6 @@ class SessionManager private constructor(
         saveSessionId()
     }
 
-    /**
-     * Enable or disable session tracking.
-     */
-    fun setEnabled(enabled: Boolean) {
-        // This would require modifying the config, which is immutable
-        // For now, just log a warning
-        logger?.logRecordBuilder()
-            ?.setBody("mobile.session.enable_requested")
-            ?.setAllAttributes(
-                Attributes.builder()
-                    .put("enabled", enabled)
-                    .put("warning", "Session enable/disable not yet implemented")
-                    .build()
-            )
-            ?.emit()
-    }
 
     // ─────────────────────────────────────────────────────────────
     // Identity Management
@@ -380,7 +367,8 @@ class SessionManager private constructor(
             ?.setAllAttributes(
                 Attributes.builder()
                     .put("user.id", user.userId)
-                    .put("mobile.session.id", currentSessionId)
+                    .put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
                     .build()
             )
             ?.emit()
@@ -397,7 +385,8 @@ class SessionManager private constructor(
             ?.setBody("mobile.user.cleared")
             ?.setAllAttributes(
                 Attributes.builder()
-                    .put("mobile.session.id", currentSessionId)
+                    .put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
                     .build()
             )
             ?.emit()
@@ -468,7 +457,7 @@ class SessionManager private constructor(
      *
      * @return Attributes to add to the event
      */
-    fun getEnrichmentAttributes(): Attributes {
+    internal fun getEnrichmentAttributes(): Attributes {
         if (!config.enabled) {
             return Attributes.empty()
         }
@@ -487,7 +476,8 @@ class SessionManager private constructor(
         val builder = Attributes.builder()
 
         // Session attributes
-        builder.put("mobile.session.id", currentSessionId)
+        builder.put("session.id", currentSessionId) // semconv name (SEMCONV_AUDIT.md)
+                .put("mobile.session.id", currentSessionId) // legacy alias — dual-emitted for one minor, dropped at 1.0
         builder.put("session.start_time", sessionStartTime)
         builder.put("session.duration_ms", System.currentTimeMillis() - sessionStartTime)
         builder.put("session.state", if (isInForeground) "active" else "background")

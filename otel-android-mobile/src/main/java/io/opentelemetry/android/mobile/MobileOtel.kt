@@ -73,6 +73,7 @@ object MobileOtel {
 
     /** The active OpenTelemetryMobile instance, available after initialize(context) { } DSL. */
     var openTelemetryMobile: OpenTelemetryMobile? = null
+        private set
 
     /** Current export mode, set during initialization. */
     private var currentExportMode: io.opentelemetry.android.mobile.config.ExportMode? = null
@@ -316,15 +317,6 @@ object MobileOtel {
         SessionManager.getInstance().terminateSession(reason)
     }
 
-    /**
-     * Enable/disable session tracking.
-     *
-     * @param enabled True to enable, false to disable
-     */
-    @Incubating // not yet implemented — implement or remove in 0.4.0 (API_STABILITY.md)
-    fun setSessionEnabled(enabled: Boolean) {
-        SessionManager.getInstance().setEnabled(enabled)
-    }
 
     // ─────────────────────────────────────────────────────────────
     // Global Attributes
@@ -496,14 +488,14 @@ object MobileOtel {
     /**
      * Get error capture statistics (unique errors, rate limit status).
      */
-    @Incubating // returns Any? — must gain a typed return before promotion (API_STABILITY.md)
-    fun getErrorStatistics() = errorInstrumentation?.getStatistics()
+    @Incubating
+    fun getErrorStatistics(): io.opentelemetry.android.mobile.errors.ErrorInstrumentation.ErrorStatistics? = errorInstrumentation?.getStatistics()
 
     /**
      * Get current buffer statistics (RAM/disk usage).
      */
-    @Incubating // returns Any? — must gain a typed return before promotion (API_STABILITY.md)
-    fun getBufferStats() = provider?.getMobileProcessor()?.getBufferStats()
+    @Incubating
+    fun getBufferStats(): io.opentelemetry.android.mobile.buffering.BufferStats? = provider?.getBufferStats()
 
     // ─────────────────────────────────────────────────────────────
     // Shutdown

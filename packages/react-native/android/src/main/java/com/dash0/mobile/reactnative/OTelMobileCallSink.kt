@@ -180,7 +180,7 @@ internal class OTelMobileCallSink(
 
     override fun flushWindow(minutes: Int) {
         try {
-            OTelMobile.getLoggerProvider().getMobileProcessor().flushWindow(minutes)
+            OTelMobile.getLoggerProvider().flushWindow(minutes)
         } catch (_: Throwable) {
             // Bridge contract: flush failures must not surface as JS promise
             // rejections. The SDK's own retry/disk-buffer path handles
@@ -210,7 +210,7 @@ internal class OTelMobileCallSink(
      */
     override fun forceFlush() {
         try {
-            OTelMobile.getLoggerProvider().getMobileProcessor().forceFlush()
+            OTelMobile.getLoggerProvider().forceFlush()
         } catch (_: Throwable) {
             // Best-effort: a forceFlush failure on the FATAL path must
             // never throw out of the dispatcher (we'd lose the rest of

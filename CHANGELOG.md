@@ -9,6 +9,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.0-alpha] — 2026-06-12
+
+The deliberate breaking release before the API freeze: the 1.0 stability gates were executed ([API_STABILITY.md](docs/API_STABILITY.md), [SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md)), and every scheduled breaking change landed here in one batch — pre-1.0 minors may break; this is the last one planned to.
+
+### BREAKING — API (Android)
+
+- **Implementation classes are no longer public.** `MobileLogRecordProcessor`, `RetryableExporter`, `DiskLogBuffer` (+ Room types), `LoggingHttpExporter`, `EnrichingLogRecordExporter`, `ErrorCoalescer`, and `FleetAlertHandler` are now `internal`. Migration: flush and stats are first-class on the provider — `getLoggerProvider().flushWindow(minutes)` / `.getBufferStats()` / `.forceFlush()`; export-status display goes through `ExportStatusManager.addListener`. `BufferStats` is now a top-level public type.
+- **`MobileOtel.setSessionEnabled` removed** — it was never implemented (logged a warning, did nothing). Configure `SessionConfig.enabled` at start.
+- **`MobileOtel.getErrorStatistics()/getBufferStats()` have typed returns** (`ErrorStatistics?` / `BufferStats?`).
+- **`@Incubating` now means something:** removed from the stable entry points (`OTelMobile`, `MobileOtel`, `MobileConfig`, `OpenTelemetryMobile`, `OtlpProtocol`, `ExportMode`) — previously every `start()` call warned — and added member-level exactly where the [API freeze list](docs/API_STABILITY.md) says the surface may still move.
+
+### BREAKING — telemetry names ([SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md))
+
+- **iOS screen-view events are now `ui.screen_view`** (was `screen.view`) — matches Android and React Native. Update dashboards/alerts filtering on the old name.
+- **Android resource attribute `device.platform` dropped** (redundant with `os.name`).
+- **Android now emits `session.id`** (the OTel semconv name, matching iOS) on every event, alongside the legacy `mobile.session.id` — the alias is dual-emitted through 0.x and drops at 1.0. Migrate dashboards to `session.id`.
+
+### Added
+
+- `MobileLoggerProvider.flushWindow(minutes)` and `getBufferStats()` — the public home for what consumers previously reached through the (now internal) processor.
+- **1.0 governance docs:** [API_STABILITY.md](docs/API_STABILITY.md) tiers every public symbol on all three platforms (stable-at-1.0 / incubating / sealed); [SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md) freezes every emitted telemetry name with its semconv status; [VERSIONING.md](docs/VERSIONING.md) carries the concrete deprecation policy (one-MINOR residence, dual-emit cycle for telemetry renames).
+
+### Deferred (documented)
+
+- iOS `app.launch` vs `app.start` convergence: investigation showed they are different emitters (lifecycle install vs start-timing vitals); a blind rename would double-count app starts. Needs an ownership decision before 1.0 — tracked in SEMCONV_AUDIT.md.
+
+
 ## [0.3.1-alpha] — 2026-06-12
 
 Launch-readiness release: every P0 gate from the QA hardening plan is now closed, and the two real defects those gates caught are fixed — Android SDK init no longer blocks the app's main thread for ~a quarter second, and `stop()` is callable from any thread.

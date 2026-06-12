@@ -13,7 +13,7 @@ import io.opentelemetry.sdk.logs.export.LogRecordExporter
 /**
  * Wrapper that logs detailed export information for debugging.
  */
-class LoggingHttpExporter(
+internal class LoggingHttpExporter(
     private val delegate: LogRecordExporter,
     private val endpoint: String,
     // Gate the chatty per-export endpoint/count logging. Off by default so release

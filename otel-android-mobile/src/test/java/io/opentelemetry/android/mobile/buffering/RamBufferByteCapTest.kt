@@ -30,7 +30,7 @@ import org.robolectric.annotation.Config
  * iOS parity with `RAMEventBuffer.swift`):
  *
  *  - per-event byte cap ([MobileConfig.ramBufferMaxEventBytes]) — oversize
- *    events are dropped from RAM and counted ([MobileLogRecordProcessor.BufferStats.droppedOversizeCount]);
+ *    events are dropped from RAM and counted ([BufferStats.droppedOversizeCount]);
  *  - total-byte budget ([MobileConfig.ramBufferMaxTotalBytes]) — enforced
  *    independently of the count cap by overflowing oldest events to disk;
  *  - byte accounting stays correct across add / evict.

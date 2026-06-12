@@ -61,10 +61,10 @@ public final class ScreenInstrumentation: @unchecked Sendable {
         guard enabled else { return }
 
         logger?.logRecordBuilder()
-            .setBody(.string("screen.view"))
+            .setBody(.string("ui.screen_view"))
             .setSeverity(.info)
             .setAttributes([
-                "event.name": .string("screen.view"),
+                "event.name": .string("ui.screen_view"),
                 "screen.name": .string(screenName),
             ])
             .emit()

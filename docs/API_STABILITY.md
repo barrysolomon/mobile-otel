@@ -48,21 +48,19 @@ Tiers (from [VERSIONING.md](VERSIONING.md)):
 | `OTelMobile.startJourney/endJourney/captureScreenshot/captureWireframe` | capture modules still maturing (already member-annotated) |
 | `OTelMobile.markCrashForNextStart/markLowMemoryForNextStart/markAnrForNextStart/getLastRecoveryType` | recovery-marker surface may be folded into config |
 | `MobileOtel.getCurrentPrediction()` | predictive export is evolving |
-| `MobileOtel.getErrorStatistics()` / `getBufferStats()` | **return `Any?` — must gain typed returns before any promotion**; do not freeze a hole in the type system |
-| `MobileOtel.setSessionEnabled(enabled)` | not yet implemented (logs a warning) — see 0.4.0 list |
+| `MobileOtel.getErrorStatistics(): ErrorStatistics?` / `getBufferStats(): BufferStats?` | typed since 0.4.0; promotion candidate once the shapes soak |
 | `MobileConfig` incubating fields | `uiTelemetryMode`, `textInputConfig`, `encryptDiskBufferAtRest`, `remoteConfigEnabled`, `configPollIntervalSeconds`, `predictionIntervalSeconds`, `screenshotConfig`, `wireframeConfig`, `offlineBudgetConfig`, `offlinePolicy`, `appManagedScreens`, `allowInsecureTransport`, `pinningConfig`, `configSigningKey`, `attachContextAttributes`, `buildChannel`, `userContextPrefsName`, `traceExportIntervalSeconds`, `metricExportIntervalSeconds` |
 | `UiTelemetryMode` | tied to incubating field |
 | `OfflinePolicy`, `OfflineBudgetConfig` | offline budget semantics still settling |
 | `OTelMobileBuilder` / `OTelMobileHandle` / `MobileInstrumentation` / `InstrumentationContext` | the bring-your-own-OTel path; signature churn likely as upstream `AndroidInstrumentation` evolves |
 | `ExportStatus` / `ExportStatusListener` / `ExportStatusManager` | debug surface |
-| `MobileLoggerProvider` (incl. `setSamplingRate`/`resetSamplingToBaseline`) | direct provider access is advanced; remote-sampling API may move to the gate |
+| `MobileLoggerProvider` (incl. `setSamplingRate`/`resetSamplingToBaseline`, and since 0.4.0 `flushWindow(minutes)` + `getBufferStats()`) | direct provider access is advanced; remote-sampling API may move to the gate |
 | `RemoteGate` | kill-switch wire schema is explicitly incubating |
 | `SessionManager` direct access | consumers should go through `MobileOtel`; direct singleton may narrow |
 
-### INTERNAL-LEAK (public today; `internal` in 0.4.0)
+### INTERNAL-LEAK — ✅ sealed (`internal`) in 0.4.0
 
-These are implementation details with no supported consumer use. Each gets
-`@Incubating` now (warning on use) and `internal` in 0.4.0:
+These were implementation details with no supported consumer use:
 
 - `MobileLogRecordProcessor` (+ `Builder`, hooks `heartbeatLogger`,
   `predictionCycleHook`, `policyMatchHook`, `spanFlushHook`)
@@ -139,21 +137,20 @@ These are implementation details with no supported consumer use. Each gets
 
 ---
 
-## Scheduled breaking changes for 0.4.0 (pre-1.0 minor)
+## Scheduled breaking changes for 0.4.0 — EXECUTED in 0.4.0-alpha
 
-Collected here so 0.4.0 is one deliberate breaking release, not a drip:
-
-1. Android: `internal`-ize the INTERNAL-LEAK list above.
-2. Android: `MobileOtel.getErrorStatistics()/getBufferStats()` gain typed
-   returns (or move behind a debug interface).
-3. Android: `MobileOtel.setSessionEnabled` — implement or remove (currently
-   a no-op that logs).
-4. Cross-platform session attribute alignment (see
-   [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md)): Android emits `mobile.session.id`,
-   iOS emits `session.id` (the semconv name). Converge on `session.id` +
-   keep `mobile.session.id` as a transition alias on Android for one minor.
-5. iOS: narrow the exposed live internals (`policyEvaluator` etc.) behind
-   read-only facades where feedback shows no one needs the mutable objects.
+1. ✅ INTERNAL-LEAK list sealed (`internal`); `MobileLoggerProvider` gained
+   first-class `flushWindow(minutes)` + `getBufferStats()`; `BufferStats`
+   promoted to a top-level public type; consumers (RN bridge, demo)
+   migrated.
+2. ✅ `getErrorStatistics(): ErrorStatistics?` / `getBufferStats():
+   BufferStats?` — typed.
+3. ✅ `setSessionEnabled` REMOVED (was an unimplemented no-op); use
+   `SessionConfig.enabled` at start.
+4. ✅ `session.id` dual-emitted beside `mobile.session.id` on Android;
+   alias drops at 1.0.
+5. ⏸ iOS live-internals narrowing — deferred until external feedback exists
+   (no integrator has reported needing or tripping on these).
 
 ## Review discipline
 
