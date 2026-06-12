@@ -63,12 +63,11 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           working-directory: examples/demo-app
+          # NOTE: the runner executes each script line as its own `sh -c`, so
+          # multi-line shell constructs must stay on one line.
           script: |
             adb logcat -c || true
-            ./gradlew :otel-android-mobile:connectedDebugAndroidTest || { \
-              echo '═══ SDK logcat (encryption/buffer/keystore diagnostics) ═══'; \
-              adb logcat -d -s DiskLogBuffer:V DiskBufferKeyManager:V MobileLoggerProvider:V SessionManager:V AndroidKeysetManager:V keystore2:V | tail -100; \
-              exit 1; }
+            ./gradlew :otel-android-mobile:connectedDebugAndroidTest || (echo '=== SDK logcat (encryption/buffer/keystore diagnostics) ==='; adb logcat -d -s DiskLogBuffer:V DiskBufferKeyManager:V MobileLoggerProvider:V SessionManager:V AndroidKeysetManager:V keystore2:V | tail -100; exit 1)
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
