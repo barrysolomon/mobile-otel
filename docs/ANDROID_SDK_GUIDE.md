@@ -211,6 +211,25 @@ MobileConfig(
 
 `OTelMobile.start()` calls `MobileOtel.initialize()` then starts `AutoCaptureManager`. Use `MobileOtel.initialize()` alone if you only want buffering + policy evaluation without UI auto-capture.
 
+### Startup performance
+
+`start()` is designed to be called from `Application.onCreate` and keeps its
+main-thread work **under 50 ms** (enforced by an instrumented budget gate,
+HS-001). The expensive pieces — Android Keystore / encrypted session storage,
+the Room/SQLCipher disk buffer, OTLP exporter construction, the remote-config
+poller — initialize on background threads immediately after `start()` returns.
+Practical consequences:
+
+- Telemetry emitted right after `start()` is buffered normally; nothing is lost.
+- The session id is stable from the first event — early events never split
+  across sessions (a one-shot reconcile guarantees a single observable id per
+  launch).
+- `identify()` called within the first ~100 ms of a cold start may block
+  briefly while the encrypted store finishes warming up; its write is visible
+  when it returns, as always.
+- The first remote-config poll starts a few ms later than in releases before
+  0.3.1-alpha.
+
 ## Auto-Instrumentation
 
 When you call `OTelMobile.start()`, the following modules are active with no further code:

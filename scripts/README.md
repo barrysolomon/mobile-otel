@@ -6,10 +6,10 @@ Canonical home for all automation in this repo. Bash 3.2 compatible (works on st
 
 | Folder | What's inside |
 |--------|---------------|
-| [`ci/`](ci/) | `run-tests.sh`, `run-demo-ci.sh` — drivers used by GitHub Actions (and locally) |
+| [`ci/`](ci/) | `run-tests.sh`, `run-demo-ci.sh` — drivers used by GitHub Actions (and locally); `check-aar-size.sh` — the per-push AAR size budget gate |
 | [`demo/`](demo/) | `run-demo-{full,quick,scenarios,single,backend}.sh`, `run-dash0-scenarios.sh`, `run-dual-platform-demo.sh`, `demo-control-center-ios.sh` |
 | [`test/`](test/) | Unit/integration/E2E runners, the `validate-us*` UAT family (~28 scenarios), `demo-control-center.sh` (interactive crash menu), `uat/` orchestrator |
-| [`e2e/`](e2e/) | `run-e2e.sh` plus end-to-end orchestration helpers, and the **Dash0 receipt gate** (`verify-dash0.sh` + `dash0_assert.py`) — asserts telemetry actually arrived in Dash0 (REST, no `dash0` CLI needed) so tests are green only when data lands |
+| [`e2e/`](e2e/) | `run-e2e.sh` (Android zero-to-demo) and `run-platform-e2e.sh` (drives the iOS-native/RN-Android/RN-iOS demos through launch → crash → recovery), both ending in the **Dash0 receipt gate** (`verify-dash0.sh` + `dash0_assert.py`) — asserts telemetry actually arrived in Dash0 (REST, no `dash0` CLI needed) so tests are green only when data lands |
 | [`setup/`](setup/) | `verify-setup.sh` — sanity-check your machine has the right toolchains |
 | [`lib/`](lib/) | Shared bash helpers sourced by the runners |
 | [`test/lib/`](test/lib/) and [`test/lib-ios/`](test/lib-ios/) | Shared test helpers, split per platform |
@@ -33,6 +33,9 @@ Canonical home for all automation in this repo. Bash 3.2 compatible (works on st
 # All tests (Android + Go)
 ./scripts/ci/run-tests.sh
 ./scripts/ci/run-tests.sh --all     # + iOS + RN
+
+# Receipt-gated e2e for the non-Android-native platforms
+./scripts/e2e/run-platform-e2e.sh ios-native rn-android rn-ios
 
 # Single UAT scenario
 ./scripts/test/validate-us063-crash-flush.sh

@@ -89,6 +89,24 @@ jobs:
           done
           echo "Public SDK entry points survived R8 ($(grep -c 'io.opentelemetry.android.mobile' "$MAPPING") mapped SDK lines)"
 
+  # SDK weight is a consumer-facing cost: every new transitive dependency or
+  # bundled resource lands in the host app's APK. The budget gate makes AAR
+  # growth a reviewed decision (raise the budget in the same PR, justified)
+  # instead of a silent drift discovered by an integrator.
+  aar-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build release AAR
+        working-directory: examples/demo-app
+        run: ./gradlew :otel-android-mobile:assembleRelease
+      - name: Enforce AAR size budget
+        run: ./scripts/ci/check-aar-size.sh otel-android-mobile/build/outputs/aar/otel-android-mobile-release.aar
+
   go-processor:
     runs-on: ubuntu-latest
     steps:

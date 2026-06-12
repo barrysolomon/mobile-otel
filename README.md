@@ -253,6 +253,16 @@ mobile-otel/
 | Demo Backend | TypeScript, Express.js 4.21, better-sqlite3, OTel SDK Node 0.57.0 |
 | Collector Processor | Go 1.24, OpenTelemetry Collector 1.39.0 |
 
+## Testing & Quality Gates
+
+Green means delivered, not just compiled — see [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md):
+
+- **1237 unit tests** per push, plus an R8 minified-consumer gate and a 700 KB AAR size budget.
+- **Device suites** (Android instrumented + the 530-test iOS simulator suite) run nightly, on every release tag, and on demand (`gh workflow run device-tests.yml`).
+- **Dash0 receipt gates** (`scripts/e2e/`): e2e runs pass only when the telemetry each platform's demo emits actually lands in Dash0, scoped to that run.
+- **Startup budget enforced**: `OTelMobile.start()` keeps main-thread work under 50 ms (heavy init — Keystore, disk buffer, exporters — happens on background threads).
+- **Publishing refuses red commits**: tagging `v*` verifies the commit has green CI before npm/Maven publish.
+
 ## Building
 
 ```bash

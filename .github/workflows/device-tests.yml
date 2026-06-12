@@ -1,0 +1,109 @@
+# Device tests — the suites a hosted per-push runner can't afford.
+#
+# ci.yml deliberately stops at unit tests + compile gates (macOS minutes bill
+# 10x, emulators add ~20 min/run). The cost-driven gap that leaves — found by
+# the 2026-06-11 QA audit ("signal existed but enforcement didn't") — is that
+# the Android instrumented suite and the 530-test iOS simulator suite only
+# ever ran on a developer's machine. This workflow closes the gap where the
+# cost argument doesn't apply: nightly, on release tags, and on demand.
+#
+# NOT a publish gate: publish.yml's verify-ci-green checks ci.yml + ios-ci.yml
+# (which run per-push). A tag triggers this workflow AND publish in parallel —
+# a device-test failure here is a loud post-release signal (fix forward or
+# yank the tag), not a publish blocker. Promoting it to a gate means making
+# publish wait ~30 min on every tag; revisit at 1.0.
+name: Device Tests
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # nightly, 09:17 UTC (off the top-of-hour rush)
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: device-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-instrumented:
+    name: Android instrumented suite (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable KVM for hardware-accelerated emulation
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: SDK instrumented tests on emulator (API 34)
+        # The suite is self-contained: the kill-switch test runs its own local
+        # HTTP server, the budget/buffer/DSL tests need no backend. Includes
+        # StartupBudgetTest (HS-001, with its emulator calibration) and
+        # StopThreadSafetyTest.
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          working-directory: examples/demo-app
+          script: ./gradlew :otel-android-mobile:connectedDebugAndroidTest
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumented-results
+          path: otel-android-mobile/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+
+  ios-simulator:
+    name: iOS full suite (simulator)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: otel-ios-mobile/.build-xcode
+          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}
+          restore-keys: spm-ios-sim-${{ runner.os }}-
+      - name: Run the full test suite on a simulator
+        # ios-ci.yml is compile-only because `swift test` on the macOS host
+        # hangs (run-loop/notification tests need the iOS environment). On a
+        # simulator the full suite passes — this is where it runs in CI.
+        # The simulator name is resolved dynamically so Xcode image bumps on
+        # the runner don't break the job.
+        working-directory: otel-ios-mobile
+        run: |
+          set -euo pipefail
+          SIM_NAME=$(xcrun simctl list devices available | grep -E '^\s+iPhone' | head -1 | sed -E 's/ \(.*$//' | xargs)
+          if [ -z "$SIM_NAME" ]; then
+            echo "::error::No available iPhone simulator on this runner"; exit 1
+          fi
+          echo "Using simulator: $SIM_NAME"
+          xcodebuild test \
+            -scheme OTelMobile-Package \
+            -destination "platform=iOS Simulator,name=$SIM_NAME" \
+            -derivedDataPath .build-xcode \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Upload result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results
+          path: otel-ios-mobile/TestResults.xcresult
+          if-no-files-found: ignore

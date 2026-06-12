@@ -3,8 +3,6 @@
 
 package io.opentelemetry.android.mobile.instrumentation
 
-import java.util.concurrent.CopyOnWriteArrayList
-
 /**
  * Thread-safe, rolling-window rate limiter.
  *
@@ -27,24 +25,33 @@ class RateLimiter(
     private val windowMs: Long = 60_000L,
     private val clock: () -> Long = { System.currentTimeMillis() }
 ) {
-    private val timestamps = CopyOnWriteArrayList<Long>()
+    // Guarded by `this`. A plain list under a lock, NOT a concurrent
+    // collection: the old CopyOnWriteArrayList version had a check-then-act
+    // race between the size check and the add, so under contention the
+    // limiter admitted far more than maxPerWindow (observed >2x in CI) —
+    // and an event storm is EXACTLY the high-contention moment the limiter
+    // exists for. Call sites are human-event-rate (taps, screenshots,
+    // errors), so the lock cost is irrelevant.
+    private val timestamps = ArrayList<Long>()
 
     /**
      * Attempt to acquire a permit. Returns `true` if the event is allowed,
-     * `false` if the rate limit has been reached.
+     * `false` if the rate limit has been reached. Atomic: the limit is
+     * enforced exactly, including under concurrent callers.
      */
-    fun tryAcquire(): Boolean {
+    fun tryAcquire(): Boolean = synchronized(this) {
         val now = clock()
-        prune(now)
-        if (timestamps.size >= maxPerWindow) return false
-        timestamps.add(now)
-        return true
+        pruneLocked(now)
+        if (timestamps.size >= maxPerWindow) {
+            false
+        } else {
+            timestamps.add(now)
+            true
+        }
     }
 
-    /**
-     * Remove timestamps outside the rolling window.
-     */
-    private fun prune(now: Long) {
+    /** Remove timestamps outside the rolling window. Caller holds the lock. */
+    private fun pruneLocked(now: Long) {
         val cutoff = now - windowMs
         timestamps.removeAll { it < cutoff }
     }
@@ -52,13 +59,13 @@ class RateLimiter(
     /**
      * Reset the limiter, clearing all tracked timestamps.
      */
-    fun reset() {
+    fun reset() = synchronized(this) {
         timestamps.clear()
     }
 
     /** Current count of events within the window. */
-    val currentCount: Int get() {
-        prune(clock())
-        return timestamps.size
+    val currentCount: Int get() = synchronized(this) {
+        pruneLocked(clock())
+        timestamps.size
     }
 }

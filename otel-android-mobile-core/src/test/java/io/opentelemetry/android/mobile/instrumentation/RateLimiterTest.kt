@@ -193,16 +193,15 @@ class RateLimiterTest {
 
         latch.await()
 
-        // CopyOnWriteArrayList has a check-then-act race between size check and add,
-        // so the actual count may exceed maxPerWindow. We verify it's reasonably bounded
-        // (within 2x the limit) — the point is no catastrophic overflow, not exact enforcement.
-        assertTrue(
-            successCount.get() <= maxPerWindow * 2,
-            "Success count ${successCount.get()} should not wildly exceed limit $maxPerWindow"
-        )
-        assertTrue(
-            successCount.get() >= maxPerWindow,
-            "At least $maxPerWindow events should succeed, got ${successCount.get()}"
+        // tryAcquire is atomic (synchronized), so the limit is EXACT even under
+        // contention. This used to tolerate 2x overshoot because the old
+        // CopyOnWriteArrayList implementation had a check-then-act race — which
+        // CI then exceeded (>2x), proving the limiter failed at its one job
+        // precisely when an event storm (max contention) hit it.
+        assertEquals(
+            maxPerWindow,
+            successCount.get(),
+            "Exactly $maxPerWindow of the 200 concurrent attempts must succeed"
         )
     }
 }

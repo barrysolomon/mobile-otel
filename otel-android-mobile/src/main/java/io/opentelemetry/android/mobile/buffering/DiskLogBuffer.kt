@@ -594,7 +594,12 @@ class DiskLogBuffer private constructor(
 
     private fun adjustCachedCount(delta: Int) {
         cachedCount.updateAndGet { current ->
-            if (current < 0) maxOf(0, delta) else maxOf(0, current + delta)
+            // Not yet seeded: STAY unseeded (-1) — the next getEventCount()
+            // seeds from the DB, which already reflects this mutation.
+            // Seeding from the delta alone would permanently undercount rows
+            // already on disk (crash-mirrored events from a previous process,
+            // or a migrated buffer) in the stats gauge and recovery probe.
+            if (current < 0) -1 else maxOf(0, current + delta)
         }
     }
 
