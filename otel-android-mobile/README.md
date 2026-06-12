@@ -54,7 +54,7 @@ Or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment (the repo block abo
 
 ```kotlin
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.3.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.3.1-alpha")
 }
 ```
 

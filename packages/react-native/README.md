@@ -5,7 +5,7 @@ existing native Android (`otel-android-mobile`) and iOS (`otel-ios-mobile`)
 SDKs — native owns buffering, policy evaluation, OTLP export, and crash
 recovery. JS stays thin.
 
-**Version:** `0.3.0-alpha`, published under the `alpha` dist-tag.
+**Version:** `0.3.1-alpha`, published under the `alpha` dist-tag.
 
 **Status:** Validated end-to-end in Dash0. All 4 platforms (Android native,
 iOS native, RN Android, RN iOS) have a UAT matrix of 12/12 cells green.
@@ -17,7 +17,7 @@ iOS native, RN Android, RN iOS) have a UAT matrix of 12/12 cells green.
 # resolves the OLD 0.1.0-alpha — always pin the dist-tag or version):
 npm install @barrysolomon/mobile-react-native@alpha
 # or pin the exact version:
-# npm install @barrysolomon/mobile-react-native@0.3.0-alpha
+# npm install @barrysolomon/mobile-react-native@0.3.1-alpha
 
 cd ios && pod install
 ```
@@ -25,13 +25,13 @@ cd ios && pod install
 This JS package wraps the native SDKs; install those too:
 
 - **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel`
-  at tag `v0.3.0-alpha` to your app target, then copy
+  at tag `v0.3.1-alpha` to your app target, then copy
   `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package
   into your app target and call
   `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod intentionally
   excludes the sink because it depends on the SwiftPM SDK delivered on the app
   side.
-- **Android** — `io.opentelemetry.android:mobile:0.3.0-alpha` from GitHub
+- **Android** — `io.opentelemetry.android:mobile:0.3.1-alpha` from GitHub
   Packages (`https://maven.pkg.github.com/barrysolomon/mobile-otel`). As of
   0.2.0-alpha the full module set (`mobile-core` + all
   `mobile-instrumentation-*` modules) publishes there, so the dependency tree
