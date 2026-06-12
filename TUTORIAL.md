@@ -596,16 +596,16 @@ maven {
 
 // build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.2.1-alpha")
+    implementation("io.opentelemetry.android:mobile:0.3.0-alpha")
 }
 ```
 
-**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.2.1-alpha`, product `OTelMobileSDK`.
+**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.3.0-alpha`, product `OTelMobileSDK`.
 
 **React Native** — npm, under the `alpha` dist-tag (a bare install gets the older 0.1.0-alpha):
 
 ```bash
-npm install @barrysolomon/mobile-react-native@alpha   # or @0.2.1-alpha
+npm install @barrysolomon/mobile-react-native@alpha   # or @0.3.0-alpha
 ```
 
 ### Step 2: Initialize in `Application.onCreate()`

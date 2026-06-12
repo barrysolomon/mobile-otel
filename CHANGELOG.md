@@ -9,6 +9,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.3.0-alpha] — 2026-06-11
+
+Data-durability release: a full QA audit of the flush/buffer path found and fixed three silent data-loss bugs on Android, and the release/test gates were hardened so a regression in this class physically cannot reach a release tag again. Minor (not patch) because the flush-result contract changed behavior.
+
+### BREAKING (behavior) — review before upgrading
+
+- **`forceFlush()` / `flushWindow()` results now complete only after export *and* buffer cleanup settle.** Previously a deferred `forceFlush()` returned instant fake success while a flush was still in progress. Callers that `join()`/await the result now get the real outcome (the in-progress flush's completion) instead of a lie; callers that ignored the result are unaffected. (#37, #38)
+
+### Fixed — silent data loss (Android flush/buffer path)
+
+- **Force-flush cleanup no longer deletes unexported events.** Cleanup ran `clearAll()` on the disk buffer, deleting rows persisted *after* the flush snapshot — events that were never exported. Cleanup now deletes exactly the exported row ids. `flushWindow()` had the identical flaw and got the identical fix. (#38)
+- **Events mid-overflow are no longer invisible to flush.** The RAM→disk overflow move left events in neither tier for a window, so a concurrent flush under-exported (observed: 245 of 500). The move is now atomic with respect to flush snapshots. (#38)
+- **A failed flush can be retried.** The flush gate was released asynchronously even on failure, so an immediate retry silently no-opped. Failure paths now release the gate synchronously. (#37, #38)
+- **Disk buffer survives a missing SQLCipher native library.** The SDK no longer deletes the encrypted disk buffer (offline data) when the SQLCipher native lib fails to load — it falls back without destroying data. (#33)
+- **`screen.render` emits one span per resume, not one per frame.** (#32)
+- **`OtlpProtocol` is wired through the `MobileOtel` DSL**, and RN Android gRPC export works. (#34)
+- **RN iOS launches again** — `react-native` is deduped in Metro so the `PlatformConstants` crash is gone. (#35)
+
+### CI / release safety
+
+- **Dash0 receipt gate:** e2e tests are green only when telemetry actually lands in Dash0, scoped to the current run (`--since`) and polling through ingestion latency (`--retry-for`). Skipping requires an explicit `--allow-no-dash0`. (#36, #38)
+- **`run-e2e.sh` exits non-zero on suite failures** (previously always 0). (#38)
+- **Publishing refuses red commits:** tagging `v*` now verifies the tagged SHA has green CI before npm/Maven publish. (#38)
+- **R8 minified-consumer gate:** the demo app release build runs with `minifyEnabled = true` on every push; CI asserts the public entry points survive shrinking identity-mapped. (#39)
+- **Pre-1.0 npm releases also set the `latest` dist-tag** so a bare `npm install` gets the newest 0.x. (#30)
+
 ## [0.2.1-alpha] — 2026-06-10
 
 Patch release: correct the SDK's self-reported version and complete Android transport-security parity (both surfaced by the v0.2.0-alpha documentation audit).
