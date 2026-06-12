@@ -20,14 +20,35 @@ import android.net.Uri
  */
 object PiiScrubber {
 
-    // Common PII patterns
+    /**
+     * Hard cap on the text length the regex passes operate on. Telemetry
+     * strings (exception messages, bodies) are orders of magnitude smaller —
+     * the RAM buffer's per-event byte cap is far below this — but a HOSTILE
+     * or pathological string (digit dumps, base64 blobs) must not stall the
+     * pipeline: the property tests measured the uncapped patterns taking
+     * 20-85 SECONDS on 100 KB adversarial inputs. Anything beyond the cap is
+     * dropped and marked, which is also the privacy-safe direction.
+     */
+    internal const val MAX_SCRUB_LENGTH = 8_192
+    private const val TRUNCATION_MARKER = "…[TRUNCATED]"
+
+    private fun capped(text: String): String =
+        if (text.length <= MAX_SCRUB_LENGTH) text
+        else text.take(MAX_SCRUB_LENGTH) + TRUNCATION_MARKER
+
+    // Common PII patterns.
+    // Quantifiers are POSSESSIVE (X++ / {m,n}+) wherever giving characters
+    // back can never produce a match the greedy pass missed — backtracking on
+    // long near-miss runs is what turns these linear scans quadratic.
     private val EMAIL_PATTERN = Regex(
-        "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+        // local part possessive ('@' is not in the class, nothing to give back);
+        // the domain part must NOT be possessive — it has to give back ".com".
+        "[a-zA-Z0-9._%+-]++@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
         RegexOption.IGNORE_CASE
     )
 
     private val PHONE_PATTERN = Regex(
-        "\\b(\\+?[1-9]\\d{6,14}|\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4})\\b"
+        "\\b(\\+?[1-9]\\d{6,14}+|\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4})\\b"
     )
 
     private val CREDIT_CARD_PATTERN = Regex(
@@ -126,7 +147,7 @@ object PiiScrubber {
     fun scrubExceptionMessage(message: String?): String {
         if (message == null) return ""
 
-        var scrubbed = message
+        var scrubbed = capped(message)
 
         // Remove emails
         scrubbed = EMAIL_PATTERN.replace(scrubbed, "[EMAIL]")
@@ -176,7 +197,7 @@ object PiiScrubber {
      * @return Scrubbed text
      */
     fun scrubText(text: String): String {
-        var scrubbed = text
+        var scrubbed = capped(text)
 
         // Remove emails
         scrubbed = EMAIL_PATTERN.replace(scrubbed, "[EMAIL]")
