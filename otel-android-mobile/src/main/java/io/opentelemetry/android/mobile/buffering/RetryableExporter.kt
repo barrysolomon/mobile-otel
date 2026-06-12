@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.random.Random
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 
 /**
  * Wrapper around LogRecordExporter that adds retry logic with exponential backoff.
@@ -48,6 +49,9 @@ import kotlin.random.Random
  * )
  * ```
  */
+// INTERNAL-LEAK (docs/API_STABILITY.md): becomes `internal` in 0.4.0. Compose
+// retry behavior via ExporterCustomizers, not this class.
+@Incubating
 class RetryableExporter(
     private val delegate: LogRecordExporter,
     private val maxRetries: Int = 3,

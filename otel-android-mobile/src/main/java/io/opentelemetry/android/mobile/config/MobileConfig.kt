@@ -66,7 +66,6 @@ enum class UiTelemetryMode {
  *
  * @see MobileConfig.protocol
  */
-@Incubating
 enum class OtlpProtocol {
     /**
      * OTLP/HTTP with protobuf payload. Exports to `<endpoint>/v1/{logs,traces,metrics}`.
@@ -81,7 +80,6 @@ enum class OtlpProtocol {
 /**
  * Export mode for telemetry data.
  */
-@Incubating
 enum class ExportMode {
     /**
      * Only export when triggered by conditions (errors, low memory, battery drain, etc.).
@@ -123,7 +121,6 @@ enum class ExportMode {
  * )
  * ```
  */
-@Incubating
 data class MobileConfig(
     val serviceName: String,
     val serviceVersion: String,

@@ -364,6 +364,7 @@ export const Dash0Mobile = {
   // native side creates the journey span and triggers screenshot + wireframe
   // captures at start/end boundaries.
 
+  /** @experimental Incubating API (docs/API_STABILITY.md) — may change in a minor release. */
   async startJourney(name: string): Promise<string | null> {
     if (!started) return null;
     const native = resolveNative();
@@ -371,6 +372,7 @@ export const Dash0Mobile = {
     return native.startJourney(name);
   },
 
+  /** @experimental Incubating API (docs/API_STABILITY.md) — may change in a minor release. */
   async endJourney(journeyId: string): Promise<void> {
     if (!started) return;
     const native = resolveNative();
@@ -378,6 +380,7 @@ export const Dash0Mobile = {
     await native.endJourney(journeyId);
   },
 
+  /** @experimental Incubating API (docs/API_STABILITY.md) — may change in a minor release. */
   async captureScreenshot(trigger: string = 'manual'): Promise<void> {
     if (!started) return;
     const native = resolveNative();
@@ -385,6 +388,7 @@ export const Dash0Mobile = {
     await native.captureScreenshot(trigger);
   },
 
+  /** @experimental Incubating API (docs/API_STABILITY.md) — may change in a minor release. */
   async captureWireframe(trigger: string = 'manual'): Promise<void> {
     if (!started) return;
     const native = resolveNative();

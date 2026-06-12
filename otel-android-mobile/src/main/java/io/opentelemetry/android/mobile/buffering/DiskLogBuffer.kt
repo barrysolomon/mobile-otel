@@ -22,6 +22,7 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import io.opentelemetry.android.mobile.instrumentation.Incubating
 
 /**
  * Explicit Room migrations for the log_records table.
@@ -112,6 +113,8 @@ internal object LogDatabaseMigrations {
  * @property maxSizeMb Maximum disk space in megabytes
  * @property ttlHours Time-to-live for events in hours
  */
+// INTERNAL-LEAK (docs/API_STABILITY.md): becomes `internal` in 0.4.0.
+@Incubating
 class DiskLogBuffer private constructor(
     internal val context: Context,
     private val maxSizeMb: Int,

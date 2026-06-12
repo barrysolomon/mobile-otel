@@ -5,12 +5,15 @@
 
 package io.opentelemetry.android.mobile.export
 
+import io.opentelemetry.android.mobile.instrumentation.Incubating
+
 /**
  * Status of a telemetry export attempt.
  *
  * Register a listener via [ExportStatusListener] to receive these updates.
  * Useful for debugging auth failures, network issues, and buffer overflow.
  */
+@Incubating
 sealed class ExportStatus {
     /** Export succeeded. [eventCount] events were delivered. */
     data class Success(val eventCount: Int) : ExportStatus()

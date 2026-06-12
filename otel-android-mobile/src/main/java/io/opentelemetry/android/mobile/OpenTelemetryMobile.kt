@@ -12,7 +12,6 @@ import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.sdk.common.CompletableResultCode
 
-@Incubating
 class OpenTelemetryMobile internal constructor(
     val openTelemetry: OpenTelemetry,
     private val handle: OTelMobileHandle,
