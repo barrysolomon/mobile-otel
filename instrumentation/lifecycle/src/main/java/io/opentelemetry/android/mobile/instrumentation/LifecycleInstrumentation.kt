@@ -121,8 +121,20 @@ class LifecycleInstrumentation : MobileInstrumentation {
     }
 
     override fun uninstall() {
-        lifecycleObserver?.let {
-            androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.removeObserver(it)
+        // removeObserver has the same assertMainThread constraint as
+        // addObserver (see CRITICAL note in install): LifecycleRegistry
+        // throws IllegalStateException off-main. stop() is legitimately
+        // called from worker/JS threads during host shutdown — hop to main
+        // instead of crashing the host.
+        lifecycleObserver?.let { observer ->
+            val remove = Runnable {
+                androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.removeObserver(observer)
+            }
+            if (android.os.Looper.myLooper() === android.os.Looper.getMainLooper()) {
+                remove.run()
+            } else {
+                android.os.Handler(android.os.Looper.getMainLooper()).post(remove)
+            }
         }
         activityCallbacks?.let { application?.unregisterActivityLifecycleCallbacks(it) }
         lifecycleObserver = null

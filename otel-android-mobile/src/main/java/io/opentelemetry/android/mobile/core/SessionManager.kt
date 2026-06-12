@@ -41,18 +41,34 @@ class SessionManager private constructor(
     private val config: SessionConfig,
     private val logger: Logger?
 ) {
-    private val prefs: SharedPreferences = createEncryptedPrefs(context, "otel_session_v2")
-
-    private val encryptedPrefs: SharedPreferences by lazy {
-        createEncryptedPrefs(context, "otel_session_encrypted")
-    }
-
     private val json = Json { ignoreUnknownKeys = true }
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
+    // ── Asynchronous storage warm-up ─────────────────────────────
+    // EncryptedSharedPreferences + Keystore MasterKey cost ~180 ms on a cold
+    // install — alone several times the HS-001 budget (init < 50 ms on the
+    // main thread). Storage is therefore created on [executor]; everything
+    // else rendezvous via [storageReady]. The per-event hot path
+    // (getEnrichmentAttributes) reads plain fields and never touches prefs —
+    // its only synchronization is the one-shot session-id reconcile below.
+    private val storageReady = java.util.concurrent.CountDownLatch(1)
+
+    @Volatile
+    private var _prefs: SharedPreferences? = null
+
+    @Volatile
+    private var _encryptedPrefs: SharedPreferences? = null
+
+    // The session id starts PROVISIONAL (fresh UUID) and is reconciled against
+    // the persisted id exactly once: normally by the warm-up task; or — if an
+    // event is emitted before warm-up finishes — getEnrichmentAttributes
+    // claims the provisional id and the warm-up persists it instead. Either
+    // way only ONE id is ever observable per launch: no session split.
+    private val sessionIdReconciled = java.util.concurrent.atomic.AtomicBoolean(false)
+
     // Session state
     @Volatile
-    private var currentSessionId: String = loadOrCreateSessionId()
+    private var currentSessionId: String = generateSessionId()
 
     @Volatile
     private var sessionStartTime: Long = System.currentTimeMillis()
@@ -64,10 +80,64 @@ class SessionManager private constructor(
     private var isInForeground = false
 
     @Volatile
-    private var currentUserId: String? = loadUserId()
+    private var currentUserId: String? = null
 
     private val globalAttributes = mutableMapOf<String, Any>()
     private var inactivityTimerTask: ScheduledFuture<*>? = null
+
+    init {
+        // Warm-up is the FIRST task on the single-threaded executor, so every
+        // later onStorage/awaiting task observes an opened latch — no deadlock.
+        executor.execute {
+            try {
+                _prefs = createEncryptedPrefs(context, "otel_session_v2")
+                _encryptedPrefs = createEncryptedPrefs(context, "otel_session_encrypted")
+                if (config.persistSession) {
+                    val persisted = _prefs?.getString("session.id", null)
+                    if (sessionIdReconciled.compareAndSet(false, true)) {
+                        if (persisted != null) {
+                            currentSessionId = persisted
+                        } else {
+                            _prefs?.edit()?.putString("session.id", currentSessionId)?.apply()
+                        }
+                    } else if (persisted != currentSessionId) {
+                        // An early event already claimed the provisional id —
+                        // it IS this launch's session; persist it.
+                        _prefs?.edit()?.putString("session.id", currentSessionId)?.apply()
+                    }
+                } else {
+                    sessionIdReconciled.set(true)
+                }
+                currentUserId = _encryptedPrefs?.getString("user.id", null)
+                loadGlobalAttributes()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Session storage warm-up failed; continuing with in-memory session state", t)
+                sessionIdReconciled.set(true)
+            } finally {
+                storageReady.countDown()
+            }
+        }
+    }
+
+    /** Blocking accessor for NON-hot paths (identify/clear): awaits warm-up. */
+    private fun encryptedPrefsBlocking(): SharedPreferences? {
+        storageReady.await()
+        return _encryptedPrefs
+    }
+
+    /** Enqueue a write against the session prefs; runs after warm-up, in order. */
+    private fun onStorage(block: (SharedPreferences) -> Unit) {
+        executor.execute {
+            storageReady.await()
+            _prefs?.let {
+                try {
+                    block(it)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Session storage write failed", t)
+                }
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "SessionManager"
@@ -116,7 +186,7 @@ class SessionManager private constructor(
                             logger
                         ).apply {
                             registerLifecycleCallbacks()
-                            loadGlobalAttributes()
+                            // global attributes load in the storage warm-up task
                         }
                     }
                 }
@@ -282,7 +352,7 @@ class SessionManager private constructor(
     fun identify(user: UserIdentity) {
         currentUserId = user.userId
 
-        encryptedPrefs.edit().apply {
+        encryptedPrefsBlocking()?.edit()?.apply {
             putString("user.id", user.userId)
 
             user.email?.let { email ->
@@ -321,7 +391,7 @@ class SessionManager private constructor(
      */
     fun clearIdentity() {
         currentUserId = null
-        encryptedPrefs.edit().clear().apply()
+        encryptedPrefsBlocking()?.edit()?.clear()?.apply()
 
         logger?.logRecordBuilder()
             ?.setBody("mobile.user.cleared")
@@ -403,6 +473,17 @@ class SessionManager private constructor(
             return Attributes.empty()
         }
 
+        // One-shot session-id reconcile: if storage warm-up hasn't resolved the
+        // persisted-vs-provisional id yet, wait briefly (warm-up started at SDK
+        // init, so this is rarely >0 ms), then CLAIM the provisional id on
+        // timeout — the warm-up persists whichever id won. Guarantees a single
+        // observable session id per launch with zero hot-path cost after the
+        // first event.
+        if (config.persistSession && !sessionIdReconciled.get()) {
+            storageReady.await(250, TimeUnit.MILLISECONDS)
+            sessionIdReconciled.compareAndSet(false, true)
+        }
+
         val builder = Attributes.builder()
 
         // Session attributes
@@ -435,26 +516,16 @@ class SessionManager private constructor(
     // Persistence
     // ─────────────────────────────────────────────────────────────
 
-    private fun loadOrCreateSessionId(): String {
-        return if (config.persistSession) {
-            prefs.getString("session.id", null) ?: generateSessionId().also { saveSessionId() }
-        } else {
-            generateSessionId()
-        }
-    }
-
     private fun saveSessionId() {
         if (config.persistSession) {
-            prefs.edit().putString("session.id", currentSessionId).apply()
+            val id = currentSessionId
+            onStorage { it.edit().putString("session.id", id).apply() }
         }
     }
 
-    private fun loadUserId(): String? {
-        return encryptedPrefs.getString("user.id", null)
-    }
-
+    /** Runs on the warm-up task only (storage already open on that thread). */
     private fun loadGlobalAttributes() {
-        val json = prefs.getString("global_attributes", "{}")
+        val json = _prefs?.getString("global_attributes", "{}")
         if (!json.isNullOrEmpty() && json != "{}") {
             try {
                 val attrs: Map<String, Any> = this.json.decodeFromString(json)
@@ -472,7 +543,7 @@ class SessionManager private constructor(
         val json = synchronized(globalAttributes) {
             this.json.encodeToString(globalAttributes.toMap())
         }
-        prefs.edit().putString("global_attributes", json).apply()
+        onStorage { it.edit().putString("global_attributes", json).apply() }
     }
 
     private fun generateSessionId(): String = UUID.randomUUID().toString()

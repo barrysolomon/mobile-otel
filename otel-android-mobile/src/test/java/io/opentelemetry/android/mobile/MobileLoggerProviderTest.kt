@@ -213,9 +213,13 @@ class MobileLoggerProviderTest {
         var metric: MetricExporter? = null
 
         fun build(): ExporterCustomizers = ExporterCustomizers(
-            log = listOf({ e -> log = e; e }),
-            span = listOf({ e -> span = e; e }),
-            metric = listOf({ e -> metric = e; e })
+            // The provider hands the customizer its BASE exporter, which is now
+            // a lazy wrapper (built on first export, off the main thread —
+            // HS-001). Materialize it so these tests keep asserting the
+            // concrete transport class that will actually be used.
+            log = listOf({ e -> log = (e as? io.opentelemetry.android.mobile.export.LazyLogRecordExporter)?.materialize() ?: e; e }),
+            span = listOf({ e -> span = (e as? io.opentelemetry.android.mobile.export.LazySpanExporter)?.materialize() ?: e; e }),
+            metric = listOf({ e -> metric = (e as? io.opentelemetry.android.mobile.export.LazyMetricExporter)?.materialize() ?: e; e })
         )
     }
 

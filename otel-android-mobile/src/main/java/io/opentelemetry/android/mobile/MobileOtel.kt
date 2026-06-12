@@ -66,7 +66,9 @@ object MobileOtel {
     private var provider: MobileLoggerProvider? = null
     private var errorInstrumentation: ErrorInstrumentation? = null
     private var vitalsCollector: VitalsCollector? = null
+    @Volatile
     private var predictivePolicy: PredictiveExportPolicy? = null
+    @Volatile
     private var healthMetricsCollector: HealthMetricsCollector? = null
     private var releaseHealthSessionProvider: MobileSessionProvider? = null
 
@@ -165,12 +167,33 @@ object MobileOtel {
         // predictionCycleHook — so we must NOT start a second self-owned scheduler here,
         // otherwise prediction fires twice per tick and re-exports already-cleared events.
         val isHybrid = config.exportMode == io.opentelemetry.android.mobile.config.ExportMode.HYBRID
-        predictivePolicy = PredictiveExportPolicy.builder(appContext)
-            .setProcessor(processor)
-            .setLogger(loggerProvider.get("predictive-export"))
-            .setPredictionIntervalSeconds(config.predictionIntervalSeconds)
-            .setStartOwnScheduler(!isHybrid)  // HYBRID: driven by heartbeat; others: self-scheduled
-            .build()
+        // Constructed on a short-lived daemon thread: every consumer is
+        // null-safe (`predictivePolicy?.`), so a prediction cycle or
+        // getCurrentPrediction() that fires before construction completes is
+        // a fail-open no-op. Keeps ~15 ms of class loading off the main
+        // thread (HS-001).
+        Thread({
+            try {
+                predictivePolicy = PredictiveExportPolicy.builder(appContext)
+                    .setProcessor(processor)
+                    .setLogger(loggerProvider.get("predictive-export"))
+                    .setPredictionIntervalSeconds(config.predictionIntervalSeconds)
+                    .setStartOwnScheduler(!isHybrid)  // HYBRID: driven by heartbeat; others: self-scheduled
+                    .build()
+            } catch (t: Throwable) {
+                android.util.Log.w("MobileOtel", "PredictiveExportPolicy init failed; predictive export disabled", t)
+            }
+            try {
+                // Same fail-open contract: the only consumer is `?.shutdown()`.
+                // OnDevicePredictor.getInstance can touch storage — off-main.
+                healthMetricsCollector = HealthMetricsCollector.builder(appContext)
+                    .setOpenTelemetry(otelSdk)
+                    .setPredictor(OnDevicePredictor.getInstance(appContext))
+                    .build()
+            } catch (t: Throwable) {
+                android.util.Log.w("MobileOtel", "HealthMetricsCollector init failed; health metrics disabled", t)
+            }
+        }, "OTel-PredictiveInit").apply { isDaemon = true }.start()
 
         // HYBRID: co-locate prediction.cycle with device.heartbeat on a single shared timer.
         if (isHybrid) {
@@ -191,11 +214,6 @@ object MobileOtel {
         }
 
         // Wire HealthMetricsCollector — exposes device health & predictions as OTel metrics
-        healthMetricsCollector = HealthMetricsCollector.builder(appContext)
-            .setOpenTelemetry(otelSdk)
-            .setPredictor(OnDevicePredictor.getInstance(appContext))
-            .build()
-
         return loggerProvider
         } catch (t: Throwable) {
             android.util.Log.e(
