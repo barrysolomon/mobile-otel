@@ -63,21 +63,41 @@ the disk rows it exported", latch-based defer test), exact-count assertions in
    shrinking identity-mapped. Remaining (P1): runtime smoke of the minified
    APK on an emulator — R8 build success doesn't catch reflection-at-runtime
    breakage.
-2. **Crash-handler chaining test.** Install Crashlytics (or a stub
-   `UncaughtExceptionHandler`) alongside the SDK; assert both handlers run,
-   ordering is preserved, and the crash is reported exactly once. Mirror on
-   iOS for signal/Mach handlers when that lands.
-3. **Kill-switch end-to-end test.** README promises `sdk.enabled` remote
-   disable. Prove poll → parse → choke-points-stop-exporting in one test, or
-   soften the README before someone tries it live.
-4. **Startup budget gate.** TEST_PLAN HS-001 says init < 50 ms on main
-   thread; nothing enforces it. Add a macrobenchmark (or instrumented timing
-   assertion) with a hard threshold.
-5. **Receipt gate for all 4 platforms.** `run-e2e.sh` only gates
-   android-native; `verify-dash0.sh` already supports ios-native, rn-android,
-   rn-ios — wire the other three into whatever drives their demos.
-6. **Rotate the demo `.env` Dash0 token** (it sits in working trees and has
-   been read by tooling) and keep it out of future audits.
+2. **Crash-handler chaining test.** ✅ DONE (Android):
+   `CrashHandlerChainingTest` proves — with a Crashlytics-style stub — that a
+   handler installed before OR after the SDK still runs, the SDK captures +
+   persists BEFORE delegating downstream (a crash reporter may kill the
+   process), exactly one `app.crash` is emitted regardless of chain depth,
+   and a downstream handler that throws cannot lose our capture. Remaining:
+   mirror on iOS for signal/Mach handlers.
+3. **Kill-switch end-to-end test.** ✅ DONE: `KillSwitchEndToEndTest` drives
+   the REAL `PolicyEvaluator.fetchConfig` over a loopback MockWebServer and
+   proves poll → parse → `RemoteGate` apply → BOTH choke points stop
+   (`MobileLogRecordProcessor.onEmit` drops; `DynamicSampler` hard-DROPs even
+   page/startup spans), then re-enables via a fresh poll and proves exports
+   resume — so the test can actually fail. Also proves events emitted while
+   disabled are dropped, not parked for later export. The README claim
+   stands.
+4. **Startup budget gate.** ✅ Gate added — and it FAILS, which is the
+   finding: `StartupBudgetTest` (instrumented, runs in
+   `connectedDebugAndroidTest`, i.e. every `run-e2e.sh` pass) measures
+   `OTelMobile.start()` on the main thread against HS-001's 50 ms budget and
+   observed **205–298 ms** on a Pixel_7a emulator. Emulator inflation is
+   real but not 4–6×. The budget gate stays red until init cost is fixed —
+   do not raise the budget without a spec change. The test also asserts init
+   actually *succeeded*, so the SDK's silent-degrade-to-no-op path can't
+   sneak under the budget.
+5. **Receipt gate for all 4 platforms.** ✅ DONE:
+   `scripts/e2e/run-platform-e2e.sh` drives ios-native (Schedulr, via a new
+   `-DASH0_CRASH_NOW` launch-arg hook), rn-android, and rn-ios through the
+   launch → foreground-cycle → crash → recovery journey using the UAT
+   platform primitives, then runs `verify-dash0.sh <platform> --since
+   <run-start>` — run-scoped, so green means *this run's* telemetry is in
+   Dash0. android-native remains gated by `run-e2e.sh`. When the script
+   builds the RN demos it stamps the platform-specific `serviceName` into
+   the bundled otel-config.json (and restores it), since service identity
+   is fixed at build time.
+6. **Rotate the demo `.env` Dash0 token** — ✅ DONE (rotated 2026-06-11).
 
 ## 3. P1 — before GA
 
