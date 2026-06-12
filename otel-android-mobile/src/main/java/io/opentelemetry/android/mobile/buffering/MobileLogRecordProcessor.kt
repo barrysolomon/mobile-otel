@@ -130,18 +130,32 @@ class MobileLogRecordProcessor private constructor(
     // [ramBufferMaxEventBytes]. iOS parity with RAMEventBuffer.droppedOversizeCount.
     private val droppedOversizeCount = AtomicLong(0)
 
-    // Disk buffer: persistent storage with Room
-    private val diskBuffer: DiskLogBuffer = DiskLogBuffer.getInstance(
-        context,
-        maxSizeMb = diskBufferMb,
-        ttlHours = diskBufferTtlHours,
-        encryptAtRest = config.encryptDiskBufferAtRest
-    )
+    // Disk buffer: persistent storage with Room. LAZY — opening Room (and
+    // loading the SQLCipher native lib) costs ~100 ms, far over the HS-001
+    // main-thread init budget. Every disk-buffer consumer already runs on a
+    // background thread (overflow/mirror/flush executors, gauge collection,
+    // the crash handler), so first-use construction never lands on main. The
+    // warm-up task scheduled in init opens it almost immediately anyway.
+    private val diskBuffer: DiskLogBuffer by lazy {
+        DiskLogBuffer.getInstance(
+            context,
+            maxSizeMb = diskBufferMb,
+            ttlHours = diskBufferTtlHours,
+            encryptAtRest = config.encryptDiskBufferAtRest
+        )
+    }
 
     // Policy evaluator: determines when to flush. Shares the remote gate so the `sdk`
     // block fetched alongside flush policies updates the same kill switch the choke
     // points read.
-    private val policyEvaluator = PolicyEvaluator(context, config, remoteGate = remoteGate)
+    // LAZY: constructing the evaluator pulls in OkHttp (~25 ms of class
+    // loading) and immediately fires an async config poll — neither belongs
+    // on the main thread during init (HS-001). Both consumers (evaluate on
+    // the policy executor, shutdown) run off-main; the warm-up task in init
+    // builds it almost immediately, so the first config poll is delayed by
+    // only a few ms.
+    private val policyEvaluatorLazy = lazy { PolicyEvaluator(context, config, remoteGate = remoteGate) }
+    private val policyEvaluator by policyEvaluatorLazy
 
     // Device metrics collector: captures device health metrics on triggers
     private val deviceMetricsCollector = DeviceMetricsCollector(context, meter, config.deviceMetricsConfig)
@@ -233,14 +247,30 @@ class MobileLogRecordProcessor private constructor(
         .buildWithCallback { obs -> obs.record(remoteGate.sampleRate) }
 
     init {
-        // Seed the seqId counter from the max seqId on disk so that new events in
-        // this process never collide with crash-mirrored events from a previous process.
-        // Without this, forceFlush() dedup filters out disk events whose seqId matches
-        // a RAM event — causing crash-mirrored events to be silently dropped on recovery.
-        val maxDiskSeqId = diskBuffer.getMaxSeqId()
-        if (maxDiskSeqId > 0) {
-            BufferedEvent.seedCounter(maxDiskSeqId)
-            Log.i(TAG, "Seeded seqId counter from disk: starting at ${maxDiskSeqId + 1}")
+        // SeqId uniqueness across process generations — WITHOUT the synchronous
+        // disk read this used to do (Room open ≈ 100 ms on main; HS-001).
+        // Wall-clock seeding guarantees this process's seqIds exceed any prior
+        // process's: old ids derive from the OLD process's start millis plus its
+        // event count, both strictly in the past. So crash-mirrored disk rows
+        // can never collide with new RAM events in flush dedup (the silent-drop
+        // bug class fixed in #38). The warm-up task below re-raises from the
+        // true disk max as belt-and-braces for a device clock that rolled
+        // backwards across the restart.
+        BufferedEvent.raiseCounterTo(System.currentTimeMillis())
+        executor.execute {
+            try {
+                val maxDiskSeqId = diskBuffer.getMaxSeqId() // forces the Room open, off-main
+                if (maxDiskSeqId > 0) {
+                    BufferedEvent.raiseCounterTo(maxDiskSeqId)
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Disk buffer warm-up failed; will retry on first disk use", t)
+            }
+            try {
+                policyEvaluator // build + start the config poller, off-main
+            } catch (t: Throwable) {
+                Log.w(TAG, "PolicyEvaluator warm-up failed; will retry on first evaluation", t)
+            }
         }
 
         // Schedule periodic disk overflow (every 5 seconds)
@@ -1176,7 +1206,7 @@ class MobileLogRecordProcessor private constructor(
             }
 
             // Shutdown policy evaluator (cancels background coroutine + HTTP client)
-            policyEvaluator.shutdown()
+            if (policyEvaluatorLazy.isInitialized()) policyEvaluator.shutdown()
 
             // Shutdown exporter
             val exporterResult = exporter.shutdown()

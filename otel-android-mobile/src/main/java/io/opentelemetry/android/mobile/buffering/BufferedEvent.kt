@@ -82,5 +82,15 @@ internal data class BufferedEvent(
         internal fun seedCounter(startValue: Long) {
             counter.set(startValue)
         }
+
+        /**
+         * Raise the counter to AT LEAST [floor] (no-op when already higher).
+         * Lets the processor seed from wall-clock time synchronously and later
+         * re-raise from the true disk max without ever LOWERING the counter —
+         * lowering could reissue seqIds already given to live events.
+         */
+        internal fun raiseCounterTo(floor: Long) {
+            counter.updateAndGet { current -> maxOf(current, floor) }
+        }
     }
 }

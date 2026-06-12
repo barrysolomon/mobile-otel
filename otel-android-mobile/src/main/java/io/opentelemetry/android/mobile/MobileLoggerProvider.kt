@@ -160,26 +160,30 @@ class MobileLoggerProvider private constructor(
         // headers are carried over identically on both paths.
         // SECURITY: never log header values — they include the Dash0 ingest
         // Bearer token. Do not reintroduce any logging of key/value here.
+        // Lazy: OTLP exporter construction (~50 ms of class-loading) happens on
+        // the first export, which is always on a background thread (HS-001).
         var baseLogExporter: LogRecordExporter = if (!transportAllowed) {
             io.opentelemetry.android.mobile.export.NoopLogRecordExporter
-        } else when (config.protocol) {
-            OtlpProtocol.HTTP_PROTOBUF ->
-                OtlpHttpLogRecordExporter.builder()
-                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/logs"))
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                        pinnedTls?.let { setSslContext(it.first, it.second) }
-                    }
-                    .build()
-            OtlpProtocol.GRPC ->
-                OtlpGrpcLogRecordExporter.builder()
-                    .setEndpoint(config.collectorEndpoint)
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                    }
-                    .build()
+        } else io.opentelemetry.android.mobile.export.LazyLogRecordExporter {
+            when (config.protocol) {
+                OtlpProtocol.HTTP_PROTOBUF ->
+                    OtlpHttpLogRecordExporter.builder()
+                        .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/logs"))
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                            pinnedTls?.let { setSslContext(it.first, it.second) }
+                        }
+                        .build()
+                OtlpProtocol.GRPC ->
+                    OtlpGrpcLogRecordExporter.builder()
+                        .setEndpoint(config.collectorEndpoint)
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        }
+                        .build()
+            }
         }
         for (c in customizers.log) { baseLogExporter = c(baseLogExporter) }
 
@@ -201,24 +205,26 @@ class MobileLoggerProvider private constructor(
         // :4317) is sufficient.
         var baseMetricExporter: io.opentelemetry.sdk.metrics.export.MetricExporter = if (!transportAllowed) {
             io.opentelemetry.android.mobile.export.NoopMetricExporter
-        } else when (config.protocol) {
-            OtlpProtocol.HTTP_PROTOBUF ->
-                OtlpHttpMetricExporter.builder()
-                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/metrics"))
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                        pinnedTls?.let { setSslContext(it.first, it.second) }
-                    }
-                    .build()
-            OtlpProtocol.GRPC ->
-                OtlpGrpcMetricExporter.builder()
-                    .setEndpoint(config.collectorEndpoint)
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                    }
-                    .build()
+        } else io.opentelemetry.android.mobile.export.LazyMetricExporter {
+            when (config.protocol) {
+                OtlpProtocol.HTTP_PROTOBUF ->
+                    OtlpHttpMetricExporter.builder()
+                        .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/metrics"))
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                            pinnedTls?.let { setSslContext(it.first, it.second) }
+                        }
+                        .build()
+                OtlpProtocol.GRPC ->
+                    OtlpGrpcMetricExporter.builder()
+                        .setEndpoint(config.collectorEndpoint)
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        }
+                        .build()
+            }
         }
         for (c in customizers.metric) { baseMetricExporter = c(baseMetricExporter) }
 
@@ -251,24 +257,26 @@ class MobileLoggerProvider private constructor(
         // exports to the single collectorEndpoint.
         var baseSpanExporter: io.opentelemetry.sdk.trace.export.SpanExporter = if (!transportAllowed) {
             io.opentelemetry.android.mobile.export.NoopSpanExporter
-        } else when (config.protocol) {
-            OtlpProtocol.HTTP_PROTOBUF ->
-                OtlpHttpSpanExporter.builder()
-                    .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/traces"))
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                        pinnedTls?.let { setSslContext(it.first, it.second) }
-                    }
-                    .build()
-            OtlpProtocol.GRPC ->
-                OtlpGrpcSpanExporter.builder()
-                    .setEndpoint(config.collectorEndpoint)
-                    .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
-                    .apply {
-                        config.headers?.forEach { (key, value) -> addHeader(key, value) }
-                    }
-                    .build()
+        } else io.opentelemetry.android.mobile.export.LazySpanExporter {
+            when (config.protocol) {
+                OtlpProtocol.HTTP_PROTOBUF ->
+                    OtlpHttpSpanExporter.builder()
+                        .setEndpoint(otlpHttpUrl(config.collectorEndpoint, "/v1/traces"))
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                            pinnedTls?.let { setSslContext(it.first, it.second) }
+                        }
+                        .build()
+                OtlpProtocol.GRPC ->
+                    OtlpGrpcSpanExporter.builder()
+                        .setEndpoint(config.collectorEndpoint)
+                        .setTimeout(config.exportTimeoutSeconds, TimeUnit.SECONDS)
+                        .apply {
+                            config.headers?.forEach { (key, value) -> addHeader(key, value) }
+                        }
+                        .build()
+            }
         }
         for (c in customizers.span) { baseSpanExporter = c(baseSpanExporter) }
 
@@ -324,6 +332,10 @@ class MobileLoggerProvider private constructor(
         // matchy-matchy Gate 4 contract: a queryable signal that recovery drain
         // happened, with `dash0.recovery.event_count` attribute. Read pre-drain
         // (drain runs on a 30s schedule, this code runs on calling thread).
+        // Runs on a short-lived daemon thread: getBufferStats() is a disk read
+        // (forces the Room/SQLCipher buffer open) and forceFlush() is I/O —
+        // neither belongs on the main thread during init (HS-001).
+        Thread({
         try {
             val pending = mobileProcessor.getBufferStats().diskBufferSize
             if (pending > 0) {
@@ -345,6 +357,7 @@ class MobileLoggerProvider private constructor(
         } catch (t: Throwable) {
             android.util.Log.w("MobileLoggerProvider", "Failed to emit app.recovery_start marker", t)
         }
+        }, "OTel-RecoveryProbe").apply { isDaemon = true }.start()
 
         // Build OpenTelemetry SDK with logging, tracing, metrics, and W3C context propagation
         openTelemetrySdk = OpenTelemetrySdk.builder()
