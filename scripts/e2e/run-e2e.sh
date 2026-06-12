@@ -47,8 +47,9 @@ HEADLESS=false
 EMU_COUNT=2
 TEARDOWN=false
 ALLOW_NO_DASH0=false          # --allow-no-dash0: missing token degrades to warning, not failure
-AVD_PRIMARY="Pixel_7"
-AVD_SECONDARY="Pixel_3a"
+# Overridable: machines differ in which AVDs exist (E2E_AVD_PRIMARY=Pixel_7a ./run-e2e.sh)
+AVD_PRIMARY="${E2E_AVD_PRIMARY:-Pixel_7}"
+AVD_SECONDARY="${E2E_AVD_SECONDARY:-Pixel_3a}"
 BOOT_TIMEOUT=300              # 5 minutes max wait for emulator boot
 
 # ── Parse args ───────────────────────────────────────────────────────────────
@@ -478,6 +479,30 @@ if [[ "$RUN_TESTS" == true ]]; then
         ok "E2E scenario tests passed"
     else
         fail "E2E scenario tests failed"
+        FAILURES=$((FAILURES + 1))
+    fi
+
+    # Real crash + recovery — the one signal the gradle suites CANNOT produce:
+    # an instrumented test can't crash its own process. Without this step the
+    # receipt gate's app.crash expectation can never be satisfied by this
+    # script's own drivers (found 2026-06-12: the gate had only ever passed
+    # because a human had driven a crash manually inside the window).
+    # Phase 1 generates pre-crash events and dies (non-zero exit EXPECTED);
+    # Phase 2 relaunches, which flushes the crash-mirrored events + app.crash.
+    step "Driving real crash + recovery (app.crash for the receipt gate)"
+    FIRST_SERIAL=$(adb devices 2>/dev/null | grep "emulator-" | awk '{print $1}' | head -n 1)
+    adb -s "$FIRST_SERIAL" shell am instrument -w \
+        -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase1Test \
+        io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner \
+        >/dev/null 2>&1 || true  # process death is the point
+    sleep 3
+    if adb -s "$FIRST_SERIAL" shell am instrument -w \
+        -e class io.opentelemetry.android.demo.scenarios.RealCrashPhase2Test \
+        io.opentelemetry.android.demo.test/androidx.test.runner.AndroidJUnitRunner \
+        2>&1 | grep -q "OK (1 test)"; then
+        ok "Crash + recovery driven (app.crash flush on relaunch)"
+    else
+        fail "Crash recovery phase failed — app.crash will be missing from the receipt gate"
         FAILURES=$((FAILURES + 1))
     fi
 
