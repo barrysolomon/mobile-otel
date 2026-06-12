@@ -129,7 +129,7 @@ dependencies {
     // ... existing deps ...
 
     // OpenTelemetry Mobile SDK
-    implementation("io.opentelemetry.android:mobile:0.2.1-alpha")
+    implementation("io.opentelemetry.android:mobile:0.3.0-alpha")
 }
 ```
 
@@ -148,7 +148,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // ... other deps ...
-    implementation("io.opentelemetry.android:mobile:0.2.1-alpha")
+    implementation("io.opentelemetry.android:mobile:0.3.0-alpha")
 }
 ```
 

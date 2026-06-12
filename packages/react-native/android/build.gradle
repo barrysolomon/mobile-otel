@@ -97,7 +97,7 @@ ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion'
 // dependency strings (which silently drifted to 0.1.0-alpha vs the published
 // 0.2.0-alpha and broke clean-.m2 CI while passing on caches that still had the
 // old artifact).
-ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion') ?: '0.2.1-alpha'
+ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion') ?: '0.3.0-alpha'
 
 dependencies {
     implementation "com.facebook.react:react-android:$reactAndroidVersion"

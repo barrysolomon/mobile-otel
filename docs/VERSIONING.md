@@ -2,7 +2,7 @@
 
 ## Current state
 
-- **Version:** `0.2.1-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.opentelemetry.android:mobile` + siblings, iOS SwiftPM tag `v0.2.1-alpha`).
+- **Version:** `0.3.0-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.opentelemetry.android:mobile` + siblings, iOS SwiftPM tag `v0.3.0-alpha`).
 - **Stability:** pre-1.0. Public entry points are annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS). **APIs may change between `0.x` releases.**
 
 ## Semantic Versioning (effective at 1.0)

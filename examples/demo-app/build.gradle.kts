@@ -45,7 +45,7 @@ subprojects {
                         } else {
                             "mobile-instrumentation-${path.removePrefix(":instrumentation-")}"
                         }
-                        version = "0.2.1-alpha"
+                        version = "0.3.0-alpha"
                         afterEvaluate {
                             from(components.findByName("release"))
                         }
