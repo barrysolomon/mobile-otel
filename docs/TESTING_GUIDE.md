@@ -14,6 +14,8 @@ Quick reference for all test commands.
 | `./scripts/test/run-dash0-tests.sh --journeys` | UserJourney suite only | Yes | Yes |
 | `./scripts/test/run-validated-tests.sh` | Scenarios + local collector + validation | Yes | No (local) |
 | `./scripts/demo/run-demo-full.sh` | Full demo (emulators + build + Dash0 scenarios) | Starts 2 | Yes |
+| `./scripts/e2e/run-e2e.sh` | Zero-to-demo Android e2e + **Dash0 receipt gate** | Starts 2 | Yes |
+| `./scripts/e2e/run-platform-e2e.sh ios-native rn-android rn-ios` | Drive the other 3 platforms' demos (launch → crash → recovery), receipt-gated | Sim/emu | Yes |
 
 ---
 
@@ -205,6 +207,34 @@ Both APKs install side-by-side. Run the same flow in each, compare telemetry in 
 
 ---
 
+## CI safety net — what runs where
+
+Per the hardening principle in [TEST_HARDENING_PLAN.md](TEST_HARDENING_PLAN.md)
+("a check that CI never runs is a check that doesn't exist"):
+
+| Layer | Workflow | When | What |
+|---|---|---|---|
+| Unit + lint | `ci.yml` (`android`) | every push | full Robolectric suite (1237 tests), lint |
+| R8 consumer gate | `ci.yml` (`android-minified`) | every push | demo app builds minified; entry points survive identity-mapped |
+| **AAR size budget** | `ci.yml` (`aar-size`) | every push | umbrella AAR ≤ 700 KB; raising the budget is a same-PR reviewed decision (`scripts/ci/check-aar-size.sh`) |
+| iOS compile gate | `ios-ci.yml` | every push (iOS paths) | `swift build` host-side (the full suite hangs off-simulator) |
+| **Android instrumented** | `device-tests.yml` | nightly + `v*` tags + manual | full `connectedDebugAndroidTest` on an API-34 emulator — includes the launch gates below |
+| **iOS full suite** | `device-tests.yml` | nightly + `v*` tags + manual | 530 tests via `xcodebuild test -scheme OTelMobile-Package` on a simulator |
+| Publish gate | `publish.yml` (`verify-ci-green`) | `v*` tags | refuses to publish a tag whose commit lacks green CI |
+
+Trigger the device suite on demand: `gh workflow run device-tests.yml`
+
+### Launch gates (run in every instrumented pass)
+
+| Gate | Proves |
+|---|---|
+| `StartupBudgetTest` | `OTelMobile.start()` blocks the main thread < 50 ms (HS-001; documented 3× allowance on software-rendered emulators) |
+| `StopThreadSafetyTest` | `stop()` is callable from any thread |
+| `KillSwitchEndToEndTest` (unit) | remote `sdk.enabled=false` stops both export choke points via the real config-poll path |
+| `CrashHandlerChainingTest` (unit) | Crashlytics-style handlers coexist; SDK persists before delegating; exactly one `app.crash` per crash |
+| `DiskBufferUpgradePathTest` (unit) | a v1-schema buffer survives the Room migration chain with every event readable |
+| `DiskBufferCorruptionRecoveryTest` (unit) | garbage/truncated/foreign-schema buffer files recreate instead of crashing the host |
+
 ## Quick Reference
 
 | What | Command | Emulator? | Dash0? | Time |
@@ -214,4 +244,6 @@ Both APKs install side-by-side. Run the same flow in each, compare telemetry in 
 | SDK integration | `./gradlew :otel-android-mobile:connectedDebugAndroidTest` | Yes | No | ~1 min |
 | Dash0 scenarios | `./gradlew :android:connectedDebugAndroidTest` | Yes | Yes | ~8 min |
 | Full demo | `./scripts/demo/run-demo-full.sh` | Starts 2 | Yes | ~12 min |
+| All-platform receipt gate | `./scripts/e2e/run-platform-e2e.sh` | Sim/emu | Yes | ~15 min |
+| Device suites in CI | `gh workflow run device-tests.yml` | Hosted | No | ~30 min |
 | Comparison demo | Build both flavors, install, manual | Yes | Optional | ~5 min |

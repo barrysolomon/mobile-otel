@@ -32,6 +32,13 @@ cd examples/demo-app
 ./gradlew :otel-android-mobile:connectedAndroidTest        # Instrumented tests (requires emulator)
 ```
 
+Instrumented runs include the launch gates: `StartupBudgetTest` (HS-001:
+`start()` < 50 ms on the main thread — 3× allowance on emulators) and
+`StopThreadSafetyTest`. In CI these run via `device-tests.yml` (nightly, `v*`
+tags, or `gh workflow run device-tests.yml`) — per-push CI is unit-only by
+cost design. The per-push `aar-size` job enforces a 700 KB budget on the
+umbrella AAR (`scripts/ci/check-aar-size.sh`).
+
 Note: The SDK library (`otel-android-mobile/`) does not have its own `gradlew`. Build it through `examples/demo-app/` which includes it as a project dependency via `settings.gradle.kts`.
 
 ### React Native SDK (`packages/react-native/` + `examples/upstream-demo-app-rn/`)
