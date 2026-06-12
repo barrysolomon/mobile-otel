@@ -28,14 +28,14 @@ Classifications:
 | `telemetry.sdk.name/version/language` | iOS | SEMCONV-STABLE |
 | `telemetry.distro.name/version` | RN | SEMCONV-EXP |
 | `dash0.resource.type` | all | VENDOR (properly namespaced; load-bearing for Dash0 Mobile-view routing — never rename) |
-| `device.platform` | Android | **MISALIGNED** — not semconv; redundant with `os.name`. Drop in 0.4.0. |
+| `device.platform` | Android | ✅ dropped in 0.4.0 (was redundant with `os.name`) |
 
 ## Session & user enrichment (per-event)
 
 | Attribute | Platforms | Verdict |
 |---|---|---|
 | `session.id` | iOS | SEMCONV-EXP (`session` registry) |
-| `mobile.session.id` | Android, RN-via-Android | **MISALIGNED** — semconv name is `session.id`, and our own iOS SDK already uses it. Converge in 0.4.0: emit `session.id`, keep `mobile.session.id` as a dual-emit alias for one minor, drop at 1.0. |
+| `mobile.session.id` | Android, RN-via-Android | ✅ converged in 0.4.0: `session.id` (semconv) is emitted alongside; `mobile.session.id` is a transition alias dropped at 1.0. |
 | `session.start_time`, `session.duration_ms`, `session.state`, `session.start_reason`, `session.termination_reason` | Android | VENDOR (extensions in the `session.*` namespace; semconv defines only `id`/`previous_id` today — collision risk accepted and tracked) |
 | `user.id` | Android | SEMCONV-EXP (registry) |
 
@@ -51,10 +51,10 @@ mapping layer is a feature, not a rename.
 | Event | Platforms | Verdict |
 |---|---|---|
 | `app.start`, `app.foreground`, `app.background` | Android (RN inherits) | VENDOR |
-| `app.launch` | RN-iOS | **MISALIGNED (internal)** — RN-iOS says `app.launch` where every other platform says `app.start`. Converge on `app.start` in 0.4.0. |
+| `app.launch` | iOS (RN-iOS inherits) | **DEFERRED** — investigation (0.4.0) showed `app.launch` (LifecycleInstrumentation, once-per-install-call) and `app.start` (VitalsInstrumentation, start-timing vitals) are *different emitters* on iOS; a blind rename would double-count app starts. Needs a lifecycle-vs-vitals ownership decision before 1.0. |
 | `app.crash`, `app.anr`, `app.memory_warning` | per platform | VENDOR |
 | `app.error` (RN) with `exception.type/message/stacktrace` | RN | exception attrs SEMCONV-STABLE; event name VENDOR |
-| `ui.tap`, `ui.scroll`, `ui.swipe`, `ui.text_input`, `ui.back_press`, `ui.screen_view`, `screen.view` | per platform | VENDOR — but note `ui.screen_view` (RN/Android) vs `screen.view` (iOS): **MISALIGNED (internal)**, converge on `ui.screen_view` in 0.4.0 |
+| `ui.tap`, `ui.scroll`, `ui.swipe`, `ui.text_input`, `ui.back_press`, `ui.screen_view` | per platform | VENDOR — ✅ converged: iOS `screen.view` renamed to `ui.screen_view` in 0.4.0 |
 | `ui.jank`, `ui.freeze`, `ui.screenshot`, `ui.wireframe`, `ui.wireframe.ref` | per platform | VENDOR |
 | `session.start`, `session.end` (iOS), `mobile.session.*` (Android) | per platform | VENDOR; naming-style mismatch tracked with the session-id convergence |
 | `device.heartbeat`, `device.orientation` | Android | VENDOR |
@@ -88,11 +88,13 @@ the planned dropped-event counters — keep the namespace.)
 
 ## Action list (all scheduled for 0.4.0, mirrored in API_STABILITY.md)
 
-1. **Session id convergence** — Android/RN emit `session.id` (semconv),
-   dual-emit `mobile.session.id` for one minor, drop the alias at 1.0.
-2. **`app.launch` → `app.start`** on RN-iOS.
-3. **`screen.view` → `ui.screen_view`** on iOS.
-4. **Drop `device.platform`** resource attribute (redundant with `os.name`).
+1. ✅ **Session id convergence** (0.4.0) — Android emits `session.id` +
+   `mobile.session.id`; alias drops at 1.0.
+2. ⏸ **`app.launch` vs `app.start`** — deferred; see the events table (two
+   different emitters on iOS; needs an ownership decision before 1.0).
+3. ✅ **`screen.view` → `ui.screen_view`** on iOS (0.4.0, clean rename —
+   BREAKING for dashboards filtering the old name; changelog carries it).
+4. ✅ **`device.platform` dropped** (0.4.0).
 5. Everything else: frozen as audited. New emitted names after this audit
    must be added to this document in the same PR (same discipline as
    API_STABILITY.md).
