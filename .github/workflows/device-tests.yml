@@ -79,7 +79,13 @@ jobs:
   ios-simulator:
     name: iOS full suite (simulator)
     runs-on: macos-15
-    timeout-minutes: 60
+    # 90, not 60: a COLD run (no SwiftPM cache) spends most of its time
+    # compiling grpc-swift and was killed by a 60-min budget twice during
+    # bring-up. Cancelled/timed-out jobs don't save caches, so a too-tight
+    # budget is self-perpetuating: no run ever finishes, no cache is ever
+    # seeded, every run is cold. Once one run completes, the cache makes
+    # the nightly steady state far faster.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
       - name: Select Xcode
