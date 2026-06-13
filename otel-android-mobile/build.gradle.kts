@@ -169,7 +169,7 @@ publishing {
             pom {
                 name.set("OpenTelemetry Android Mobile Extensions")
                 description.set("Mobile-specific extensions for OpenTelemetry Android including buffering and conditional export")
-                url.set("https://github.com/open-telemetry/opentelemetry-android-contrib")
+                url.set("https://github.com/barrysolomon/mobile-otel")
 
                 licenses {
                     license {
@@ -180,16 +180,16 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("opentelemetry")
-                        name.set("OpenTelemetry")
-                        email.set("cncf-opentelemetry-maintainers@lists.cncf.io")
+                        id.set("barrysolomon")
+                        name.set("Barry Solomon")
+                        email.set("barry@testingalchemy.com")
                     }
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/open-telemetry/opentelemetry-android-contrib.git")
-                    developerConnection.set("scm:git:ssh://github.com/open-telemetry/opentelemetry-android-contrib.git")
-                    url.set("https://github.com/open-telemetry/opentelemetry-android-contrib")
+                    connection.set("scm:git:git://github.com/barrysolomon/mobile-otel.git")
+                    developerConnection.set("scm:git:ssh://github.com/barrysolomon/mobile-otel.git")
+                    url.set("https://github.com/barrysolomon/mobile-otel")
                 }
             }
         }

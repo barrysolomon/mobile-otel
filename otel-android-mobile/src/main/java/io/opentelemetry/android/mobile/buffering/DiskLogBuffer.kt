@@ -355,15 +355,20 @@ internal class DiskLogBuffer private constructor(
      * and boot IDs for clock-skew-safe window queries.
      */
     internal fun persistBufferedEvents(events: List<BufferedEvent>) {
-        adjustCachedCount(events.size)
         scope.launch {
             try {
                 val entities = events.map { it.toEntity() }
                 logDao.insertAll(entities)
+                // Re-seed the cached count from the committed DB state AFTER the
+                // insert. A pre-insert delta is invisible while the cache is
+                // unseeded, and a concurrent read could otherwise cache a stale
+                // pre-insert value. Reading post-commit is correct by
+                // construction. set() (not adjust) so concurrent persists
+                // converge on DB truth.
+                cachedCount.set(logDao.getCount())
                 Log.d(TAG, "Persisted ${entities.size} buffered events to disk (with monotonicMs)")
                 enforceSizeLimit()
             } catch (e: Exception) {
-                adjustCachedCount(-events.size)
                 Log.e(TAG, "Error persisting buffered events", e)
             }
         }
@@ -589,12 +594,15 @@ internal class DiskLogBuffer private constructor(
     fun getEventCount(): Int {
         val cached = cachedCount.get()
         if (cached >= 0) return cached
-        // First access: seed from DB (runs once at startup, on the calling thread).
+        // First access: seed from DB. Use compareAndSet so a concurrent write
+        // path that already published a count (see persistBufferedEvents) is
+        // NEVER clobbered by a read that observed the pre-insert DB state —
+        // clobbering it cached a stale 0 permanently (regression fixed 2026-06).
         return runBlocking {
             try {
                 val count = logDao.getCount()
-                cachedCount.set(count)
-                count
+                cachedCount.compareAndSet(-1, count)
+                cachedCount.get().coerceAtLeast(0)
             } catch (e: Exception) {
                 Log.e(TAG, "Error getting event count", e)
                 0
@@ -634,6 +642,10 @@ internal class DiskLogBuffer private constructor(
      *
      * Called periodically by MobileLogRecordProcessor.
      */
+    /** Self-observability hook: invoked with the count of TTL-expired events
+     * each cleanup deletes. Set by the processor to feed `sdk.events.dropped`. */
+    @Volatile internal var onExpiredEvents: ((Int) -> Unit)? = null
+
     fun cleanup() {
         scope.launch {
             try {
@@ -642,6 +654,7 @@ internal class DiskLogBuffer private constructor(
                 if (deletedCount > 0) {
                     adjustCachedCount(-deletedCount)
                     Log.i(TAG, "Cleanup: deleted $deletedCount expired events (TTL: ${ttlHours}h)")
+                    try { onExpiredEvents?.invoke(deletedCount) } catch (_: Throwable) {}
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during cleanup", e)

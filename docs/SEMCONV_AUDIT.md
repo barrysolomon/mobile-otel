@@ -79,7 +79,7 @@ mapping layer is a feature, not a rename.
 
 All `buffer.*`, `device.battery/memory/storage/thermal.*`, `prediction.*`,
 `mobile.ui.frame.*`, `mobile.app.start.*`, `mobile.session.crash_free`,
-`datastore.*`, `sdk.enabled`, `sdk.sample_rate`: **VENDOR**. Semconv has no
+`datastore.*`, `sdk.enabled`, `sdk.sample_rate`, `sdk.events.dropped` (counter, `reason` ∈ oversize|remote_gate|ttl_expired — added for 1.0 self-observability; reports even while the gate drops everything else): **VENDOR**. Semconv has no
 stable mobile-vitals metrics yet; ours are coherent and namespaced. Frozen
 at 1.0 as-is. (`sdk.*` self-observability gauges are also the foundation for
 the planned dropped-event counters — keep the namespace.)

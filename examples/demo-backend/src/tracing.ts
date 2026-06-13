@@ -24,6 +24,22 @@ if (rawHeaders) {
   }
 }
 
+// Skip tracing entirely under vitest or when the endpoint is the
+// .env.example placeholder. Without this, importing index.ts from a test
+// boots the exporter against the literal host "your-collector": every test
+// passes but the ENOTFOUND unhandled rejection fails the run (found by
+// run-e2e.sh's backend-test step, 2026-06-12).
+const isPlaceholder = httpEndpoint === "" || httpEndpoint.includes("your-collector");
+const isTestRun = !!process.env.VITEST;
+if (isPlaceholder || isTestRun) {
+  if (!isTestRun) {
+    console.warn("[tracing] OTEL_EXPORTER_OTLP_ENDPOINT not configured — backend tracing disabled");
+  }
+} else {
+  startTracing();
+}
+
+function startTracing() {
 const sdk = new NodeSDK({
   resource: new Resource({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "otel-mobile-backend",
@@ -45,3 +61,4 @@ console.log("[tracing] Headers configured:", Object.keys(headers).join(", ") || 
 process.on("SIGTERM", () => {
   sdk.shutdown().then(() => process.exit(0));
 });
+}
