@@ -9,6 +9,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.1-alpha] — 2026-06-12
+
+Pre-soak hardening — the crash-reporter coexistence and self-observability an integrator needs before adopting the SDK alongside their existing tooling.
+
+### Fixed
+
+- **iOS crash handlers now coexist with a host crash reporter on the signal path too.** Installing the SDK used to silently disconnect a PLCrashReporter / KSCrash / Sentry signal handler installed before it (nothing was captured to chain to), and `stop()` reset signal dispositions to `SIG_DFL` instead of restoring the host's. Now the SDK captures the previous `sigaction` per fatal signal, chains to it after writing its crash marker, and restores it on uninstall — matching the NSException path, which already chained. (The Android equivalent shipped in 0.3.1-alpha.)
+- **`getBufferStats().diskBufferSize` no longer sticks at a stale `0`.** A race between an async disk persist and a concurrent stats read could permanently cache a pre-insert count (regression from the 0.4.0 cache change). The cache now seeds without clobbering published writes and re-seeds authoritatively after each insert.
+
+### Added
+
+- **`sdk.events.dropped` metric** (`reason` ∈ `oversize` | `remote_gate` | `ttl_expired`) — a broken or remotely-disabled SDK is now distinguishable from a quiet app, and the counter reports even while the kill switch is dropping everything else. See [SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md).
+- **Maven Central groundwork** — complete POM metadata on every published artifact and [docs/MAVEN_CENTRAL.md](docs/MAVEN_CENTRAL.md), the runbook for moving off GitHub Packages (one open decision: the published groupId).
+
+### CI
+
+- The journey/fault/offline scenario suites now run in `device-tests.yml` with the demo backend started on the runner.
+- Demo-backend tracing skips initialization under tests / placeholder endpoints (a unit-test run no longer fails on an ENOTFOUND to the example collector host).
+
+
 ## [0.4.0-alpha] — 2026-06-12
 
 The deliberate breaking release before the API freeze: the 1.0 stability gates were executed ([API_STABILITY.md](docs/API_STABILITY.md), [SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md)), and every scheduled breaking change landed here in one batch — pre-1.0 minors may break; this is the last one planned to.

@@ -71,7 +71,7 @@ In `otel-android-mobile-core/build.gradle.kts`, add after line 52 (`api("io.open
 In `otel-android-mobile/build.gradle.kts`, delete line 84:
 
 ```kotlin
-    api("io.opentelemetry.android:instrumentation:0.4.0-alpha")
+    api("io.opentelemetry.android:instrumentation:0.4.1-alpha")
 ```
 
 - [ ] **Step 3: Update semconv version**
@@ -1144,7 +1144,7 @@ git add -A
 git commit -m "feat: Phase 1 upstream supersession — adapter layer, @Supersedes, dependency alignment
 
 - Add upstream session:0.10.0-alpha + instrumentation-android-instrumentation:0.10.0-alpha
-- Remove phantom dep instrumentation:0.4.0-alpha
+- Remove phantom dep instrumentation:0.4.1-alpha
 - MobileSessionProvider extends upstream SessionProvider
 - UpstreamInstrumentationAdapter: run upstream modules in our framework
 - MobileInstrumentationAdapter: run our modules in upstream framework

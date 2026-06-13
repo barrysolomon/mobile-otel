@@ -3,7 +3,7 @@
 ## Current state
 
 - **API tiers:** every public symbol is assigned a tier in [API_STABILITY.md](API_STABILITY.md) (gate 2, reviewed 2026-06-12); emitted telemetry names are frozen per [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md) (gate 3).
-- **Version:** `0.4.0-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.opentelemetry.android:mobile` + siblings, iOS SwiftPM tag `v0.4.0-alpha`).
+- **Version:** `0.4.1-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.opentelemetry.android:mobile` + siblings, iOS SwiftPM tag `v0.4.1-alpha`).
 - **Stability:** pre-1.0. Public entry points are annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS). **APIs may change between `0.x` releases.**
 
 ## Semantic Versioning (effective at 1.0)

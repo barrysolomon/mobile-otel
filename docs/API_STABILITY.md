@@ -137,7 +137,7 @@ These were implementation details with no supported consumer use:
 
 ---
 
-## Scheduled breaking changes for 0.4.0 — EXECUTED in 0.4.0-alpha
+## Scheduled breaking changes for 0.4.0 — EXECUTED in 0.4.1-alpha
 
 1. ✅ INTERNAL-LEAK list sealed (`internal`); `MobileLoggerProvider` gained
    first-class `flushWindow(minutes)` + `getBufferStats()`; `BufferStats`
