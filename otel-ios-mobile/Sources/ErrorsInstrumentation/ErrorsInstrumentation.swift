@@ -85,6 +85,15 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
     /// crash report.
     nonisolated(unsafe) static var previousExceptionHandler: (@convention(c) (NSException) -> Void)?
 
+    /// Previous signal dispositions captured at install, indexed by signal
+    /// number — so a crash reporter (PLCrashReporter / KSCrash / Sentry)
+    /// installed BEFORE us still observes the crash, and uninstall restores
+    /// it instead of resetting to SIG_DFL. Fixed-size array + plain stores:
+    /// reading it from the signal handler is async-signal-safe.
+    /// NSIG is 32 on Darwin.
+    nonisolated(unsafe) static var previousSignalHandlers: [sigaction?] =
+        Array(repeating: nil, count: 32)
+
     private init() {}
 
     public func install(logger: Logger) {
@@ -128,7 +137,14 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
             action.__sigaction_u.__sa_handler = signalHandler
             sigemptyset(&action.sa_mask)
             action.sa_flags = 0
-            sigaction(sig, &action, nil)
+            // Capture whatever was installed before us (a crash reporter's
+            // handler, or SIG_DFL) so the crash still reaches it — the same
+            // do-not-clobber contract the NSException path has always had.
+            var previous = sigaction()
+            sigaction(sig, &action, &previous)
+            if Int(sig) < Self.previousSignalHandlers.count {
+                Self.previousSignalHandlers[Int(sig)] = previous
+            }
         }
     }
 
@@ -141,7 +157,13 @@ public final class ErrorsInstrumentation: @unchecked Sendable {
         // nil is correct.
         NSSetUncaughtExceptionHandler(ErrorsInstrumentation.previousExceptionHandler)
         for sig in Self.fatalSignals {
-            signal(sig, SIG_DFL)
+            if Int(sig) < Self.previousSignalHandlers.count,
+               var previous = Self.previousSignalHandlers[Int(sig)] {
+                sigaction(sig, &previous, nil)
+                Self.previousSignalHandlers[Int(sig)] = nil
+            } else {
+                signal(sig, SIG_DFL)
+            }
         }
     }
 
@@ -348,8 +370,39 @@ private func signalHandler(_ sig: Int32) {
             write(fd, ptr.baseAddress, 3)
         }
     }
+    // Chain to the handler that was installed before us (crash reporters:
+    // PLCrashReporter / KSCrash / Sentry). Reading the fixed-size array and
+    // calling a captured C function pointer are async-signal-safe; the
+    // chained handler's own safety is its author's contract, exactly as it
+    // was before we existed. SA_SIGINFO-style handlers (sa_sigaction) cannot
+    // be invoked through the plain-handler ABI, so for those we fall through
+    // to re-raise after restoring their disposition — the OS re-delivers the
+    // signal to their handler.
+    if Int(sig) < ErrorsInstrumentation.previousSignalHandlers.count,
+       var previous = ErrorsInstrumentation.previousSignalHandlers[Int(sig)] {
+        if (previous.sa_flags & SA_SIGINFO) == 0,
+           let prevHandler = previous.__sigaction_u.__sa_handler,
+           !sigactionHandlerIsDefaultOrIgnore(previous) {
+            prevHandler(sig)
+        } else if (previous.sa_flags & SA_SIGINFO) != 0 {
+            // Restore the SA_SIGINFO handler and re-raise so the OS invokes
+            // it with the full siginfo context it expects.
+            sigaction(sig, &previous, nil)
+            raise(sig)
+            return
+        }
+    }
     // Async-signal-safe: signal(), raise().
     signal(sig, SIG_DFL)
     raise(sig)
+}
+
+/// True when the captured disposition is SIG_DFL or SIG_IGN (not a real
+/// handler we should invoke). Pure pointer comparison — async-signal-safe.
+func sigactionHandlerIsDefaultOrIgnore(_ action: sigaction) -> Bool {
+    let handler = action.__sigaction_u.__sa_handler
+    return handler == nil ||
+        unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_DFL, to: Int.self) ||
+        unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_IGN, to: Int.self)
 }
 

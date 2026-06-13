@@ -634,6 +634,10 @@ internal class DiskLogBuffer private constructor(
      *
      * Called periodically by MobileLogRecordProcessor.
      */
+    /** Self-observability hook: invoked with the count of TTL-expired events
+     * each cleanup deletes. Set by the processor to feed `sdk.events.dropped`. */
+    @Volatile internal var onExpiredEvents: ((Int) -> Unit)? = null
+
     fun cleanup() {
         scope.launch {
             try {
@@ -642,6 +646,7 @@ internal class DiskLogBuffer private constructor(
                 if (deletedCount > 0) {
                     adjustCachedCount(-deletedCount)
                     Log.i(TAG, "Cleanup: deleted $deletedCount expired events (TTL: ${ttlHours}h)")
+                    try { onExpiredEvents?.invoke(deletedCount) } catch (_: Throwable) {}
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during cleanup", e)

@@ -30,7 +30,7 @@ jobs:
   android-instrumented:
     name: Android instrumented suite (emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - name: Enable KVM for hardware-accelerated emulation
@@ -44,6 +44,16 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Start the demo backend (scenario suites book against it)
+        working-directory: examples/demo-backend
+        run: |
+          npm ci
+          cp -n .env.example .env || true
+          (npx tsx src/index.ts > /tmp/demo-backend.log 2>&1 &)
+          for i in $(seq 1 20); do curl -sf http://localhost:3001/health && break; sleep 1; done
       - name: SDK instrumented tests on emulator (API 34)
         # The suite is self-contained: the kill-switch test runs its own local
         # HTTP server, the budget/buffer/DSL tests need no backend. Includes
@@ -68,6 +78,7 @@ jobs:
           script: |
             adb logcat -c || true
             ./gradlew :otel-android-mobile:connectedDebugAndroidTest || (echo '=== SDK logcat (encryption/buffer/keystore diagnostics) ==='; adb logcat -d -s DiskLogBuffer:V DiskBufferKeyManager:V MobileLoggerProvider:V SessionManager:V AndroidKeysetManager:V keystore2:V | tail -100; exit 1)
+            ./gradlew :android:connectedDebugAndroidTest || (echo '=== scenario-suite logcat ==='; adb logcat -d -s MobileLogRecordProcessor:V LoggingHttpExporter:V | tail -60; exit 1)
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

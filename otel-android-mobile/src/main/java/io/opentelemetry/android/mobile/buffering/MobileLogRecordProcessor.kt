@@ -134,6 +134,26 @@ internal class MobileLogRecordProcessor private constructor(
     // [ramBufferMaxEventBytes]. iOS parity with RAMEventBuffer.droppedOversizeCount.
     private val droppedOversizeCount = AtomicLong(0)
 
+    // ── SDK self-observability: dropped-event accounting ────────────────
+    // A broken/suppressed SDK must be distinguishable from a quiet app
+    // (TEST_HARDENING_PLAN P2, pulled forward for 1.0). One counter, one
+    // `reason` dimension. Like the sdk.* gauges below, these are metrics —
+    // they bypass this log processor and are NOT subject to the remote gate,
+    // so a gated SDK still reports that it is dropping.
+    private val droppedReasonKey = io.opentelemetry.api.common.AttributeKey.stringKey("reason")
+    private val droppedCounter = meter.counterBuilder("sdk.events.dropped")
+        .setUnit("{events}")
+        .setDescription("Log events dropped by the SDK before export, by reason")
+        .build()
+
+    private fun countDropped(reason: String, count: Long = 1) {
+        try {
+            droppedCounter.add(count, io.opentelemetry.api.common.Attributes.of(droppedReasonKey, reason))
+        } catch (_: Throwable) {
+            // self-observability must never break the pipeline
+        }
+    }
+
     // Disk buffer: persistent storage with Room. LAZY — opening Room (and
     // loading the SQLCipher native lib) costs ~100 ms, far over the HS-001
     // main-thread init budget. Every disk-buffer consumer already runs on a
@@ -274,6 +294,12 @@ internal class MobileLogRecordProcessor private constructor(
                 policyEvaluator // build + start the config poller, off-main
             } catch (t: Throwable) {
                 Log.w(TAG, "PolicyEvaluator warm-up failed; will retry on first evaluation", t)
+            }
+            // TTL expiry feeds the dropped-events counter (self-observability).
+            try {
+                diskBuffer.onExpiredEvents = { n -> countDropped("ttl_expired", n.toLong()) }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Could not wire TTL drop accounting", t)
             }
         }
 
@@ -425,6 +451,7 @@ internal class MobileLogRecordProcessor private constructor(
         // via a non-biased per-thread RNG. Covers RN-originated logs transitively, since
         // the bridge emits through this same processor (see remote-kill-switch.md §6).
         if (!remoteGate.allowEvent()) {
+            countDropped("remote_gate")
             return
         }
 
@@ -496,6 +523,7 @@ internal class MobileLogRecordProcessor private constructor(
         // own size/TTL budget and is the right place for large blobs.
         if (bufferedEvent.sizeBytes > ramBufferMaxEventBytes) {
             droppedOversizeCount.incrementAndGet()
+            countDropped("oversize")
             Log.w(TAG, "Dropping oversize event from RAM (${bufferedEvent.sizeBytes}B > ${ramBufferMaxEventBytes}B): $body")
             executor.submit {
                 try {

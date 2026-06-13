@@ -49,6 +49,33 @@ subprojects {
                         afterEvaluate {
                             from(components.findByName("release"))
                         }
+                        // Maven Central requires complete POM metadata on EVERY
+                        // artifact (name/description/url/license/scm/developers);
+                        // GitHub Packages tolerates its absence, Central rejects.
+                        // See docs/MAVEN_CENTRAL.md.
+                        pom {
+                            name.set(if (isCore) "Mobile OTel Core" else "Mobile OTel Instrumentation")
+                            description.set("Mobile-specific OpenTelemetry Android module: buffering, conditional export, auto-instrumentation")
+                            url.set("https://github.com/barrysolomon/mobile-otel")
+                            licenses {
+                                license {
+                                    name.set("The Apache License, Version 2.0")
+                                    url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                                }
+                            }
+                            developers {
+                                developer {
+                                    id.set("barrysolomon")
+                                    name.set("Barry Solomon")
+                                    email.set("barry@testingalchemy.com")
+                                }
+                            }
+                            scm {
+                                connection.set("scm:git:git://github.com/barrysolomon/mobile-otel.git")
+                                developerConnection.set("scm:git:ssh://github.com/barrysolomon/mobile-otel.git")
+                                url.set("https://github.com/barrysolomon/mobile-otel")
+                            }
+                        }
                     }
                 }
                 // Publish core + every instrumentation module to GitHub Packages,
