@@ -95,6 +95,30 @@ class RamBufferByteCapTest {
             .build()
     }
 
+    /**
+     * Poll [getBufferStats] to a deadline instead of sleeping. The disk
+     * writes these tests observe are async (executor.submit / overflow /
+     * post-flush cleanup); a fixed Thread.sleep races them and flakes on a
+     * loaded CI runner (this class's sleeps DID flake — TEST_HARDENING_PLAN
+     * bans them). Polls are linear-time and fail with the last-seen value.
+     */
+    private fun awaitStat(
+        processor: MobileLogRecordProcessor,
+        timeoutMs: Long = 10_000,
+        desc: String,
+        predicate: (BufferStats) -> Boolean,
+    ): BufferStats {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var stats = processor.getBufferStats()
+        while (System.currentTimeMillis() < deadline) {
+            if (predicate(stats)) return stats
+            Thread.sleep(25)
+            stats = processor.getBufferStats()
+        }
+        assertTrue("timed out waiting for: $desc (last stats: $stats)", predicate(stats))
+        return stats
+    }
+
     @Test
     fun `oversize event is dropped from RAM and counted`() {
         val processor = buildProcessor(maxEventBytes = 4096)
@@ -115,8 +139,9 @@ class RamBufferByteCapTest {
         val processor = buildProcessor(maxEventBytes = 4096)
         try {
             processor.onEmit(OtelContext.root(), wrap(sizedRecord("big", 10_000)))
-            Thread.sleep(300) // async disk write
-            val stats = processor.getBufferStats()
+            val stats = awaitStat(processor, desc = "oversize event persisted to disk") {
+                it.diskBufferSize > 0
+            }
             assertEquals(0, stats.ramBufferSize)
             assertTrue("oversize event should be persisted to disk", stats.diskBufferSize > 0)
         } finally {
@@ -153,9 +178,9 @@ class RamBufferByteCapTest {
             repeat(20) { i ->
                 processor.onEmit(OtelContext.root(), wrap(sizedRecord("evt.$i", 12_000)))
             }
-            Thread.sleep(500) // wait for async overflowToDisk
-
-            val stats = processor.getBufferStats()
+            val stats = awaitStat(processor, desc = "events overflowed to disk under byte budget") {
+                it.diskBufferSize > 0 && it.ramBufferBytes <= 50_000L
+            }
             assertTrue(
                 "RAM bytes (${stats.ramBufferBytes}) must stay within budget despite count cap not being hit",
                 stats.ramBufferBytes <= 50_000L
@@ -177,9 +202,9 @@ class RamBufferByteCapTest {
             assertTrue(processor.getBufferStats().ramBufferBytes > 0)
 
             processor.forceFlush()
-            Thread.sleep(300) // async post-export cleanup
-
-            val stats = processor.getBufferStats()
+            val stats = awaitStat(processor, desc = "RAM cleared after force flush") {
+                it.ramBufferSize == 0 && it.ramBufferBytes == 0L
+            }
             assertEquals("RAM count cleared after flush", 0, stats.ramBufferSize)
             assertEquals("RAM byte accounting cleared after flush", 0L, stats.ramBufferBytes)
         } finally {

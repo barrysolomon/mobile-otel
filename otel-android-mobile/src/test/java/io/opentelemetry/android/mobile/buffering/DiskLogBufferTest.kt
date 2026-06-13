@@ -124,6 +124,28 @@ class DiskLogBufferTest {
     }
 
     @Test
+    fun `count cache is not stuck stale when a read races a write`() = runBlocking {
+        // Regression (2026-06): getEventCount() seeded the cache from the
+        // pre-insert DB state (0), then the async persist's count update was a
+        // no-op on the unseeded sentinel, leaving diskBufferSize stuck at 0
+        // forever — observable through the public getBufferStats(). Force the
+        // exact interleaving: seed the cache while the DB is empty, THEN
+        // persist, and require the count to self-correct.
+        assertEquals(0, diskBuffer.getEventCount()) // seeds cache from empty DB
+
+        diskBuffer.persistEvents(listOf(TestUtils.createTestLogRecord("raced")))
+
+        // Poll (not sleep) — the write must drag the cache back to truth.
+        val deadline = System.currentTimeMillis() + 5_000
+        var count = diskBuffer.getEventCount()
+        while (count != 1 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(25)
+            count = diskBuffer.getEventCount()
+        }
+        assertEquals("cache must converge to DB truth after a racing read", 1, count)
+    }
+
+    @Test
     fun `persisted events can be retrieved`() = runBlocking {
         val originalLog = TestUtils.createTestLogRecord("retrievable")
 
