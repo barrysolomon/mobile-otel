@@ -160,7 +160,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "io.opentelemetry.android"
             artifactId = "mobile"
-            version = "0.4.0-alpha"
+            version = "0.4.1-alpha"
 
             afterEvaluate {
                 from(components["release"])

@@ -12,8 +12,8 @@ DSL v1 was the original export policy format. DSL v2 added 21 matcher types, 10 
 | Milestone | Target Date | Action |
 |-----------|-------------|--------|
 | v2 default | 2026-04-14 | **DONE** — SDK auto-detects v1/v2, negotiates v2 with gateway |
-| v1 deprecation warning | 0.4.0-alpha | SDK logs warning when v1 config is loaded |
-| Control plane v1 compiler removal | 0.4.0-alpha | `graphToDSLv1.ts` removed from control plane UI |
+| v1 deprecation warning | 0.4.1-alpha | SDK logs warning when v1 config is loaded |
+| Control plane v1 compiler removal | 0.4.1-alpha | `graphToDSLv1.ts` removed from control plane UI |
 | SDK v1 parser removal | 1.0.0 | v1 parsing code removed from Android + iOS SDKs |
 
 ## Migration Guide

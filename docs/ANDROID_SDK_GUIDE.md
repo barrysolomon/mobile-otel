@@ -77,7 +77,7 @@ gpr.token=ghp_your_personal_access_token_with_read_packages
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.4.0-alpha")
+    implementation("io.opentelemetry.android:mobile:0.4.1-alpha")
 }
 ```
 
@@ -228,7 +228,7 @@ Practical consequences:
   briefly while the encrypted store finishes warming up; its write is visible
   when it returns, as always.
 - The first remote-config poll starts a few ms later than in releases before
-  0.4.0-alpha.
+  0.4.1-alpha.
 
 ## Auto-Instrumentation
 

@@ -81,11 +81,11 @@ Modules that upstream instruments via ByteBuddy are either already covered by ou
 
 ### 2.1 Dependency Alignment
 
-**Current state:** We pin OTel SDK at `1.58.0` across all modules. We declare a phantom dependency on `io.opentelemetry.android:instrumentation:0.4.0-alpha` (unused, stale artifact ID).
+**Current state:** We pin OTel SDK at `1.58.0` across all modules. We declare a phantom dependency on `io.opentelemetry.android:instrumentation:0.4.1-alpha` (unused, stale artifact ID).
 
 **Target state:**
 - Keep OTel SDK at `1.58.0` (our version is newer than upstream's BOM-resolved version; Gradle picks the higher version, and OTel API is backward-compatible within 1.x)
-- Remove phantom dep `io.opentelemetry.android:instrumentation:0.4.0-alpha`
+- Remove phantom dep `io.opentelemetry.android:instrumentation:0.4.1-alpha`
 - Add real dependencies in `otel-android-mobile-core/build.gradle.kts`:
   - `api("io.opentelemetry.android:session:0.10.0-alpha")`
   - `api("io.opentelemetry.android:instrumentation-android-instrumentation:0.10.0-alpha")`
@@ -846,7 +846,7 @@ Add as Track 7:
 Epic: [UPSTREAM_SUPERSESSION_EPIC.md](docs/epics/UPSTREAM_SUPERSESSION_EPIC.md)
 
 ### Phase 1 -- Foundation (P0)
-- [ ] Remove phantom dep `instrumentation:0.4.0-alpha`
+- [ ] Remove phantom dep `instrumentation:0.4.1-alpha`
 - [ ] Add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
 - [ ] Update semconv to 1.40.0
 - [ ] `MobileSessionProvider extends SessionProvider`

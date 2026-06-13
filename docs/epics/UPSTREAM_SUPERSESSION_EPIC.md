@@ -37,7 +37,7 @@ Compatible superset (Phase A) leading to interface convergence and merge proposa
 
 | ID | Title | Status |
 |----|-------|--------|
-| US-001 | Remove phantom dep `instrumentation:0.4.0-alpha` | [ ] |
+| US-001 | Remove phantom dep `instrumentation:0.4.1-alpha` | [ ] |
 | US-002 | Add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha` deps | [ ] |
 | US-003 | Update semconv `1.39.0` to `1.40.0` | [ ] |
 | US-004 | `MobileSessionProvider extends SessionProvider` | [ ] |

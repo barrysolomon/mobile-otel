@@ -208,7 +208,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### Phase 1 — Foundation (P0)
 
-- [ ] Remove phantom dep `instrumentation:0.4.0-alpha`, add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
+- [ ] Remove phantom dep `instrumentation:0.4.1-alpha`, add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
 - [ ] Update semconv `1.39.0` → `1.40.0`
 - [ ] `MobileSessionProvider extends SessionProvider` + `UpstreamSessionProviderAdapter`
 - [ ] `UpstreamInstrumentationAdapter` (upstream modules in our framework)
