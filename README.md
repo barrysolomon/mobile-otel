@@ -67,6 +67,21 @@ OTelMobile.start(this, MobileConfig(
 // - Ring buffer + policy evaluation
 ```
 
+**Sending to Dash0?** Pass your auth token and dataset name via `headers`:
+
+```kotlin
+// In Application.onCreate()
+OTelMobile.start(this, MobileConfig(
+    serviceName = "my-app",
+    serviceVersion = "1.0.0",
+    collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com", // or eu-west-1; OTLP/HTTP default
+    headers = mapOf(
+        "Authorization" to "Bearer auth_...",
+        "Dash0-Dataset" to "otel-mobile"
+    )
+))
+```
+
 ### Optional: Custom Events & Error Reporting
 
 ```kotlin
@@ -136,6 +151,20 @@ let otel = try OTelMobile.start(config: MobileConfig(
 ))
 ```
 
+**Sending to Dash0?** Pass your auth token and dataset name:
+
+```swift
+import OTelMobileSDK
+
+let otel = try OTelMobile.start(config: MobileConfig(
+    serviceName: "my-app",
+    serviceVersion: "1.0.0",
+    endpoint: "https://ingress.us-west-2.aws.dash0.com",  // or eu-west-1
+    authToken: "auth_...",          // sets Authorization: Bearer <token>
+    extraHeaders: ["Dash0-Dataset": "otel-mobile"]
+))
+```
+
 > Screenshot and wireframe capture default **OFF** on iOS. Opt in via `screenshotConfig` / `wireframeConfig`, and provide a `shouldCapture` consent gate (a `CaptureConsentGate`) to decide per-capture whether to record.
 
 ### React Native Integration (npm)
@@ -157,6 +186,19 @@ await OTelMobile.start({
   // RN manual spans default to always-on sampling (strategy: 'always_on').
   // Opt back into on-device sampling explicitly:
   // sampling: { strategy: 'dynamic', normalRate: 0.1 },
+});
+```
+
+**Sending to Dash0?** Use the dedicated `authToken` and `dataset` fields:
+
+```ts
+import OTelMobile from '@barrysolomon/mobile-react-native';
+
+await OTelMobile.start({
+  serviceName: 'my-app',
+  endpoint: 'https://ingress.us-west-2.aws.dash0.com', // or eu-west-1
+  authToken: 'auth_...',
+  dataset: 'otel-mobile',
 });
 ```
 
