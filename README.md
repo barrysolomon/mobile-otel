@@ -2,7 +2,7 @@
 
 OpenTelemetry-native mobile observability SDK (Android, iOS, React Native) with intelligent buffering, on-device export policies, predictive telemetry, and a remote kill switch.
 
-> **Current release: `0.4.1-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for the full 0.4.1-alpha notes.
+> **Current release: `0.4.2-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for the full 0.4.2-alpha notes.
 
 > **Management plane (gateway, control plane UI, k8s manifests)** has moved to [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
@@ -25,7 +25,7 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 
 ### Android SDK Integration
 
-Add the dependency from GitHub Packages (artifact `io.opentelemetry.android:mobile:0.4.1-alpha`). Consuming GitHub Packages requires a GitHub personal access token with the `read:packages` scope:
+Add the dependency from GitHub Packages (artifact `io.opentelemetry.android:mobile:0.4.2-alpha`). Consuming GitHub Packages requires a GitHub personal access token with the `read:packages` scope:
 
 ```kotlin
 // settings.gradle.kts (or build.gradle.kts repositories block)
@@ -42,7 +42,7 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.4.1-alpha")
+    implementation("io.opentelemetry.android:mobile:0.4.2-alpha")
 }
 ```
 
@@ -125,13 +125,13 @@ val client = OkHttpClient.Builder()
 
 ### iOS SDK Integration (SwiftPM)
 
-Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.4.1-alpha`, and depend on the `OTelMobileSDK` product:
+Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.4.2-alpha`, and depend on the `OTelMobileSDK` product:
 
 ```swift
 // Package.swift
 dependencies: [
-    // SwiftPM resolves the git tag literally — the release tag is v0.4.1-alpha
-    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.4.1-alpha"))
+    // SwiftPM resolves the git tag literally — the release tag is v0.4.2-alpha
+    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.4.2-alpha"))
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -174,7 +174,7 @@ Install under the **`alpha`** dist-tag — a bare install resolves the older 0.1
 ```bash
 npm install @barrysolomon/mobile-react-native@alpha
 # or pin exactly:
-npm install @barrysolomon/mobile-react-native@0.4.1-alpha
+npm install @barrysolomon/mobile-react-native@0.4.2-alpha
 ```
 
 ```ts

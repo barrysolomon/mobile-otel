@@ -9,6 +9,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.2-alpha] — 2026-06-15
+
+Crash-span recovery and Dash0 auth documentation.
+
+### Fixed
+
+- **`PersistingSpanProcessor` — crash-safe checkpoint for long-running spans.** Long-running `page.*` and `journey.*` spans that sit open in `BatchSpanProcessor`'s RAM queue when the process is killed were never exported. Their children had already reached the backend; the parent had not. Dash0 rendered the children as orphans under a "Missing span" placeholder. The new `PersistingSpanProcessor` wraps `BatchSpanProcessor`: on `onStart` it writes a `SpanCheckpoint` (traceId/spanId/parentSpanId/name/startEpochNanos) to SharedPreferences via synchronous `commit()` so it survives a crash. On `onEnd` it removes the checkpoint — span ended normally, no recovery needed. On next launch, `recoverAndExport()` synthesises truncated `SpanData` for every un-ended checkpoint, preserving the original IDs so Dash0 can stitch the previously-orphaned children back under the recovered parent span. Recovery runs before `SdkTracerProvider.build()` to guarantee synthesised parents arrive before new children sharing the same traceId. Verified E2E: real `adb force-stop` → relaunch → recovered span lands in Dash0 with `crash.recovered=true`, correct `service.name`, and `parentSpanId` intact.
+- **Recovered spans now carry the real SDK resource.** `SynthesizedSpanData` was returning `Resource.getDefault()`, causing recovered spans to appear in Dash0 as `unknown_service:java`. `PersistingSpanProcessor` now accepts the SDK resource at construction and stamps every recovered span with it.
+
+### Added
+
+- **`SpanCheckpoint` / `SpanCheckpointStore`** — new public types under `io.opentelemetry.android.mobile.buffering`. `SharedPreferencesSpanCheckpointStore` is the production implementation; `InMemorySpanCheckpointStore` ships in the test sources for easy unit testing.
+- **Dash0 auth documentation.** README now includes "Sending to Dash0?" snippets for all three SDKs (Android, iOS, React Native), showing the exact field names, endpoint, and header conventions for each platform.
+- **`dash0` CLI v1.14.0 install recipe** added to the Dash0 CLI reference (homebrew tap is gone; direct GitHub release download is the install path).
+
+### Tests
+
+- 14 TDD tests covering `PersistingSpanProcessor` (RED-GREEN verified): checkpoint lifecycle, crash recovery, `parentSpanId` preservation (the exact Dash0 stitching scenario), `crash.recovered` attribute, store clear after recovery, delegate forwarding, and SDK resource propagation.
+
 ## [0.4.1-alpha] — 2026-06-12
 
 Pre-soak hardening — the crash-reporter coexistence and self-observability an integrator needs before adopting the SDK alongside their existing tooling.
