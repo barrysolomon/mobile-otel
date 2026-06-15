@@ -7,6 +7,8 @@ package io.opentelemetry.android.mobile
 
 import android.content.Context
 import io.opentelemetry.android.mobile.buffering.MobileLogRecordProcessor
+import io.opentelemetry.android.mobile.buffering.PersistingSpanProcessor
+import io.opentelemetry.android.mobile.buffering.SharedPreferencesSpanCheckpointStore
 import io.opentelemetry.android.mobile.config.ExporterCustomizers
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.instrumentation.Incubating
@@ -279,30 +281,35 @@ class MobileLoggerProvider private constructor(
         }
         for (c in customizers.span) { baseSpanExporter = c(baseSpanExporter) }
 
+        val spanCheckpointStore = SharedPreferencesSpanCheckpointStore(context)
+        val batchSpanProcessor = when (config.exportMode) {
+            io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
+                BatchSpanProcessor.builder(baseSpanExporter)
+                    .setScheduleDelay(3600, TimeUnit.SECONDS)
+                    .setMaxQueueSize(10000)
+                    .build()
+            }
+            io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
+                BatchSpanProcessor.builder(baseSpanExporter)
+                    .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
+                    .build()
+            }
+            io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
+                BatchSpanProcessor.builder(baseSpanExporter)
+                    .setScheduleDelay(3600, TimeUnit.SECONDS)
+                    .setMaxQueueSize(10000)
+                    .build()
+            }
+        }
+        val persistingSpanProcessor = PersistingSpanProcessor(spanCheckpointStore, batchSpanProcessor, resource)
+        // Recover any spans that were open at the last crash — must run before new spans start
+        // so synthesized spans reach Dash0 before any new children that share the same traceId.
+        persistingSpanProcessor.recoverAndExport(baseSpanExporter)
+
         val tracerProvider = SdkTracerProvider.builder()
             .setResource(resource)
             .setSampler(sampler)
-            .addSpanProcessor(
-                when (config.exportMode) {
-                    io.opentelemetry.android.mobile.config.ExportMode.CONDITIONAL -> {
-                        BatchSpanProcessor.builder(baseSpanExporter)
-                            .setScheduleDelay(3600, TimeUnit.SECONDS)
-                            .setMaxQueueSize(10000)
-                            .build()
-                    }
-                    io.opentelemetry.android.mobile.config.ExportMode.CONTINUOUS -> {
-                        BatchSpanProcessor.builder(baseSpanExporter)
-                            .setScheduleDelay(config.traceExportIntervalSeconds, TimeUnit.SECONDS)
-                            .build()
-                    }
-                    io.opentelemetry.android.mobile.config.ExportMode.HYBRID -> {
-                        BatchSpanProcessor.builder(baseSpanExporter)
-                            .setScheduleDelay(3600, TimeUnit.SECONDS)
-                            .setMaxQueueSize(10000)
-                            .build()
-                    }
-                }
-            )
+            .addSpanProcessor(persistingSpanProcessor)
             .build()
 
         // Create mobile log processor with ring buffer. It shares the same remoteGate as
