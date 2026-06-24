@@ -91,13 +91,20 @@ repositories {
 ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion') ?: '+'
 
 // Version of the native Android SDK (io.opentelemetry.android:mobile) this RN
-// module depends on. Single source of truth — MUST track the published SDK
-// version (see the publishing convention in examples/demo-app/build.gradle.kts).
-// Kept as a property so a version bump updates one place, not N hardcoded
-// dependency strings (which silently drifted to 0.1.0-alpha vs the published
-// 0.2.0-alpha and broke clean-.m2 CI while passing on caches that still had the
-// old artifact).
-ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion') ?: '0.4.1-alpha'
+// module depends on. DERIVED from this package's own package.json `version`,
+// which carries the lockstep release version shared by all three artifacts
+// (npm + Android Maven + iOS SwiftPM — see docs/VERSIONING.md). Deriving it
+// means the consumer can never drift from the published SDK: a release bump
+// touches package.json (release-checklist item #1) and this tracks it
+// automatically, instead of being a 4th place a human must remember to edit.
+// A consumer can still pin an explicit SDK build via -PDash0Mobile_sdkVersion.
+//
+// History: a HARDCODED pin here silently drifted from the published version
+// TWICE — 0.1.0 vs 0.2.0, then 0.4.1 vs 0.4.2 — each time breaking clean-.m2
+// CI (the RN-android job) while passing on caches that still held the old
+// artifact. Deriving from package.json removes that failure mode at the root.
+ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion')
+        ?: new groovy.json.JsonSlurper().parse(file('../package.json')).version
 
 dependencies {
     implementation "com.facebook.react:react-android:$reactAndroidVersion"
