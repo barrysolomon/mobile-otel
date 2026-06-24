@@ -55,8 +55,7 @@ let package = Package(
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ],
-            path: "otel-ios-mobile/Sources/LifecycleInstrumentation",
-
+            path: "otel-ios-mobile/Sources/LifecycleInstrumentation"
         ),
         .target(
             name: "ScreenInstrumentation",
@@ -104,7 +103,7 @@ let package = Package(
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ],
-            path: "otel-ios-mobile/Sources/ScreenshotInstrumentation",
+            path: "otel-ios-mobile/Sources/ScreenshotInstrumentation"
         ),
         .target(
             name: "WireframeInstrumentation",
