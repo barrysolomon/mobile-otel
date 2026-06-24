@@ -27,7 +27,8 @@ let package = Package(
             name: "OTelMobileCore",
             dependencies: [
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/OTelMobileCore"
         ),
         .target(
             name: "OTelMobileSDK",
@@ -45,81 +46,93 @@ let package = Package(
                 .product(name: "OpenTelemetryProtocolExporter", package: "opentelemetry-swift"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
                 .product(name: "DequeModule", package: "swift-collections"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/OTelMobileSDK"
         ),
         .target(
             name: "LifecycleInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/LifecycleInstrumentation"
         ),
         .target(
             name: "ScreenInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/ScreenInstrumentation"
         ),
         .target(
             name: "NetworkInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/NetworkInstrumentation"
         ),
         .target(
             name: "ErrorsInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/ErrorsInstrumentation"
         ),
         .target(
             name: "VitalsInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/VitalsInstrumentation"
         ),
         .target(
             name: "FreezeInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/FreezeInstrumentation"
         ),
         .target(
             name: "ScreenshotInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/ScreenshotInstrumentation"
         ),
         .target(
             name: "WireframeInstrumentation",
             dependencies: [
                 "OTelMobileCore",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Sources/WireframeInstrumentation"
         ),
         .testTarget(
             name: "OTelMobileSDKTests",
-            dependencies: ["OTelMobileSDK", "NetworkInstrumentation"]
+            dependencies: ["OTelMobileSDK", "NetworkInstrumentation"],
+            path: "otel-ios-mobile/Tests/OTelMobileSDKTests"
         ),
         .testTarget(
             name: "ErrorsInstrumentationTests",
             dependencies: [
                 "ErrorsInstrumentation",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Tests/ErrorsInstrumentationTests"
         ),
         .testTarget(
             name: "LifecycleInstrumentationTests",
             dependencies: [
                 "LifecycleInstrumentation",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Tests/LifecycleInstrumentationTests"
         ),
         .testTarget(
             name: "ScreenshotInstrumentationTests",
@@ -127,7 +140,8 @@ let package = Package(
                 "ScreenshotInstrumentation",
                 "OTelMobileCore",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Tests/ScreenshotInstrumentationTests"
         ),
         .testTarget(
             name: "WireframeInstrumentationTests",
@@ -135,7 +149,8 @@ let package = Package(
                 "WireframeInstrumentation",
                 "OTelMobileCore",
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            ]
+            ],
+            path: "otel-ios-mobile/Tests/WireframeInstrumentationTests"
         ),
     ]
 )
