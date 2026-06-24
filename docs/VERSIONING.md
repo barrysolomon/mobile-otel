@@ -71,5 +71,6 @@ Rules:
 ## Release mechanics
 
 - Bump the shared version in: `packages/react-native/package.json`, `otel-android-mobile/build.gradle.kts`, the `examples/demo-app/build.gradle.kts` publishing convention, and tag the iOS SwiftPM release.
+  - **Not** a separate edit: the RN-android native module (`packages/react-native/android`) derives the SDK version it consumes from `packages/react-native/package.json` (above). Do **not** re-pin it in `gradle.properties` — a hardcoded pin there silently drifted from the published version twice and broke the `react-native-android` CI job.
 - Tagging `v*` triggers `.github/workflows/publish.yml` → npm publish + **all** Android modules to GitHub Packages (fixed in 0.2.0-alpha).
 - Update `CHANGELOG.md` with the release section + an Upgrading note for any BREAKING (behavior) change.
