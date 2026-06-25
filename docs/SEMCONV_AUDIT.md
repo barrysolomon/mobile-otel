@@ -1,10 +1,12 @@
 # Semantic-Conventions Audit — emitted telemetry vs OTel semconv
 
 **Status:** Audited 2026-06-12 against `opentelemetry-semconv:1.39.0` (the
-version the Android SDK depends on) — VERSIONING.md gate 3. Names are the
-hardest thing to change after 1.0: dashboards, alerts, and Dash0 routing all
-key on them. This document classifies every emitted name and freezes the
-verdicts.
+version the Android SDK depends on) — VERSIONING.md gate 3. Refreshed
+2026-06-25 for the upstream `opentelemetry-android` 1.2.0→1.5.0 bump (see the
+screen-name convergence row below; `device.crash`→`app.crash` was already
+aligned). Names are the hardest thing to change after 1.0: dashboards, alerts,
+and Dash0 routing all key on them. This document classifies every emitted name
+and freezes the verdicts.
 
 Classifications:
 - **SEMCONV-STABLE** — matches a stable OTel convention; frozen.
@@ -30,7 +32,7 @@ Classifications:
 | `dash0.resource.type` | all | VENDOR (properly namespaced; load-bearing for Dash0 Mobile-view routing — never rename) |
 | `device.platform` | Android | ✅ dropped in 0.4.0 (was redundant with `os.name`) |
 
-## Session & user enrichment (per-event)
+## Session, screen & user enrichment (per-event)
 
 | Attribute | Platforms | Verdict |
 |---|---|---|
@@ -38,6 +40,7 @@ Classifications:
 | `mobile.session.id` | Android, RN-via-Android | ✅ converged in 0.4.0: `session.id` (semconv) is emitted alongside; `mobile.session.id` is a transition alias dropped at 1.0. |
 | `session.start_time`, `session.duration_ms`, `session.state`, `session.start_reason`, `session.termination_reason` | Android | VENDOR (extensions in the `session.*` namespace; semconv defines only `id`/`previous_id` today — collision risk accepted and tracked) |
 | `user.id` | Android | SEMCONV-EXP (registry) |
+| `mobile.screen.name` (Android), `screen.name` (iOS, RN bridge, app-authored) | all | ✅ converging: upstream opentelemetry-android renamed `screen.name` → `app.screen.name` in **1.5.0**. Both legacy spellings are mirrored onto `app.screen.name` at the log-processor `onEmit` choke point (Android + iOS), resolving the historical Android/iOS naming mismatch noted below. RN emits `app.screen.name` directly at its single nav site. Legacy aliases drop at 1.0. **Spans** (`page.<screen>` attribute) keep the legacy alias until the 1.0 flip, mirroring the session-id treatment (logs converge now; spans at 1.0). |
 
 ## Events / logs
 
@@ -92,9 +95,23 @@ the planned dropped-event counters — keep the namespace.)
    `mobile.session.id`; alias drops at 1.0.
 2. ⏸ **`app.launch` vs `app.start`** — deferred; see the events table (two
    different emitters on iOS; needs an ownership decision before 1.0).
+   Re-checked against upstream 1.5.0 (2026-06-25): no upstream change affects
+   the two-emitter situation, so it stays deferred.
 3. ✅ **`screen.view` → `ui.screen_view`** on iOS (0.4.0, clean rename —
    BREAKING for dashboards filtering the old name; changelog carries it).
 4. ✅ **`device.platform` dropped** (0.4.0).
-5. Everything else: frozen as audited. New emitted names after this audit
+5. ✅ **Screen-name convergence** (upstream 1.5.0 rename `screen.name` →
+   `app.screen.name`) — log-processor choke point mirrors both legacy
+   spellings (`mobile.screen.name`, `screen.name`) onto `app.screen.name` on
+   Android + iOS; RN emits it directly. Aliases drop at 1.0. Spans keep the
+   alias until the 1.0 flip (same as session id).
+6. ℹ️ **`device.crash` → `app.crash`** (upstream 1.5.0) — no action: we
+   already emit `app.crash` (predates the upstream rename).
+7. ℹ️ **Upstream `thermal` / `power_save_mode` (new in 1.5.0)** — deliberately
+   NOT superseded by our Vitals module: we don't emit power-save at all, and
+   our thermal signal is a metric gauge (`mobile.thermal.state`) vs upstream's
+   semconv events (`device.thermal_status.change`) — different signal types,
+   so discoverAll consumers get both by design. Locked by SupersedesConflictTest.
+8. Everything else: frozen as audited. New emitted names after this audit
    must be added to this document in the same PR (same discipline as
    API_STABILITY.md).

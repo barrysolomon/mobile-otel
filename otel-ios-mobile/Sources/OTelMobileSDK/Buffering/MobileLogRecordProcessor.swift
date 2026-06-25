@@ -185,6 +185,20 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             enriched.setAttribute(key: key, value: value)
         }
 
+        // Semconv screen-name convergence (docs/SEMCONV_AUDIT.md): upstream
+        // opentelemetry-android renamed `screen.name` -> `app.screen.name` in
+        // 1.5.0. Mirror both legacy spellings onto the new key at this single
+        // choke point so per-instrumentation emit sites can't drift, and so iOS
+        // (`screen.name`) and Android (`mobile.screen.name`) converge on the
+        // same `app.screen.name`. Legacy aliases drop at 1.0. Matches the
+        // Android processor's mirror.
+        if enriched.attributes["app.screen.name"] == nil {
+            let screen = enriched.attributes["screen.name"] ?? enriched.attributes["mobile.screen.name"]
+            if case let .string(value)? = screen {
+                enriched.setAttribute(key: "app.screen.name", value: .string(value))
+            }
+        }
+
         // Offline policy filtering: when the device is offline, drop events
         // below the configured severity threshold.
         if Self.isDeviceOffline() {
@@ -522,7 +536,7 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
             // hand it to the OTel exporter directly. No custom encoding.
             let records = events.compactMap { $0.record }
             guard !records.isEmpty else { return .success }
-            let result = otelExporter.export(logRecords: records, explicitTimeout: nil)
+            let result = await otelExporter.export(logRecords: records, explicitTimeout: nil)
             switch result {
             case .success: return .success
             case .failure: return .failure(reason: "OTel exporter failure")

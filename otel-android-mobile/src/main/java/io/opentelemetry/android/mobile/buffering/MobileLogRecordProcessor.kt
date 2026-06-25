@@ -117,6 +117,16 @@ internal class MobileLogRecordProcessor private constructor(
         io.opentelemetry.api.common.AttributeKey.stringKey("mobile.session.id")
     private val SEMCONV_SESSION_ID_ATTR =
         io.opentelemetry.api.common.AttributeKey.stringKey("session.id")
+    // Two legacy screen-name spellings converge onto app.screen.name: native
+    // Android instrumentation emits `mobile.screen.name`, while iOS, the RN
+    // bridge, and app-authored events emit bare `screen.name`. Mirroring both
+    // keeps the Android and iOS choke points symmetric.
+    private val LEGACY_SCREEN_NAME_ATTR =
+        io.opentelemetry.api.common.AttributeKey.stringKey("mobile.screen.name")
+    private val LEGACY_SCREEN_NAME_ALT_ATTR =
+        io.opentelemetry.api.common.AttributeKey.stringKey("screen.name")
+    private val SEMCONV_SCREEN_NAME_ATTR =
+        io.opentelemetry.api.common.AttributeKey.stringKey("app.screen.name")
 
     // RAM buffer: fast, in-memory, bounded queue (wrapped with monotonic timestamp)
     private val ramBuffer = ConcurrentLinkedQueue<BufferedEvent>()
@@ -443,6 +453,23 @@ internal class MobileLogRecordProcessor private constructor(
             // A non-String value stored under the mobile.session.id name
             // (type-erased Attributes impls allow it). Skip the mirror —
             // the emit path must never throw on odd input.
+        }
+
+        // Semconv screen-name convergence (docs/SEMCONV_AUDIT.md): upstream
+        // opentelemetry-android renamed `screen.name` -> `app.screen.name` in
+        // 1.5.0. Same one-choke-point mirror as session id above — every record
+        // carrying the legacy `mobile.screen.name` also gets `app.screen.name`,
+        // so the ~20 per-instrumentation emit sites can't drift. Alias drops at 1.0.
+        try {
+            if (logRecord.attributes.get(SEMCONV_SCREEN_NAME_ATTR) == null) {
+                val screen = logRecord.attributes.get(LEGACY_SCREEN_NAME_ATTR)
+                    ?: logRecord.attributes.get(LEGACY_SCREEN_NAME_ALT_ATTR)
+                if (screen != null) {
+                    logRecord.setAttribute(SEMCONV_SCREEN_NAME_ATTR, screen)
+                }
+            }
+        } catch (_: ClassCastException) {
+            // Non-String value under a screen-name key — skip; emit must not throw.
         }
 
         // Remote kill switch / global sampling — consulted BEFORE any buffering,

@@ -27,6 +27,7 @@ class MobileSemconvTest {
         assertEquals("mobile.session.id",        MobileSemconv.SESSION_ID.key)
         assertEquals("mobile.view.id",          MobileSemconv.VIEW_ID.key)
         assertEquals("mobile.screen.name",      MobileSemconv.SCREEN_NAME.key)
+        assertEquals("app.screen.name",         MobileSemconv.APP_SCREEN_NAME.key)
         assertEquals("ui.element.resource_id",  MobileSemconv.UI_ELEMENT_ID.key)
         assertEquals("ui.swipe.direction",      MobileSemconv.SWIPE_DIRECTION.key)
         assertEquals("mobile.recovery_type",           MobileSemconv.RECOVERY_TYPE.key)

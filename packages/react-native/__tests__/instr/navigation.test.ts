@@ -116,6 +116,9 @@ describe('React Navigation auto-instrumentation', () => {
     const { screenLogs, pageStarts } = collect();
     expect(screenLogs).toHaveLength(1);
     expect(screenLogs[0].attributes['screen.name']).toBe('ProductList');
+    // Semconv convergence: the upstream-aligned `app.screen.name` (1.5.0) is
+    // emitted alongside the legacy `screen.name` alias.
+    expect(screenLogs[0].attributes['app.screen.name']).toBe('ProductList');
     expect(pageStarts).toHaveLength(1);
     expect(pageStarts[0].name).toBe('page.ProductList');
   });

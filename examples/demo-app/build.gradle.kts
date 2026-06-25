@@ -8,6 +8,17 @@ plugins {
 }
 
 subprojects {
+    // opentelemetry-android 1.5.0 transitively declares kotlin-stdlib 2.4.0,
+    // whose metadata version our bundled Kotlin compiler (2.2.10, reads up to
+    // 2.3.0) cannot parse — compile fails with "incompatible version of Kotlin".
+    // Pin the transitive stdlib down to the compiler's version across all
+    // modules. stdlib is backward-compatible, and upstream only uses basic APIs.
+    configurations.all {
+        resolutionStrategy {
+            force("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")
+        }
+    }
+
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
         version.set("1.3.1")

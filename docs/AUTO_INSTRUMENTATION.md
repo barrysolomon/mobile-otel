@@ -2,6 +2,8 @@
 
 This document describes every signal the SDK captures automatically — without any manual `MobileOtel.sendEvent()` calls — when you initialize via `OTelMobile.start()` or `MobileOtel.initialize()`.
 
+> **Screen-name convergence (1.5.0):** Every `mobile.screen.name` attribute below is also emitted as **`app.screen.name`** — the name upstream opentelemetry-android adopted in 1.5.0. The SDK's log processor mirrors it at one choke point, so query either; the legacy `mobile.screen.name` alias is removed at 1.0. See [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md).
+
 ---
 
 ## Table of Contents

@@ -5,8 +5,8 @@ package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
 import io.mockk.*
+import io.opentelemetry.android.OpenTelemetryRum
 import io.opentelemetry.android.instrumentation.AndroidInstrumentation
-import io.opentelemetry.android.instrumentation.InstallationContext
 import io.opentelemetry.sdk.testing.junit4.OpenTelemetryRule
 import org.junit.Rule
 import org.junit.Test
@@ -28,7 +28,7 @@ class UpstreamInstrumentationAdapterTest {
         assertEquals("upstream.crash", adapter.instrumentationName)
     }
 
-    @Test fun `install creates InstallationContext and calls upstream install`() {
+    @Test fun `install wraps state in OpenTelemetryRum and calls upstream install`() {
         val upstream = mockk<AndroidInstrumentation>(relaxed = true)
         every { upstream.name } returns "upstream.session"
         val adapter = UpstreamInstrumentationAdapter(upstream)
@@ -36,8 +36,10 @@ class UpstreamInstrumentationAdapterTest {
 
         adapter.install(app, ctx)
 
-        verify { upstream.install(match<InstallationContext> {
-            it.application == app && it.openTelemetry === ctx.openTelemetry
+        // 1.3.0+ signature: install(Context, OpenTelemetryRum). The Application
+        // is passed straight through as the Context arg.
+        verify { upstream.install(app, match<OpenTelemetryRum> {
+            it.openTelemetry === ctx.openTelemetry
         }) }
     }
 
@@ -50,7 +52,7 @@ class UpstreamInstrumentationAdapterTest {
 
         adapter.install(app, ctx)
 
-        verify { upstream.install(match<InstallationContext> {
+        verify { upstream.install(app, match<OpenTelemetryRum> {
             it.sessionProvider.getSessionId() == sessionProvider.getSessionId()
         }) }
     }

@@ -4,8 +4,9 @@
 package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
+import android.content.Context
+import io.opentelemetry.android.OpenTelemetryRum
 import io.opentelemetry.android.instrumentation.AndroidInstrumentation
-import io.opentelemetry.android.instrumentation.InstallationContext
 
 @Incubating
 interface MobileInstrumentation : AndroidInstrumentation {
@@ -16,15 +17,19 @@ interface MobileInstrumentation : AndroidInstrumentation {
 
     fun install(application: Application, context: InstrumentationContext)
 
-    override fun install(ctx: InstallationContext) {
-        val app = ctx.application
+    // Upstream's AndroidInstrumentation.install/uninstall signature changed in
+    // opentelemetry-android 1.3.0 from a single InstallationContext to
+    // (Context, OpenTelemetryRum). We bridge it onto our richer mobile
+    // signature here so the concrete modules never see the upstream churn.
+    override fun install(context: Context, openTelemetryRum: OpenTelemetryRum) {
+        val app = context.applicationContext as? Application
             ?: throw IllegalStateException(
-                "MobileInstrumentation requires Application context, got ${ctx.context.javaClass.name}"
+                "MobileInstrumentation requires an Application context, got ${context.javaClass.name}"
             )
-        install(app, InstrumentationContext.fromInstallationContext(ctx))
+        install(app, InstrumentationContext.fromOpenTelemetryRum(app, openTelemetryRum))
     }
 
-    override fun uninstall(ctx: InstallationContext) {
+    override fun uninstall(context: Context, openTelemetryRum: OpenTelemetryRum) {
         uninstall()
     }
 

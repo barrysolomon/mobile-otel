@@ -4,9 +4,9 @@
 package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
+import io.opentelemetry.android.OpenTelemetryRum
 import io.opentelemetry.android.mobile.breadcrumb.BreadcrumbManager
 import io.opentelemetry.android.mobile.breadcrumb.JourneyBreadcrumb
-import io.opentelemetry.android.instrumentation.InstallationContext
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.metrics.Meter
@@ -49,17 +49,26 @@ class InstrumentationContext(
     val clock: Clock? = null
 ) {
     companion object {
-        fun fromInstallationContext(ctx: InstallationContext): InstrumentationContext {
-            val app = ctx.application
-                ?: throw IllegalStateException("Application context required")
+        /**
+         * Builds a mobile [InstrumentationContext] from the upstream
+         * [OpenTelemetryRum] handle that
+         * [io.opentelemetry.android.instrumentation.AndroidInstrumentation.install]
+         * receives since opentelemetry-android 1.3.0. [OpenTelemetryRum]
+         * exposes the same trio the old `InstallationContext` did
+         * (openTelemetry / sessionProvider / clock), so the mapping is 1:1.
+         */
+        fun fromOpenTelemetryRum(
+            application: Application,
+            rum: OpenTelemetryRum
+        ): InstrumentationContext {
             val hub = WindowEventHub()
-            WindowEventHubInstaller(app, hub).install()
+            WindowEventHubInstaller(application, hub).install()
             return InstrumentationContext(
-                openTelemetry = ctx.openTelemetry,
-                sessionProvider = UpstreamSessionProviderAdapter(ctx.sessionProvider),
+                openTelemetry = rum.openTelemetry,
+                sessionProvider = UpstreamSessionProviderAdapter(rum.sessionProvider),
                 windowEventHub = hub,
-                application = app,
-                clock = ctx.clock
+                application = application,
+                clock = rum.clock
             )
         }
     }

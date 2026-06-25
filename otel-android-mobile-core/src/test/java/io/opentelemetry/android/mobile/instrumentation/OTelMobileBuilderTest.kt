@@ -31,8 +31,8 @@ class OTelMobileBuilderTest {
             .addInstrumentation(i2)
             .build()
 
-        verify { i1.install(app, any()) }
-        verify { i2.install(app, any()) }
+        verify { i1.install(app, any<InstrumentationContext>()) }
+        verify { i2.install(app, any<InstrumentationContext>()) }
     }
 
     @Test fun `setSessionProvider passes custom provider to InstrumentationContext`() {
@@ -93,6 +93,6 @@ class OTelMobileBuilderTest {
             .build()
 
         assertNotNull(handle)
-        verify { manual.install(app, any()) }
+        verify { manual.install(app, any<InstrumentationContext>()) }
     }
 }

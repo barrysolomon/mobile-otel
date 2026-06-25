@@ -281,7 +281,7 @@ locally via `./scripts/ci/run-tests.sh` (see "Build & Test Commands" above).
 
 | Component | Key Deps |
 |-----------|----------|
-| Android SDK | OpenTelemetry Android 1.2.0-alpha, OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, Kotlin Serialization 1.6.0 |
+| Android SDK | OpenTelemetry Android 1.5.0 (session + android-instrumentation + agent-api; `-alpha` suffix dropped when the Instrumentation API went stable), OpenTelemetry SDK 1.58.0, Room 2.8.4, OkHttp 4.12.0, Coroutines 1.10.2, Kotlin Serialization 1.6.0 |
 | Collector Processor | Go 1.24, OTel Collector 1.39.0 |
 
 ## Export Modes

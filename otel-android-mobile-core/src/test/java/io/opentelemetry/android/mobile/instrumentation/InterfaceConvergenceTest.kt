@@ -5,8 +5,8 @@ package io.opentelemetry.android.mobile.instrumentation
 
 import android.app.Application
 import io.mockk.mockk
+import io.opentelemetry.android.OpenTelemetryRum
 import io.opentelemetry.android.instrumentation.AndroidInstrumentation
-import io.opentelemetry.android.instrumentation.InstallationContext
 import io.opentelemetry.android.session.SessionProvider
 import io.opentelemetry.sdk.common.Clock
 import io.opentelemetry.sdk.testing.junit4.OpenTelemetryRule
@@ -55,14 +55,14 @@ class InterfaceConvergenceTest {
         assertEquals(module.instrumentationName, module.name)
     }
 
-    @Test fun `install(InstallationContext) bridges to install(Application, InstrumentationContext)`() {
+    @Test fun `install(Context, OpenTelemetryRum) bridges to install(Application, InstrumentationContext)`() {
         val module = TestModule()
         val app = RuntimeEnvironment.getApplication()
         val sessionProvider = mockk<SessionProvider>(relaxed = true)
         val clock = Clock.getDefault()
-        val installCtx = InstallationContext(app, otelRule.openTelemetry, sessionProvider, clock)
+        val rum = MobileOpenTelemetryRum(otelRule.openTelemetry, sessionProvider, clock)
 
-        module.install(installCtx)
+        module.install(app, rum)
 
         assertTrue(module.installCalled, "install(Application, InstrumentationContext) should be called")
         assertEquals(app, module.lastApp)
@@ -70,12 +70,12 @@ class InterfaceConvergenceTest {
         assertEquals(clock, module.lastCtx?.clock)
     }
 
-    @Test fun `uninstall(InstallationContext) bridges to uninstall()`() {
+    @Test fun `uninstall(Context, OpenTelemetryRum) bridges to uninstall()`() {
         val module = TestModule()
         val app = RuntimeEnvironment.getApplication()
-        val installCtx = InstallationContext(app, otelRule.openTelemetry, mockk(relaxed = true), Clock.getDefault())
+        val rum = MobileOpenTelemetryRum(otelRule.openTelemetry, mockk(relaxed = true), Clock.getDefault())
 
-        module.uninstall(installCtx)
+        module.uninstall(app, rum)
 
         assertTrue(module.uninstallCalled, "uninstall() should be called")
     }

@@ -149,7 +149,11 @@ These were implementation details with no supported consumer use:
    `SessionConfig.enabled` at start.
 4. ✅ `session.id` dual-emitted beside `mobile.session.id` on Android;
    alias drops at 1.0.
-5. ⏸ iOS live-internals narrowing — deferred until external feedback exists
+5. ✅ `app.screen.name` dual-emitted beside the legacy `mobile.screen.name`
+   (Android) / `screen.name` (iOS, RN, app-authored) — converges on upstream
+   opentelemetry-android's 1.5.0 rename; both legacy aliases drop at 1.0. See
+   [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md).
+6. ⏸ iOS live-internals narrowing — deferred until external feedback exists
    (no integrator has reported needing or tripping on these).
 
 ## Review discipline

@@ -30,6 +30,12 @@ object MobileSemconv {
     @JvmField val SESSION_ID             = AttributeKey.stringKey("mobile.session.id")
     @JvmField val VIEW_ID                = AttributeKey.stringKey("mobile.view.id")
     @JvmField val SCREEN_NAME            = AttributeKey.stringKey("mobile.screen.name")
+    // Upstream opentelemetry-android renamed `screen.name` -> `app.screen.name`
+    // in 1.5.0. We converge onto it via the transition-alias pattern: the log
+    // processor mirrors SCREEN_NAME onto APP_SCREEN_NAME at one choke point
+    // (see MobileLogRecordProcessor.onEmit). The legacy `mobile.screen.name`
+    // alias drops at 1.0. (docs/SEMCONV_AUDIT.md)
+    @JvmField val APP_SCREEN_NAME        = AttributeKey.stringKey("app.screen.name")
     @JvmField val UI_ELEMENT_ID          = AttributeKey.stringKey("ui.element.resource_id")
     @JvmField val UI_ELEMENT_CLASS       = AttributeKey.stringKey("ui.element.class")
     @JvmField val UI_ELEMENT_LABEL       = AttributeKey.stringKey("ui.element.label")

@@ -50,12 +50,19 @@ dependencies {
     api("io.opentelemetry:opentelemetry-api:1.58.0")
     api("io.opentelemetry:opentelemetry-sdk:1.58.0")
     api("io.opentelemetry:opentelemetry-sdk-logs:1.58.0")
-    // Upstream opentelemetry-android interfaces for adapter compatibility
-    // Exclude api-incubator to avoid ExtendedAttributeKey conflict with our OTel SDK 1.58.0
-    api("io.opentelemetry.android:session:1.2.0-alpha") {
+    // Upstream opentelemetry-android interfaces for adapter compatibility.
+    // 1.5.0 dropped the `-alpha` suffix when the Instrumentation API went stable.
+    // Exclude api-incubator to avoid ExtendedAttributeKey conflict with our OTel SDK 1.58.0.
+    api("io.opentelemetry.android:session:1.5.0") {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
-    api("io.opentelemetry.android.instrumentation:android-instrumentation:1.2.0-alpha") {
+    api("io.opentelemetry.android.instrumentation:android-instrumentation:1.5.0") {
+        exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
+    }
+    // agent-api carries OpenTelemetryRum, the type AndroidInstrumentation.install()
+    // now receives (1.3.0+). Declared explicitly because our adapter layer
+    // references it directly rather than only transitively.
+    api("io.opentelemetry.android:agent-api:1.5.0") {
         exclude(group = "io.opentelemetry", module = "opentelemetry-api-incubator")
     }
     implementation("androidx.core:core-ktx:1.17.0")

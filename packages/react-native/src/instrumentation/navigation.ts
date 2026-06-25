@@ -40,7 +40,16 @@ export function installReactNavigationInstrumentation(
     endCurrentSpan();
 
     currentName = route.name;
-    Dash0Mobile.log('ui.screen_view', { 'screen.name': route.name }, 9);
+    // Semconv screen-name convergence (docs/SEMCONV_AUDIT.md): upstream
+    // opentelemetry-android renamed `screen.name` -> `app.screen.name` in 1.5.0.
+    // RN has a single screen-name emit site (unlike native's ~20), so we emit
+    // the new key directly here alongside the legacy `screen.name` alias rather
+    // than relying on a native choke-point mirror. The legacy alias drops at 1.0.
+    Dash0Mobile.log(
+      'ui.screen_view',
+      { 'screen.name': route.name, 'app.screen.name': route.name },
+      9,
+    );
     currentSpan = Dash0Mobile.startSpan(`page.${route.name}`);
   };
 
