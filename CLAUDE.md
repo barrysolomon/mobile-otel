@@ -212,7 +212,7 @@ Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
 
 ### Components in This Repo
 
-1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.opentelemetry.android:mobile:0.4.2-alpha`. Core namespace: `io.opentelemetry.android.mobile`. `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with the opentelemetry-android project is complete.
+1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.opentelemetry.android:mobile:0.5.0-alpha`. Core namespace: `io.opentelemetry.android.mobile`. `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with the opentelemetry-android project is complete.
 
 2. **Collector Processor** (`collector-processor/mobilepolicyprocessor/`) — Custom OTEL Collector processor plugin (Go) that evaluates mobile export policies server-side.
 

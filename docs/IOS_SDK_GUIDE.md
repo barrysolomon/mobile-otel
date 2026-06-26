@@ -40,11 +40,11 @@ Source entry point: [OTelMobile.swift](../otel-ios-mobile/Sources/OTelMobileSDK/
 
 ## Installation
 
-The SDK ships as a Swift Package with ten library products (the package itself is named `OTelMobile` and lives in `otel-ios-mobile/` at the repo root). Pin the shipped tag `v0.4.2-alpha` in your app's `Package.swift`:
+The SDK ships as a Swift Package with ten library products (the package itself is named `OTelMobile` and lives in `otel-ios-mobile/` at the repo root). Pin the shipped tag `v0.5.0-alpha` in your app's `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.4.2-alpha"),
+    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.5.0-alpha"),
     // For local development: .package(path: "../mobile-otel/otel-ios-mobile")
 ],
 targets: [
@@ -303,7 +303,7 @@ Production apps with symbolication requirements should still consider pairing th
 
 Source: [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift).
 
-Emits a `ui.screen_view` log (named `screen.view` before 0.4.2-alpha) and opens/closes a `page.<ScreenName>` span per screen. **Auto-installed by `start`** when `.screen` is in `autoCaptureOptions` (it is, by default). The safe default path is the SwiftUI bridge: annotate screens with the `.trackScreen("Name")` ViewModifier (and `.trackTaps(target:)`).
+Emits a `ui.screen_view` log (named `screen.view` before 0.5.0-alpha) and opens/closes a `page.<ScreenName>` span per screen. **Auto-installed by `start`** when `.screen` is in `autoCaptureOptions` (it is, by default). The safe default path is the SwiftUI bridge: annotate screens with the `.trackScreen("Name")` ViewModifier (and `.trackTaps(target:)`).
 
 The UIKit `UIViewController.viewDidAppear`/`viewDidDisappear` swizzle is **not** enabled by default because `UIHostingController` hierarchies are sensitive to it; it is opt-in for pure-UIKit apps. To enable the swizzle, install manually:
 
@@ -348,7 +348,7 @@ Every log, span, and metric carries the resource built by [ResourceBuilder.swift
 | `service.name` | From `MobileConfig.serviceName`. |
 | `service.version` | From `MobileConfig.serviceVersion`. |
 | `telemetry.sdk.name` | `"io.dash0.mobile"`. |
-| `telemetry.sdk.version` | `"0.4.2-alpha"` — the literal in [ResourceBuilder.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) (`sdkVersion`), matching the shipped package tag `v0.4.2-alpha`. |
+| `telemetry.sdk.version` | `"0.5.0-alpha"` — the literal in [ResourceBuilder.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) (`sdkVersion`), matching the shipped package tag `v0.5.0-alpha`. |
 | `telemetry.sdk.language` | `"swift"`. |
 | `os.type` | `"darwin"` on iOS and macOS. |
 | `os.name` | `"iOS"` or `"macOS"`. |
@@ -368,7 +368,7 @@ Signals emitted by this SDK follow OTel semconv where they apply:
 - **App crash logs** (from `ErrorsInstrumentation`): `event.name=app.crash`, `crash.from_marker=true`, `crash.kind` (`exception` or `signal`), `crash.name`, `crash.signal`, `crash.reason`, `crash.timestamp`, severity `fatal`. `exception.stacktrace` is present only for the NSException path; signal-path crashes carry no stack (see [IOS_CRASH_REPORTING.md](IOS_CRASH_REPORTING.md)).
 - **App error logs** (manual `recordError`): `event.name=app.error`, `error.type`, `error.message`, severity `error`.
 - **Lifecycle logs** (from `LifecycleInstrumentation`): `event.name=app.launch | app.foreground | app.background | app.will_terminate | app.memory_warning`.
-- **Screen view logs** (if `ScreenInstrumentation` is wired): `event.name=ui.screen_view` (was `screen.view` before 0.4.2-alpha), `screen.name`.
+- **Screen view logs** (if `ScreenInstrumentation` is wired): `event.name=ui.screen_view` (was `screen.view` before 0.5.0-alpha), `screen.name`.
 - **Device gauges** (from `DeviceStatsCollector`): metric names use the Dash0 `device.memory.*`, `device.battery.*`, `device.thermal.*`, `device.storage.*` family.
 
 All signals carry the resource attributes listed above, so queries like `os.name="iOS" AND service.name="..."` scope cleanly to one platform.

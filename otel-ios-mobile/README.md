@@ -4,7 +4,7 @@ iOS port of the Dash0 Mobile Observability SDK. Swift 5.9, iOS 15+. Built as a S
 
 ## Status
 
-- **Shipped release: `v0.4.2-alpha`** (see [CHANGELOG.md](../CHANGELOG.md))
+- **Shipped release: `v0.5.0-alpha`** (see [CHANGELOG.md](../CHANGELOG.md))
 - Test suite green on `swift test` (macOS host) and Simulator
 - E2E validated against AstronomyShop on iOS 26 Simulator
 - Default export mode: `HYBRID`
@@ -32,11 +32,11 @@ Each target ships as a separate `.library(...)` product in `Package.swift` so co
 
 ## Quick install (consumer)
 
-The package lives at the repo root in `otel-ios-mobile/`. In `Package.swift`, pin the shipped tag `v0.4.2-alpha`:
+The package lives at the repo root in `otel-ios-mobile/`. In `Package.swift`, pin the shipped tag `v0.5.0-alpha`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.4.2-alpha"),
+    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.5.0-alpha"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [

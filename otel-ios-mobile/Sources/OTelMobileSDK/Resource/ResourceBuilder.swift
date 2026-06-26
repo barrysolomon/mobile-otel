@@ -19,7 +19,7 @@ import UIKit
 /// SDK — unwanted coupling.
 public enum ResourceBuilder {
     /// SDK version constant — bump on release.
-    public static let sdkVersion = "0.4.2-alpha"
+    public static let sdkVersion = "0.5.0-alpha"
 
     /// Build a `Resource` with iOS-identifying attributes plus the caller's
     /// service metadata and any extra attributes they want to merge on top.

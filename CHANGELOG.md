@@ -9,6 +9,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.0-alpha] — 2026-06-26
+
+Upstream `opentelemetry-android` 1.5.0 alignment and `screen.name` → `app.screen.name` semantic-convention convergence across all three platforms.
+
+### Changed
+
+- **Bumped upstream `opentelemetry-android` 1.2.0-alpha → 1.5.0** (`session`, `android-instrumentation`, `agent-api`). 1.5.0 marked the Instrumentation API stable and (in 1.3.0) changed `AndroidInstrumentation.install`'s signature from a single `InstallationContext` to `(Context, OpenTelemetryRum)`. The adapter layer migrates via a thin new `MobileOpenTelemetryRum` shim, so the 11 concrete instrumentation modules are unaffected. `kotlin-stdlib` is pinned to 2.2.10 across modules (upstream drags 2.4.0, unreadable by the bundled compiler).
+- **`@Supersedes` audit vs 1.5.0** — zero name drift. The new upstream `thermal` / `power_save_mode` modules are deliberately **not** superseded (our thermal signal is a metric gauge vs upstream's semconv events; we don't emit power-save), so `discoverAll` consumers get both by design.
+
+### Added
+
+- **`app.screen.name` semantic-convention convergence.** Upstream renamed `screen.name` → `app.screen.name` in 1.5.0. The log-processor `onEmit` choke point now mirrors both legacy spellings (`mobile.screen.name` on Android, `screen.name` on iOS/RN/app-authored) onto `app.screen.name` on Android **and** iOS; React Native emits it directly at its single navigation site. The legacy aliases remain (transition aliases, dropped at 1.0); spans keep the alias until the 1.0 flip, mirroring the session-id treatment. `MobileSemconv.APP_SCREEN_NAME` added. (`device.crash` → `app.crash` needed no action — already aligned.) See [docs/SEMCONV_AUDIT.md](docs/SEMCONV_AUDIT.md).
+- **`docs/epics/UPSTREAM_CONTRIBUTION.md`** — proposal scoping a `MobileInstrumentation` + `WindowEventHub` contribution upstream now that the Instrumentation API is stable.
+
+### Fixed
+
+- **iOS `exportBuffered` missing `await`** — `LogRecordExporter.export(logRecords:)` became `async` in the resolved opentelemetry-swift; the call wasn't awaited, breaking the iOS build. Now awaited.
+
+### Tests
+
+- Screen-name convergence tests on all three platforms (Android `ScreenNameConvergenceTest`, iOS `ScreenNameConvergenceTests`, RN `navigation.test.ts`), plus a `@Supersedes` coexistence test locking the thermal/power-save decision. Full Android unit suite + 152 RN jest + iOS `xcodebuild` (4/4 on iPhone 17 sim) green; Android on-device 23/23 + 20/20.
+- **Validated end-to-end in Dash0** — `app.screen.name` confirmed landing alongside the legacy key on Android (CONTINUOUS + HYBRID), iOS (CONTINUOUS), and React-Native-Android (dash0Continuous).
+
 ## [0.4.2-alpha] — 2026-06-15
 
 Crash-span recovery and Dash0 auth documentation.

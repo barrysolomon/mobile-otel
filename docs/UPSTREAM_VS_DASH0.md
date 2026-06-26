@@ -18,7 +18,7 @@ For the runnable side-by-side demo, see [COMPARISON_TUTORIAL.md](COMPARISON_TUTO
 
 | Platform | Upstream | Dash0 | Notes |
 |----------|----------|-------|-------|
-| Android native | ✅ `opentelemetry-android` 0.10.0-alpha | ✅ `io.opentelemetry.android:mobile:0.4.2-alpha` | Dash0 `MobileInstrumentation extends AndroidInstrumentation` — upstream modules run via adapter |
+| Android native | ✅ `opentelemetry-android` 0.10.0-alpha | ✅ `io.opentelemetry.android:mobile:0.5.0-alpha` | Dash0 `MobileInstrumentation extends AndroidInstrumentation` — upstream modules run via adapter |
 | iOS native | ❌ Not in scope | ✅ Swift 5.9, iOS 15+ | Independent port, no upstream equivalent yet |
 | React Native | ❌ Not in scope | ✅ Thin JS facade over native SDKs | Datadog-style: buffering + policy eval happen in native modules |
 | Collector processor | ❌ Not in scope | ✅ `mobilepolicyprocessor` (Go) | Evaluates mobile export policies server-side |

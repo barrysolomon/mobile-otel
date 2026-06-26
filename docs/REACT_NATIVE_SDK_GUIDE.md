@@ -1,6 +1,6 @@
 # React Native SDK Guide
 
-`@barrysolomon/mobile-react-native@0.4.2-alpha` — a native-first React Native bridge over the existing Android and iOS Dash0 Mobile SDKs.
+`@barrysolomon/mobile-react-native@0.5.0-alpha` — a native-first React Native bridge over the existing Android and iOS Dash0 Mobile SDKs.
 
 ## TL;DR
 
@@ -32,7 +32,7 @@ See [docs/epics/REACT_NATIVE_EPIC.md](epics/REACT_NATIVE_EPIC.md) for the archit
 # A bare `npm install @barrysolomon/mobile-react-native` resolves the OLD
 # 0.1.0-alpha — always pin the `alpha` dist-tag (or the exact version):
 npm install @barrysolomon/mobile-react-native@alpha
-# or: npm install @barrysolomon/mobile-react-native@0.4.2-alpha
+# or: npm install @barrysolomon/mobile-react-native@0.5.0-alpha
 
 cd ios && pod install
 ```
@@ -41,8 +41,8 @@ Autolinking picks up the native module via the podspec + `react-native.config.js
 
 This JS package **wraps** the native SDKs — install those too:
 
-- **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel` at tag `v0.4.2-alpha` to your app target, then copy `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package into your app target and call `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod excludes the sink because it depends on the SwiftPM SDK delivered on the app side.
-- **Android** — `io.opentelemetry.android:mobile:0.4.2-alpha` from GitHub Packages (`https://maven.pkg.github.com/barrysolomon/mobile-otel`). As of 0.2.0-alpha the full module set (`mobile-core` + all `mobile-instrumentation-*` modules) publishes there, so the dependency tree resolves.
+- **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel` at tag `v0.5.0-alpha` to your app target, then copy `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package into your app target and call `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod excludes the sink because it depends on the SwiftPM SDK delivered on the app side.
+- **Android** — `io.opentelemetry.android:mobile:0.5.0-alpha` from GitHub Packages (`https://maven.pkg.github.com/barrysolomon/mobile-otel`). As of 0.2.0-alpha the full module set (`mobile-core` + all `mobile-instrumentation-*` modules) publishes there, so the dependency tree resolves.
 
 **Requirements:**
 - RN 0.72+ (TurboModules / New Architecture recommended; 0.76+ defaults to New Arch)

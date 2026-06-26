@@ -50,7 +50,7 @@ dependencies {
     // ... existing dependencies ...
 
     // Dash0 Mobile Observability — added by tutorial Part 1
-    implementation("io.opentelemetry.android:mobile:0.4.2-alpha")
+    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
 }
 ```
 
