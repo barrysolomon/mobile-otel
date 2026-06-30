@@ -178,7 +178,22 @@ dependencies {
 
     // @dash0/mobile-react-native has compileOnly dep on otel-android-mobile.
     // App supplies the runtime classpath.
-    implementation 'io.opentelemetry.android:mobile:0.4.1-alpha'
+    //
+    // The SDK version is DERIVED from the lockstep release version in
+    // packages/react-native/package.json (the single source of truth — see
+    // docs/VERSIONING.md "Release mechanics"), not hardcoded. Mirrors how
+    // packages/react-native/android/build.gradle resolves dash0SdkVersion
+    // (PR #56): a hardcoded pin like this silently drifts every release —
+    // the native module drifted twice (0.1.0 vs 0.2.0, then 0.4.1 vs 0.4.2),
+    // and this very file shipped pinned at 0.4.1 while the repo released
+    // 0.5.0. Deriving removes that failure mode at the root. (This module
+    // already couples to
+    // monorepo-relative paths — see copyOtelConfigToAssets below.) Override
+    // with -PDash0Mobile_sdkVersion if needed.
+    def dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion')
+            ?: new groovy.json.JsonSlurper().parse(
+                    file('../../../../../packages/react-native/package.json')).version
+    implementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
