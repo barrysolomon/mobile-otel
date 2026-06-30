@@ -1,10 +1,33 @@
 # Mobile OTel SDK
 
-OpenTelemetry-native mobile observability SDK (Android, iOS, React Native) with intelligent buffering, on-device export policies, predictive telemetry, and a remote kill switch.
+**OpenTelemetry-native mobile observability for Android, iOS & React Native — that doesn't stream a firehose of every event off the device.**
 
-> **Current release: `0.5.0-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for the full 0.5.0-alpha notes.
+Most mobile RUM SDKs collect everything and upload it all. This one keeps the data on the device in a crash-safe buffer, runs a policy engine *on the device*, and — in `CONDITIONAL` mode — exports **only the window of events around an actual problem** (a crash, an ANR, an error cascade). Same incident context, a fraction of the data egress, 100% standard OTLP so nothing is locked to one vendor.
 
-> **Management plane (gateway, control plane UI, k8s manifests)** has moved to [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
+[![CI](https://github.com/barrysolomon/mobile-otel/actions/workflows/ci.yml/badge.svg)](https://github.com/barrysolomon/mobile-otel/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@barrysolomon/mobile-react-native?label=npm&color=cb3837)](https://www.npmjs.com/package/@barrysolomon/mobile-react-native)
+![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20React%20Native-success)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+![Status](https://img.shields.io/badge/status-alpha-orange)
+
+> **Current release: `0.5.1-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for full notes.
+> **Management plane (gateway, control plane UI, k8s manifests)** lives in [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
+
+## The idea in one diagram
+
+```mermaid
+flowchart LR
+    A["App events<br/>(taps, screens, network,<br/>errors, vitals)"] --> B["RAM ring buffer<br/>~5000 events"]
+    B -->|overflow| C["Encrypted disk buffer<br/>50MB · survives crash/offline"]
+    B --> D{"On-device<br/>policy engine"}
+    C --> D
+    D -->|"nothing wrong →<br/>stay silent"| E["🔇 no export<br/>(near-zero egress)"]
+    D -->|"crash · ANR · error cascade ·<br/>predicted risk → flush window"| F["OTLP export<br/>last N minutes of context"]
+    F --> G["Any OTLP backend<br/>(Dash0, Collector, …)"]
+```
+
+Stream-everything RUM sends box B's full contents continuously. This SDK sends box F — **only the minutes around a real incident** — and stays silent the rest of the time.
 
 ## What It Does
 
@@ -21,7 +44,26 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 - **Transport security** — HTTPS enforced by default (cleartext rejected unless `allowInsecureTransport`), optional cert/public-key pinning, HMAC-signed remote config
 - **At-rest encryption** — Android disk buffer encrypted (SQLCipher + Keystore), parity with iOS `NSFileProtection`
 
+## How it differs from typical mobile RUM
+
+| | This SDK | Typical mobile RUM (Datadog, Sentry, Embrace) |
+| --- | --- | --- |
+| **Export model** | On-device policy engine; `CONDITIONAL` mode flushes only the window around an incident | Continuous — all events batched and uploaded |
+| **Data egress** | Scales with *incidents*, not users (`<0.5%` battery in conditional mode) | Scales with users/sessions |
+| **Offline / crash** | Two-tier RAM→encrypted-disk buffer; context survives crash and offline, flushed on next launch | Varies; often lossy across crashes |
+| **Wire format** | 100% standard **OTLP** — point it at any OTLP backend | Mostly proprietary ingest + pricing |
+| **Selective flush** | "Export the last N minutes around this crash" | Not possible — data sent in arrival order |
+| **Platforms** | Android, iOS, React Native (one shared native core) | Broad, mature |
+
+**Where established RUM is still ahead today** (this is alpha, and honesty matters): production maturity at scale, crash symbolication/de-obfuscation, a session-replay *viewer*, and native (NDK/C++) crash capture. The bet here is architecture and openness — see [WHY_THIS_SDK.md](WHY_THIS_SDK.md) and the [battle cards](docs/).
+
 ## Quick Start
+
+> **Fastest path:** React Native installs straight from npm with no auth —
+> `npm install @barrysolomon/mobile-react-native@alpha`. The Android SDK currently
+> publishes to GitHub Packages, which needs a `read:packages` PAT (see below);
+> Maven Central distribution is on the roadmap. To just *see it work*, run the
+> bundled demo — [HOW_TO_DEMO.md](HOW_TO_DEMO.md).
 
 ### Android SDK Integration
 
@@ -251,21 +293,21 @@ mobile-otel/
 
 ## Architecture
 
-```text
-┌────────────────────┐                    ┌────────────────┐
-│ Android SDK        │                    │ OTEL Collector │
-│                    │                    │ :4317, :4318   │
-│ OTelMobile.start() │                    │                │
-│  ├─ Errors    ──┐  │                    │ + mobilepolicy │
-│  ├─ Vitals    ──┤  │───────────────────>│   processor    │──> Backends
-│  ├─ Predictive──┤  │  OTLP/HTTP        │                │
-│  ├─ AutoCapture─┤  │                    │                │
-│  └─ RingBuffer──┘  │                    └────────────────┘
-│                    │
-│  PolicyEvaluator   │
-│  (DSL triggers)    │
-└────────────────────┘
+```mermaid
+flowchart LR
+    subgraph SDK["Mobile SDK (Android / iOS / RN)"]
+        direction TB
+        E["Errors"] --> RB["Ring buffer<br/>RAM + encrypted disk"]
+        V["Vitals"] --> RB
+        P["Predictive"] --> RB
+        AC["Auto-capture<br/>taps · screens · network"] --> RB
+        RB --> PE["PolicyEvaluator<br/>(DSL triggers)"]
+    end
+    PE -->|"OTLP/HTTP or gRPC"| COL["OTel Collector<br/>+ mobilepolicy processor<br/>:4317 / :4318"]
+    COL --> BK["Backends<br/>(Dash0, Jaeger, Prometheus, …)"]
 ```
+
+The optional `mobilepolicyprocessor` (Go) lets the *collector* apply the same policy DSL server-side; the SDK works against any plain OTLP endpoint without it.
 
 ## Export Modes
 
