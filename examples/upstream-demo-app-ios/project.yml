@@ -7,7 +7,7 @@ settings:
   SWIFT_VERSION: "5.9"
 packages:
   OTelMobile:
-    path: ../../otel-ios-mobile
+    path: ../..
 targets:
   AstronomyShop:
     type: application
