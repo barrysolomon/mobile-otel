@@ -272,9 +272,18 @@ InstrumentationRegistry.getInstrumentation().runOnMainSync {
 
 ## CI/CD
 
-No GitHub Actions test workflows are currently configured. Earlier `test.yml`,
-`ios-tests.yml`, and `rn-tests.yml` workflows were removed on 2026-05-05
-because they were consistently failing and need a redesign. Run tests
+GitHub Actions runs three workflows:
+
+- **`ci.yml`** (CI) — on push/PR. Jobs: `secret-scan`, `android`,
+  `android-minified`, `aar-size`, `go-processor`, `react-native`,
+  `react-native-android`.
+- **`ios-ci.yml`** (iOS CI) — on push/PR/dispatch. Jobs: `ios-sdk`,
+  `react-native-ios`.
+- **`device-tests.yml`** (Device Tests) — scheduled + dispatch + push. Jobs:
+  `android-instrumented`, `ios-simulator` (emulator/simulator instrumented runs).
+
+(The earlier `test.yml`, `ios-tests.yml`, and `rn-tests.yml` workflows were
+removed on 2026-05-05 and superseded by the above.) Tests can also be run
 locally via `./scripts/ci/run-tests.sh` (see "Build & Test Commands" above).
 
 ## Key Dependencies
