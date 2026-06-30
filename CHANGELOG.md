@@ -9,6 +9,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.1-alpha] — 2026-06-30
+
+Cross-platform Dash0 end-to-end validation checkpoint carrying one iOS demo path fix. **No SDK code changed.**
+
+### Fixed
+
+- **iOS demo SwiftPM package path** — corrected the `OTelMobile` package path in the AstronomyShop iOS demo `project.yml` (`../../otel-ios-mobile` → `../..`). The old path had no `Package.swift`, breaking `xcodegen` / SwiftPM resolution; the real manifest is the repo-root `Package.swift`.
+
+### Validated
+
+- **End-to-end against Dash0 (dataset `otel-mobile`), all three platforms green** via the `dash0` CLI: Android native (20/20 scenarios, `otel-mobile-demo` — 1000+ logs / 50+ spans), iOS (UITest succeeded, 4 journeys, `otel-ios-astronomy-shop` — 26 logs / 50 spans), RN-android (`assembleDash0ContinuousDebug` on JDK17, `otel-rn-android-astronomy-shop` — 119 logs / 14 spans). All resources carry `dash0.resource.type=mobile`.
+
+### Known follow-ups (non-blocking, telemetry unaffected)
+
+- iOS validation driver `dash0_span_names` markdown parser false-negative (exits 2 even when spans land); CLI authoritative.
+- RN-android non-fatal `W MobileOtel` warning at `MobileOtel.kt:191` during init.
+- `telemetry.distro.*` attrs absent on iOS + RN (only `telemetry.sdk.*`).
+
 ## [0.5.0-alpha] — 2026-06-26
 
 Upstream `opentelemetry-android` 1.5.0 alignment and `screen.name` → `app.screen.name` semantic-convention convergence across all three platforms.
