@@ -106,6 +106,24 @@ ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion'
 ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion')
         ?: new groovy.json.JsonSlurper().parse(file('../package.json')).version
 
+// Pin the transitive kotlin-stdlib down to a version our Kotlin compiler can
+// read. io.opentelemetry.android:mobile (>= 0.5.0-alpha) depends on
+// opentelemetry-android 1.5.0, which transitively declares kotlin-stdlib 2.4.0.
+// This module compiles with Kotlin 2.1.20 (matching RN 0.85's bundled Kotlin —
+// see settings.gradle), and a 2.1.x compiler cannot parse 2.4.0 stdlib metadata:
+// FirIncompatibleClassExpressionChecker throws "source must not be null" and the
+// build dies with an internal compiler error. The SDK's own 2.2.10 classes are
+// fine for 2.1.20; only the stdlib jump is fatal.
+//
+// Mirrors the demo-app's subprojects force. This also protects real RN hosts:
+// any consumer on Kotlin 2.1.x autolinking this module would otherwise hit the
+// same ICE. stdlib is backward-compatible, so pinning to 2.2.10 is safe.
+configurations.all {
+    resolutionStrategy {
+        force "org.jetbrains.kotlin:kotlin-stdlib:2.2.10"
+    }
+}
+
 dependencies {
     implementation "com.facebook.react:react-android:$reactAndroidVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"

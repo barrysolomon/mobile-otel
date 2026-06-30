@@ -369,11 +369,14 @@ private class InvalidContextSpanBuilder : io.opentelemetry.api.trace.SpanBuilder
     override fun setNoParent() = this
     override fun addLink(spanContext: io.opentelemetry.api.trace.SpanContext) = this
     override fun addLink(spanContext: io.opentelemetry.api.trace.SpanContext, attributes: io.opentelemetry.api.common.Attributes) = this
-    override fun setAttribute(key: String, value: String) = this
+    // OTel API 1.63.0 added nullness annotations to SpanBuilder: the object-typed
+    // setAttribute value params are now @Nullable (String? / T?). The primitive
+    // overloads are unannotated (a primitive can't be null), so they stay non-null.
+    override fun setAttribute(key: String, value: String?) = this
     override fun setAttribute(key: String, value: Long) = this
     override fun setAttribute(key: String, value: Double) = this
     override fun setAttribute(key: String, value: Boolean) = this
-    override fun <T : Any?> setAttribute(key: io.opentelemetry.api.common.AttributeKey<T>, value: T) = this
+    override fun <T : Any> setAttribute(key: io.opentelemetry.api.common.AttributeKey<T>, value: T?) = this
     override fun setSpanKind(spanKind: io.opentelemetry.api.trace.SpanKind) = this
     override fun setStartTimestamp(startTimestamp: Long, unit: java.util.concurrent.TimeUnit) = this
     // Span.getInvalid() carries an invalid SpanContext and is a no-op.
