@@ -44,6 +44,23 @@ This JS package **wraps** the native SDKs — install those too:
 - **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel` at tag `v0.5.0-alpha` to your app target, then copy `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package into your app target and call `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod excludes the sink because it depends on the SwiftPM SDK delivered on the app side.
 - **Android** — `io.opentelemetry.android:mobile:0.5.0-alpha` from GitHub Packages (`https://maven.pkg.github.com/barrysolomon/mobile-otel`). As of 0.2.0-alpha the full module set (`mobile-core` + all `mobile-instrumentation-*` modules) publishes there, so the dependency tree resolves.
 
+> **RN 0.85 / Kotlin 2.1.x — required Android build pin.** RN 0.85 bundles
+> Kotlin 2.1.20, whose compiler cannot read the `kotlin-stdlib` 2.4.0 that the
+> native Android SDK drags in transitively (via `opentelemetry-android` 1.5.0).
+> Without a pin the Android build dies with a `FirIncompatibleClassExpressionChecker`
+> internal compiler error. Add this to your app's **`android/app/build.gradle`**:
+>
+> ```gradle
+> configurations.all {
+>     resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:2.2.10" }
+> }
+> ```
+>
+> `kotlin-stdlib` is backward-compatible, so pinning down is safe. Drop it once
+> your toolchain is on Kotlin 2.3+. See the Android guide's
+> [Kotlin toolchain compatibility](ANDROID_SDK_GUIDE.md#4-kotlin-toolchain-compatibility-if-you-build-with-kotlin--23)
+> note and issue #60 for the full rationale.
+
 **Requirements:**
 - RN 0.72+ (TurboModules / New Architecture recommended; 0.76+ defaults to New Arch)
 - iOS 15+, Android API 26+

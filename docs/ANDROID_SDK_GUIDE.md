@@ -95,6 +95,41 @@ Key transitive dependencies pulled in automatically:
 | Kotlinx Coroutines | 1.10.2 | Async processing |
 | Kotlin Serialization | 1.6.0 | Policy DSL parsing |
 
+### 4. Kotlin toolchain compatibility (if you build with Kotlin < 2.3)
+
+The SDK depends on `opentelemetry-android` 1.5.0, which **transitively declares
+`kotlin-stdlib` 2.4.0**. Kotlin compilers older than 2.3 (notably **React
+Native 0.85's bundled Kotlin 2.1.20**) cannot read 2.4.0 stdlib metadata and
+fail the build with an internal compiler error:
+
+```
+e: FirIncompatibleClassExpressionChecker ... source must not be null
+```
+
+If your app's Kotlin toolchain is **2.3 or newer, you don't need to do
+anything** — your compiler reads 2.4.0 fine. If you're on an older toolchain,
+pin the transitive stdlib **down** to a version your compiler can read.
+`kotlin-stdlib` is backward-compatible, so this is safe:
+
+```kotlin
+// app/build.gradle.kts — only needed for Kotlin < 2.3 toolchains
+configurations.all {
+    resolutionStrategy {
+        // Match (or stay below) your compiler version; 2.2.10 is validated for RN 0.85.
+        force("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")
+    }
+}
+```
+
+> **Why doesn't the SDK cap this for you?** A published `kotlin-stdlib`
+> constraint would have to use Gradle's `strictly` to actually downgrade the
+> transitive 2.4.0 (a soft `require` loses to the higher version and does
+> nothing). But `strictly` would pin *every* consumer to that version — silently
+> downgrading apps on a Kotlin 2.4.x toolchain that legitimately want 2.4.0.
+> Rather than impose that blast radius from an alpha SDK, the cap is left to the
+> consumer, who knows their own toolchain. This resolves once upstream's floor
+> moves below your compiler's ceiling. See issue #60.
+
 ## Initialization
 
 ### Demo App Credential Setup
@@ -528,6 +563,16 @@ endpoint (derived from `collectorEndpoint`, every `configPollIntervalSeconds`) f
 If no config is fetched (no network, `remoteConfigEnabled = false`, or the endpoint is a plain OTLP
 ingest that doesn't serve `/config`), no policy-based flush occurs. You'll still get
 error/predictive/recovery flushes.
+
+### Build fails with a Kotlin internal compiler error (`source must not be null`)
+
+Symptom: a `FirIncompatibleClassExpressionChecker` ICE, or `incompatible version
+of Kotlin` / `cannot read class file` for `kotlin-stdlib`. Cause: your Kotlin
+compiler (< 2.3) cannot read the `kotlin-stdlib` 2.4.0 metadata that
+`opentelemetry-android` 1.5.0 drags in transitively. Fix: pin the transitive
+stdlib down — see [Kotlin toolchain compatibility](#4-kotlin-toolchain-compatibility-if-you-build-with-kotlin--23)
+in Installation. (React Native 0.85 consumers on bundled Kotlin 2.1.20 always
+hit this.)
 
 ### Unit testing
 

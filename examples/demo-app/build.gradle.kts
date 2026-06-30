@@ -13,6 +13,10 @@ subprojects {
     // 2.3.0) cannot parse — compile fails with "incompatible version of Kotlin".
     // Pin the transitive stdlib down to the compiler's version across all
     // modules. stdlib is backward-compatible, and upstream only uses basic APIs.
+    // This force is BUILD-LOCAL — it does not propagate to published metadata, so
+    // external consumers on Kotlin < 2.3 must apply the same pin themselves. That
+    // is by design (issue #60 / docs/ANDROID_SDK_GUIDE.md "Kotlin toolchain
+    // compatibility"): a published `strictly` cap would downgrade 2.4.x consumers.
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")

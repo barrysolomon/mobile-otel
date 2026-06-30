@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Documentation
+
+- **kotlin-stdlib / Kotlin < 2.3 toolchain compatibility** documented in the Android and React Native SDK guides. `opentelemetry-android` 1.5.0 drags `kotlin-stdlib` 2.4.0, whose metadata a Kotlin < 2.3 compiler (e.g. RN 0.85's bundled 2.1.20) cannot read — failing with a `FirIncompatibleClassExpressionChecker` ICE. The guides now show the consumer-side `resolutionStrategy.force` pin. Resolves #60 as **document-don't-impose**: a published `strictly` constraint is the only mechanism that would actually cap the transitive 2.4.0 (a soft `require` loses to the higher version), but `strictly` would silently downgrade consumers on a Kotlin 2.4.x toolchain — too broad a blast radius to ship from an alpha SDK.
+
 ## [0.5.1-alpha] — 2026-06-30
 
 Cross-platform Dash0 end-to-end validation checkpoint carrying one iOS demo path fix. **No SDK code changed.**
