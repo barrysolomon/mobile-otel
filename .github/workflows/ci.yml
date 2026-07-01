@@ -42,6 +42,19 @@ jobs:
           fi
           echo "No leaked secrets in tracked files."
 
+  version-parity:
+    # Catch version drift on EVERY push — not just at tag time. The v0.5.1-alpha
+    # UAT shipped three disagreeing version strings; this fails the moment npm /
+    # native gradle / RN-bridge-distro diverge, long before a release.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Assert version parity across npm / gradle / distro
+        run: scripts/ci/check-version-parity.sh
+
   android:
     runs-on: ubuntu-latest
     steps:

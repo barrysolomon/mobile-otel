@@ -54,13 +54,16 @@ subprojects {
             extensions.configure<PublishingExtension> {
                 publications {
                     register<MavenPublication>("release") {
-                        groupId = "io.opentelemetry.android"
+                        // Coordinates come from gradle.properties (single source of
+                        // truth) — same groupId/version as the umbrella, so the
+                        // umbrella POM's sibling refs always resolve. See docs/MAVEN_CENTRAL.md.
+                        groupId = (project.findProperty("sdkGroupId") as String?) ?: "io.github.barrysolomon"
                         artifactId = if (isCore) {
                             "mobile-core"
                         } else {
                             "mobile-instrumentation-${path.removePrefix(":instrumentation-")}"
                         }
-                        version = "0.5.0-alpha"
+                        version = (project.findProperty("sdkVersionName") as String?) ?: "0.5.2-alpha"
                         afterEvaluate {
                             from(components.findByName("release"))
                         }
@@ -102,6 +105,13 @@ subprojects {
                 // umbrella module, so one `publishReleasePublicationToGitHubPackagesRepository`
                 // run publishes the whole tree. mavenLocal stays available for dev.
                 repositories {
+                    // PUBLIC, no-auth Maven repo (GitHub Pages). Same local dir as
+                    // the umbrella so ONE gh-pages deploy carries the whole tree
+                    // (umbrella + mobile-core + every mobile-instrumentation-*).
+                    maven {
+                        name = "Pages"
+                        url = uri(rootProject.layout.buildDirectory.dir("pages-maven"))
+                    }
                     maven {
                         name = "GitHubPackages"
                         url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
@@ -110,6 +120,16 @@ subprojects {
                             password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
                         }
                     }
+                }
+            }
+
+            // Central-ready signing — active only when CI signing secrets exist
+            // (see docs/MAVEN_CENTRAL.md). No-op for local + Pages/GitHub Packages.
+            System.getenv("SIGNING_KEY")?.let { signingKey ->
+                apply(plugin = "signing")
+                extensions.configure<SigningExtension>("signing") {
+                    useInMemoryPgpKeys(signingKey, System.getenv("SIGNING_PASSWORD"))
+                    sign(extensions.getByType<PublishingExtension>().publications["release"])
                 }
             }
         }

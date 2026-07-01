@@ -11,7 +11,7 @@ Most mobile RUM SDKs collect everything and upload it all. This one keeps the da
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> **Current release: `0.5.1-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for full notes.
+> **Current release: `0.5.2-alpha`** — published for Android (public [GitHub Pages Maven repo](https://barrysolomon.github.io/mobile-otel/maven), no auth), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for full notes.
 > **Side note — management plane:** the gateway, control-plane UI, and k8s manifests live in a separate repo, `mobile-otel-control-plane`. It's an early **work in progress**, currently a **private repo** and **not yet usable by others**. If you're interested in it, reach out — I'm happy to grant access to anyone who wants to help move it along.
 
 ## The idea in one diagram
@@ -77,35 +77,62 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 ## Quick Start
 
 > **Fastest path:** React Native installs straight from npm with no auth —
-> `npm install @barrysolomon/mobile-react-native@alpha`. The Android SDK currently
-> publishes to GitHub Packages, which needs a `read:packages` PAT (see below);
-> Maven Central distribution is on the roadmap. To just *see it work*, run the
+> `npm install @barrysolomon/mobile-react-native@alpha`. The native Android SDK
+> resolves from a **public GitHub Pages Maven repo — no PAT, no login** (see below).
+> Maven Central is wired and awaiting the owner's signing credentials
+> ([docs/MAVEN_CENTRAL.md](docs/MAVEN_CENTRAL.md)). To just *see it work*, run the
 > bundled demo — [HOW_TO_DEMO.md](HOW_TO_DEMO.md).
+
+### Prerequisites
+
+- **JDK 17** for the Android/RN Gradle build. A newer default JDK (21/25) will fail
+  with opaque Gradle/Kotlin errors. Point Gradle at 17 explicitly if your system
+  default differs: `org.gradle.java.home=/path/to/jdk-17` in `gradle.properties`,
+  or `JAVA_HOME=$(/usr/libexec/java_home -v 17)` (macOS).
+- **Android SDK** installed with **`ANDROID_HOME`** (or `ANDROID_SDK_ROOT`) set.
+- **Android min SDK 26** (Android 8.0).
+- React Native consumers: **Node 18+** and the standard RN Android toolchain.
 
 ### Android SDK Integration
 
-Add the dependency from GitHub Packages (artifact `io.opentelemetry.android:mobile:0.5.0-alpha`). Consuming GitHub Packages requires a GitHub personal access token with the `read:packages` scope:
+The native SDK is published to a **public Maven repo on GitHub Pages** — no
+authentication required. Add the repo, then the dependency
+(artifact `io.github.barrysolomon:mobile:0.5.2-alpha`):
 
 ```kotlin
-// settings.gradle.kts (or build.gradle.kts repositories block)
+// settings.gradle.kts — dependencyResolutionManagement { repositories { ... } }
+// (or the allprojects/repositories block on older Gradle)
 repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
-        credentials {
-            // A GitHub PAT with read:packages
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
+    google()
+    mavenCentral()
+    maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") } // public, no auth
 }
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
+    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
 }
 ```
 
-> The full module set publishes to GitHub Packages as of 0.2.0-alpha — `io.opentelemetry.android:mobile` (the umbrella) plus `mobile-core` and all `mobile-instrumentation-*` modules — so the dependency tree resolves cleanly.
+> The public repo carries the whole tree — `io.github.barrysolomon:mobile` (the
+> umbrella) plus `mobile-core` and all `mobile-instrumentation-*` modules — so the
+> dependency graph resolves cleanly with that single `maven { }` line.
+>
+> <details><summary>Kotlin &lt; 2.3 toolchain? (RN 0.85 etc.) — add one resolution pin</summary>
+>
+> `opentelemetry-android` 1.5.0 drags `kotlin-stdlib` 2.4.0, whose metadata a
+> Kotlin &lt; 2.3 compiler can't read. Pin it down (stdlib is backward-compatible):
+> `configurations.all { resolutionStrategy { force("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") } }`.
+> See [docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md).
+> </details>
+>
+> <details><summary>Prefer authenticated GitHub Packages? (legacy/transition)</summary>
+>
+> The same artifacts also publish to GitHub Packages
+> (`https://maven.pkg.github.com/barrysolomon/mobile-otel`), which requires a PAT
+> with `read:packages`. The public Pages repo above is the recommended default —
+> use GitHub Packages only if your org mandates it.
+> </details>
 
 ```kotlin
 // In Application.onCreate()
@@ -184,13 +211,13 @@ val client = OkHttpClient.Builder()
 
 ### iOS SDK Integration (SwiftPM)
 
-Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.5.0-alpha`, and depend on the `OTelMobileSDK` product:
+Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.5.2-alpha`, and depend on the `OTelMobileSDK` product:
 
 ```swift
 // Package.swift
 dependencies: [
-    // SwiftPM resolves the git tag literally — the release tag is v0.5.0-alpha
-    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.5.0-alpha"))
+    // SwiftPM resolves the git tag literally — the release tag is v0.5.2-alpha
+    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.5.2-alpha"))
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -228,40 +255,80 @@ let otel = try OTelMobile.start(config: MobileConfig(
 
 ### React Native Integration (npm)
 
-Install under the **`alpha`** dist-tag — a bare install resolves the older 0.1.0-alpha:
+Full RN reference: **[docs/REACT_NATIVE_CONFIGURATION.md](docs/REACT_NATIVE_CONFIGURATION.md)** (config options + the manual span / log / error / flush API).
+
+**1. Install the JS package** (use the `alpha` dist-tag; a pin is also shown):
 
 ```bash
 npm install @barrysolomon/mobile-react-native@alpha
 # or pin exactly:
-npm install @barrysolomon/mobile-react-native@0.5.0-alpha
+npm install @barrysolomon/mobile-react-native@0.5.2-alpha
+cd ios && pod install && cd ..   # iOS only
 ```
 
-```ts
-import OTelMobile from '@barrysolomon/mobile-react-native';
+**2. Wire the native SDKs.** RN is a thin JS facade — buffering, policy evaluation,
+crash recovery, and OTLP export happen in the native Android + iOS SDKs, so those
+must resolve too. This is autolinked, but the native Android SDK comes from the
+project's **public Maven repo**, which your app's Gradle must know about. Add it to
+your host app's `android/settings.gradle` (no PAT required):
 
-await OTelMobile.start({
+```gradle
+// android/settings.gradle
+dependencyResolutionManagement {
+    repositories {
+        maven { url 'https://barrysolomon.github.io/mobile-otel/maven' }  // public, no auth
+        google()
+        mavenCentral()
+    }
+}
+```
+
+> On **iOS**, `pod install` (step 1) links the native pod. See
+> [docs/REACT_NATIVE_CONFIGURATION.md](docs/REACT_NATIVE_CONFIGURATION.md) for the
+> one-time `installSink` call iOS requires.
+
+**3. Start the SDK.** The export API is the **named** export `Dash0Mobile`:
+
+```ts
+import { Dash0Mobile } from '@barrysolomon/mobile-react-native';
+
+await Dash0Mobile.start({
   serviceName: 'my-app',
-  endpoint: 'https://collector.example.com:4318',
+  endpoint: 'https://collector.example.com:4318', // generic OTLP HTTP/protobuf collector
   // RN manual spans default to always-on sampling (strategy: 'always_on').
-  // Opt back into on-device sampling explicitly:
-  // sampling: { strategy: 'dynamic', normalRate: 0.1 },
+  // Opt into on-device sampling explicitly: sampling: { strategy: 'dynamic', normalRate: 0.1 },
 });
 ```
 
-**Sending to Dash0?** Use the dedicated `authToken` and `dataset` fields:
+**Sending to Dash0?** Use the dedicated `authToken` and `dataset` fields, and the
+Dash0 **ingress** endpoint — that is a plain HTTPS host with **no port and no path**
+(Dash0 terminates on 443 and appends `/v1/...` for you). This differs from the
+generic `:4318` collector example above:
 
 ```ts
-import OTelMobile from '@barrysolomon/mobile-react-native';
+import { Dash0Mobile } from '@barrysolomon/mobile-react-native';
 
-await OTelMobile.start({
+await Dash0Mobile.start({
   serviceName: 'my-app',
-  endpoint: 'https://ingress.us-west-2.aws.dash0.com', // or eu-west-1
+  endpoint: 'https://ingress.us-west-2.aws.dash0.com', // or ingress.eu-west-1.aws.dash0.com — no port/path
   authToken: 'auth_...',
   dataset: 'otel-mobile',
 });
 ```
 
-> RN is a thin JS facade over the native Android + iOS SDKs — buffering, policy evaluation, and OTLP export happen natively. On Android, native network instrumentation injects W3C `traceparent` so mobile→backend traces stitch (Expo SDK 52+ `expo/fetch` safe).
+**Exercise it** — manual telemetry (full API in the RN config doc):
+
+```ts
+import { Dash0Mobile } from '@barrysolomon/mobile-react-native';
+
+Dash0Mobile.log('cart.checkout', { 'shop.cart_id': 'abc' });          // a log record
+await Dash0Mobile.span('checkout', async () => { /* work */ });        // a span around work
+Dash0Mobile.log('checkout.failed', { error: String(e) }, 17);         // severity 17 = ERROR
+await Dash0Mobile.flushWindow(5);                                      // flush the last 5 min now
+```
+
+> On Android, native network instrumentation injects a W3C `traceparent` so
+> mobile→backend traces stitch (Expo SDK 52+ `expo/fetch` safe).
 
 ## Project Structure
 

@@ -9,9 +9,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Documentation
+## [0.5.2-alpha] — 2026-07-01
 
-- **kotlin-stdlib / Kotlin < 2.3 toolchain compatibility** documented in the Android and React Native SDK guides. `opentelemetry-android` 1.5.0 drags `kotlin-stdlib` 2.4.0, whose metadata a Kotlin < 2.3 compiler (e.g. RN 0.85's bundled 2.1.20) cannot read — failing with a `FirIncompatibleClassExpressionChecker` ICE. The guides now show the consumer-side `resolutionStrategy.force` pin. Resolves #60 as **document-don't-impose**: a published `strictly` constraint is the only mechanism that would actually cap the transitive 2.4.0 (a soft `require` loses to the higher version), but `strictly` would silently downgrade consumers on a Kotlin 2.4.x toolchain — too broad a blast radius to ship from an alpha SDK.
+Release-engineering fixes from a clean-room React Native → Android User Acceptance Test that failed on v0.5.1-alpha (0 telemetry — the APK never built). The native SDK is now resolvable from a **public Maven repo with no authentication**, and the publish pipeline that silently stopped shipping after v0.4.1-alpha is fixed.
+
+### Changed
+
+- **BREAKING (native Maven coordinate): `io.opentelemetry.android:mobile` → `io.github.barrysolomon:mobile`.** The `io.opentelemetry.*` namespace belongs to the OpenTelemetry project and can never ship to Maven Central; `io.github.barrysolomon` is auto-verified by the Central Portal against GitHub account ownership. Pre-1.0 alpha, so this one-time coordinate change lands now. The Kotlin package namespace (`io.opentelemetry.android.mobile.*`) is unchanged — no source imports change. See [docs/MAVEN_CENTRAL.md](docs/MAVEN_CENTRAL.md).
+- **SDK version + groupId are now single-sourced** in `examples/demo-app/gradle.properties` (`sdkVersionName` / `sdkGroupId`), read by the umbrella and every sibling publication. Removes the class of drift that shipped three disagreeing version strings at v0.5.1-alpha.
+
+### Fixed
+
+- **Native Android SDK is now on a PUBLIC Maven repo** — `https://barrysolomon.github.io/mobile-otel/maven` (GitHub Pages), no PAT. This is the direct fix for the UAT build blocker: `Could not find io.opentelemetry.android:mobile` because the artifact lived only on authenticated GitHub Packages. A clean-room consumer adds one `maven { url … }` line.
+- **Publish pipeline no longer silently skips releases.** `publish.yml`'s CI-green gate did a one-shot query for a *completed* `ci.yml` run and, on the normal simultaneous commit+tag push, saw it still running (`missing`) and refused — every release since v0.4.2-alpha failed to publish. It now **polls for CI completion** before judging.
+- **Version parity is enforced.** New `scripts/ci/check-version-parity.sh` (wired as a publish gate) fails the release unless the git tag == npm `package.json` version == native gradle `sdkVersionName` == RN bridge `DISTRO_VERSION`.
+- **GitHub README documented the wrong RN API.** It showed a default `import OTelMobile` (which does not exist); the shipped export is the **named** `Dash0Mobile`. Corrected across README + docs, and now guarded by a test that resolves the README's RN import/init example against the built package.
+- **RN native-install step was missing from the README.** The RN Quick Start now tells consumers to add the public Maven repo to their host `android/settings.gradle` (the module's own `repositories{}` is ignored under `RepositoriesMode.PREFER_SETTINGS`).
+- **RN bridge `DISTRO_VERSION`** corrected (was stuck at `0.4.1-alpha`).
+
+### Added
+
+- **Prerequisites section** in the README (JDK 17, `ANDROID_HOME`) — the UAT hit an opaque failure on a JDK 25 default.
+- **[docs/REACT_NATIVE_CONFIGURATION.md](docs/REACT_NATIVE_CONFIGURATION.md)** — RN-specific config reference + the manual span/log/error/flush API (previously only in the tarball-bundled README).
+- **Dash0 endpoint clarification** — the Dash0 ingress host takes no port/path, vs. the generic `:4318` collector example.
+- **Maven Central is wired and awaiting owner secrets** — `signing` plugin + a gated `publish-android-central` job flip on once `MAVEN_CENTRAL_USERNAME` / `SIGNING_KEY` are provisioned (coordinate is already Central-compatible).
+
+### Security
+
+- `npm audit fix` on the RN package (js-yaml transitive advisory).
 
 ## [0.5.1-alpha] — 2026-06-30
 

@@ -193,7 +193,8 @@ dependencies {
     def dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion')
             ?: new groovy.json.JsonSlurper().parse(
                     file('../../../../../packages/react-native/package.json')).version
-    implementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
+    def dash0SdkGroupId = project.findProperty('Dash0Mobile_sdkGroupId') ?: 'io.github.barrysolomon'
+    implementation "${dash0SdkGroupId}:mobile:${dash0SdkVersion}"
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }

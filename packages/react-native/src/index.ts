@@ -142,7 +142,10 @@ function resolveNative(): NativeDash0MobileModule | null {
 // callers and correlate issues to a specific bridge release. Keep this in
 // sync with package.json on each release.
 const DISTRO_NAME = 'dash0-react-native';
-const DISTRO_VERSION = '0.4.1-alpha';
+// Keep in lockstep with package.json `version`. The publish CI job asserts this
+// equals the npm version + git tag + native gradle version
+// (scripts/ci/check-version-parity.sh), so a drift here fails the release.
+const DISTRO_VERSION = '0.5.2-alpha';
 
 function resolveReactNativeVersion(): string | undefined {
   try {

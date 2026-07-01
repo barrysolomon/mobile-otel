@@ -20,6 +20,18 @@
 - [Bundled Config](BUNDLED_CONFIG.md) — Ship apps with pre-configured export policies
 - [API Reference](API_REFERENCE.md) — Full public API: MobileOtel, MobileConfig, DSL, all 18 instrumentation modules
 
+## React Native
+
+- [React Native SDK Guide](REACT_NATIVE_SDK_GUIDE.md) — Bridge architecture, install, auto-instrumentation
+- [React Native Configuration & API](REACT_NATIVE_CONFIGURATION.md) — `Dash0Mobile` config options + the manual span/log/error/flush API
+- [RN ↔ Android/iOS Parity](RN_ANDROID_IOS_PARITY.md) — Feature parity matrix across the three platforms
+
+## iOS
+
+- [iOS SDK Guide](IOS_SDK_GUIDE.md) — SwiftPM install, `OTelMobile.start`, resource attributes
+- [iOS Configuration](IOS_CONFIGURATION.md) — every `MobileConfig` field
+- [Maven Central runbook](MAVEN_CENTRAL.md) — public distribution + the path to Maven Central
+
 ## Architecture
 
 - [Architecture Overview](ARCHITECTURE_OVERVIEW.md) — System components and data flow

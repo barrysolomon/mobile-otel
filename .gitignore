@@ -256,6 +256,7 @@ examples/upstream-demo-app/src/release/assets/otel-config.json
 scripts/test/collector/output/
 
 # Swift Package Manager build artifacts
+/.build/
 otel-ios-mobile/.build/
 packages/react-native/.build/
 **/.swiftpm/
