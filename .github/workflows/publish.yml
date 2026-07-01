@@ -59,6 +59,15 @@ jobs:
                   echo "$label is green."
                   return 0
                 fi
+                # A non-success conclusion blocks the release ONLY for required
+                # workflows. An OPTIONAL workflow (e.g. path-filtered ios-ci.yml,
+                # which never gates the npm/Android artifacts) must warn, not
+                # block — otherwise a red iOS run refuses an RN→Android release,
+                # the exact false-block this gate was rewritten to eliminate.
+                if [ "$required" = "optional" ]; then
+                  echo "::warning::$label for $SHA concluded '$conclusion' but is OPTIONAL — continuing without blocking the release."
+                  return 0
+                fi
                 echo "::error::Refusing to publish: $label for $SHA concluded '$conclusion'. Tag a green commit."
                 exit 1
               fi
