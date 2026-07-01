@@ -36,7 +36,13 @@ let package = Package(
         // OTelMobileCallSink.swift resolves and the sink genuinely compiles +
         // tests against the real SDK surface (MobileConfig, OTelMobile, Span,
         // Severity, SpanKind, AttributeValue, …) rather than a stand-in.
-        .package(path: "../../otel-ios-mobile"),
+        //
+        // The iOS SDK manifest lives at the REPO ROOT (moved there in #54 so
+        // external consumers can resolve it from the Git URL); its sources
+        // still live under otel-ios-mobile/Sources via explicit target paths.
+        // So this sibling dep points at the repo root (../../), and the product
+        // below is referenced by that package's name, "OTelMobile".
+        .package(name: "OTelMobile", path: "../../"),
         // OTel-Swift core is a transitive dependency of OTelMobileSDK; declare
         // it directly so the TEST target can build real Tracer/Logger/Meter
         // handles (with in-memory exporters) to inject into the sink.
@@ -58,7 +64,7 @@ let package = Package(
                 // Real iOS SDK: satisfies `canImport(OTelMobileSDK)` and links
                 // the OTel-Swift transitive graph the sink builds spans/logs/
                 // metrics through.
-                .product(name: "OTelMobileSDK", package: "otel-ios-mobile"),
+                .product(name: "OTelMobileSDK", package: "OTelMobile"),
             ],
             path: "ios",
             exclude: [
