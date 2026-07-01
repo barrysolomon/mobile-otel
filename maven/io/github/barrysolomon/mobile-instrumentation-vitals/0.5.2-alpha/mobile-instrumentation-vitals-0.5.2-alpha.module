@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-vitals",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-vitals-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-vitals-0.5.2-alpha.aar",
+          "size": 21121,
+          "sha512": "0d7df306f45033a18bfc30a42ac0c1f5d52183c8abec50873b11b2d74938b7a61870fdde2408dbf2fc568f348a18665b15217250be23d66ed3104b97ed3a0283",
+          "sha256": "ddbfac9f8f233dc66f5292db62828f2a45b50b628df877d1f944804f74def589",
+          "sha1": "789c037bd51164a5ea5fc7599df5c98fc6875812",
+          "md5": "e6a1b4d6cb48e8cf45daf1bb09d61251"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-vitals-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-vitals-0.5.2-alpha.aar",
+          "size": 21121,
+          "sha512": "0d7df306f45033a18bfc30a42ac0c1f5d52183c8abec50873b11b2d74938b7a61870fdde2408dbf2fc568f348a18665b15217250be23d66ed3104b97ed3a0283",
+          "sha256": "ddbfac9f8f233dc66f5292db62828f2a45b50b628df877d1f944804f74def589",
+          "sha1": "789c037bd51164a5ea5fc7599df5c98fc6875812",
+          "md5": "e6a1b4d6cb48e8cf45daf1bb09d61251"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-network",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-network-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-network-0.5.2-alpha.aar",
+          "size": 19860,
+          "sha512": "6981f14221945b5f92e6b3fe4a63435799dd5b742702a9f956cb774422319e9d0f08331f8b44d61b820be8dda50aac18bc26f0b60399efc950a42f6aed108481",
+          "sha256": "4fb4e676157823553b96a028fcea22479c549d0fc73f6cc8122eb180ae0ef351",
+          "sha1": "b055992ef78237a051e009b3242298d6c5692605",
+          "md5": "35829a8dc7c91a580181da116ce0b6c4"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry.semconv",
+          "module": "opentelemetry-semconv",
+          "version": {
+            "requires": "1.39.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-network-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-network-0.5.2-alpha.aar",
+          "size": 19860,
+          "sha512": "6981f14221945b5f92e6b3fe4a63435799dd5b742702a9f956cb774422319e9d0f08331f8b44d61b820be8dda50aac18bc26f0b60399efc950a42f6aed108481",
+          "sha256": "4fb4e676157823553b96a028fcea22479c549d0fc73f6cc8122eb180ae0ef351",
+          "sha1": "b055992ef78237a051e009b3242298d6c5692605",
+          "md5": "35829a8dc7c91a580181da116ce0b6c4"
+        }
+      ]
+    }
+  ]
+}

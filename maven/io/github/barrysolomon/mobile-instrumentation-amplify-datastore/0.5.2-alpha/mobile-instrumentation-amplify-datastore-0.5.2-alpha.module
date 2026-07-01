@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-amplify-datastore",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-amplify-datastore-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-amplify-datastore-0.5.2-alpha.aar",
+          "size": 13626,
+          "sha512": "3a9a37082fb492218a515340767bf753f30cecbcd3b0b173648996c8ce1a19d9abd0328f5c9a24aa9afd7a0effa2c5fbf212eeb2acbd459a4ca0cece86922182",
+          "sha256": "3fdf025af971a94db73d8a86dcde28bf75244a7c7882ca1cf9b7d57ec744789c",
+          "sha1": "86a04a5b92fc2cf25390a8f674771207992d388c",
+          "md5": "365834711ba0e5af14b4680a3f195636"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-amplify-datastore-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-amplify-datastore-0.5.2-alpha.aar",
+          "size": 13626,
+          "sha512": "3a9a37082fb492218a515340767bf753f30cecbcd3b0b173648996c8ce1a19d9abd0328f5c9a24aa9afd7a0effa2c5fbf212eeb2acbd459a4ca0cece86922182",
+          "sha256": "3fdf025af971a94db73d8a86dcde28bf75244a7c7882ca1cf9b7d57ec744789c",
+          "sha1": "86a04a5b92fc2cf25390a8f674771207992d388c",
+          "md5": "365834711ba0e5af14b4680a3f195636"
+        }
+      ]
+    }
+  ]
+}

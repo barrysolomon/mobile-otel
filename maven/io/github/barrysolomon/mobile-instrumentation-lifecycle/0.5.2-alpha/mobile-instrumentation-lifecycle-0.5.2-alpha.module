@@ -1,0 +1,97 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-lifecycle",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-lifecycle-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-lifecycle-0.5.2-alpha.aar",
+          "size": 9143,
+          "sha512": "05e8e82b3e30590699561425d0a519010fb9764bf8644a619007ce2dde129a1a981ddfc3fdfed55be4a26701ab77d7fa24cf6321618d5ee13847515afff2d19d",
+          "sha256": "7b2282f95cc08165e5565092964e4db579c6b6b0444e24064dc85c775ca1d360",
+          "sha1": "8f12bbcb3bb364d9571d15fc49fd3ddc5d974478",
+          "md5": "9a17fc27d1ecc377880b6d4f2d4e9ffc"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.lifecycle",
+          "module": "lifecycle-process",
+          "version": {
+            "requires": "2.8.7"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-lifecycle-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-lifecycle-0.5.2-alpha.aar",
+          "size": 9143,
+          "sha512": "05e8e82b3e30590699561425d0a519010fb9764bf8644a619007ce2dde129a1a981ddfc3fdfed55be4a26701ab77d7fa24cf6321618d5ee13847515afff2d19d",
+          "sha256": "7b2282f95cc08165e5565092964e4db579c6b6b0444e24064dc85c775ca1d360",
+          "sha1": "8f12bbcb3bb364d9571d15fc49fd3ddc5d974478",
+          "md5": "9a17fc27d1ecc377880b6d4f2d4e9ffc"
+        }
+      ]
+    }
+  ]
+}

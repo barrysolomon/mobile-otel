@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-file-io",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-file-io-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-file-io-0.5.2-alpha.aar",
+          "size": 8409,
+          "sha512": "c04eb0b8075467cec1fbd170e49edf97482aa39dae3c9ae68682808ebec6f2c12ddb4c3ffb684e653081b4e4a6893e9454972d2271caa38635328544116acd25",
+          "sha256": "150a40188067ca986022eebb51dd545a524af6423692b4423f2651b30ec5c7d4",
+          "sha1": "92a5cd3e7306a7797366a7c986080b982d6d1221",
+          "md5": "d8723be5c5d9722052acd338f68ddf6d"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-file-io-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-file-io-0.5.2-alpha.aar",
+          "size": 8409,
+          "sha512": "c04eb0b8075467cec1fbd170e49edf97482aa39dae3c9ae68682808ebec6f2c12ddb4c3ffb684e653081b4e4a6893e9454972d2271caa38635328544116acd25",
+          "sha256": "150a40188067ca986022eebb51dd545a524af6423692b4423f2651b30ec5c7d4",
+          "sha1": "92a5cd3e7306a7797366a7c986080b982d6d1221",
+          "md5": "d8723be5c5d9722052acd338f68ddf6d"
+        }
+      ]
+    }
+  ]
+}

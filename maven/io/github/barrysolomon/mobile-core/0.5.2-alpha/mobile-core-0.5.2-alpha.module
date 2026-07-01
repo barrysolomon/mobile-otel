@@ -1,0 +1,210 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-core",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk-logs",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry.android",
+          "module": "session",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.android.instrumentation",
+          "module": "android-instrumentation",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.android",
+          "module": "agent-api",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-core-0.5.2-alpha.aar",
+          "url": "mobile-core-0.5.2-alpha.aar",
+          "size": 89664,
+          "sha512": "7c78e775ea03ee53b610670147ca505a0d41a79525cdeb3a09313b37ad78340651396e7fe0285a35d326379bf6d939ab9adbedd7265b8d36d6e72aa84aef2a8c",
+          "sha256": "9ef5a14ccd8cacf060194235f6465d2b745e33d2fd31571767a9721162a4a92c",
+          "sha1": "d17f4e5bfad115a729bb8b3a603b8dd17adb901e",
+          "md5": "882c2b2911450d6a9dd0645c13796cce"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.core",
+          "module": "core-ktx",
+          "version": {
+            "requires": "1.17.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.6.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk-logs",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry.android",
+          "module": "session",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.android.instrumentation",
+          "module": "android-instrumentation",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "io.opentelemetry.android",
+          "module": "agent-api",
+          "version": {
+            "requires": "1.5.0"
+          },
+          "excludes": [
+            {
+              "group": "io.opentelemetry",
+              "module": "opentelemetry-api-incubator"
+            }
+          ]
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-core-0.5.2-alpha.aar",
+          "url": "mobile-core-0.5.2-alpha.aar",
+          "size": 89664,
+          "sha512": "7c78e775ea03ee53b610670147ca505a0d41a79525cdeb3a09313b37ad78340651396e7fe0285a35d326379bf6d939ab9adbedd7265b8d36d6e72aa84aef2a8c",
+          "sha256": "9ef5a14ccd8cacf060194235f6465d2b745e33d2fd31571767a9721162a4a92c",
+          "sha1": "d17f4e5bfad115a729bb8b3a603b8dd17adb901e",
+          "md5": "882c2b2911450d6a9dd0645c13796cce"
+        }
+      ]
+    }
+  ]
+}

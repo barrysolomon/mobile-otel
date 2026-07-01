@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-tap",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-tap-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-tap-0.5.2-alpha.aar",
+          "size": 14576,
+          "sha512": "a487d95d9db99f92a23adad85e476c85ce040e2ecdf539acfe3eba3923f8759d7a756ce8f297b9987b66c05040a5f5d0527a5c1bc3729254477e328534153344",
+          "sha256": "cc77e8fadb7e1e547e55d1c33930e6fc91b5824d7e10ee9d644c9aa193a3599f",
+          "sha1": "28ce2141a793e5f081cc4d71940072dc427334d2",
+          "md5": "d03ac2725acc0215542c6bb3a4532773"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-tap-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-tap-0.5.2-alpha.aar",
+          "size": 14576,
+          "sha512": "a487d95d9db99f92a23adad85e476c85ce040e2ecdf539acfe3eba3923f8759d7a756ce8f297b9987b66c05040a5f5d0527a5c1bc3729254477e328534153344",
+          "sha256": "cc77e8fadb7e1e547e55d1c33930e6fc91b5824d7e10ee9d644c9aa193a3599f",
+          "sha1": "28ce2141a793e5f081cc4d71940072dc427334d2",
+          "md5": "d03ac2725acc0215542c6bb3a4532773"
+        }
+      ]
+    }
+  ]
+}

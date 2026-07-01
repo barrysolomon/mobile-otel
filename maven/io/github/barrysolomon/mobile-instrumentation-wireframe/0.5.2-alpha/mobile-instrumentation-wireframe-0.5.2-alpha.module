@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-wireframe",
+    "version": "0.5.2-alpha",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-wireframe-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-wireframe-0.5.2-alpha.aar",
+          "size": 23756,
+          "sha512": "196f640fb8a18a367b35985e49f2378f4bd2236292703f9b85adc51e805249996db470f5b457c3857ba3b0c1a2957a7ac9fb31313c3ca3a3e227cb97415af2c6",
+          "sha256": "c61193f69c209bf28d3c442cbd89a812443e2bb220eb81b9267a2f8549edde49",
+          "sha1": "f282b788c30349c4100e9a4e850355c20beff209",
+          "md5": "19e7e84ba2faaa63441de12b28f77c58"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.5.2-alpha"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-wireframe-0.5.2-alpha.aar",
+          "url": "mobile-instrumentation-wireframe-0.5.2-alpha.aar",
+          "size": 23756,
+          "sha512": "196f640fb8a18a367b35985e49f2378f4bd2236292703f9b85adc51e805249996db470f5b457c3857ba3b0c1a2957a7ac9fb31313c3ca3a3e227cb97415af2c6",
+          "sha256": "c61193f69c209bf28d3c442cbd89a812443e2bb220eb81b9267a2f8549edde49",
+          "sha1": "f282b788c30349c4100e9a4e850355c20beff209",
+          "md5": "19e7e84ba2faaa63441de12b28f77c58"
+        }
+      ]
+    }
+  ]
+}
