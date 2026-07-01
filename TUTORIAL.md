@@ -582,30 +582,37 @@ The SDK requests `?dsl_version=2` by default. If the gateway returns v1, it hand
 
 ### Step 1: Add the dependency
 
-**Android** — published to GitHub Packages (not Maven Central). Needs a GitHub PAT with `read:packages`:
+**Android** — published to a public Maven repo on GitHub Pages. No PAT / no authentication required:
 
 ```kotlin
 // settings.gradle.kts repositories
-maven {
-    url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
-    credentials {
-        username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-        password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-    }
-}
+maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") }
 
 // build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
+    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
 }
 ```
 
-**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.5.0-alpha`, product `OTelMobileSDK`.
+> **Legacy / transition (optional):** existing consumers may still pull the SDK from GitHub Packages, which requires a GitHub PAT with `read:packages`. This path is being phased out — prefer the public repo above.
+>
+> ```kotlin
+> // settings.gradle.kts repositories — legacy GitHub Packages path
+> maven {
+>     url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+>     credentials {
+>         username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+>         password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+>     }
+> }
+> ```
+
+**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.5.2-alpha`, product `OTelMobileSDK`.
 
 **React Native** — npm, under the `alpha` dist-tag (a bare install gets the older 0.1.0-alpha):
 
 ```bash
-npm install @barrysolomon/mobile-react-native@alpha   # or @0.5.0-alpha
+npm install @barrysolomon/mobile-react-native@alpha   # or @0.5.2-alpha
 ```
 
 ### Step 2: Initialize in `Application.onCreate()`

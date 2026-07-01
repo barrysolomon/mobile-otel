@@ -5,14 +5,16 @@ rootProject.name = 'AstronomyShopRN'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
 
-// @dash0/mobile-react-native pulls io.opentelemetry.android:mobile from
-// mavenLocal. Publish with `./gradlew publishToMavenLocal` from
-// examples/demo-app before building the RN demo.
+// @dash0/mobile-react-native pulls io.github.barrysolomon:mobile. PREFER_SETTINGS
+// means THESE repos resolve the autolinked module's deps (the module's own
+// repositories{} block is ignored) — so the public GitHub Pages Maven repo below
+// is exactly what a clean-room consumer must add to THEIR settings.gradle. No PAT.
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
-        mavenLocal()
+        maven { url 'https://barrysolomon.github.io/mobile-otel/maven' }  // public, no auth
         google()
         mavenCentral()
+        mavenLocal()  // last: dev fallback for unreleased local builds
     }
 }

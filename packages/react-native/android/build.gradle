@@ -76,11 +76,15 @@ android {
 repositories {
     google()
     mavenCentral()
-    // The native Android SDK (io.opentelemetry.android:mobile) is this repo's
-    // own artifact, published to the local Maven cache by the demo-app build
-    // (examples/demo-app publishes :otel-android-mobile* to mavenLocal). It is
-    // not on a public repo, so resolve it from mavenLocal for the standalone
-    // test build. Listed last so public deps still come from google()/central.
+    // The native Android SDK (io.github.barrysolomon:mobile) is this repo's own
+    // artifact. It is published to a PUBLIC, no-auth Maven repo on GitHub Pages —
+    // this is what a clean-room consumer resolves it from (see the README RN
+    // section). Host-autolinked builds resolve via the CONSUMER's settings.gradle
+    // repositories (RepositoriesMode.PREFER_SETTINGS ignores this module block),
+    // so the README instructs the consumer to add this same URL there.
+    maven { url "https://barrysolomon.github.io/mobile-otel/maven" }
+    // mavenLocal last: lets a dev who ran `examples/demo-app` publishReleaseToMavenLocal
+    // consume an unreleased build without hitting the network.
     mavenLocal()
 }
 
@@ -90,7 +94,7 @@ repositories {
 // build against the version this package's package.json devDepends on.
 ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion') ?: '+'
 
-// Version of the native Android SDK (io.opentelemetry.android:mobile) this RN
+// Version of the native Android SDK (io.github.barrysolomon:mobile) this RN
 // module depends on. DERIVED from this package's own package.json `version`,
 // which carries the lockstep release version shared by all three artifacts
 // (npm + Android Maven + iOS SwiftPM — see docs/VERSIONING.md). Deriving it
@@ -106,8 +110,14 @@ ext.reactAndroidVersion = project.findProperty('Dash0Mobile_reactAndroidVersion'
 ext.dash0SdkVersion = project.findProperty('Dash0Mobile_sdkVersion')
         ?: new groovy.json.JsonSlurper().parse(file('../package.json')).version
 
+// Maven groupId of the native Android SDK. Migrated from io.opentelemetry.android
+// (that namespace belongs to the OpenTelemetry project and cannot ship to Maven
+// Central) to io.github.barrysolomon (Central Portal auto-verifies io.github.<user>
+// against GitHub ownership). Consumers can override via -PDash0Mobile_sdkGroupId.
+ext.dash0SdkGroupId = project.findProperty('Dash0Mobile_sdkGroupId') ?: 'io.github.barrysolomon'
+
 // Pin the transitive kotlin-stdlib down to a version our Kotlin compiler can
-// read. io.opentelemetry.android:mobile (>= 0.5.0-alpha) depends on
+// read. io.github.barrysolomon:mobile (>= 0.5.0-alpha) depends on
 // opentelemetry-android 1.5.0, which transitively declares kotlin-stdlib 2.4.0.
 // This module compiles with Kotlin 2.1.20 (matching RN 0.85's bundled Kotlin —
 // see settings.gradle), and a 2.1.x compiler cannot parse 2.4.0 stdlib metadata:
@@ -139,7 +149,7 @@ dependencies {
     // (not `compileOnly`) so Kotlin can resolve transitive config classes
     // (TextInputConfig, BreadcrumbConfig, VitalsConfig, etc.) referenced
     // through MobileConfig's constructor signature.
-    implementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
+    implementation "${dash0SdkGroupId}:mobile:${dash0SdkVersion}"
     implementation 'io.opentelemetry:opentelemetry-api:1.58.0'
 
     testImplementation 'junit:junit:4.13.2'
@@ -148,7 +158,7 @@ dependencies {
     // on Java 25 ("Could not modify all classes ... ReactApplicationContext").
     testImplementation 'org.mockito:mockito-core:5.18.0'
     testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
-    testImplementation "io.opentelemetry.android:mobile:${dash0SdkVersion}"
+    testImplementation "${dash0SdkGroupId}:mobile:${dash0SdkVersion}"
     testImplementation 'io.opentelemetry:opentelemetry-api:1.58.0'
 
     // Network-interceptor unit tests: real OkHttp + the OTel SDK in-memory

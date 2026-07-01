@@ -37,12 +37,38 @@ Your App
 
 ## Installation
 
-The SDK is published to **GitHub Packages** (not Maven Central). Pulling it in takes three steps: declare the Maven repository, authenticate with a GitHub PAT that has the `read:packages` scope, and add the dependency.
+The SDK is published to a **public Maven repo on GitHub Pages — no PAT / no authentication required.** Pulling it in takes two steps: declare the Maven repository, then add the dependency.
 
 ### 1. Declare the repository
 
 ```kotlin
 // settings.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") }
+    }
+}
+```
+
+### 2. Add the dependency
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
+}
+```
+
+The umbrella `io.github.barrysolomon:mobile` artifact and its full dependency tree — `mobile-core` plus every `mobile-instrumentation-<name>` module — are all published to this public repository, so the single dependency above resolves the whole SDK.
+
+### (Legacy / transition) GitHub Packages + PAT
+
+Existing consumers may still pull the SDK from **GitHub Packages**, which requires a GitHub PAT with the `read:packages` scope. This path is being phased out — prefer the public GitHub Pages repo above. To use it, declare the repository with credentials:
+
+```kotlin
+// settings.gradle.kts — legacy GitHub Packages path
 dependencyResolutionManagement {
     repositories {
         google()
@@ -61,27 +87,12 @@ dependencyResolutionManagement {
 }
 ```
 
-### 2. Provide credentials
-
-GitHub Packages requires authentication even for public packages. Add a PAT (scope `read:packages`) to `~/.gradle/gradle.properties`:
+GitHub Packages requires authentication even for public packages. Add a PAT (scope `read:packages`) to `~/.gradle/gradle.properties` (or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment):
 
 ```properties
 gpr.user=your-github-username
 gpr.token=ghp_your_personal_access_token_with_read_packages
 ```
-
-(Or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment.)
-
-### 3. Add the dependency
-
-```kotlin
-// app/build.gradle.kts
-dependencies {
-    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
-}
-```
-
-The umbrella `io.opentelemetry.android:mobile` artifact and its full dependency tree — `mobile-core` plus every `mobile-instrumentation-<name>` module — are all published to this GitHub Packages repository, so the single dependency above resolves the whole SDK.
 
 > Building from source instead? The repository has no standalone root Gradle project — the modules are wired through the composite build under `examples/demo-app/`. Run module tasks from there (e.g. `cd examples/demo-app && ./gradlew :otel-android-mobile:test`).
 
@@ -263,7 +274,7 @@ Practical consequences:
   briefly while the encrypted store finishes warming up; its write is visible
   when it returns, as always.
 - The first remote-config poll starts a few ms later than in releases before
-  0.5.0-alpha.
+  0.5.2-alpha.
 
 ## Auto-Instrumentation
 

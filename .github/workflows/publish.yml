@@ -6,9 +6,26 @@ on:
       - 'v*'
 
 jobs:
-  # A tag is not a quality signal — CI is. Refuse to publish any tag whose commit
-  # does not have green CI. Without this gate, `git tag v0.x && git push --tags`
-  # ships a red main to npm `latest` and Maven with zero checks.
+  # ── Gate 1: the tag must match every version surface ────────────────────────
+  # The v0.5.1-alpha UAT failed partly because the git tag, package.json, npm, and
+  # the RN bridge distro version all disagreed. Refuse to publish unless they lock.
+  verify-version-parity:
+    name: Verify version parity (tag == npm == gradle == distro)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Assert all version surfaces agree with the tag
+        run: scripts/ci/check-version-parity.sh "${GITHUB_REF_NAME}"
+
+  # ── Gate 2: CI must be GREEN for the tagged commit ──────────────────────────
+  # A tag is not a quality signal — CI is. WAIT for ci.yml to finish for this SHA
+  # before judging it. The previous one-shot query failed in ~4s whenever the tag
+  # and its commit were pushed together (the common release case): ci.yml was
+  # still running, the query for a *completed* run returned 'missing', and every
+  # release since v0.4.2-alpha refused to publish. Polling removes that race.
   verify-ci-green:
     name: Verify CI is green for the tagged commit
     runs-on: ubuntu-latest
@@ -16,37 +33,53 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Require successful CI for ${{ github.sha }}
+      - name: Wait for and require successful CI for ${{ github.sha }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
           echo "Tagged commit: $SHA"
 
-          # ci.yml runs on every push to main — it MUST have a successful run.
-          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" \
-            --jq '[.workflow_runs[].conclusion] | first // "missing"')
-          echo "ci.yml → $conclusion"
-          if [ "$conclusion" != "success" ]; then
-            echo "::error::Refusing to publish: CI for $SHA is '$conclusion' (need 'success'). Tag a green commit."
+          # Poll ci.yml (runs on every push to main) until it COMPLETES for this
+          # SHA. Up to 30 attempts * 30s = 15 min — comfortably longer than the
+          # ~8m20s ci.yml runtime, with headroom for queue delay.
+          wait_for_completion() {
+            local wf="$1" label="$2" required="$3"
+            local attempts=30 conclusion status
+            for i in $(seq 1 "$attempts"); do
+              status=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$SHA" \
+                --jq '[.workflow_runs[]] | first | .status // "none"')
+              conclusion=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$SHA" \
+                --jq '[.workflow_runs[]] | first | .conclusion // "none"')
+              echo "[$i/$attempts] $label → status=$status conclusion=$conclusion"
+              if [ "$status" = "completed" ]; then
+                if [ "$conclusion" = "success" ]; then
+                  echo "$label is green."
+                  return 0
+                fi
+                echo "::error::Refusing to publish: $label for $SHA concluded '$conclusion'. Tag a green commit."
+                exit 1
+              fi
+              if [ "$status" = "none" ] && [ "$required" = "optional" ] && [ "$i" -ge 3 ]; then
+                echo "$label has no run for this SHA after 3 checks — treating as not-applicable (path-filtered)."
+                return 0
+              fi
+              sleep 30
+            done
+            echo "::error::Refusing to publish: $label did not complete for $SHA within the wait window."
             exit 1
-          fi
+          }
 
-          # ios-ci.yml is path-filtered (iOS sources only): require success when a
-          # run exists; a missing run means no iOS files changed and is acceptable.
-          ios=$(gh api "repos/${{ github.repository }}/actions/workflows/ios-ci.yml/runs?head_sha=$SHA&status=completed" \
-            --jq '[.workflow_runs[].conclusion] | first // "missing"')
-          echo "ios-ci.yml → $ios"
-          if [ "$ios" != "success" ] && [ "$ios" != "missing" ]; then
-            echo "::error::Refusing to publish: iOS CI for $SHA is '$ios'. Tag a green commit."
-            exit 1
-          fi
+          # ci.yml MUST exist and succeed. ios-ci.yml is path-filtered — optional.
+          wait_for_completion "ci.yml" "ci.yml" "required"
+          wait_for_completion "ios-ci.yml" "ios-ci.yml" "optional"
 
   publish-npm:
     name: Publish @barrysolomon/mobile-react-native to npm
     runs-on: ubuntu-latest
-    needs: verify-ci-green
+    needs: [verify-version-parity, verify-ci-green]
     defaults:
       run:
         working-directory: packages/react-native
@@ -65,10 +98,9 @@ jobs:
         #     post-1.0 `npm install <pkg>` never pulls a prerelease.
         #   * PRE-1.0 EXCEPTION: while the major version is 0, EVERY release is a
         #     prerelease, so also point `latest` at it. Otherwise `latest` stays
-        #     stuck at the first 0.x ever published (that is how it ended up
-        #     pinned to 0.1.0-alpha) and a bare `npm install` gets the oldest
-        #     version. Once a stable 1.0 ships, `latest` is owned solely by
-        #     stable publishes and this exception no longer applies.
+        #     stuck at the first 0.x ever published and a bare `npm install` gets
+        #     the oldest version. Once a stable 1.0 ships, `latest` is owned solely
+        #     by stable publishes and this exception no longer applies.
         run: |
           set -euo pipefail
           PKG="$(node -p "require('./package.json').name")"
@@ -82,9 +114,6 @@ jobs:
           esac
           echo "Publishing $PKG@$VERSION to dist-tag '$TAG'"
           npm publish --access public --tag "$TAG"
-          # Pre-1.0 only: also make this the `latest` so the npm page + bare
-          # install reflect the newest 0.x. (No-op for stable releases, which
-          # already published to `latest` above.)
           if [ "$TAG" != "latest" ] && [ "$MAJOR" = "0" ]; then
             echo "Pre-1.0 release — also pointing 'latest' at $VERSION"
             npm dist-tag add "$PKG@$VERSION" latest
@@ -92,10 +121,60 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  publish-android:
-    name: Publish Android SDK to GitHub Packages Maven
+  # ── Native Android → PUBLIC GitHub Pages Maven repo ─────────────────────────
+  # This is the fix for the v0.5.1-alpha UAT build blocker: the native SDK now
+  # resolves from https://barrysolomon.github.io/mobile-otel/maven with NO PAT.
+  # Gradle publishes the whole tree (umbrella + mobile-core + every
+  # mobile-instrumentation-*) into a local dir, which we deploy onto the gh-pages
+  # branch under /maven, keeping all previously published versions.
+  publish-android-pages:
+    name: Publish Android SDK to public GitHub Pages Maven repo
     runs-on: ubuntu-latest
-    needs: verify-ci-green
+    needs: [verify-version-parity, verify-ci-green]
+    permissions:
+      contents: write   # push to gh-pages
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build + publish all SDK modules into the local Pages Maven dir
+        working-directory: examples/demo-app
+        run: ./gradlew publishReleasePublicationToPagesRepository -x test -x lint --console=plain
+      - name: Deploy the Maven dir onto the gh-pages branch (keep old versions)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SRC="examples/demo-app/build/pages-maven"
+          test -d "$SRC" || { echo "::error::$SRC not produced by gradle"; exit 1; }
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TMP="$(mktemp -d)"
+          # Clone (or init) the gh-pages branch so existing versions survive.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git clone --branch gh-pages --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP"
+          else
+            git clone --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP"
+            (cd "$TMP" && git checkout --orphan gh-pages && git rm -rf . >/dev/null 2>&1 || true)
+          fi
+          mkdir -p "$TMP/maven"
+          cp -R "$SRC"/. "$TMP/maven/"
+          # A landing page so the Pages site itself isn't a 404.
+          [ -f "$TMP/index.html" ] || echo '<h1>mobile-otel Maven repo</h1><p>Public Maven artifacts under <a href="./maven/">/maven/</a>.</p>' > "$TMP/index.html"
+          (cd "$TMP" && git add -A && git commit -m "publish Maven artifacts for ${GITHUB_REF_NAME}" && git push origin gh-pages)
+
+  # ── Native Android → GitHub Packages (transition; PAT-based) ────────────────
+  # Kept for one transition window so existing PAT-based 0.x consumers aren't
+  # stranded. The public Pages repo above is the documented default going forward.
+  publish-android-ghpackages:
+    name: Publish Android SDK to GitHub Packages (transition)
+    runs-on: ubuntu-latest
+    needs: [verify-version-parity, verify-ci-green]
     permissions:
       contents: read
       packages: write
@@ -108,14 +187,49 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Publish ALL SDK modules to GitHub Packages
         working-directory: examples/demo-app
-        # Unqualified task name → runs the "release" publication for EVERY module
-        # that defines it: the umbrella (io.opentelemetry.android:mobile), mobile-core,
-        # and all mobile-instrumentation-* modules (via the subprojects convention in
-        # this composite build's root build.gradle.kts). Previously this only published
-        # the umbrella, whose POM then referenced ~20 unpublished siblings — so no
-        # consumer could resolve the tree (reported by Loper, 2026-06). The two demo
-        # apps define no "release" publication, so they are skipped automatically.
-        run: ./gradlew publishReleasePublicationToGitHubPackagesRepository
+        run: ./gradlew publishReleasePublicationToGitHubPackagesRepository -x test -x lint --console=plain
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
+
+  # Secrets cannot be read in a job-level `if:`, so surface their presence as an
+  # output here (a step expression CAN read secrets) and gate the Central job on it.
+  preflight-secrets:
+    name: Detect optional publishing secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has_central: ${{ steps.detect.outputs.has_central }}
+    steps:
+      - id: detect
+        run: echo "has_central=${{ secrets.MAVEN_CENTRAL_USERNAME != '' }}" >> "$GITHUB_OUTPUT"
+
+  # ── Native Android → Maven Central (INDUSTRY STANDARD; flips on with secrets) ─
+  # Skipped until the owner provisions the Central Portal + signing secrets (see
+  # docs/MAVEN_CENTRAL.md). When MAVEN_CENTRAL_USERNAME is present this job signs
+  # (SIGNING_KEY/SIGNING_PASSWORD wire into the gradle `signing` block) and uploads
+  # to the Central Portal. Coordinate is already io.github.barrysolomon (Central
+  # auto-verifies io.github.<user>), so no further migration is needed — just the
+  # secrets and the one-line publish task documented in MAVEN_CENTRAL.md.
+  publish-android-central:
+    name: Publish Android SDK to Maven Central (if secrets present)
+    runs-on: ubuntu-latest
+    needs: [verify-version-parity, verify-ci-green, preflight-secrets]
+    if: ${{ needs.preflight-secrets.outputs.has_central == 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Publish signed artifacts to the Central Portal
+        working-directory: examples/demo-app
+        # publishAllPublicationsToCentralPortal is provided by the Central Portal
+        # plugin once added per docs/MAVEN_CENTRAL.md §4. Until then this job is
+        # skipped by the `if:` above, so its absence never breaks a release.
+        run: ./gradlew publishAllPublicationsToCentralPortal -x test -x lint --console=plain
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}

@@ -158,9 +158,12 @@ dependencies {
 publishing {
     publications {
         create<MavenPublication>("release") {
-            groupId = "io.opentelemetry.android"
+            // Coordinates come from examples/demo-app/gradle.properties (single
+            // source of truth) so the umbrella + every sibling publish under the
+            // same groupId/version and cannot drift. See docs/MAVEN_CENTRAL.md.
+            groupId = (project.findProperty("sdkGroupId") as String?) ?: "io.github.barrysolomon"
             artifactId = "mobile"
-            version = "0.5.0-alpha"
+            version = (project.findProperty("sdkVersionName") as String?) ?: "0.5.2-alpha"
 
             afterEvaluate {
                 from(components["release"])
@@ -196,6 +199,17 @@ publishing {
     }
 
     repositories {
+        // PUBLIC, no-auth Maven repo served from GitHub Pages
+        // (https://barrysolomon.github.io/mobile-otel/maven). The publish CI job
+        // rsyncs this directory onto the gh-pages branch. This is what lets a
+        // clean-room consumer resolve the native SDK with ONE public `maven { url }`
+        // line and no PAT — the fix for the v0.5.1-alpha UAT build blocker.
+        maven {
+            name = "Pages"
+            url = uri(rootProject.layout.buildDirectory.dir("pages-maven"))
+        }
+        // Kept for existing PAT-based consumers during the transition; the public
+        // Pages repo above is now the documented default.
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
@@ -204,5 +218,19 @@ publishing {
                 password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
             }
         }
+    }
+}
+
+// ─── Maven Central signing (Central-ready; flips on when secrets exist) ────────
+// Central requires PGP-signed artifacts. This applies the signing plugin and
+// signs the release publication ONLY when the CI signing secrets are present, so
+// local dev + the GitHub Packages / Pages paths keep working unsigned. Provision
+// SIGNING_KEY (armored secret key) + SIGNING_PASSWORD, then the publish-maven-central
+// job in publish.yml uploads signed artifacts. See docs/MAVEN_CENTRAL.md.
+System.getenv("SIGNING_KEY")?.let { signingKey ->
+    apply(plugin = "signing")
+    extensions.configure<SigningExtension>("signing") {
+        useInMemoryPgpKeys(signingKey, System.getenv("SIGNING_PASSWORD"))
+        sign(extensions.getByType<PublishingExtension>().publications["release"])
     }
 }

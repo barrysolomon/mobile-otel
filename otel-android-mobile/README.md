@@ -14,11 +14,35 @@ Mobile-specific extensions for OpenTelemetry Android including buffering and con
 
 ## Installation
 
-The SDK is published to **GitHub Packages** (not Maven Central). Consuming it requires (1) declaring the Maven repository, (2) authenticating with a GitHub Personal Access Token that has the `read:packages` scope, and (3) adding the dependency.
+The SDK is published to a **public Maven repo on GitHub Pages — no PAT / no authentication required.** Consuming it takes two steps: (1) declare the Maven repository, and (2) add the dependency.
 
 ### 1. Declare the repository
 
 In `settings.gradle.kts` (or your root `build.gradle.kts` `repositories` block):
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") }
+    }
+}
+```
+
+### 2. Add the dependency
+
+```kotlin
+dependencies {
+    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
+}
+```
+
+The umbrella `io.github.barrysolomon:mobile` artifact pulls in its full dependency tree — `mobile-core` and every `mobile-instrumentation-<name>` module — all published to the same public repository, so a single dependency line resolves everything.
+
+### (Legacy / transition) GitHub Packages + PAT
+
+Existing consumers may still pull the SDK from **GitHub Packages**, which requires a GitHub Personal Access Token with the `read:packages` scope. This path is being phased out — prefer the public GitHub Pages repo above. To use it, declare the repository with credentials:
 
 ```kotlin
 dependencyResolutionManagement {
@@ -39,26 +63,12 @@ dependencyResolutionManagement {
 }
 ```
 
-### 2. Provide credentials
-
-GitHub Packages requires authentication even for public packages. Add a PAT with the `read:packages` scope to `~/.gradle/gradle.properties` (keep it out of version control):
+GitHub Packages requires authentication even for public packages. Add a PAT with the `read:packages` scope to `~/.gradle/gradle.properties` (keep it out of version control), or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment (the repo block above falls back to these):
 
 ```properties
 gpr.user=your-github-username
 gpr.token=ghp_your_personal_access_token_with_read_packages
 ```
-
-Or export `GITHUB_ACTOR` / `GITHUB_TOKEN` in the environment (the repo block above falls back to these).
-
-### 3. Add the dependency
-
-```kotlin
-dependencies {
-    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
-}
-```
-
-The umbrella `io.opentelemetry.android:mobile` artifact pulls in its full dependency tree — `mobile-core` and every `mobile-instrumentation-<name>` module — all published to the same GitHub Packages repository, so a single dependency line resolves everything.
 
 ## Quick Start
 

@@ -17,28 +17,37 @@ Two paths depending on your goal:
 
 ### Step 1: Add the SDK
 
-The SDK (v0.5.0-alpha) publishes to **GitHub Packages**, not Maven Central. Consuming it requires a GitHub personal access token with the `read:packages` scope:
+The SDK (v0.5.2-alpha) publishes to a **public Maven repo on GitHub Pages — no PAT / no authentication required:**
 
 ```kotlin
 // settings.gradle.kts (or build.gradle.kts repositories block)
 repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
-        credentials {
-            // A GitHub PAT with read:packages
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
+    maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") }
 }
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.opentelemetry.android:mobile:0.5.0-alpha")
+    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
 }
 ```
 
-> As of 0.2.0-alpha the full module set publishes — the `io.opentelemetry.android:mobile` umbrella plus `mobile-core` and all `mobile-instrumentation-*` modules — so the dependency tree resolves without local module wiring.
+> **Legacy / transition (optional):** existing consumers may still pull the SDK from GitHub Packages, which requires a GitHub PAT with the `read:packages` scope. This path is being phased out — prefer the public repo above.
+>
+> ```kotlin
+> // settings.gradle.kts — legacy GitHub Packages path
+> repositories {
+>     maven {
+>         url = uri("https://maven.pkg.github.com/barrysolomon/mobile-otel")
+>         credentials {
+>             // A GitHub PAT with read:packages
+>             username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+>             password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+>         }
+>     }
+> }
+> ```
+
+> As of 0.2.0-alpha the full module set publishes — the `io.github.barrysolomon:mobile` umbrella plus `mobile-core` and all `mobile-instrumentation-*` modules — so the dependency tree resolves without local module wiring.
 
 ### Step 2: Initialize in Application.onCreate()
 
