@@ -159,8 +159,13 @@ jobs:
           set -euo pipefail
           SRC="examples/demo-app/build/pages-maven"
           test -d "$SRC" || { echo "::error::$SRC not produced by gradle"; exit 1; }
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # MUST be --global: the commit below runs inside a fresh `mktemp`
+          # clone ($TMP), not this checkout. A repo-local `git config` here would
+          # not apply there, so `git commit` aborted with "empty ident name" and
+          # gh-pages was never pushed (v0.5.2-alpha, run 28540676402). Global
+          # identity covers every git invocation on the runner, $TMP included.
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           TMP="$(mktemp -d)"
           # Clone (or init) the gh-pages branch so existing versions survive.
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
