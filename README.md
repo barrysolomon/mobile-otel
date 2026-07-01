@@ -12,22 +12,39 @@ Most mobile RUM SDKs collect everything and upload it all. This one keeps the da
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
 > **Current release: `0.5.1-alpha`** — published for Android (GitHub Packages), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for full notes.
-> **Management plane (gateway, control plane UI, k8s manifests)** lives in [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
+> **Side note — management plane:** the gateway, control-plane UI, and k8s manifests live in a separate repo, `mobile-otel-control-plane`. It's an early **work in progress**, currently a **private repo** and **not yet usable by others**. If you're interested in it, reach out — I'm happy to grant access to anyone who wants to help move it along.
 
 ## The idea in one diagram
 
 ```mermaid
 flowchart LR
-    A["App events<br/>(taps, screens, network,<br/>errors, vitals)"] --> B["RAM ring buffer<br/>~5000 events"]
-    B -->|overflow| C["Encrypted disk buffer<br/>50MB · survives crash/offline"]
-    B --> D{"On-device<br/>policy engine"}
-    C --> D
-    D -->|"nothing wrong →<br/>stay silent"| E["🔇 no export<br/>(near-zero egress)"]
-    D -->|"crash · ANR · error cascade ·<br/>predicted risk → flush window"| F["OTLP export<br/>last N minutes of context"]
-    F --> G["Any OTLP backend<br/>(Dash0, Collector, …)"]
+    APP["📱 App events<br/>taps · screens · network<br/>errors · vitals"]
+
+    subgraph device["🔒 ON DEVICE — nothing leaves unless there's a reason"]
+        direction LR
+        APP --> RAM["RAM ring buffer<br/>~5,000 recent events"]
+        RAM -->|"overflow &<br/>crash-safety mirror"| DISK["Encrypted disk buffer<br/>50 MB · survives crash & offline"]
+        RAM --> POLICY{"On-device<br/>policy engine"}
+        DISK --> POLICY
+    end
+
+    POLICY -->|"all healthy"| SILENT["🔇 Stay silent<br/>near-zero egress"]
+    POLICY -->|"crash · ANR · error cascade ·<br/>predicted risk"| EXPORT["📤 Flush the incident window<br/>only the last N minutes<br/>of context — standard OTLP"]
+    EXPORT --> BACKEND["Any OTLP backend<br/>Dash0 · Collector · …"]
+
+    classDef capture fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
+    classDef buffer fill:#f1f5f9,stroke:#64748b,color:#0f172a;
+    classDef decision fill:#fef3c7,stroke:#d97706,color:#78350f;
+    classDef silent fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef export fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    class APP capture;
+    class RAM,DISK buffer;
+    class POLICY decision;
+    class SILENT silent;
+    class EXPORT,BACKEND export;
 ```
 
-Stream-everything RUM sends box B's full contents continuously. This SDK sends box F — **only the minutes around a real incident** — and stays silent the rest of the time.
+**How to read it:** a stream-everything RUM SDK would take the full contents of that RAM buffer and upload it continuously — every event, from every user, all the time. This SDK keeps the stream **on the device** and exports only the **incident window** (the 🔇→📤 branch): the minutes of context around a real crash, ANR, or error cascade. The rest of the time it stays silent. Same root-cause context, a fraction of the data egress, 100% standard OTLP.
 
 ## What It Does
 
