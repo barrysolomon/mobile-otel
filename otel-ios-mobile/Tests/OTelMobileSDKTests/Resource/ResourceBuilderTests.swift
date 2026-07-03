@@ -93,4 +93,31 @@ struct ResourceBuilderTests {
         // Other defaults still present.
         #expect(resource.attributes["telemetry.sdk.name"] == .string("io.dash0.mobile"))
     }
+
+    @Test("resource carries app.build.id derived from the Mach-O LC_UUID")
+    func carriesAppBuildId() {
+        // Symbolication Phase 1 (docs/design/symbolication.md): the image
+        // UUID is what matches a crash to its dSYM, and on Apple platforms
+        // it's readable at runtime — so the SDK stamps it unconditionally.
+        let resource = ResourceBuilder.buildMobileResource(
+            serviceName: "svc",
+            serviceVersion: "1.0"
+        )
+        guard case let .string(buildId)? = resource.attributes["app.build.id"] else {
+            Issue.record("app.build.id missing from resource")
+            return
+        }
+        #expect(BuildIdReaderTests.isCanonicalLowercaseUUID(buildId), "malformed app.build.id: \(buildId)")
+        #expect(resource.attributes["app.build.id"] == BuildIdReader.mainExecutableUUID().map { .string($0) })
+    }
+
+    @Test("extra attributes override app.build.id")
+    func extraAttributesOverrideAppBuildId() {
+        let resource = ResourceBuilder.buildMobileResource(
+            serviceName: "svc",
+            serviceVersion: "1.0",
+            extraAttributes: ["app.build.id": "caller-id"]
+        )
+        #expect(resource.attributes["app.build.id"] == .string("caller-id"))
+    }
 }

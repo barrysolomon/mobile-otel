@@ -128,32 +128,10 @@ class MobileLoggerProvider private constructor(
                 null
             }
 
-        val resource = Resource.getDefault().merge(
-            Resource.builder()
-                .put("service.name", config.serviceName)
-                .put("service.version", config.serviceVersion)
-                .put("device.id", deviceId)
-                .put("os.name", "android")
-                .put("os.version", android.os.Build.VERSION.RELEASE)
-                .put("os.description", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
-                .put("device.model.name", android.os.Build.MODEL)
-                .put("device.manufacturer", android.os.Build.MANUFACTURER)
-                // Dash0 resource-type classifier. Without this, Dash0 routes
-                // by `telemetry.sdk.language` alone and can surface mobile
-                // data under the wrong UI category. Setting it explicitly
-                // keeps Android + iOS co-located under the Mobile view.
-                .put("dash0.resource.type", "mobile")
-                .apply {
-                    // Fold in caller-provided attributes (e.g. React Native
-                    // bridge sets telemetry.distro.name/version). Built-ins
-                    // above are NOT overridable — intentional, so apps can't
-                    // accidentally mis-label their platform/OS.
-                    config.extraResourceAttributes?.forEach { (key, value) ->
-                        if (key.isNotBlank()) put(key, value)
-                    }
-                }
-                .build()
-        )
+        // Resource construction lives in MobileResource so its contents
+        // (service identity, device attrs, symbolication build id) are
+        // unit-testable without constructing this provider.
+        val resource = MobileResource.build(context, config, deviceId)
 
         // Create the base log exporter for the configured protocol. OTLP/HTTP
         // (the default) POSTs protobuf to <endpoint>/v1/logs and matches iOS;

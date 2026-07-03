@@ -66,6 +66,14 @@ public enum ResourceBuilder {
         attrs["device.manufacturer"] = .string("Apple")
         #endif
 
+        // Symbolication Phase 1 (docs/design/symbolication.md): the main
+        // executable's Mach-O LC_UUID matches the dSYM that symbolicates
+        // this build's crashes, so every signal carries it. Android emits
+        // the same key from its build-time manifest stamp.
+        if let buildId = BuildIdReader.mainExecutableUUID() {
+            attrs["app.build.id"] = .string(buildId)
+        }
+
         // User-provided extras override any defaults we may have set above.
         for (key, value) in extraAttributes {
             attrs[key] = .string(value)

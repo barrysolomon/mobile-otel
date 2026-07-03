@@ -193,6 +193,9 @@ export const Dash0Mobile = {
         'telemetry.distro.version': DISTRO_VERSION,
         ...(rnVersion ? { 'app.framework': 'react-native', 'app.framework.version': rnVersion } : {}),
         ...(config.extraResourceAttributes ?? {}),
+        // Symbolication Phase 1: the dedicated field wins over a raw
+        // app.build.id in extraResourceAttributes — it's the documented path.
+        ...(config.buildId ? { 'app.build.id': config.buildId } : {}),
       },
       nativeAutoCapture,
     };

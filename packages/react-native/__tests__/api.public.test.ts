@@ -99,6 +99,42 @@ describe('Dash0Mobile public API', () => {
       expect(extras['telemetry.distro.name']).toBe('custom-distro');
       expect(extras['build.channel']).toBe('nightly');
     });
+
+    // Symbolication Phase 1 (docs/design/symbolication.md): the JS bundle /
+    // source-map id has no runtime-discoverable home on RN, so apps stamp it
+    // at build time and pass it through config. It rides on the resource so
+    // every crash/error is matchable to the source-map that deobfuscates it.
+    it('buildId maps to the app.build.id resource attribute', async () => {
+      const { start } = installMock();
+      await Dash0Mobile.start({
+        serviceName: 's',
+        endpoint: 'e',
+        buildId: 'a1b2c3d4-hermes-bundle',
+      });
+      const forwarded = start.mock.calls[0][0];
+      expect((forwarded.extraResourceAttributes ?? {})['app.build.id']).toBe(
+        'a1b2c3d4-hermes-bundle'
+      );
+    });
+
+    it('buildId is not forwarded as an attribute when unset', async () => {
+      const { start } = installMock();
+      await Dash0Mobile.start({ serviceName: 's', endpoint: 'e' });
+      const forwarded = start.mock.calls[0][0];
+      expect(forwarded.extraResourceAttributes ?? {}).not.toHaveProperty('app.build.id');
+    });
+
+    it('the dedicated buildId field wins over app.build.id in extraResourceAttributes', async () => {
+      const { start } = installMock();
+      await Dash0Mobile.start({
+        serviceName: 's',
+        endpoint: 'e',
+        buildId: 'field-id',
+        extraResourceAttributes: { 'app.build.id': 'extras-id' },
+      });
+      const forwarded = start.mock.calls[0][0];
+      expect((forwarded.extraResourceAttributes ?? {})['app.build.id']).toBe('field-id');
+    });
   });
 
   describe('log()', () => {

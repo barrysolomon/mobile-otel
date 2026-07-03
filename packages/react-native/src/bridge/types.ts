@@ -183,6 +183,18 @@ export interface StartConfig {
    * that want to add their own build/deployment tags.
    */
   extraResourceAttributes?: Record<string, string>;
+  /**
+   * Build identifier forwarded as the `app.build.id` resource attribute —
+   * symbolication Phase 1 (docs/design/symbolication.md). RN release builds
+   * ship minified/Hermes-bytecode JS stacks; symbolication needs the id of
+   * the source-map that deobfuscates them, and that id is only known at
+   * build time. Stamp it here (e.g. a per-build UUID also used to key the
+   * Metro source-map upload). Wins over `extraResourceAttributes` on
+   * collision. Note the native SDKs also self-stamp where they can (iOS
+   * derives its Mach-O UUID for native crashes); this field describes the
+   * JS bundle specifically.
+   */
+  buildId?: string;
 }
 
 export interface LogPayload {

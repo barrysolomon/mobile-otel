@@ -1,6 +1,6 @@
 # Design: Crash Symbolication
 
-**Status:** Proposed (track kickoff). Phase 1 is SDK-side and implementable now; Phases 2–4 are build-tooling + backend.
+**Status:** Phase 1 SHIPPED 2026-07-03 (`app.build.id` on all three platforms — see below). Phases 2–4 (upload tooling + backend symbolicator) remain proposed.
 
 ## Why this is the #1 competitive gap
 
@@ -41,13 +41,24 @@ Three independent pieces, each shippable on its own:
 
 ## Phase plan
 
-### Phase 1 — SDK build-id tagging (this repo, implementable now)
-Emit, as **resource attributes** on every signal (so they ride along with crashes/errors automatically):
-- `app.build.id` — platform build identifier (iOS image UUID, Android R8 mapping id / build UUID, RN bundle id).
-- `app.version` / `app.build` — already partially present; ensure consistency.
-- For NDK: per-image build-ids on native crash frames where available.
+### Phase 1 — SDK build-id tagging ✅ SHIPPED 2026-07-03
+`app.build.id` is emitted as a **resource attribute** on every signal (so it rides along with crashes/errors automatically):
 
-Cheap, no backend dependency, and it's the prerequisite that unblocks everything else. **Recommended first deliverable.** Scope: add the attributes in each platform's crash/error path + resource builder; tests asserting they're present and well-formed.
+- **iOS** — `BuildIdReader` (`otel-ios-mobile/Sources/OTelMobileSDK/Resource/BuildIdReader.swift`) reads the main executable's Mach-O `LC_UUID` at runtime and `ResourceBuilder` stamps it unconditionally (canonical lowercase UUID). The dSYM carries the same UUID by construction, so no build tooling is needed.
+- **Android** — the R8 mapping id is *not* runtime-readable, so `BuildId` (`otel-android-mobile/.../config/BuildId.kt`) reads a build-time manifest stamp and `MobileResource` emits it when present:
+  ```xml
+  <meta-data android:name="io.dash0.mobile.BUILD_ID" android:value="${dash0BuildId}" />
+  ```
+  ```kotlin
+  // app build.gradle.kts — one UUID per build; use the SAME value to key the
+  // mapping.txt upload (Phase 2)
+  android.defaultConfig.manifestPlaceholders["dash0BuildId"] =
+      java.util.UUID.randomUUID().toString()
+  ```
+  Unstamped apps simply omit the attribute. `extraResourceAttributes["app.build.id"]` overrides the stamp.
+- **React Native** — `Dash0Mobile.start({ buildId })` forwards the JS-bundle/source-map id as `app.build.id` (wins over `extraResourceAttributes` on collision). The native layers still self-stamp where they can, so an RN iOS app's native crashes stay dSYM-matchable.
+
+Deferred out of Phase 1 into later phases: NDK per-image build-ids on native crash frames, and the `app.version` / `app.build` consistency sweep.
 
 ### Phase 2 — Mapping upload tooling
 - **iOS:** an Xcode build phase / Fastlane action / CLI that finds the dSYMs (incl. bitcode-recompiled ones from App Store Connect) and uploads them keyed by UUID.
