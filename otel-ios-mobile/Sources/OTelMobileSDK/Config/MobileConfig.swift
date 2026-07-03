@@ -129,6 +129,15 @@ public struct MobileConfig: Sendable {
     /// `X-Dash0-Config-Signature` header with a constant-time compare).
     public let configSigningKey: Data?
 
+    /// Crash-loop self-disable threshold (SDK_SAFETY). When the previous
+    /// session ended in a crash this many launches in a row, the SDK refuses
+    /// to initialize for that launch (inert instance, no instrumentation, no
+    /// export) so it can never be the thing keeping a crash loop alive. The
+    /// counter resets automatically on the first clean launch. `0` (or
+    /// negative) turns the guard off. Mirrors Android
+    /// `MobileConfig.crashLoopThreshold` (same name, same default `3`).
+    public let crashLoopThreshold: Int
+
     public init(
         serviceName: String,
         serviceVersion: String = "1.0.0",
@@ -154,7 +163,8 @@ public struct MobileConfig: Sendable {
         wireframeConfig: WireframeConfig = WireframeConfig(),
         allowInsecureTransport: Bool = false,
         pinning: TransportSecurity.PinningConfig? = nil,
-        configSigningKey: Data? = nil
+        configSigningKey: Data? = nil,
+        crashLoopThreshold: Int = 3
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -181,5 +191,6 @@ public struct MobileConfig: Sendable {
         self.allowInsecureTransport = allowInsecureTransport
         self.pinning = pinning
         self.configSigningKey = configSigningKey
+        self.crashLoopThreshold = crashLoopThreshold
     }
 }

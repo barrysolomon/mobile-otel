@@ -144,6 +144,13 @@ Source: [MobileConfig.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Config/Mob
 - **What it does:** HMAC-SHA256 shared secret. When set, the poller verifies the `X-Dash0-Config-Signature` header over the raw remote-config body before applying it — closing the kill-switch MITM/OTA vector. On verification failure it keeps the last-applied config (fails toward availability).
 - **Example:** `configSigningKey: Data(/* shared secret bytes */)`.
 
+### `crashLoopThreshold`
+
+- **Type:** `Int`
+- **Default:** `3`.
+- **What it does:** Crash-loop self-disable (SDK_SAFETY). When the previous `crashLoopThreshold` sessions all ended in a crash, `OTelMobile.start` returns an inert instance (`crashLoopDisabled == true`) — no instrumentation, no export — so the SDK can never be the thing keeping a crash loop alive. The counter self-clears on the first clean launch. `0` (or negative) turns the guard off. Android parity: `crashLoopThreshold` (same name, same default).
+- **Example:** `crashLoopThreshold: 3`.
+
 ### `extraHeaders`
 
 - **Type:** `[String: String]`

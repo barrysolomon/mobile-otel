@@ -25,3 +25,10 @@ public enum BufferExportResult: Sendable, Equatable {
     case success
     case failure(reason: String)
 }
+
+/// Exporter that drops everything. Used by the crash-loop guard's inert
+/// `OTelMobile.start(config:)` path — the instance must be constructible and
+/// safe to call, but nothing may leave the device.
+internal struct NoopBufferedEventExporter: BufferedEventExporter {
+    func export(_ events: [BufferedEvent]) async -> BufferExportResult { .success }
+}

@@ -6,6 +6,8 @@
 package io.opentelemetry.android.mobile
 
 import android.content.Context
+import io.opentelemetry.android.mobile.autocapture.CrashLoopDetector
+import io.opentelemetry.android.mobile.autocapture.CrashLoopDisabledException
 import io.opentelemetry.android.mobile.config.ExporterCustomizers
 import io.opentelemetry.android.mobile.config.MobileConfig
 import io.opentelemetry.android.mobile.core.SessionManager
@@ -108,6 +110,25 @@ object MobileOtel {
         provider?.let { return it }
 
         val appContext = context.applicationContext
+
+        // Crash-loop guard (SDK_SAFETY) — FIRST, before any SDK setup touches
+        // process state. If the last `crashLoopThreshold` sessions all ended
+        // in a crash, abort initialization for this launch so the SDK cannot
+        // be the thing keeping a crash loop alive. OTelMobile.start's
+        // catch-all converts the throw into the documented degraded/no-op
+        // state. The counter self-clears after one clean launch (see
+        // CrashLoopDetector).
+        if (CrashLoopDetector.evaluateOnLaunch(appContext, config.crashLoopThreshold) ==
+            CrashLoopDetector.Verdict.DISABLED
+        ) {
+            val msg = "Crash-loop guard: " +
+                "${CrashLoopDetector.consecutiveCrashCount(appContext)} consecutive crash " +
+                "launches (threshold ${config.crashLoopThreshold}); SDK disabled for this " +
+                "launch. The counter resets after a clean session."
+            android.util.Log.w("MobileOtel", msg)
+            throw CrashLoopDisabledException(msg)
+        }
+
         currentExportMode = config.exportMode
 
         // Fault-isolate the whole init sequence. An initialization failure must

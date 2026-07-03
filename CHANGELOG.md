@@ -19,10 +19,11 @@ Roadmap NOW items (2026-07-03): RN kill-switch plumbing, host-safety guards, rel
 
 ### Fixed
 
+- **Crash-loop self-disable (N6)** — new `CrashLoopDetector` on both platforms counts consecutive crash-marker launches; at `MobileConfig.crashLoopThreshold` (default 3) the SDK refuses to initialize for that launch (Android: degraded no-op state; iOS: inert instance with `crashLoopDisabled == true`) so it can never keep a crash loop alive. Self-clears on the first clean launch; `0` turns the guard off. React Native inherits the guard via the native SDKs.
 - **Instrumentation can no longer crash the host on thread-starved devices (N14)** — `TapCapture` and `FreezeDetector` guard scheduler-thread construction (`OutOfMemoryError: unable to create new native thread`); taps degrade to synchronous emission, freeze detection degrades to off.
 - **GitHub Packages publish is idempotent on re-runs (N12)** — a 409 (version already exists) no longer fails the `Publish packages` workflow re-run.
 - **Docs no longer claim gRPC :4317 is the default transport (N9)** — OPERATIONS_GUIDE + CLAUDE.md now match the code (`OtlpProtocol.HTTP_PROTOBUF` default, gRPC opt-in).
-- **Remaining dead `ingress.dash0.com` hostnames removed** — demo-app help/test-endpoint layouts, build-config inject, and unit-test fixtures now use the region-scoped host; the new CI dead-host guard is green.
+- **Remaining dead (NXDOMAIN) legacy ingress hostnames removed** — demo-app help/test-endpoint layouts, build-config inject, and unit-test fixtures now use the region-scoped host (`ingress.us-west-2.aws.dash0.com`); a new CI dead-host guard blocks reintroduction.
 
 ## [0.5.2-alpha] — 2026-07-01
 

@@ -148,6 +148,16 @@ data class MobileConfig(
     val traceExportIntervalSeconds: Long = 30,
     val metricExportIntervalSeconds: Long = 60,
     val predictionIntervalSeconds: Long = 30,
+    /**
+     * Crash-loop self-disable threshold (SDK_SAFETY). When the previous
+     * session ended in a crash this many launches in a row, the SDK refuses
+     * to initialize for that launch (no instrumentation, no export) so it can
+     * never be the thing keeping a crash loop alive. The counter resets
+     * automatically on the first clean launch. `0` (or negative) turns the
+     * guard off. Mirrors iOS `MobileConfig.crashLoopThreshold` (same name,
+     * same default `3`).
+     */
+    val crashLoopThreshold: Int = 3,
     val ramBufferSize: Int = 5000,
     /**
      * Total-byte budget for the RAM ring buffer (SDK_SAFETY non-negotiable #3,

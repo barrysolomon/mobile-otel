@@ -74,5 +74,5 @@ grep -rn "method_exchange\|imp_implementationWithBlock" otel-ios-mobile/Sources/
 
 1. **CPU from BatchProcessor retry loops** when collector endpoint is unreachable — upstream `opentelemetry-swift` handles backoff; verify paused/airplane-mode doesn't spin.
 2. **Memory growth on burst** — our buffer has caps; upstream OTel `BatchLogRecordProcessor` has its own `maxQueueSize`.
-3. **Crash marker accumulation** — we delete on successful emit; a crash loop could leave stragglers. `Caches/io.dash0.mobile.*` should show ≤1 file.
+3. **Crash marker accumulation** — we delete on successful emit; a crash loop could leave stragglers. `Caches/io.dash0.mobile.*` should show ≤1 file. **Mitigated by the crash-loop guard**: `CrashLoopDetector` (both platforms) counts consecutive crash-marker launches and refuses to initialize the SDK once the count reaches `MobileConfig.crashLoopThreshold` (default 3) — no instrumentation, no export, nothing that could keep the loop alive. The counter self-clears on the first clean launch. Set the threshold to `0` to turn the guard off.
 4. **Swizzle interactions** with other SDKs (Sentry/Firebase/Datadog) that also swizzle `URLSessionConfiguration.protocolClasses`, `UIViewController.viewDidAppear`, `NSSetUncaughtExceptionHandler`. Test compatibility.

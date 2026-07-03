@@ -86,6 +86,14 @@ public final class OTelMobile: @unchecked Sendable {
     /// config poller) feeds them via `fleetAlertHandler.handle(alert)`.
     public let fleetAlertHandler: FleetAlertHandler
 
+    /// True when the crash-loop guard (SDK_SAFETY) suppressed this launch's
+    /// initialization: the previous `crashLoopThreshold` sessions all ended in
+    /// a crash, so `start(config:)` returned an inert instance — no
+    /// instrumentation installed, no-op exporter, nothing leaves the device.
+    /// The guard self-clears after one clean launch. Exposed so host apps and
+    /// tests can observe the degraded state.
+    public internal(set) var crashLoopDisabled: Bool = false
+
     /// Shared remote kill-switch + global-sampling gate. The single source of
     /// truth for `(enabled, sampleRate)` consulted at BOTH the log choke point
     /// (`MobileLogRecordProcessor.onEmit`) and the span choke point
@@ -251,6 +259,25 @@ public final class OTelMobile: @unchecked Sendable {
         diskBuffer: DiskLogBuffer? = nil,
         spanDiskBuffer: DiskSpanBuffer? = nil
     ) throws -> OTelMobile {
+        // Crash-loop guard (SDK_SAFETY) — FIRST, before exporters, session
+        // state, or any instrumentation. If the last `crashLoopThreshold`
+        // sessions all ended in a crash, return an inert instance instead:
+        // the internal harness wiring with a no-op exporter installs zero
+        // instrumentation (no signal handlers, no swizzles, no pollers) and
+        // exports nothing, so the SDK cannot be the thing keeping the crash
+        // loop alive. The guard lives ONLY on this production path — the
+        // internal `start(config:exporter:)` harness stays unguarded so a
+        // stale dev-machine crash marker can never self-disable test suites.
+        if CrashLoopDetector().evaluateOnLaunch(threshold: config.crashLoopThreshold) == .disabled {
+            NSLog(
+                "[Dash0] Crash-loop guard: %d consecutive crash launches (threshold %d); SDK disabled for this launch. The counter resets after a clean session.",
+                CrashLoopDetector().consecutiveCrashCount, config.crashLoopThreshold
+            )
+            let inert = try Self.start(config: config, exporter: NoopBufferedEventExporter())
+            inert.crashLoopDisabled = true
+            return inert
+        }
+
         // SessionManager with UUID rotation on inactivity timeout and
         // UserDefaults persistence. Replaces the earlier StaticSessionProvider
         // (which minted a fresh UUID per-launch and never rotated).
