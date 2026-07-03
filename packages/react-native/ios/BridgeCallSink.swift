@@ -109,6 +109,18 @@ public struct BridgeStartConfig: Equatable {
     /// always sends a value.
     public let sampling: BridgeSamplingConfig?
 
+    /// Base URL of the mobile-otel gateway serving `/config?dsl_version=2`.
+    /// Enables the native RemoteGate kill switch + policy polling for RN apps
+    /// whose `endpoint` points at plain OTLP ingest (no /config route). Nil
+    /// (default) leaves the native SDK polling `endpoint` as before.
+    public let gatewayEndpoint: String?
+    /// Whether the native SDK should poll for remote policy config. Nil
+    /// (default) keeps the native SDK's own default (`true`); `false`
+    /// disables remote config entirely.
+    public let enablePolicyPolling: Bool?
+    /// Poll interval in seconds. Nil = native SDK default (300).
+    public let configPollIntervalSeconds: Int?
+
     public init(
         serviceName: String,
         serviceVersion: String?,
@@ -117,7 +129,10 @@ public struct BridgeStartConfig: Equatable {
         dataset: String?,
         extraResourceAttributes: [String: String] = [:],
         nativeAutoCapture: [String] = [],
-        sampling: BridgeSamplingConfig? = nil
+        sampling: BridgeSamplingConfig? = nil,
+        gatewayEndpoint: String? = nil,
+        enablePolicyPolling: Bool? = nil,
+        configPollIntervalSeconds: Int? = nil
     ) {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
@@ -127,5 +142,8 @@ public struct BridgeStartConfig: Equatable {
         self.extraResourceAttributes = extraResourceAttributes
         self.nativeAutoCapture = nativeAutoCapture
         self.sampling = sampling
+        self.gatewayEndpoint = gatewayEndpoint
+        self.enablePolicyPolling = enablePolicyPolling
+        self.configPollIntervalSeconds = configPollIntervalSeconds
     }
 }

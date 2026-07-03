@@ -51,6 +51,9 @@ class Dash0MobileModule internal constructor(
                     sampling = config
                         .getMapOrNull("sampling")
                         ?.toSamplingConfig(),
+                    gatewayEndpoint = config.getStringOrNull("gatewayEndpoint"),
+                    enablePolicyPolling = config.getBooleanOrNull("enablePolicyPolling"),
+                    configPollIntervalSeconds = config.getLongOrNull("configPollIntervalSeconds"),
                 ),
             )
             promise.resolve(null)
@@ -157,6 +160,13 @@ class Dash0MobileModule internal constructor(
 
 private fun ReadableMap.getStringOrNull(key: String): String? =
     if (hasKey(key) && !isNull(key)) getString(key) else null
+
+private fun ReadableMap.getBooleanOrNull(key: String): Boolean? =
+    if (hasKey(key) && !isNull(key)) getBoolean(key) else null
+
+// RN numbers always cross the bridge as doubles; truncate for whole-second fields.
+private fun ReadableMap.getLongOrNull(key: String): Long? =
+    if (hasKey(key) && !isNull(key)) getDouble(key).toLong() else null
 
 private fun ReadableMap.getMapOrNull(key: String): ReadableMap? =
     if (hasKey(key) && !isNull(key)) getMap(key) else null

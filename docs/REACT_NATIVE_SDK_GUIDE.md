@@ -82,7 +82,9 @@ This JS package **wraps** the native SDKs — install those too:
 | `autoCapture.errors` | `boolean` | no (default `true`) | Hook ErrorUtils + unhandledrejection |
 | `bufferConfig.ramEvents` | `number` | no | RAM ring buffer capacity (native default) |
 | `bufferConfig.diskBytes` | `number` | no | Disk spill cap (native default) |
-| `enablePolicyPolling` | `boolean` | no | Poll the control plane for DSL updates |
+| `gatewayEndpoint` | `string` | no | Base URL of the mobile-otel gateway serving `/config?dsl_version=2`. Set it to enable the native RemoteGate kill switch + remote policies — `endpoint` is usually plain OTLP ingest with no `/config` route. Omit to keep the native default (poll `endpoint`) |
+| `enablePolicyPolling` | `boolean` | no (native default `true`) | Poll for remote policy config (kill switch + DSL updates); `false` disables remote config entirely |
+| `configPollIntervalSeconds` | `number` | no (native default `300`) | Remote-config poll cadence in seconds |
 | `extraResourceAttributes` | `Record<string,string>` | no | Extra resource attributes merged into the native resource |
 
 > There is **no** `autoCapture.lifecycle` flag. App lifecycle (`app.foreground` / `app.background` / `app.start`) is always-on via native instrumentation (Android `ProcessLifecycleOwner`, iOS `NotificationCenter`). The remaining `autoCapture` flags — `tap`, `scroll`, `textInput`, `screen`, `freeze`, `vitals`, `deviceStats`, `screenshot`, `wireframe` — toggle native-only capture suites and default **off** on RN.

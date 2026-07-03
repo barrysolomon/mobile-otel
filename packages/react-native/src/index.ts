@@ -145,7 +145,7 @@ const DISTRO_NAME = 'dash0-react-native';
 // Keep in lockstep with package.json `version`. The publish CI job asserts this
 // equals the npm version + git tag + native gradle version
 // (scripts/ci/check-version-parity.sh), so a drift here fails the release.
-const DISTRO_VERSION = '0.5.2-alpha';
+const DISTRO_VERSION = '0.5.3-alpha';
 
 function resolveReactNativeVersion(): string | undefined {
   try {

@@ -64,6 +64,13 @@ internal class OTelMobileCallSink(
                 // sampling; rate-limiting for RN belongs in the collector.
                 samplingConfig = samplingConfigOf(config.sampling),
                 extraResourceAttributes = config.extraResourceAttributes,
+                // N7: gateway/config-polling plumb-through so RN apps can
+                // enable the native RemoteGate kill switch. Nulls fall back
+                // to the native SDK defaults (poll `collectorEndpoint`,
+                // remoteConfigEnabled=true, 300s interval).
+                gatewayEndpoint = config.gatewayEndpoint,
+                remoteConfigEnabled = config.enablePolicyPolling ?: true,
+                configPollIntervalSeconds = config.configPollIntervalSeconds ?: 300,
             ),
         )
 

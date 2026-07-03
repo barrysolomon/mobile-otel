@@ -77,6 +77,21 @@ data class StartConfig(
      * always sends a value.
      */
     val sampling: BridgeSamplingConfig? = null,
+    /**
+     * Base URL of the mobile-otel gateway serving `/config?dsl_version=2`.
+     * Enables the native RemoteGate kill switch + policy polling for RN apps
+     * whose `endpoint` points at plain OTLP ingest (no /config route). Null
+     * (default) leaves the native SDK polling `endpoint` as before.
+     */
+    val gatewayEndpoint: String? = null,
+    /**
+     * Whether the native SDK should poll for remote policy config. Null
+     * (default) keeps the native SDK's own default; `false` disables remote
+     * config entirely (Android `remoteConfigEnabled`, iOS `enablePolicyPolling`).
+     */
+    val enablePolicyPolling: Boolean? = null,
+    /** Poll interval in seconds. Null = native SDK default (300). */
+    val configPollIntervalSeconds: Long? = null,
 )
 
 /**

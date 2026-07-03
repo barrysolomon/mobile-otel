@@ -651,8 +651,10 @@ public final class OTelMobile: @unchecked Sendable {
                 // config keeps running), the same `pinning` as the OTLP
                 // exporters, and the optional HMAC `configSigningKey` that gates
                 // applying a fetched payload.
+                // Poll the dedicated gateway when one is configured (N7) —
+                // `endpoint` is often plain OTLP ingest with no /config route.
                 if let poller = try? ConfigPoller(
-                    gatewayEndpoint: config.endpoint,
+                    gatewayEndpoint: config.gatewayEndpoint ?? config.endpoint,
                     authToken: config.authToken,
                     extraHeaders: config.extraHeaders,
                     pollingIntervalSeconds: TimeInterval(config.pollingIntervalSeconds),

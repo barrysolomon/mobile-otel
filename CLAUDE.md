@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OpenTelemetry Android Mobile SDK. Captures events into a dual-tier ring buffer (RAM + SQLite), evaluates export policies via a DSL engine, and selectively flushes event windows via OTLP/gRPC to an OTEL Collector.
+OpenTelemetry Android Mobile SDK. Captures events into a dual-tier ring buffer (RAM + SQLite), evaluates export policies via a DSL engine, and selectively flushes event windows via OTLP to an OTEL Collector (OTLP/HTTP protobuf by default, matching iOS; OTLP/gRPC opt-in via `MobileConfig(protocol = OtlpProtocol.GRPC)`).
 
 The management plane (Go gateway + React control plane UI) lives in the sister repo [mobile-otel-control-plane](https://github.com/barrysolomon/mobile-otel-control-plane).
 
@@ -174,7 +174,7 @@ Runs 9 buffer integration tests on each emulator (RAM + SQLite ring buffer, flus
 - Show journey → page → ui.tap parent-child span hierarchy
 
 **Talking points:**
-- OTel-native: `LogRecordExporter`/`SpanExporter`, standard OTLP/gRPC
+- OTel-native: `LogRecordExporter`/`SpanExporter`, standard OTLP (HTTP protobuf default, gRPC opt-in)
 - Dual-tier buffering: RAM ring buffer + SQLite (survives process death)
 - Export policy DSL: conditional/continuous/hybrid — battery-efficient selective flush
 - 194 behavioral config tests: every toggle proven to change runtime behavior
@@ -207,8 +207,11 @@ Node.js + Express + SQLite (better-sqlite3) backend that serves the demo app's a
 ## Architecture
 
 ```
-Android SDK ──OTLP/gRPC :4317──► OTEL Collector ──► Backends
+Android SDK ──OTLP/HTTP :4318 (default) or OTLP/gRPC :4317──► OTEL Collector ──► Backends
 ```
+
+Default transport is OTLP/HTTP (protobuf) to `<collectorEndpoint>/v1/{logs,traces,metrics}` —
+see `MobileConfig.protocol` (`OtlpProtocol.HTTP_PROTOBUF` default, `GRPC` opt-in).
 
 ### Components in This Repo
 

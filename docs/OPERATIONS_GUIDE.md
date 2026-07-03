@@ -21,13 +21,17 @@ Guide for deploying and operating the OTEL Collector for mobile observability.
 ### High-Level Architecture
 
 ```
-Mobile Devices ──── OTLP/gRPC ────► OTEL Collector ──┬──► Dash0
+Mobile Devices ──── OTLP/HTTP ────► OTEL Collector ──┬──► Dash0
                                      (otelcol-mobile)  ├──► Loki
                                                        ├──► Prometheus
                                                        └──► Jaeger
 ```
 
-The Android SDK exports directly to an OTEL Collector via OTLP/gRPC on port 4317.
+The SDKs export directly to an OTEL Collector via OTLP/HTTP (protobuf) by
+default — the SDK POSTs to `<collectorEndpoint>/v1/logs`, `/v1/traces`, and
+`/v1/metrics` (port 4318 on a stock collector). This default matches iOS and
+traverses HTTPS-terminating proxies. OTLP/gRPC on port 4317 is available on
+Android by setting `MobileConfig(protocol = OtlpProtocol.GRPC)`.
 The collector can be the custom `otelcol-mobile` build (with `mobilepolicyprocessor`)
 or any standard OTEL Collector distribution.
 
@@ -35,7 +39,7 @@ or any standard OTEL Collector distribution.
 
 | Option | Best For | Setup |
 | ------ | -------- | ----- |
-| Dash0 cloud | Production | Point SDK at `https://ingress.us-west-2.aws.dash0.com:4317` |
+| Dash0 cloud | Production | Point SDK at `https://ingress.us-west-2.aws.dash0.com` (OTLP/HTTP default; use `:4317` + `OtlpProtocol.GRPC` for gRPC) |
 | Docker (`otelcol-mobile`) | Development / self-hosted | `docker run -p 4317:4317 otelcol-mobile:latest` |
 | Kubernetes | Production self-hosted | Deploy collector manifest to cluster |
 

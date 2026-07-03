@@ -7,6 +7,14 @@ public struct MobileConfig: Sendable {
     public let serviceName: String
     public let serviceVersion: String
     public let endpoint: String
+    /// Base URL of the mobile-otel gateway serving `/config?dsl_version=2`
+    /// for the `ConfigPoller` and the `RemoteGate` kill switch. When nil
+    /// (default), config polling targets `endpoint` — the historical
+    /// behaviour, correct when the collector and gateway are the same host.
+    /// Set this when `endpoint` points at a plain OTLP ingest (e.g. Dash0
+    /// ingress) that does not serve policy config. Android parity:
+    /// `MobileConfig.gatewayEndpoint`.
+    public let gatewayEndpoint: String?
     public let authToken: String?
     public let exportMode: ExportMode
     public let bufferConfig: BufferConfig
@@ -125,6 +133,7 @@ public struct MobileConfig: Sendable {
         serviceName: String,
         serviceVersion: String = "1.0.0",
         endpoint: String,
+        gatewayEndpoint: String? = nil,
         authToken: String? = nil,
         exportMode: ExportMode = .hybrid,
         bufferConfig: BufferConfig = .default,
@@ -150,6 +159,7 @@ public struct MobileConfig: Sendable {
         self.serviceName = serviceName
         self.serviceVersion = serviceVersion
         self.endpoint = endpoint
+        self.gatewayEndpoint = gatewayEndpoint
         self.authToken = authToken
         self.exportMode = exportMode
         self.bufferConfig = bufferConfig

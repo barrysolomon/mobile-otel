@@ -139,7 +139,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="gRPC (Recommended):\n• Binary Protobuf encoding for efficiency\n• Lower latency and better performance\n• Single endpoint for all signals (logs, traces, metrics)\n• Port 4317 by default\n• Example: https://ingress.dash0.com:4317\n• Authentication: Same Bearer token in metadata\n\nHTTP:\n• JSON encoding for compatibility\n• Better firewall/proxy support\n• Separate path per signal (/v1/logs, /v1/traces, /v1/metrics)\n• Standard HTTPS port (443)\n• Example: https://ingress.dash0.com/v1/logs\n• Authentication: Same Bearer token in HTTP headers\n\nBoth protocols use identical authentication (Authorization: Bearer token)."
+            android:text="gRPC (Recommended):\n• Binary Protobuf encoding for efficiency\n• Lower latency and better performance\n• Single endpoint for all signals (logs, traces, metrics)\n• Port 4317 by default\n• Example: https://ingress.us-west-2.aws.dash0.com:4317\n• Authentication: Same Bearer token in metadata\n\nHTTP:\n• JSON encoding for compatibility\n• Better firewall/proxy support\n• Separate path per signal (/v1/logs, /v1/traces, /v1/metrics)\n• Standard HTTPS port (443)\n• Example: https://ingress.us-west-2.aws.dash0.com/v1/logs\n• Authentication: Same Bearer token in HTTP headers\n\nBoth protocols use identical authentication (Authorization: Bearer token)."
             android:textSize="14sp"
             android:lineSpacingMultiplier="1.3"
             android:layout_marginBottom="16dp" />

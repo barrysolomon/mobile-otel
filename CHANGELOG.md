@@ -7,7 +7,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [Unreleased]
+## [Unreleased] — 0.5.3-alpha
+
+Roadmap NOW items (2026-07-03): RN kill-switch plumbing, host-safety guards, release-pipeline hardening, and doc-truth fixes. Working version bumped to 0.5.3-alpha across all four surfaces (npm / gradle / RN distro / iOS ResourceBuilder) so the RN-android harness resolves the in-tree SDK from mavenLocal instead of the published 0.5.2-alpha on the Pages repo.
+
+### Added
+
+- **`gatewayEndpoint` config field on Android + iOS `MobileConfig`** — points config polling (policy DSL + `RemoteGate` kill switch) at the mobile-otel gateway when `collectorEndpoint`/`endpoint` is plain OTLP ingest with no `/config` route. Null/nil keeps the historical behaviour (poll the collector endpoint).
+- **RN bridge plumbs gateway/config-polling options (N7)** — `Dash0Mobile.start({ gatewayEndpoint, enablePolicyPolling, configPollIntervalSeconds })` now flows through both the Android and iOS bridges into native `MobileConfig`, so RN apps can enable the native RemoteGate kill switch. Omitted fields keep native defaults.
+- **npm provenance attestations (N12)** — `publish-npm` publishes with `--provenance`; consumers can verify builds via `npm audit signatures`.
+
+### Fixed
+
+- **Instrumentation can no longer crash the host on thread-starved devices (N14)** — `TapCapture` and `FreezeDetector` guard scheduler-thread construction (`OutOfMemoryError: unable to create new native thread`); taps degrade to synchronous emission, freeze detection degrades to off.
+- **GitHub Packages publish is idempotent on re-runs (N12)** — a 409 (version already exists) no longer fails the `Publish packages` workflow re-run.
+- **Docs no longer claim gRPC :4317 is the default transport (N9)** — OPERATIONS_GUIDE + CLAUDE.md now match the code (`OtlpProtocol.HTTP_PROTOBUF` default, gRPC opt-in).
+- **Remaining dead `ingress.dash0.com` hostnames removed** — demo-app help/test-endpoint layouts, build-config inject, and unit-test fixtures now use the region-scoped host; the new CI dead-host guard is green.
 
 ## [0.5.2-alpha] — 2026-07-01
 

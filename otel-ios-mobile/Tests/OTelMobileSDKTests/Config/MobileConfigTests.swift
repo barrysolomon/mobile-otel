@@ -111,4 +111,23 @@ struct MobileConfigTests {
         #expect(config.pinning == pinning)
         #expect(config.configSigningKey == key)
     }
+
+    @Test("gatewayEndpoint defaults to nil — ConfigPoller falls back to the OTLP endpoint")
+    func gatewayEndpointDefault() {
+        let config = MobileConfig(
+            serviceName: "test-app",
+            endpoint: "https://collector:4318"
+        )
+        #expect(config.gatewayEndpoint == nil)
+    }
+
+    @Test("gatewayEndpoint round-trips when set — RN bridge plumbs it for the kill switch")
+    func gatewayEndpointSet() {
+        let config = MobileConfig(
+            serviceName: "test-app",
+            endpoint: "https://ingress.example/v1/logs",
+            gatewayEndpoint: "https://gateway.example:8080"
+        )
+        #expect(config.gatewayEndpoint == "https://gateway.example:8080")
+    }
 }

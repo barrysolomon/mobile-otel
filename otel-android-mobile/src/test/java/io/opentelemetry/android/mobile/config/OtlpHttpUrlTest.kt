@@ -20,24 +20,24 @@ class OtlpHttpUrlTest {
     @Test
     fun `appends v1 logs to a bare base endpoint`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/logs",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com", "/v1/logs")
+            "https://ingress.us-west-2.aws.dash0.com/v1/logs",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com", "/v1/logs")
         )
     }
 
     @Test
     fun `appends v1 traces to a bare base endpoint`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/traces",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com", "/v1/traces")
+            "https://ingress.us-west-2.aws.dash0.com/v1/traces",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com", "/v1/traces")
         )
     }
 
     @Test
     fun `appends v1 metrics to a bare base endpoint`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/metrics",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com", "/v1/metrics")
+            "https://ingress.us-west-2.aws.dash0.com/v1/metrics",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com", "/v1/metrics")
         )
     }
 
@@ -52,32 +52,32 @@ class OtlpHttpUrlTest {
     @Test
     fun `single trailing slash on base does not double the slash`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/logs",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com/", "/v1/logs")
+            "https://ingress.us-west-2.aws.dash0.com/v1/logs",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com/", "/v1/logs")
         )
     }
 
     @Test
     fun `multiple trailing slashes are collapsed before appending`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/traces",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com///", "/v1/traces")
+            "https://ingress.us-west-2.aws.dash0.com/v1/traces",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com///", "/v1/traces")
         )
     }
 
     @Test
     fun `endpoint already suffixed with the signal is left untouched`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/logs",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com/v1/logs", "/v1/logs")
+            "https://ingress.us-west-2.aws.dash0.com/v1/logs",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com/v1/logs", "/v1/logs")
         )
     }
 
     @Test
     fun `endpoint suffixed with the signal and a trailing slash is normalized once`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/metrics",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com/v1/metrics/", "/v1/metrics")
+            "https://ingress.us-west-2.aws.dash0.com/v1/metrics",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com/v1/metrics/", "/v1/metrics")
         )
     }
 
@@ -94,16 +94,16 @@ class OtlpHttpUrlTest {
     @Test
     fun `query string is preserved and the signal lands on the path`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/logs?dataset=mobile",
-            MobileConfig.buildOtlpHttpUrl("https://ingress.dash0.com?dataset=mobile", "/v1/logs")
+            "https://ingress.us-west-2.aws.dash0.com/v1/logs?dataset=mobile",
+            MobileConfig.buildOtlpHttpUrl("https://ingress.us-west-2.aws.dash0.com?dataset=mobile", "/v1/logs")
         )
     }
 
     @Test
     fun `surrounding whitespace on the endpoint is trimmed`() {
         assertEquals(
-            "https://ingress.dash0.com/v1/logs",
-            MobileConfig.buildOtlpHttpUrl("  https://ingress.dash0.com  ", "/v1/logs")
+            "https://ingress.us-west-2.aws.dash0.com/v1/logs",
+            MobileConfig.buildOtlpHttpUrl("  https://ingress.us-west-2.aws.dash0.com  ", "/v1/logs")
         )
     }
 }

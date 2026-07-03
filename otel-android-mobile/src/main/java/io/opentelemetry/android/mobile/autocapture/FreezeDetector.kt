@@ -14,6 +14,8 @@ import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.logs.Logger
 import io.opentelemetry.api.logs.Severity
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
@@ -23,11 +25,23 @@ class FreezeDetector(
     private val sessionTracker: SessionTracker,
     private val options: AutoCaptureOptions,
     private val onAnrDetected: (() -> Unit)? = null,
-    private val onAnrRecovered: (() -> Unit)? = null
+    private val onAnrRecovered: (() -> Unit)? = null,
+    schedulerFactory: () -> ScheduledExecutorService = {
+        Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "OTel-FreezeWatchdog").apply { isDaemon = true }
+        }
+    }
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "OTel-FreezeWatchdog").apply { isDaemon = true }
+
+    // Thread creation can fail on a thread-starved host (OutOfMemoryError:
+    // "unable to create new native thread"). Instrumentation must never crash
+    // the app, so a failed watchdog scheduler degrades to freeze detection
+    // being disabled rather than aborting SDK init.
+    private val scheduler: ScheduledExecutorService? = try {
+        schedulerFactory()
+    } catch (_: Throwable) {
+        null
     }
 
     private val tick = Runnable { lastTickAtMs = SystemClock.uptimeMillis() }
@@ -43,19 +57,27 @@ class FreezeDetector(
 
     fun start() {
         if (!options.freezeDetectorEnabled) return
+        // Degraded mode: watchdog thread could not be created — freeze
+        // detection is disabled, the host app keeps running.
+        val activeScheduler = scheduler ?: return
         lastTickAtMs = SystemClock.uptimeMillis()
         mainHandler.post(tick)
-        future = scheduler.scheduleAtFixedRate(
-            { checkFreeze() },
-            250,
-            250,
-            TimeUnit.MILLISECONDS
-        )
+        future = try {
+            activeScheduler.scheduleAtFixedRate(
+                { checkFreeze() },
+                250,
+                250,
+                TimeUnit.MILLISECONDS
+            )
+        } catch (_: RejectedExecutionException) {
+            // start() racing stop() — the watchdog simply stays off.
+            null
+        }
     }
 
     fun stop() {
         future?.cancel(false)
-        scheduler.shutdownNow()
+        scheduler?.shutdownNow()
     }
 
     private fun checkFreeze() {

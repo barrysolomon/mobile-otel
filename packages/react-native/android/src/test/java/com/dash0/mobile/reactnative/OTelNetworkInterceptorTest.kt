@@ -91,7 +91,7 @@ class OTelNetworkInterceptorTest {
 
     @Test
     fun armed_recordsClientSpan_andInjectsWellFormedTraceparent() {
-        interceptor.arm(tracer, collectorEndpoint = "https://ingress.dash0.com/v1/traces")
+        interceptor.arm(tracer, collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com/v1/traces")
         val chain = FakeChain(get("https://api.example.com/orders?id=7"), responseCode = 200)
 
         val response = interceptor.intercept(chain)
@@ -149,8 +149,8 @@ class OTelNetworkInterceptorTest {
     fun collectorHost_isNotInstrumented_noSpanNoHeader() {
         // Arm with a collector endpoint; a request to that same host is our own
         // telemetry export and must NOT be instrumented (no recursion).
-        interceptor.arm(tracer, collectorEndpoint = "https://ingress.dash0.com/v1/traces")
-        val chain = FakeChain(get("https://ingress.dash0.com/v1/traces"))
+        interceptor.arm(tracer, collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com/v1/traces")
+        val chain = FakeChain(get("https://ingress.us-west-2.aws.dash0.com/v1/traces"))
 
         val response = interceptor.intercept(chain)
 
@@ -174,7 +174,7 @@ class OTelNetworkInterceptorTest {
 
     @Test
     fun nonCollectorHost_isInstrumented_evenWhenIgnoreListPresent() {
-        interceptor.arm(tracer, collectorEndpoint = "https://ingress.dash0.com/v1/traces")
+        interceptor.arm(tracer, collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com/v1/traces")
         val chain = FakeChain(get("https://api.example.com/y"))
 
         interceptor.intercept(chain)

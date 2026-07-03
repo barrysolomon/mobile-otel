@@ -193,6 +193,16 @@ data class MobileConfig(
      * not serve policy config and will usually return 4xx responses.
      */
     @Incubating val remoteConfigEnabled: Boolean = true,
+    /**
+     * Base URL of the mobile-otel gateway serving `/config?dsl_version=2`
+     * for the policy poller and the RemoteGate kill switch. When null
+     * (default), config polling targets [collectorEndpoint] — the historical
+     * behaviour, correct when the collector and gateway are the same host.
+     * Set this when [collectorEndpoint] points at a plain OTLP ingest (e.g.
+     * Dash0 ingress) that does not serve policy config. iOS parity:
+     * `MobileConfig.gatewayEndpoint`.
+     */
+    @Incubating val gatewayEndpoint: String? = null,
     val configPollIntervalSeconds: Long = 300,
     val maxExportRetries: Int = 3,
     val headers: Map<String, String>? = null,
@@ -425,6 +435,7 @@ data class MobileConfig(
         private var encryptDiskBufferAtRest: Boolean = true
         private var exportTimeoutSeconds: Long = 30
         private var remoteConfigEnabled: Boolean = true
+        private var gatewayEndpoint: String? = null
         private var configPollIntervalSeconds: Long = 300
         private var maxExportRetries: Int = 3
         private var headers: Map<String, String>? = null
@@ -467,6 +478,8 @@ data class MobileConfig(
         fun setEncryptDiskBufferAtRest(enabled: Boolean) = apply { this.encryptDiskBufferAtRest = enabled }
         fun setExportTimeoutSeconds(exportTimeoutSeconds: Long) = apply { this.exportTimeoutSeconds = exportTimeoutSeconds }
         fun setRemoteConfigEnabled(enabled: Boolean) = apply { this.remoteConfigEnabled = enabled }
+        /** See [MobileConfig.gatewayEndpoint]. Default `null` (poll [collectorEndpoint]). */
+        fun setGatewayEndpoint(gatewayEndpoint: String?) = apply { this.gatewayEndpoint = gatewayEndpoint }
         fun setConfigPollIntervalSeconds(configPollIntervalSeconds: Long) = apply { this.configPollIntervalSeconds = configPollIntervalSeconds }
         fun setMaxExportRetries(maxExportRetries: Int) = apply { this.maxExportRetries = maxExportRetries }
         fun setHeaders(headers: Map<String, String>) = apply { this.headers = headers }
@@ -521,6 +534,7 @@ data class MobileConfig(
                 encryptDiskBufferAtRest = encryptDiskBufferAtRest,
                 exportTimeoutSeconds = exportTimeoutSeconds,
                 remoteConfigEnabled = remoteConfigEnabled,
+                gatewayEndpoint = gatewayEndpoint,
                 configPollIntervalSeconds = configPollIntervalSeconds,
                 maxExportRetries = maxExportRetries,
                 headers = headers,

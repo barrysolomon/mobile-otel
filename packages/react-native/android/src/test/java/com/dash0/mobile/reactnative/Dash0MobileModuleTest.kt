@@ -82,6 +82,39 @@ class Dash0MobileModuleTest {
         assertTrue(sink.starts[0].nativeAutoCapture.isEmpty())
     }
 
+    // ── start: gateway / config polling (N7) ─────────────────────────────
+
+    @Test
+    fun start_forwards_gateway_and_config_polling_options() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://ingress.example/v1/logs",
+            "gatewayEndpoint", "https://gateway.example:8080",
+            "enablePolicyPolling", true,
+            "configPollIntervalSeconds", 60,
+        )
+        val promise = RecordingPromise()
+        module.start(cfg, promise)
+        val got = sink.starts[0]
+        assertEquals("https://gateway.example:8080", got.gatewayEndpoint)
+        assertEquals(true, got.enablePolicyPolling)
+        assertEquals(60L, got.configPollIntervalSeconds)
+    }
+
+    @Test
+    fun start_defaults_gateway_and_polling_options_to_null_when_absent() {
+        val cfg = JavaOnlyMap.of(
+            "serviceName", "s",
+            "endpoint", "https://e",
+        )
+        val promise = RecordingPromise()
+        module.start(cfg, promise)
+        val got = sink.starts[0]
+        assertNull(got.gatewayEndpoint)
+        assertNull(got.enablePolicyPolling)
+        assertNull(got.configPollIntervalSeconds)
+    }
+
     // ── start: sampling (Loper finding #4) ───────────────────────────────
 
     @Test

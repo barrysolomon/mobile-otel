@@ -20,6 +20,8 @@ import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
@@ -62,10 +64,21 @@ class TapCapture(
     private val logger: Logger,
     private val tracer: Tracer,
     private val sessionTracker: SessionTracker,
-    private val options: AutoCaptureOptions
+    private val options: AutoCaptureOptions,
+    schedulerFactory: () -> ScheduledExecutorService = {
+        Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "OTel-AutoTap").apply { isDaemon = true }
+        }
+    }
 ) {
-    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "OTel-AutoTap").apply { isDaemon = true }
+    // Thread creation can fail on a thread-starved host (OutOfMemoryError:
+    // "unable to create new native thread"). Instrumentation must never crash
+    // the app, so a failed scheduler degrades to synchronous emission — taps
+    // still flow, just without coalescing.
+    private val scheduler: ScheduledExecutorService? = try {
+        schedulerFactory()
+    } catch (_: Throwable) {
+        null
     }
 
     private var pending: PendingTap? = null
@@ -141,7 +154,7 @@ class TapCapture(
 
     fun shutdown() {
         pendingFuture?.cancel(false)
-        scheduler.shutdownNow()
+        scheduler?.shutdownNow()
     }
 
     private fun buildAttributes(
@@ -249,10 +262,24 @@ class TapCapture(
     }
 
     private fun scheduleEmit() {
+        val activeScheduler = scheduler
+        if (activeScheduler == null) {
+            // Degraded mode: no coalescing thread — emit right away rather
+            // than drop the tap.
+            flushPending()
+            return
+        }
         pendingFuture?.cancel(false)
-        pendingFuture = scheduler.schedule({
-            flushIfStale()
-        }, options.tapCoalesceWindowMs, TimeUnit.MILLISECONDS)
+        pendingFuture = try {
+            activeScheduler.schedule({
+                flushIfStale()
+            }, options.tapCoalesceWindowMs, TimeUnit.MILLISECONDS)
+        } catch (_: RejectedExecutionException) {
+            // Scheduler already shut down (e.g. a touch racing shutdown()) —
+            // flush synchronously instead of crashing the dispatch path.
+            flushPending()
+            null
+        }
     }
 
     private fun flushIfStale() {

@@ -101,7 +101,22 @@ export interface StartConfig {
     ramEvents?: number;
     diskBytes?: number;
   };
+  /**
+   * Base URL of the mobile-otel gateway serving `/config?dsl_version=2`.
+   * Set this to enable the native RemoteGate kill switch + remote policy
+   * config for RN apps: `endpoint` usually points at plain OTLP ingest
+   * (e.g. Dash0 ingress), which does not serve policy config. When omitted,
+   * the native SDKs poll `endpoint` (their historical behaviour).
+   */
+  gatewayEndpoint?: string;
+  /**
+   * Whether the native SDK polls for remote policy config (RemoteGate kill
+   * switch + policy DSL updates). Omit to keep the native default (`true`);
+   * `false` disables remote config entirely.
+   */
   enablePolicyPolling?: boolean;
+  /** Remote-config poll interval in seconds. Omit for the native default (300). */
+  configPollIntervalSeconds?: number;
   /**
    * Trace sampling strategy. Defaults to `always_on` on RN (see
    * {@link SamplingConfig}) — unlike the native SDKs' `dynamic(0.1)` default.

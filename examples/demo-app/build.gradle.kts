@@ -63,7 +63,7 @@ subprojects {
                         } else {
                             "mobile-instrumentation-${path.removePrefix(":instrumentation-")}"
                         }
-                        version = (project.findProperty("sdkVersionName") as String?) ?: "0.5.2-alpha"
+                        version = (project.findProperty("sdkVersionName") as String?) ?: "0.5.3-alpha"
                         afterEvaluate {
                             from(components.findByName("release"))
                         }

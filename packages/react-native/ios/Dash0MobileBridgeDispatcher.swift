@@ -38,7 +38,10 @@ public final class Dash0MobileBridgeDispatcher {
             dataset: config["dataset"] as? String,
             extraResourceAttributes: extras,
             nativeAutoCapture: nativeAutoCapture,
-            sampling: sampling
+            sampling: sampling,
+            gatewayEndpoint: config["gatewayEndpoint"] as? String,
+            enablePolicyPolling: config["enablePolicyPolling"] as? Bool,
+            configPollIntervalSeconds: Self.intOrNil(config["configPollIntervalSeconds"])
         ))
     }
 
@@ -59,6 +62,15 @@ public final class Dash0MobileBridgeDispatcher {
         if let n = v as? Double { return n }
         if let n = v as? Int { return Double(n) }
         if let n = v as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    /// RN numbers may arrive as Int, Double, or NSNumber; whole-second
+    /// fields truncate toward zero.
+    private static func intOrNil(_ v: Any?) -> Int? {
+        if let n = v as? Int { return n }
+        if let n = v as? Double { return Int(n) }
+        if let n = v as? NSNumber { return n.intValue }
         return nil
     }
 

@@ -131,9 +131,15 @@ final class OTelMobileCallSink: BridgeCallSink {
             serviceName: config.serviceName,
             serviceVersion: config.serviceVersion ?? "unknown",
             endpoint: config.endpoint,
+            // N7: gateway/config-polling plumb-through so RN apps can enable
+            // the native RemoteGate kill switch. Nils fall back to the native
+            // SDK defaults (poll `endpoint`, enablePolicyPolling=true, 300s).
+            gatewayEndpoint: config.gatewayEndpoint,
             authToken: config.authToken,
             exportMode: exportMode,
+            pollingIntervalSeconds: config.configPollIntervalSeconds ?? 300,
             extraHeaders: extraHeaders,
+            enablePolicyPolling: config.enablePolicyPolling ?? true,
             // RN sampling default is .alwaysOn (Loper finding #4): RN manual
             // spans are root spans with arbitrary names, so the native SDK's
             // dynamic(0.1) default would silently drop ~90% of a user's first

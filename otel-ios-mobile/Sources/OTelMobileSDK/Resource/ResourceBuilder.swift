@@ -21,7 +21,7 @@ public enum ResourceBuilder {
     /// SDK version constant — bump on release. Kept in lockstep with the npm
     /// package.json version + native gradle sdkVersionName; the publish gate
     /// (scripts/ci/check-version-parity.sh) fails the release on drift.
-    public static let sdkVersion = "0.5.2-alpha"
+    public static let sdkVersion = "0.5.3-alpha"
 
     /// Build a `Resource` with iOS-identifying attributes plus the caller's
     /// service metadata and any extra attributes they want to merge on top.

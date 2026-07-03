@@ -49,6 +49,7 @@ OTelMobile.start(application, config)
 | `exportTimeoutSeconds` | Long | `30` | Per-export timeout |
 | `maxExportRetries` | Int | `3` | Retry count on export failure |
 | `remoteConfigEnabled` | Boolean | `true` | Poll the control-plane `/config` endpoint for policy DSL + remote kill switch / global sampling. Set `false` when `collectorEndpoint` is a plain OTLP ingest endpoint that does not serve config |
+| `gatewayEndpoint` | String? | `null` | Base URL of the mobile-otel gateway serving `/config?dsl_version=2`. When set, config polling targets it instead of `collectorEndpoint` — use when the collector endpoint is plain OTLP ingest (e.g. Dash0 ingress) with no `/config` route. iOS parity: `gatewayEndpoint` |
 | `headers` | Map? | `null` | Extra HTTP headers (auth tokens, dataset) |
 
 #### Buffering

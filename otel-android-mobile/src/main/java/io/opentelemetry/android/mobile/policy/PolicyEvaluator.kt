@@ -79,7 +79,10 @@ import java.util.concurrent.atomic.AtomicReference
 class PolicyEvaluator(
     private val context: Context,
     private val config: MobileConfig,
-    private val collectorEndpoint: String = config.collectorEndpoint,
+    // Config polling targets the gateway when one is configured (N7: the
+    // collector endpoint is often plain OTLP ingest that doesn't serve
+    // /config); falls back to the collector endpoint — historical behaviour.
+    private val collectorEndpoint: String = config.gatewayEndpoint ?: config.collectorEndpoint,
     private val configPollIntervalSeconds: Long = config.configPollIntervalSeconds,
     httpClient: OkHttpClient? = null,
     private val remoteGate: RemoteGate? = null,
@@ -127,6 +130,10 @@ class PolicyEvaluator(
 
     @androidx.annotation.VisibleForTesting
     internal fun getHttpClientForTest(): OkHttpClient = this.httpClient
+
+    /** Base URL the config poller fetches from (gateway when set, else collector). */
+    @androidx.annotation.VisibleForTesting
+    internal fun getConfigBaseUrlForTest(): String = this.collectorEndpoint
 
     // Current policy configuration (thread-safe)
     private val policyConfig = AtomicReference<PolicyConfig?>(null)

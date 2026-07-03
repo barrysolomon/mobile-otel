@@ -24,7 +24,7 @@ if (localPropertiesFile.exists()) {
 ext.getDash0Endpoint = { ->
     System.getenv('DASH0_ENDPOINT') ?:
     localProperties.getProperty('dash0.endpoint') ?:
-    'https://ingress.dash0.com:4317'
+    'https://ingress.us-west-2.aws.dash0.com:4317'
 }
 
 ext.getDash0AuthToken = { ->

@@ -81,6 +81,11 @@ See [Upstream Supersession Epic — Phase 9](docs/epics/UPSTREAM_SUPERSESSION_EP
 
 ## Track 3: Infrastructure
 
+### Release Pipeline
+
+- [x] **npm provenance attestation** — `publish-npm` now publishes with `npm publish --provenance` (job granted `id-token: write`). Consumers can verify the package was built by this repo's workflow via `npm audit signatures`. (2026-07-03)
+- [x] **GitHub Packages publish idempotent on re-runs** — `publish-android-ghpackages` treats a 409 Conflict (version already exists) as success, so re-running the Publish workflow after an unrelated job failure no longer goes red on the transition-window GH Packages job. (2026-07-03)
+
 ### P0 — Custom Collector Build
 
 - [ ] Create `builder-config.yaml` for OpenTelemetry Collector Builder (ocb)

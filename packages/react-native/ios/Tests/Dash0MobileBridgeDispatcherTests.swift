@@ -56,6 +56,39 @@ struct Dash0MobileBridgeDispatcherTests {
         #expect(sink.starts[0].nativeAutoCapture == [])
     }
 
+    // ── start: gateway / config polling (N7) ────────────────────────────────
+
+    @Test
+    func start_forwards_gateway_and_config_polling_options() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://ingress.example/v1/logs",
+            "gatewayEndpoint": "https://gateway.example:8080",
+            "enablePolicyPolling": true,
+            "configPollIntervalSeconds": 60,
+        ])
+        let got = sink.starts[0]
+        #expect(got.gatewayEndpoint == "https://gateway.example:8080")
+        #expect(got.enablePolicyPolling == true)
+        #expect(got.configPollIntervalSeconds == 60)
+    }
+
+    @Test
+    func start_defaults_gateway_and_polling_options_to_nil_when_absent() throws {
+        let sink = RecordingSink()
+        let d = Dash0MobileBridgeDispatcher(sink: sink)
+        try d.start(config: [
+            "serviceName": "s",
+            "endpoint": "https://e",
+        ])
+        let got = sink.starts[0]
+        #expect(got.gatewayEndpoint == nil)
+        #expect(got.enablePolicyPolling == nil)
+        #expect(got.configPollIntervalSeconds == nil)
+    }
+
     // ── start: sampling (Loper finding #4) ─────────────────────────────────
 
     @Test

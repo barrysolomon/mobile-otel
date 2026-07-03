@@ -84,6 +84,14 @@ Source: [MobileConfig.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Config/Mob
 - **When to change it:** Add `.screenshot` / `.wireframe` (with a consent gate) to enable visual capture; use `.none` to wire modules by hand; tailor a custom set (e.g. `[.network, .errors]`) for a lean demo.
 - **Example:** `autoCaptureOptions: AutoCaptureOptions.default.union([.screenshot, .wireframe])`.
 
+### `gatewayEndpoint`
+
+- **Type:** `String?`
+- **Default:** `nil`.
+- **What it does:** Base URL of the mobile-otel gateway serving `/config?dsl_version=2`. When set, the `ConfigPoller` polls it instead of `endpoint`.
+- **When to change it:** Set it whenever `endpoint` points at plain OTLP ingest (e.g. Dash0 ingress) that does not serve policy config — otherwise the kill switch / remote policies can never arrive.
+- **Example:** `gatewayEndpoint: "https://gateway.example.com:8080"`.
+
 ### `pollingIntervalSeconds`
 
 - **Type:** `Int`

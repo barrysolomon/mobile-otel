@@ -86,7 +86,7 @@
                     android:layout_height="wrap_content"
                     android:hint="Endpoint URL"
                     android:inputType="textUri"
-                    android:text="https://ingress.dash0.com:4317" />
+                    android:text="https://ingress.us-west-2.aws.dash0.com:4317" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout

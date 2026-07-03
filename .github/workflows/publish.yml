@@ -89,6 +89,9 @@ jobs:
     name: Publish @barrysolomon/mobile-react-native to npm
     runs-on: ubuntu-latest
     needs: [verify-version-parity, verify-ci-green]
+    permissions:
+      contents: read
+      id-token: write   # npm --provenance mints a Sigstore attestation via OIDC
     defaults:
       run:
         working-directory: packages/react-native
@@ -122,7 +125,10 @@ jobs:
             *)        TAG=latest ;;
           esac
           echo "Publishing $PKG@$VERSION to dist-tag '$TAG'"
-          npm publish --access public --tag "$TAG"
+          # --provenance publishes a Sigstore attestation linking the package to
+          # this exact workflow run + commit, so `npm audit signatures` can
+          # verify the artifact was built here and not on a laptop.
+          npm publish --access public --tag "$TAG" --provenance
           if [ "$TAG" != "latest" ] && [ "$MAJOR" = "0" ]; then
             echo "Pre-1.0 release — also pointing 'latest' at $VERSION"
             npm dist-tag add "$PKG@$VERSION" latest
@@ -199,9 +205,23 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - uses: gradle/actions/setup-gradle@v6
-      - name: Publish ALL SDK modules to GitHub Packages
+      - name: Publish ALL SDK modules to GitHub Packages (idempotent on re-runs)
         working-directory: examples/demo-app
-        run: ./gradlew publishReleasePublicationToGitHubPackagesRepository -x test -x lint --console=plain
+        # GitHub Packages returns 409 Conflict when a version already exists.
+        # On a re-run (e.g. after a different job in this workflow failed and
+        # the tag was re-pushed), that 409 is expected — the artifacts are
+        # already there — so treat it as success instead of failing the run.
+        run: |
+          set -euo pipefail
+          if ./gradlew publishReleasePublicationToGitHubPackagesRepository \
+               -x test -x lint --console=plain 2>&1 | tee /tmp/ghpackages-publish.log; then
+            echo "Published to GitHub Packages."
+          elif grep -qE 'status code:? 409|409 Conflict|Received status code 409' /tmp/ghpackages-publish.log; then
+            echo "::notice::Version already exists on GitHub Packages (409) — re-run is a no-op, treating as success."
+          else
+            echo "::error::GitHub Packages publish failed for a reason other than 409 — see log above."
+            exit 1
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
