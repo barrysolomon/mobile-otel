@@ -38,7 +38,7 @@ This guide explains how to configure the demo app with Dash0 credentials for dev
 1. **Create local.properties** (already gitignored):
 ```properties
 # examples/demo-app/android/local.properties
-dash0.endpoint=https://ingress.dash0.com:4317
+dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317
 dash0.authToken=YOUR_DASH0_TOKEN_HERE
 dash0.dataset=mobile-dev
 ```
@@ -57,7 +57,7 @@ The build system will automatically inject your credentials into `otel-config.js
 
 1. **Set environment variables**:
 ```bash
-export DASH0_ENDPOINT=https://ingress.dash0.com:4317
+export DASH0_ENDPOINT=https://ingress.us-west-2.aws.dash0.com:4317
 export DASH0_AUTH_TOKEN=your_token_here
 export DASH0_DATASET=mobile-production
 ```
@@ -74,7 +74,7 @@ export DASH0_DATASET=mobile-production
 Use the Configuration Activity in the app:
 
 1. Open app → Menu → **Configuration**
-2. Set **Collector Endpoint**: `https://ingress.dash0.com:4317`
+2. Set **Collector Endpoint**: `https://ingress.us-west-2.aws.dash0.com:4317`
 3. Set **Auth Token**: Your Dash0 token
 4. Set **Dataset**: `mobile-production`
 5. **Save** and restart app
@@ -87,7 +87,7 @@ Choose the appropriate endpoint for your region:
 
 | Region | Endpoint | Environment Variable |
 |--------|----------|----------------------|
-| **US** | `https://ingress.dash0.com:4317` | `DASH0_ENDPOINT=https://ingress.dash0.com:4317` |
+| **US** | `https://ingress.us-west-2.aws.dash0.com:4317` | `DASH0_ENDPOINT=https://ingress.us-west-2.aws.dash0.com:4317` |
 | **EU** | `https://ingress.eu-west-1.aws.dash0.com:4317` | `DASH0_ENDPOINT=https://ingress.eu-west-1.aws.dash0.com:4317` |
 
 The build system automatically detects the region and logs it during the build.
@@ -160,7 +160,7 @@ After building, check the logs:
 Expected output:
 ```
 ✅ Generated otel-config.json from template
-   Endpoint: https://ingress.dash0.com:4317
+   Endpoint: https://ingress.us-west-2.aws.dash0.com:4317
    Region: US
    Dataset: mobile-production
    Token: ✅ SET
@@ -273,7 +273,7 @@ build:release:
   stage: build
   image: openjdk:17-jdk
   variables:
-    DASH0_ENDPOINT: "https://ingress.dash0.com:4317"
+    DASH0_ENDPOINT: "https://ingress.us-west-2.aws.dash0.com:4317"
   script:
     - export DASH0_AUTH_TOKEN=$DASH0_TOKEN_SECRET
     - export DASH0_DATASET=$DASH0_DATASET_SECRET

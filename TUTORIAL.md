@@ -82,7 +82,7 @@ For each platform you'll use:
 ```bash
 cp <path>.template <path>
 # Edit to fill in:
-#   YOUR_COLLECTOR_ENDPOINT  (e.g. ingress.dash0.com:4318 for HTTP/protobuf — the default; :4317 for gRPC)
+#   YOUR_COLLECTOR_ENDPOINT  (e.g. ingress.us-west-2.aws.dash0.com:4318 for HTTP/protobuf — the default; :4317 for gRPC)
 #   YOUR_AUTH_TOKEN          (Auth Token from your Dash0 org)
 #   YOUR_DATASET_NAME        (use "otel-mobile" so this guide's filters work)
 ```

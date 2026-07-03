@@ -41,6 +41,23 @@ jobs:
             exit 1
           fi
           echo "No leaked secrets in tracked files."
+      - name: Guard against dead Dash0 ingress hostnames
+        # `ingress.dash0.com` and `ingress.us1.dash0.com` are NXDOMAIN — every
+        # quick start that copy-pastes them fails at the first export. Real
+        # hosts are region-scoped (e.g. ingress.us-west-2.aws.dash0.com).
+        # Archival plan/spec docs under docs/superpowers/ are excluded: they
+        # record history and are not adopter-facing.
+        run: |
+          set -euo pipefail
+          pattern='ingress\.(us1\.)?dash0\.com'
+          if git grep -nIE "$pattern" -- . \
+              ':(exclude).github/workflows/ci.yml' \
+              ':(exclude)docs/superpowers' > /tmp/dead-hosts.txt; then
+            echo "::error::Dead Dash0 ingress hostname(s) found (NXDOMAIN — use region-scoped hosts like ingress.us-west-2.aws.dash0.com):"
+            cat /tmp/dead-hosts.txt
+            exit 1
+          fi
+          echo "No dead ingress hostnames in tracked files."
 
   version-parity:
     # Catch version drift on EVERY push — not just at tag time. The v0.5.1-alpha

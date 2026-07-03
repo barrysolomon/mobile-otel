@@ -79,6 +79,7 @@ dependencies {
     api(project(":instrumentation-screenshot"))
     api(project(":instrumentation-wireframe"))
     api(project(":instrumentation-compose-click"))
+    api(project(":instrumentation-compose-navigation"))
     api(project(":instrumentation-screen-orientation"))
     api(project(":instrumentation-database"))
     api(project(":instrumentation-file-io"))

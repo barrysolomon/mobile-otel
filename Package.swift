@@ -28,7 +28,12 @@ let package = Package(
             dependencies: [
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             ],
-            path: "otel-ios-mobile/Sources/OTelMobileCore"
+            path: "otel-ios-mobile/Sources/OTelMobileCore",
+            resources: [
+                // Apple privacy manifest — must ship inside the target's
+                // resource bundle so App Review's scanner can find it.
+                .copy("PrivacyInfo.xcprivacy")
+            ]
         ),
         .target(
             name: "OTelMobileSDK",
@@ -47,7 +52,12 @@ let package = Package(
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
                 .product(name: "DequeModule", package: "swift-collections"),
             ],
-            path: "otel-ios-mobile/Sources/OTelMobileSDK"
+            path: "otel-ios-mobile/Sources/OTelMobileSDK",
+            resources: [
+                // Apple privacy manifest — must ship inside the target's
+                // resource bundle so App Review's scanner can find it.
+                .copy("PrivacyInfo.xcprivacy")
+            ]
         ),
         .target(
             name: "LifecycleInstrumentation",

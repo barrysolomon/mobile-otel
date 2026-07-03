@@ -29,7 +29,7 @@ nano local.properties
 Fill in:
 ```properties
 sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk
-dash0.endpoint=https://ingress.dash0.com:4317
+dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317
 dash0.authToken=YOUR_DASH0_TOKEN_HERE  # Get from dash0.com
 dash0.dataset=mobile-production
 ```
@@ -37,7 +37,7 @@ dash0.dataset=mobile-production
 **Option B: Using environment variables**
 
 ```bash
-export DASH0_ENDPOINT=https://ingress.dash0.com:4317
+export DASH0_ENDPOINT=https://ingress.us-west-2.aws.dash0.com:4317
 export DASH0_AUTH_TOKEN=your_token_here
 export DASH0_DATASET=mobile-production
 ```
@@ -74,7 +74,7 @@ cat src/release/assets/otel-config.json | grep "dash0.com"
 
 | Your Location | Endpoint | Config |
 |---------------|----------|--------|
-| **US/Americas** | `https://ingress.dash0.com:4317` | `dash0.endpoint=https://ingress.dash0.com:4317` |
+| **US/Americas** | `https://ingress.us-west-2.aws.dash0.com:4317` | `dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317` |
 | **Europe** | `https://ingress.eu-west-1.aws.dash0.com:4317` | `dash0.endpoint=https://ingress.eu-west-1.aws.dash0.com:4317` |
 
 ---

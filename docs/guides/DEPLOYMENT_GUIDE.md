@@ -20,7 +20,7 @@ No collector deployment needed. Point the SDK directly at Dash0:
 val config = MobileConfig(
     serviceName = "my-app",
     serviceVersion = "1.0.0",
-    collectorEndpoint = "https://ingress.dash0.com:4317",
+    collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com:4317",
     headers = mapOf(
         "Authorization" to "Bearer YOUR_DASH0_TOKEN",
         "Dash0-Dataset" to "mobile-prod"

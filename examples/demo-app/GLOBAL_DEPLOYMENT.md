@@ -8,7 +8,7 @@ Deploy the mobile observability demo app to users worldwide with automatic regio
 
 | Region | Endpoint | Latency (from region) | Best For |
 |--------|----------|----------------------|----------|
-| **US** | `ingress.dash0.com:4317` | <100ms Americas | North/South America |
+| **US** | `ingress.us-west-2.aws.dash0.com:4317` | <100ms Americas | North/South America |
 | **EU** | `ingress.eu-west-1.aws.dash0.com:4317` | <50ms Europe | Europe, Africa, Middle East |
 
 ### Automatic Region Selection
@@ -25,7 +25,7 @@ fun getOptimalDash0Endpoint(): String {
             "https://ingress.eu-west-1.aws.dash0.com:4317"
 
         else -> // Americas, Asia, Pacific
-            "https://ingress.dash0.com:4317"
+            "https://ingress.us-west-2.aws.dash0.com:4317"
     }
 }
 ```
@@ -35,13 +35,13 @@ Or use network-based detection:
 ```kotlin
 suspend fun getOptimalDash0Endpoint(): String = withContext(Dispatchers.IO) {
     // Ping both endpoints, use faster one
-    val usLatency = measureLatency("https://ingress.dash0.com:4317")
+    val usLatency = measureLatency("https://ingress.us-west-2.aws.dash0.com:4317")
     val euLatency = measureLatency("https://ingress.eu-west-1.aws.dash0.com:4317")
 
     if (euLatency < usLatency) {
         "https://ingress.eu-west-1.aws.dash0.com:4317"
     } else {
-        "https://ingress.dash0.com:4317"
+        "https://ingress.us-west-2.aws.dash0.com:4317"
     }
 }
 ```
@@ -59,7 +59,7 @@ suspend fun getOptimalDash0Endpoint(): String = withContext(Dispatchers.IO) {
 └──────────────┬──────────────────────────┘
                │
                ├─── US Build (Americas)
-               │    ├── Endpoint: ingress.dash0.com
+               │    ├── Endpoint: ingress.us-west-2.aws.dash0.com
                │    └── Token: DASH0_US_TOKEN
                │
                └─── EU Build (Europe/Africa/ME)
@@ -79,7 +79,7 @@ android {
         create("us") {
             dimension = "region"
             buildConfigField("String", "DASH0_ENDPOINT",
-                "\"https://ingress.dash0.com:4317\"")
+                "\"https://ingress.us-west-2.aws.dash0.com:4317\"")
             buildConfigField("String", "DASH0_REGION", "\"US\"")
         }
 
@@ -152,7 +152,7 @@ jobs:
 
       - name: Build US Release APK
         env:
-          DASH0_ENDPOINT: https://ingress.dash0.com:4317
+          DASH0_ENDPOINT: https://ingress.us-west-2.aws.dash0.com:4317
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_US_TOKEN }}
           DASH0_DATASET: mobile-production-us
         run: |
@@ -376,7 +376,7 @@ For high-security apps, pin Dash0 certificates:
 
 ```kotlin
 val certificatePinner = CertificatePinner.Builder()
-    .add("ingress.dash0.com", "sha256/AAAAAAAAAA...")
+    .add("ingress.us-west-2.aws.dash0.com", "sha256/AAAAAAAAAA...")
     .add("ingress.eu-west-1.aws.dash0.com", "sha256/BBBBBBBBBB...")
     .build()
 ```

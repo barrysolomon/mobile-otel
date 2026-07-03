@@ -36,7 +36,7 @@ OTelMobile.start(application, config)
 |-------|------|-------------|
 | `serviceName` | String | OTel `service.name` resource attribute |
 | `serviceVersion` | String | OTel `service.version` resource attribute |
-| `collectorEndpoint` | String | OTLP endpoint. With the default `HTTP_PROTOBUF` protocol the SDK POSTs to `<endpoint>/v1/{logs,traces,metrics}` (e.g., `https://ingress.us1.dash0.com`); with `GRPC` it is a single gRPC endpoint (e.g., `https://host:4317`) |
+| `collectorEndpoint` | String | OTLP endpoint. With the default `HTTP_PROTOBUF` protocol the SDK POSTs to `<endpoint>/v1/{logs,traces,metrics}` (e.g., `https://ingress.us-west-2.aws.dash0.com`); with `GRPC` it is a single gRPC endpoint (e.g., `https://host:4317`) |
 
 #### Export Behavior
 

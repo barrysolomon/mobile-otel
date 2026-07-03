@@ -144,11 +144,11 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### P0 — Critical (before any fleet deployment)
 
-- [ ] **SR-001: Cache disk event count** — Replace `runBlocking { COUNT(*) }` on metric gauge callback with `AtomicInteger` updated on insert/delete. ANR vector on slow-storage devices.
+- [x] **SR-001: Cache disk event count** — Done: `DiskLogBuffer` maintains a cached event count updated on insert/delete; gauge callbacks no longer run `runBlocking { COUNT(*) }` (see `DiskLogBuffer.kt` "Cached event count" comment).
 - [ ] **SR-002: Async flush pipeline** — Eliminate `runBlocking` in `flushWindow()`/`forceFlush()`. Dedicated coroutine scope for disk I/O so executor threads never block.
 - [ ] **SR-003: Singleton lifecycle management** — Clear `DiskLogBuffer` and `MobileLoggerProvider` singletons on `shutdown()`. Prevent stale config on re-initialization.
 - [ ] **SR-004: Bound persistedToDisk set** — Remove entries when TTL cleanup deletes disk events. Prevent unbounded memory growth in long sessions.
-- [ ] **SR-005: FleetAlertHandler thread safety** — Synchronize `alertTimestamps` and `activeOverrides` collections. Race condition defeats rate limiting.
+- [x] **SR-005: FleetAlertHandler thread safety** — Done: `alertTimestamps` is a `CopyOnWriteArrayList`, `activeOverrides` a `ConcurrentHashMap` (`FleetAlertHandler.kt:18-20`).
 
 ### P0 — High (before beta deployment)
 
@@ -175,7 +175,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [ ] **SR-020:** Replace synchronized regexCache with ConcurrentHashMap
 - [ ] **SR-021:** Add IPv6 loopback `[::1]` to isLocalhostEndpoint()
 - [ ] **SR-022:** Ensure JankDetector constructs Choreographer on main thread
-- [ ] **SR-023:** Fix DynamicSampler negative-Long sampling bias (50% always sampled)
+- [x] **SR-023:** Fixed — `DynamicSampler` now divides as unsigned (`ULong`); see the SR-023 comment at the ratio computation.
 - [ ] **SR-024:** Add GDPR/CCPA privacy docs for ContextSnapshot demographics
 - [ ] **SR-025:** Use two-value type assertion in Go processor event.name
 

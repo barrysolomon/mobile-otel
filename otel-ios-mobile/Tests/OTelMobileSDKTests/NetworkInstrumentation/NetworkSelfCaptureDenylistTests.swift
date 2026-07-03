@@ -36,7 +36,7 @@ struct NetworkSelfCaptureDenylistTests {
     func preservesDefaults() {
         let base = NetworkConfig.default
         let config = OTelMobile.makeNetworkConfig(
-            endpoint: "https://ingress.dash0.com:4318"
+            endpoint: "https://ingress.us-west-2.aws.dash0.com:4318"
         )
         #expect(config.stripQueryStrings == base.stripQueryStrings)
         #expect(config.capturedResponseHeaders == base.capturedResponseHeaders)

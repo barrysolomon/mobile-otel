@@ -22,7 +22,7 @@ struct TransportSecurityTests {
 
     @Test("https endpoint is always permitted")
     func httpsPermitted() throws {
-        let url = URL(string: "https://ingress.dash0.com:4318")!
+        let url = URL(string: "https://ingress.us-west-2.aws.dash0.com:4318")!
         try TransportSecurity.enforceHTTPS(url, allowInsecure: false)
         #expect(Bool(true)) // no throw
     }

@@ -75,7 +75,7 @@ public enum OTLPExporterFactory {
     /// Build an OTLP/HTTP log exporter.
     ///
     /// The exporter follows standard OTLP/HTTP convention: if the caller
-    /// passes a base URL like `https://ingress.dash0.com:4318`, we append
+    /// passes a base URL like `https://ingress.us-west-2.aws.dash0.com:4318`, we append
     /// `/v1/logs`. If they already included a path ending in `/v1/logs`, we
     /// leave it alone.
     ///

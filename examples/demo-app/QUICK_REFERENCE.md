@@ -25,7 +25,7 @@ dash0.authToken=YOUR_AUTH_TOKEN
 ```
 
 **Your current configuration:**
-- ✅ Region: **US** (`https://ingress.dash0.com:4317`)
+- ✅ Region: **US** (`https://ingress.us-west-2.aws.dash0.com:4317`)
 - ✅ Dataset: `mobile-production`
 - ⏳ Token: **Needs to be pasted**
 
@@ -54,7 +54,7 @@ cat local.properties | grep authToken
 
 # Build and check generated config
 ./gradlew processConfigTemplate
-cat src/release/assets/otel-config.json | grep "ingress.dash0.com"
+cat src/release/assets/otel-config.json | grep "ingress.us-west-2.aws.dash0.com"
 ```
 
 ---
@@ -113,7 +113,7 @@ adb logcat | grep -i "otel\|dash0"
 ## 🌍 Region Configuration
 
 **Current:** US Region (Default)
-- Endpoint: `https://ingress.dash0.com:4317`
+- Endpoint: `https://ingress.us-west-2.aws.dash0.com:4317`
 - Protocol: **gRPC (OTLP)**
 - Best for: Americas, Asia-Pacific
 

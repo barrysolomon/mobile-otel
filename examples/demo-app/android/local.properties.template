@@ -7,7 +7,7 @@ sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk
 
 ## Dash0 Configuration (required for release builds)
 # Choose your region endpoint:
-dash0.endpoint=https://ingress.dash0.com:4317
+dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317
 # For EU: dash0.endpoint=https://ingress.eu-west-1.aws.dash0.com:4317
 
 # Your Dash0 auth token (get from dash0.com dashboard)

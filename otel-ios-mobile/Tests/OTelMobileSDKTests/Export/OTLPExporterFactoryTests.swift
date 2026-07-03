@@ -15,7 +15,7 @@ struct OTLPExporterFactoryTests {
     @Test("factory returns non-nil exporter for a simple endpoint")
     func factoryReturnsNonNilExporter() throws {
         let exporter = try OTLPExporterFactory.makeHttpLogExporter(
-            endpoint: "https://ingress.dash0.com:4318",
+            endpoint: "https://ingress.us-west-2.aws.dash0.com:4318",
             authToken: "secret"
         )
         // Swift Testing lets us just reference the result — if the factory
@@ -58,25 +58,25 @@ struct OTLPExporterFactoryTests {
     @Test("base endpoint gets /v1/logs appended")
     func baseEndpointAppendsPath() throws {
         let url = try OTLPExporterFactory.buildLogsEndpointURL(
-            from: "https://ingress.dash0.com:4318"
+            from: "https://ingress.us-west-2.aws.dash0.com:4318"
         )
-        #expect(url.absoluteString == "https://ingress.dash0.com:4318/v1/logs")
+        #expect(url.absoluteString == "https://ingress.us-west-2.aws.dash0.com:4318/v1/logs")
     }
 
     @Test("endpoint already ending in /v1/logs is preserved")
     func fullEndpointPreserved() throws {
         let url = try OTLPExporterFactory.buildLogsEndpointURL(
-            from: "https://ingress.dash0.com:4318/v1/logs"
+            from: "https://ingress.us-west-2.aws.dash0.com:4318/v1/logs"
         )
-        #expect(url.absoluteString == "https://ingress.dash0.com:4318/v1/logs")
+        #expect(url.absoluteString == "https://ingress.us-west-2.aws.dash0.com:4318/v1/logs")
     }
 
     @Test("trailing slash on base endpoint is normalised before append")
     func trailingSlashNormalised() throws {
         let url = try OTLPExporterFactory.buildLogsEndpointURL(
-            from: "https://ingress.dash0.com:4318/"
+            from: "https://ingress.us-west-2.aws.dash0.com:4318/"
         )
-        #expect(url.absoluteString == "https://ingress.dash0.com:4318/v1/logs")
+        #expect(url.absoluteString == "https://ingress.us-west-2.aws.dash0.com:4318/v1/logs")
     }
 
     @Test("localhost no-port endpoint also works")
@@ -90,7 +90,7 @@ struct OTLPExporterFactoryTests {
     @Test("trace exporter constructs with a base endpoint")
     func traceExporterConstructs() throws {
         let exporter = try OTLPExporterFactory.makeHttpTraceExporter(
-            endpoint: "https://ingress.dash0.com:4318",
+            endpoint: "https://ingress.us-west-2.aws.dash0.com:4318",
             authToken: "secret"
         )
         _ = exporter
@@ -100,7 +100,7 @@ struct OTLPExporterFactoryTests {
     @Test("metric exporter constructs with a base endpoint")
     func metricExporterConstructs() throws {
         let exporter = try OTLPExporterFactory.makeHttpMetricExporter(
-            endpoint: "https://ingress.dash0.com:4318",
+            endpoint: "https://ingress.us-west-2.aws.dash0.com:4318",
             authToken: "secret"
         )
         _ = exporter

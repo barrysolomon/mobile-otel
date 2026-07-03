@@ -98,19 +98,19 @@ Full detail in the security pass; the headline items that gate production:
 
 | Gap | State | Why SecOps cares |
 |---|---|---|
-| **No remote kill switch** | None on any platform. Config polling only tunes flush policies (`flush_window`/`flush_buffer`) — there is no `sdk_enabled`/`global_sample_rate` over the wire. iOS poller is **off by default**. | If the SDK misbehaves in production, the only lever is an app redeploy. Likely adoption blocker. |
+| **Remote kill switch: RN gap only** *(updated 2026-07-03; original review predates the fix)* | Android and iOS both ship a remote kill switch + global sample-rate override via the `sdk` block of the remote config (`policy/RemoteGate.kt` gating logs `onEmit` + `DynamicSampler`; `Policy/RemoteGate.swift` via `ConfigPoller` + `RemoteGatedSampler`). Remaining gaps: the RN bridge exposes no gateway/polling options, so RN apps cannot enable it; the iOS poller is **off by default** (requires a gateway endpoint). | If the SDK misbehaves in production, the only lever on RN is an app redeploy. RN bridge plumbing is the remaining work. |
 | **iOS dropped from CI** | The macOS CI job was removed (cost); iOS is also the thinnest-tested platform (~139 test fns vs Android's ~980). | The least-tested platform is also untested in CI — regression risk. |
 | **No SDK overhead self-telemetry** | Android emits `buffer.ram.*`/`buffer.disk.*` gauges; iOS/RN do not. No platform emits SDK CPU%, memory footprint, or export latency. | Customers can't directly answer "is the SDK costing me?" from telemetry. |
 | **API is `@Incubating` / alpha** | Public entry points marked `@Incubating`; versions `0.1.0-alpha`/`0.1.1-alpha` with inconsistent version metadata across the repo. | No SemVer stability contract yet — APIs may change without notice. |
-| **Cross-platform divergence** | Screenshot default-on (iOS) vs off (Android); error rate-limiter Android-only; RAM byte cap iOS-only; RN feature gaps. | A customer gets *different reliability and privacy behavior per OS* — itself a support/trust risk. |
+| **Cross-platform divergence** | ~~Screenshot default-on (iOS) vs off (Android)~~ *(fixed: `AutoCaptureOptions.default` now excludes screenshot/wireframe on iOS, matching Android)*; error rate-limiter Android-only; RAM byte cap iOS-only; RN feature gaps. | A customer gets *different reliability and privacy behavior per OS* — itself a support/trust risk. |
 
 ---
 
 ## Consolidated Must-Fix Backlog (priority order)
 
 ### P0 — Blocks production (Critical)
-1. **iOS native:** Fix `SecureField`/secure-text redaction in screenshots (or redact all text by default). `ScreenshotInstrumentation.swift:176`
-2. **Android native:** Remove the auth-token Logcat leak. `MobileLoggerProvider.kt:118` (one-line)
+1. ~~**iOS native:** Fix `SecureField`/secure-text redaction in screenshots.~~ **Fixed** — `Dash0RedactionPolicy.shouldRedact` masks `isSecureTextEntry` fields, tagged SwiftUI views, and supports redact-all-text mode (see `OTelMobileCore/Capture/Dash0Redaction.swift`).
+2. ~~**Android native:** Remove the auth-token Logcat leak.~~ **Fixed** — header values are never logged; a `SECURITY:` guard comment in `MobileLoggerProvider.kt` forbids reintroduction.
 3. **RN iOS:** Add `parentSpanId` to `OTelMobileCallSink.startSpan` so it compiles for integrators; bring the file under CI. `OTelMobileCallSink.swift:77`
 4. **RN (both):** Wrap network-interceptor telemetry in try/catch so the host call always executes. `xhr.ts:62`, `fetch.ts:53`
 5. **Android native:** Isolate the touch-dispatch chain (try/catch per listener) so a tap can never crash the host. `WindowEventHub.kt:51`

@@ -146,7 +146,7 @@ Dash0 is positioned as a **strict superset** of upstream so the eventual merge p
 - `@Supersedes` annotation prevents duplicate telemetry when both frameworks' modules are present
 - Upstream modules run unmodified via `UpstreamInstrumentationAdapter`
 - Dash0 modules run unmodified in upstream's framework via `MobileInstrumentationAdapter` (kept for the merge-validation path)
-- Semconv version pinned to upstream's release (`1.40.0`)
+- Semconv pinned to `1.39.0` (`otel-android-mobile/build.gradle.kts`); upstream has since moved to `1.40.0` — bump tracked in BACKLOG
 
 See [epics/UPSTREAM_SUPERSESSION_EPIC.md](epics/UPSTREAM_SUPERSESSION_EPIC.md) for the full convergence plan.
 

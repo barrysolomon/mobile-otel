@@ -90,7 +90,7 @@ These headers are passed to the OTLP exporter and included in every export reque
 **MobileConfig.kt** accepts headers parameter:
 ```kotlin
 MobileConfig(
-    collectorEndpoint = "https://ingress.dash0.com:4317",
+    collectorEndpoint = "https://ingress.us-west-2.aws.dash0.com:4317",
     headers = mapOf(
         "Authorization" to "Bearer auth_token",
         "Dash0-Dataset" to "my-dataset"
@@ -206,7 +206,7 @@ val encryptedPrefs = EncryptedSharedPreferences.create(
 3. **Certificate Pinning** for HTTPS:
 ```kotlin
 val certificatePinner = CertificatePinner.Builder()
-    .add("ingress.dash0.com", "sha256/AAAAAAAAAA...")
+    .add("ingress.us-west-2.aws.dash0.com", "sha256/AAAAAAAAAA...")
     .build()
 ```
 

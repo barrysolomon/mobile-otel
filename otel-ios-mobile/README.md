@@ -53,7 +53,7 @@ import OTelMobileSDK
 let mobile = try OTelMobile.start(config: MobileConfig(
     serviceName: "my-app",
     serviceVersion: "1.0.0",
-    endpoint: "https://ingress.dash0.com:4318",  // OTLP/HTTP, not gRPC
+    endpoint: "https://ingress.us-west-2.aws.dash0.com:4318",  // OTLP/HTTP, not gRPC
     authToken: "Bearer YOUR_DASH0_TOKEN",
     extraHeaders: ["Dash0-Dataset": "otel-mobile"]
     // exportMode defaults to .hybrid
@@ -71,7 +71,7 @@ Screenshot and wireframe capture **default OFF** — `MobileConfig.autoCaptureOp
 ```swift
 let mobile = try OTelMobile.start(config: MobileConfig(
     serviceName: "my-app",
-    endpoint: "https://ingress.dash0.com:4318",
+    endpoint: "https://ingress.us-west-2.aws.dash0.com:4318",
     authToken: "Bearer YOUR_DASH0_TOKEN",
     autoCaptureOptions: AutoCaptureOptions.default.union([.screenshot, .wireframe]),
     screenshotConfig: ScreenshotConfig().withConsentGate { ctx in

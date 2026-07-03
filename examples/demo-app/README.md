@@ -51,7 +51,7 @@ Supports worldwide deployment with automatic region selection:
 
 | Region | Endpoint | Config |
 |--------|----------|--------|
-| **US/Americas** | `ingress.dash0.com:4317` | `dash0.endpoint=https://ingress.dash0.com:4317` |
+| **US/Americas** | `ingress.us-west-2.aws.dash0.com:4317` | `dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317` |
 | **EU/Africa** | `ingress.eu-west-1.aws.dash0.com:4317` | `dash0.endpoint=https://ingress.eu-west-1.aws.dash0.com:4317` |
 
 See [GLOBAL_DEPLOYMENT.md](GLOBAL_DEPLOYMENT.md) for CI/CD examples.
@@ -106,7 +106,7 @@ Plus 6 regular activities (login, navigation, API calls, etc.) and manual flush 
 ```properties
 # android/local.properties
 sdk.dir=/Users/your-name/Library/Android/sdk
-dash0.endpoint=https://ingress.dash0.com:4317
+dash0.endpoint=https://ingress.us-west-2.aws.dash0.com:4317
 dash0.authToken=YOUR_TOKEN_HERE
 dash0.dataset=mobile-production
 ```
@@ -114,7 +114,7 @@ dash0.dataset=mobile-production
 ### Option 2: Environment Variables
 
 ```bash
-export DASH0_ENDPOINT=https://ingress.dash0.com:4317
+export DASH0_ENDPOINT=https://ingress.us-west-2.aws.dash0.com:4317
 export DASH0_AUTH_TOKEN=your_token_here
 export DASH0_DATASET=mobile-production
 ./gradlew assembleRelease

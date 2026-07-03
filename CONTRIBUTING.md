@@ -252,7 +252,8 @@ func BenchmarkProcessLogs(b *testing.B) {
 - Never commit secrets or credentials
 - Be cautious with user data (PII)
 - Follow OWASP guidelines
-- Report security issues privately
+- Report security issues privately — see [SECURITY.md](SECURITY.md) for the
+  private reporting channels and response timelines
 
 ### Licensing
 

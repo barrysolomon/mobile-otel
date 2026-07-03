@@ -11,7 +11,7 @@ import OpenTelemetrySdk
 /// exporter must shut down without throwing.)
 @Suite("SynchronousLogRecordExporter transport")
 struct SynchronousLogRecordExporterTransportTests {
-    private let endpoint = URL(string: "https://ingress.dash0.com:4318/v1/logs")!
+    private let endpoint = URL(string: "https://ingress.us-west-2.aws.dash0.com:4318/v1/logs")!
 
     @Test("constructs with no pinning (prior behaviour)")
     func constructsWithoutPinning() {

@@ -35,7 +35,7 @@ or any standard OTEL Collector distribution.
 
 | Option | Best For | Setup |
 | ------ | -------- | ----- |
-| Dash0 cloud | Production | Point SDK at `https://ingress.dash0.com:4317` |
+| Dash0 cloud | Production | Point SDK at `https://ingress.us-west-2.aws.dash0.com:4317` |
 | Docker (`otelcol-mobile`) | Development / self-hosted | `docker run -p 4317:4317 otelcol-mobile:latest` |
 | Kubernetes | Production self-hosted | Deploy collector manifest to cluster |
 

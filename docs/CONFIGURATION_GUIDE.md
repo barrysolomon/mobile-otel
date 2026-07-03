@@ -34,7 +34,7 @@ OTelMobile.start(application) {
         version = "2.1.0"
     }
     export {
-        endpoint = "https://ingress.us1.dash0.com:4317"
+        endpoint = "https://ingress.us-west-2.aws.dash0.com:4317"
         mode = ExportMode.CONDITIONAL
         headers = mapOf(
             "Authorization" to "Bearer $authToken",
@@ -60,7 +60,7 @@ Bundle `otel-config.json` in `src/main/assets/` (or a build-flavor assets folder
 {
   "serviceName": "my-app",
   "serviceVersion": "2.1.0",
-  "collectorEndpoint": "https://ingress.us1.dash0.com:4317",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "headers": {
     "Authorization": "Bearer YOUR_AUTH_TOKEN",
@@ -254,7 +254,7 @@ This object controls device metrics collection. It maps to `DeviceMetricsConfig`
 {
   "serviceName": "my-app",
   "serviceVersion": "1.0.0",
-  "collectorEndpoint": "https://ingress.us1.dash0.com:4317",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "headers": {
     "Authorization": "Bearer YOUR_AUTH_TOKEN",
@@ -301,7 +301,7 @@ Note: `10.0.2.2` is the Android emulator alias for the host machine's localhost.
 {
   "serviceName": "my-app",
   "serviceVersion": "1.0.0",
-  "collectorEndpoint": "https://ingress.us1.dash0.com:4317",
+  "collectorEndpoint": "https://ingress.us-west-2.aws.dash0.com:4317",
   "exportMode": "CONDITIONAL",
   "headers": {
     "Authorization": "Bearer YOUR_AUTH_TOKEN",
@@ -342,7 +342,7 @@ OTelMobile.start(application) {
     }
 
     export {
-        endpoint = "https://ingress.us1.dash0.com:4317"
+        endpoint = "https://ingress.us-west-2.aws.dash0.com:4317"
         mode = ExportMode.CONDITIONAL          // CONDITIONAL | CONTINUOUS | HYBRID
         headers = mapOf(
             "Authorization" to "Bearer $authToken",
