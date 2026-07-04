@@ -1,6 +1,6 @@
 # Design: Crash Symbolication
 
-**Status:** Phase 1 SHIPPED 2026-07-03 (`app.build.id` on all three platforms — see below). Phases 2–4 (upload tooling + backend symbolicator) remain proposed.
+**Status:** Phase 1 SHIPPED 2026-07-03 (`app.build.id` on all three platforms). Phase 2 (mapping upload tooling) SHIPPED 2026-07-04 — the `symbol-upload` CLI (`tools/symbol-upload/`) with Android / iOS / RN adapters. Phases 3–4 (backend symbolicator + retroactive re-symbolication) remain proposed and are Dash0 backend tracks.
 
 ## Why this is the #1 competitive gap
 
@@ -60,11 +60,15 @@ Three independent pieces, each shippable on its own:
 
 Deferred out of Phase 1 into later phases: NDK per-image build-ids on native crash frames, and the `app.version` / `app.build` consistency sweep.
 
-### Phase 2 — Mapping upload tooling
-- **iOS:** an Xcode build phase / Fastlane action / CLI that finds the dSYMs (incl. bitcode-recompiled ones from App Store Connect) and uploads them keyed by UUID.
-- **Android:** a Gradle task hooked into the R8 task to upload `mapping.txt` (+ NDK symbols) keyed by mapping id, on release builds.
-- **RN:** a Metro/Hermes post-build step to upload the source-map keyed by bundle id.
-- Shared: a small uploader (auth to Dash0, dedupe by id, idempotent). Could be one CLI with per-platform adapters.
+### Phase 2 — Mapping upload tooling ✅ SHIPPED 2026-07-04
+One Go CLI, `symbol-upload` (`tools/symbol-upload/`, pure stdlib), with per-platform adapters and a shared idempotent uploader. Full usage + build-system wiring: [tools/symbol-upload/README.md](../../tools/symbol-upload/README.md).
+
+- **Shared uploader** (`uploader/uploader.go`) — gzips the artifact and `PUT`s it to `/v1/symbol-mappings/{platform}/{build-id}`. Content-addressed by `(platform, build-id)`: a `HEAD` runs first and the `PUT` is skipped on `200`, so the tool is safe to run on every CI build. Auth via `Authorization: Bearer` + optional `Dash0-Dataset` header; `app_version` forwarded as a query param.
+- **Android** (`UploadMapping`) — uploads R8/ProGuard `mapping.txt` keyed by the build id the app stamps into `io.dash0.mobile.BUILD_ID` (= `app.build.id`). README has the `build.gradle.kts` snippet that stamps the manifest and hooks `finalizedBy` on `minifyReleaseWithR8`.
+- **iOS** (`UploadDSYM`) — reads the Mach-O `LC_UUID`(s) out of a `.dSYM` bundle (or DWARF binary) via `debug/macho` and uploads once per UUID. No build id is passed — the dSYM UUID *is* the runtime `app.build.id`. README has the Xcode Run Script phase.
+- **RN** (`UploadBundle`) — derives the build id as the SHA-256 of the JS bundle content and uploads the source-map keyed by it, printing the id to pass to `Dash0Mobile.start({ buildId })`.
+- **CI:** `symbol-upload-tool` job in `ci.yml` runs `go test -race` + `go vet` on every push.
+- Deferred: NDK per-`.so` symbol upload (hardest platform — see the identifiers table above); App Store Connect bitcode-recompiled dSYM fetch.
 
 ### Phase 3 — Server-side symbolicator (Dash0 backend)
 - Resolve frames at ingest or query time using the mapping store. iOS: `atos`/symbolicator-style; Android: R8 retrace + `ndk-stack`/minidump_stackwalk; RN: source-map lookup.
@@ -75,4 +79,4 @@ Deferred out of Phase 1 into later phases: NDK per-image build-ids on native cra
 
 ## Recommended starting point
 
-**Implement Phase 1 now** (SDK build-id tagging on all platforms) — it's small, has no external dependency, is verifiable with unit tests, and is the hard prerequisite for Phases 2–4. Phase 2 (upload tooling) is the next increment and can begin per-platform in parallel. Phases 3–4 are Dash0 backend tracks scoped separately.
+Phases 1 (SDK build-id tagging) and 2 (`symbol-upload` CLI) are **shipped**. The remaining work is Dash0-backend-side: **Phase 3** (server-side symbolicator that resolves frames by looking up the stored artifact under `(platform, build-id)`) and **Phase 4** (retroactive re-symbolication when a mapping arrives after the crashes that reference it — Embrace parity). Both are scoped separately as backend tracks.
