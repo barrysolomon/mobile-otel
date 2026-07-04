@@ -1,8 +1,8 @@
 # Epic: Scale Readiness — Production Hardening for Fleet Deployment
 
-**Status:** In progress — 11/25 (10 fixed + 1 resolved-by-discovery): SR-008, SR-009, SR-011, SR-012, SR-013, SR-018, SR-021, SR-022, SR-023, SR-024, SR-025
+**Status:** ✅ COMPLETE — production-hardening finished via the [Production Readiness epic](PRODUCTION_READINESS_EPIC.md) (SR-001–SR-006 + SR-014 shipped as PR-001–PR-006; SR-008, SR-009, SR-011, SR-012, SR-018, SR-021–SR-025 fixed; SR-013 resolved-by-discovery). Any residual LOW items are opportunistic.
 **Priority:** P0
-**Owner:** TBD
+**Owner:** Barry Solomon
 **Created:** 2026-04-07
 **Target:** Before first external fleet deployment
 
@@ -31,11 +31,11 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 
 | ID | Title | File(s) | Design Doc |
 |----|-------|---------|------------|
-| SR-001 | runBlocking on OTel metric gauge callback causes ANR | MobileLogRecordProcessor:157, DiskLogBuffer:218 | [SR-001](../design/sr-001-cached-disk-count.md) |
-| SR-002 | flushWindow() runBlocking deadlocks executor pool | MobileLogRecordProcessor:504,555,606 | [SR-002](../design/sr-002-async-flush-pipeline.md) |
-| SR-003 | DiskLogBuffer singleton ignores config on re-init | DiskLogBuffer:318, MobileOtel:401 | [SR-003](../design/sr-003-singleton-lifecycle.md) |
-| SR-004 | persistedToDisk set grows without bound | MobileLogRecordProcessor:138 | [SR-004](../design/sr-004-persisted-set-cleanup.md) |
-| SR-005 | FleetAlertHandler collections not thread-safe | FleetAlertHandler:16-18 | [SR-005](../design/sr-005-fleet-alert-thread-safety.md) |
+| SR-001 | ✅ runBlocking on OTel metric gauge callback causes ANR (shipped as PR-003) | MobileLogRecordProcessor:157, DiskLogBuffer:218 | [SR-001](../design/sr-001-cached-disk-count.md) |
+| SR-002 | ✅ flushWindow() runBlocking deadlocks executor pool (shipped as PR-002) | MobileLogRecordProcessor:504,555,606 | [SR-002](../design/sr-002-async-flush-pipeline.md) |
+| SR-003 | ✅ DiskLogBuffer singleton ignores config on re-init (shipped as PR-006) | DiskLogBuffer:318, MobileOtel:401 | [SR-003](../design/sr-003-singleton-lifecycle.md) |
+| SR-004 | ✅ persistedToDisk set grows without bound (shipped as PR-005) | MobileLogRecordProcessor:138 | [SR-004](../design/sr-004-persisted-set-cleanup.md) |
+| SR-005 | ✅ FleetAlertHandler collections not thread-safe (shipped as PR-004) | FleetAlertHandler:16-18 | [SR-005](../design/sr-005-fleet-alert-thread-safety.md) |
 
 ### HIGH (Fix before beta / limited deployment)
 
@@ -54,7 +54,7 @@ Comprehensive review of the mobile-otel Android SDK identified 25 issues that wo
 | ID | Title | File(s) | Design Doc |
 |----|-------|---------|------------|
 | SR-013 | ✅ Resolved-by-discovery (2026-05-20): Kotlin stdlib's `lock.write { }` extension explicitly releases held read locks before acquiring write, then re-acquires them — so the pattern at DynamicSampler:165-177 is *not* deadlock-prone as originally claimed. Regression test pinned in DynamicSamplerTest. | DynamicSampler:165 | Inline fix |
-| SR-014 | MobileLoggerProvider singleton never reset on shutdown | MobileLoggerProvider:282 | Covered by SR-003 |
+| SR-014 | ✅ MobileLoggerProvider singleton reset on shutdown (shipped with SR-003 / PR-006) | MobileLoggerProvider:282 | Covered by SR-003 |
 | SR-015 | enforceSizeLimit reads filesystem size, over-deletes | DiskLogBuffer:283 | Covered by SR-007 |
 | SR-016 | markCleanShutdown on background misses OOM kills | AppLifecycleDetector:336 | [SR-016](../design/sr-016-crash-recovery-accuracy.md) |
 | SR-017 | ErrorInstrumentation forceFlush on crash thread | ErrorInstrumentation:78 | [SR-017](../design/sr-017-crash-safe-flush.md) |

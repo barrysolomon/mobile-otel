@@ -1,4 +1,4 @@
-// Copyright 2025 The OpenTelemetry Authors
+// Copyright 2025 Barry Solomon
 // SPDX-License-Identifier: Apache-2.0
 
 package io.opentelemetry.android.demo.data

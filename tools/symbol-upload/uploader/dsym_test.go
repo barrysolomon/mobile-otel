@@ -1,3 +1,6 @@
+// Copyright 2025 Barry Solomon
+// SPDX-License-Identifier: Apache-2.0
+
 package uploader
 
 import (
@@ -13,17 +16,17 @@ import (
 func buildMachOWithUUID(t *testing.T, uuid [16]byte) []byte {
 	t.Helper()
 	le := binary.LittleEndian
-	buf := make([]byte, 32+24) // mach_header_64 + LC_UUID command
-	le.PutUint32(buf[0:], 0xfeedfacf)  // MH_MAGIC_64
-	le.PutUint32(buf[4:], 0x0100000c)  // CPU_TYPE_ARM64
-	le.PutUint32(buf[8:], 0)           // cpusubtype
-	le.PutUint32(buf[12:], 2)          // MH_EXECUTE
-	le.PutUint32(buf[16:], 1)          // ncmds
-	le.PutUint32(buf[20:], 24)         // sizeofcmds
-	le.PutUint32(buf[24:], 0)          // flags
-	le.PutUint32(buf[28:], 0)          // reserved
-	le.PutUint32(buf[32:], 0x1b)       // LC_UUID
-	le.PutUint32(buf[36:], 24)         // cmdsize
+	buf := make([]byte, 32+24)        // mach_header_64 + LC_UUID command
+	le.PutUint32(buf[0:], 0xfeedfacf) // MH_MAGIC_64
+	le.PutUint32(buf[4:], 0x0100000c) // CPU_TYPE_ARM64
+	le.PutUint32(buf[8:], 0)          // cpusubtype
+	le.PutUint32(buf[12:], 2)         // MH_EXECUTE
+	le.PutUint32(buf[16:], 1)         // ncmds
+	le.PutUint32(buf[20:], 24)        // sizeofcmds
+	le.PutUint32(buf[24:], 0)         // flags
+	le.PutUint32(buf[28:], 0)         // reserved
+	le.PutUint32(buf[32:], 0x1b)      // LC_UUID
+	le.PutUint32(buf[36:], 24)        // cmdsize
 	copy(buf[40:], uuid[:])
 	return buf
 }

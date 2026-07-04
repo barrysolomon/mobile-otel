@@ -1,8 +1,8 @@
 # Dash0 Mobile Observability vs Datadog Mobile RUM — Battle Card
 
 > **Audience:** Sales engineering, product marketing, field teams
-> **Last updated:** 2026-04-13
-> **Status gaps:** iOS SDK, crash symbolication, session replay viewer — all in active development
+> **Last updated:** 2026-07-04
+> **Status gaps:** session replay *viewer* (capture primitives ship today; the viewer is in development). iOS SDK and crash symbolication now ship.
 > **Threat level:** High — Datadog has the most complete mobile RUM product in market. Win on architecture and economics.
 
 ---
@@ -60,14 +60,14 @@ Datadog Mobile RUM is a strong, mature product. They have iOS parity, session re
 
 | Capability | Datadog | Dash0 Status |
 |------------|---------|--------------|
-| **iOS SDK** | Shipping (Swift/ObjC + SwiftUI + tvOS) | Spec complete, in active development |
+| **iOS SDK** | Shipping (Swift/ObjC + SwiftUI + tvOS) | Shipping (Swift + SwiftUI), E2E-validated in Dash0 |
 | **Session Replay** | Wireframe-based, privacy masking, Compose support | Capture primitives shipped, viewer in development |
-| **Crash symbolication** | ProGuard/R8 auto-upload, NDK symbols, dSYM CLI | Planned, near-term |
+| **Crash symbolication** | ProGuard/R8 auto-upload, NDK symbols, dSYM CLI | Shipping — build-id tagging + symbol-upload CLI (NDK native symbols still on roadmap) |
 | **NDK/native crash** | C++ crash reporting | Not planned for initial release |
 | **APM trace correlation** | W3C traceparent + Datadog headers, 1-click in UI | Collector processor exists, UX less polished |
 | **GraphQL instrumentation** | Apollo client interceptor | Not yet |
 | **Kotlin Multiplatform** | Supported | Not yet |
-| **React Native** | Full SDK + Session Replay | Not yet |
+| **React Native** | Full SDK + Session Replay | Shipping — native-first bridge, complete on Android + iOS, E2E-validated |
 | **Production maturity** | Years in production, massive customer base | Pre-release, demo-validated |
 
 ### Architecture
@@ -138,11 +138,11 @@ Dash0: Push a new policy from the visual control plane UI. Change geo-fences, de
 
 | Gap | Status | How to Handle |
 |-----|--------|---------------|
-| **iOS SDK** | Spec complete, in active development | "Shipping shortly. Architecture is cross-platform — policy DSL, buffering, control plane are platform-agnostic." |
-| **Crash symbolication** | Planned, near-term | "On our near-term roadmap. Meanwhile, full JVM crash reporting with dedup and rate limiting ships today." |
+| **iOS SDK** | Shipping (Swift + SwiftUI), E2E-validated | "Full iOS SDK ships today — same policy DSL, buffering, and control plane as Android, validated end-to-end in Dash0." |
+| **Crash symbolication** | Shipping — build-id tagging + symbol-upload CLI (NDK native on roadmap) | "Build-id tagging and the symbol-upload CLI ship today for R8/ProGuard and dSYM. NDK native symbols are on the roadmap." |
 | **Session Replay viewer** | Capture primitives shipped, viewer in development | "We capture screenshots and wireframes today. The replay viewer is in development. Our journey breadcrumbs already give you the crash context replay is designed to provide." |
 | **NDK/native crashes** | Not planned for initial release | "We focus on JVM + Kotlin first. NDK is on the roadmap for apps with significant native code." |
-| **React Native / KMP** | Not yet | "Our initial focus is native Android and iOS. Cross-platform framework support follows." |
+| **React Native / KMP** | React Native shipping (Android + iOS); KMP not yet | "React Native ships today on both platforms via a native-first bridge. KMP is on the roadmap." |
 | **Production maturity** | Demo-validated, 28 automated scenarios, security hardened | "We've completed security hardening (10/10 audit items) and have 28 automated validation scenarios. Production readiness (CI/CD, publishing) is the next phase." |
 
 ---
@@ -171,7 +171,7 @@ Dash0: Push a new policy from the visual control plane UI. Change geo-fences, de
 
 ### "You don't have iOS yet."
 
-> "iOS is in active development right now — shipping shortly. The policy engine, buffering model, DSL, and control plane are all platform-agnostic. Android proves the architecture; iOS is execution. And when it ships, it'll have on-device intelligence from day one — something Datadog's iOS SDK still doesn't have."
+> "iOS ships today with on-device intelligence from day one — something Datadog's iOS SDK still doesn't have. Same policy engine, buffering model, DSL, and control plane as Android, validated end-to-end in Dash0."
 
 ### "Datadog has native NDK crash reporting. You don't."
 
@@ -207,7 +207,7 @@ Dash0: Push a new policy from the visual control plane UI. Change geo-fences, de
 | Crash recovery | seqId dedup, survives force-kill | Crash reports sent on next launch |
 | Build plugin required | No | Yes (Datadog Gradle plugin) |
 | OTLP export | Native, standard | Not available from RUM SDK |
-| iOS SDK | In active development | Shipping (Swift/ObjC/SwiftUI/tvOS) |
+| iOS SDK | Shipping (Swift/SwiftUI), E2E-validated | Shipping (Swift/ObjC/SwiftUI/tvOS) |
 | Session Replay | Capture primitives shipped, viewer in dev | Full wireframe replay + privacy masking |
-| Crash symbolication | Planned | ProGuard/R8 auto-upload, NDK, dSYM |
+| Crash symbolication | Build-id tagging + symbol-upload CLI (shipping); NDK native on roadmap | ProGuard/R8 auto-upload, NDK, dSYM |
 | Pricing (1M DAU est.) | Fraction of DD volume costs | ~$112K/month (sessions only) |

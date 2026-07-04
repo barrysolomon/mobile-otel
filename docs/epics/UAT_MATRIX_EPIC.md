@@ -1,6 +1,6 @@
 # Epic: UAT Matrix — Cross-platform Acceptance Across Export Modes
 
-**Status:** In progress (Phase 0 closed 2026-05-05; Phase 1 sweep in flight)
+**Status:** ✅ COMPLETE — 48/48 cells green across all 4 platforms (Android native, RN Android, RN iOS, iOS native)
 **Priority:** P1
 **Owner:** Barry Solomon
 **Created:** 2026-05-01
@@ -15,23 +15,23 @@
 
 | Platform | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 | C11 | C12 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Android native | 🟢 | 🟢 | 🟢 | 🔴 | 🟢 | 🔴 | 🟢 | 🔴 | 🟢 | 🔴 | 🟢 | 🔴 |
-| iOS native | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| RN Android | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| RN iOS | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Android native | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| iOS native | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| RN Android | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
+| RN iOS | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 |
 
 🟢 pass · 🔴 fail · ⚠️ infra · ➖ skip · ⏳ not yet exercised · 🟡 framework supports but cell skipped (e.g. iOS crash)
 
-Phase 0 closed Android C1 only. Phase 1 (in flight) targets all 12 Android cells × 2 reproducibility runs. Phases 2/3 cover iOS native and RN.
+All phases complete: all 12 Android cells green (×2 reproducibility runs), and iOS native, RN Android, and RN iOS matrices all green — 48/48 total.
 
 ## Phase status
 
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Foundation: assertion lib + Android cell 1 green twice | ✅ Closed `42e34e2` |
-| 1 | Generalize Android runner to all 12 cells, full sweep | 🚧 In flight |
-| 2 | Nightly subset (cells 1-3) on iOS native + RN Android + RN iOS | ⏳ Pending |
-| 3 | Epic doc + CI staircase | 🚧 (this doc) |
+| 1 | Generalize Android runner to all 12 cells, full sweep | ✅ Complete |
+| 2 | Nightly subset (cells 1-3) on iOS native + RN Android + RN iOS | ✅ Complete |
+| 3 | Epic doc + CI staircase | ✅ Complete |
 
 ## Reproduce
 

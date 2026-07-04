@@ -1,8 +1,15 @@
-OpenTelemetry Android Mobile SDK
-Copyright The OpenTelemetry Authors
+Mobile Observability SDK (OpenTelemetry-native)
+Copyright 2025 Barry Solomon
 
-This product includes software developed by The OpenTelemetry Authors
-(https://opentelemetry.io).
+This is an independent, OpenTelemetry-native mobile SDK. It is NOT an official
+OpenTelemetry project and is not affiliated with, sponsored, or endorsed by the
+OpenTelemetry project, the Cloud Native Computing Foundation (CNCF), or The
+Linux Foundation. "OpenTelemetry" is a trademark of The Linux Foundation; it is
+used here only to describe compatibility with the OpenTelemetry specification
+and libraries.
+
+This product is built on and depends on software developed by The OpenTelemetry
+Authors (https://opentelemetry.io), among other third-party components.
 
 ---
 

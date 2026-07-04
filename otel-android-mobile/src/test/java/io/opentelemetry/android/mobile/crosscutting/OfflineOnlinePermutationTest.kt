@@ -1,5 +1,5 @@
 /*
- * Copyright The OpenTelemetry Authors
+ * Copyright 2025 Barry Solomon
  * SPDX-License-Identifier: Apache-2.0
  */
 

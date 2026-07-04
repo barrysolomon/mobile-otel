@@ -1,8 +1,8 @@
 # Dash0 Mobile Observability vs Splunk Mobile RUM — Battle Card
 
 > **Audience:** Sales engineering, product marketing, field teams
-> **Last updated:** 2026-04-13
-> **Status gaps:** iOS SDK, crash symbolication, session replay viewer — all in active development
+> **Last updated:** 2026-07-04
+> **Status gaps:** session replay *viewer* (capture primitives ship today; the viewer is in development). iOS SDK and crash symbolication now ship.
 
 ---
 
@@ -104,8 +104,8 @@ Splunk deprecated their OTLP exporter path in Feb 2025, moving to a proprietary 
 
 | Gap | Status | Timeline |
 |-----|--------|----------|
-| **iOS SDK** | Spec complete, Phase 14 in development | Active development — closing imminently |
-| **Crash symbolication** | ProGuard/R8 + dSYM support planned | Near-term roadmap |
+| **iOS SDK** | Shipping (Swift + SwiftUI), E2E-validated in Dash0 | Active development — closing imminently |
+| **Crash symbolication** | Shipping — build-id tagging + symbol-upload CLI (ProGuard/R8 + dSYM); NDK native on roadmap | Near-term roadmap |
 | **Session Replay viewer** | Screenshot + wireframe capture primitives shipped; viewer UI in development | Near-term roadmap |
 | **Production maturity** | Demo-validated, 28 validation scripts, security hardened | Approaching production readiness (Phase 10) |
 | **Enterprise support** | N/A (Dash0 platform support applies) | Covered by Dash0 platform |
@@ -126,7 +126,7 @@ Splunk deprecated their OTLP exporter path in Feb 2025, moving to a proprietary 
 
 ### "What about iOS?"
 
-> "iOS is in active development right now. The architecture is cross-platform by design — the policy DSL, buffering model, and control plane are platform-agnostic. The Android SDK proves the model; iOS is execution, not research."
+> "iOS ships today — the policy DSL, buffering model, and control plane are cross-platform by design, validated end-to-end in Dash0 alongside Android and React Native."
 
 ### "Session Replay is a must-have."
 

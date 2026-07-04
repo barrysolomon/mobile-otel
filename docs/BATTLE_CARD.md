@@ -70,7 +70,7 @@ Dash0's SDK is a strict superset of `opentelemetry-android`: every upstream modu
 
 - **Compatible superset**: all upstream published modules run via bidirectional adapter
 - **`@Supersedes` annotation**: prevents duplicate telemetry when both frameworks' modules are present
-- **Interface convergence** (Phase 4): `MobileInstrumentation extends AndroidInstrumentation` planned for when upstream publishes `name` property
+- **Interface convergence** (Phase 4, shipped): `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with opentelemetry-android is complete
 - **OTEPs in progress**: mobile buffering pattern, conditional export
 - **Apache 2.0 licensed**, OTel-native, exports standard OTLP
 - **Same demo app, side-by-side comparison**: `examples/upstream-demo-app/` with product flavors

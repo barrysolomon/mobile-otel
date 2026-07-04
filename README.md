@@ -473,6 +473,12 @@ Full documentation index: **[docs/README.md](docs/README.md)**
 - **[Device Metrics](docs/DEVICE_METRICS.md)** — Health metric gauges (memory, battery, thermal, storage)
 - **[Geo/Device Policy DSL](docs/GEO_DEVICE_POLICY_EXTENSION.md)** — Country/region/device-class export policies
 
+### Stability & Versioning
+
+- **[API Stability](docs/API_STABILITY.md)** — Which APIs are stable vs. evolving, and the deprecation policy
+- **[Versioning](docs/VERSIONING.md)** — SemVer policy, the `-alpha` track, and the road to 1.0
+- **[Feature Maturity Matrix](docs/FEATURE_MATURITY_MATRIX.md)** — Per-feature maturity (stable / beta / incubating) across all three platforms
+
 ### Architecture & Design
 
 - **[Design Document](DESIGN.md)** — Vision, system architecture, core concepts, DSL, OTel compliance
@@ -490,4 +496,9 @@ Full documentation index: **[docs/README.md](docs/README.md)**
 
 ## License
 
-Apache 2.0
+Apache 2.0 — Copyright 2025 Barry Solomon. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+This is an independent, **OpenTelemetry-native** SDK. It is not an official
+OpenTelemetry project and is not affiliated with or endorsed by the
+OpenTelemetry project or the CNCF. "OpenTelemetry" is a trademark of The Linux
+Foundation, used here only to describe spec/library compatibility.

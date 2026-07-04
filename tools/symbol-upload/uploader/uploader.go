@@ -1,3 +1,6 @@
+// Copyright 2025 Barry Solomon
+// SPDX-License-Identifier: Apache-2.0
+
 // Package uploader pushes crash-symbolication mapping artifacts (R8 mapping.txt,
 // iOS dSYM, RN source-maps) to a mapping store, keyed by the SAME build id the
 // SDK stamps into app.build.id at runtime (see docs/design/symbolication.md).

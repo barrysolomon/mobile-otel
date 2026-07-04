@@ -81,10 +81,10 @@ live under [`otel-ios-mobile/Sources/`](../otel-ios-mobile/Sources/).
 | screen | &#9989; module | &#9989; [ScreenInstrumentation.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/ScreenInstrumentation.swift) + [SwiftUIScreenModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScreenModifiers.swift) | shipped | iOS default: SwiftUI `.trackScreen("Name")` ViewModifier path auto-installed by `OTelMobile.start()`. UIKit `viewDidAppear`/`viewDidDisappear` swizzle is opt-in via `enableUIKitSwizzle: true` (races with SwiftUI hosting controllers otherwise) |
 | screen-orientation | &#9989; module | &#10060; | not-started | Android-specific config changes; iOS UIDevice orientation TBD |
 | screenshot | &#9989; module | &#9989; [ScreenshotInstrumentation.swift](../otel-ios-mobile/Sources/ScreenshotInstrumentation/ScreenshotInstrumentation.swift) | shipped | iOS uses `UIGraphicsImageRenderer` + `layer.render(in:)` against the key window. `ScreenshotConfig` parity: `captureOnScreenView` / `captureOnError` / `captureOnPolicyMatch` flags all present. `OTelMobile.start` honors `MobileConfig.screenshotConfig` so consumers can override defaults via init or `otel-config.json` `incubating.screenshot`. |
-| scroll | &#9989; module | &#10060; | not-started | RecyclerView OnScrollListener; iOS UIScrollView delegate planned |
+| scroll | &#9989; module | &#9989; [SwiftUIScrollAndInputModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScrollAndInputModifiers.swift) | shipped | iOS: `.trackScrolls(target:)` SwiftUI ViewModifier emits throttled `ui.scroll` |
 | system-events | &#9989; module | &#10060; | not-started | BroadcastReceiver-based; maps to NotificationCenter on iOS |
-| tap | &#9989; module (18+ tests) | &#10060; | not-started | SwiftUI gesture capture via `.simultaneousGesture` or ViewModifier planned |
-| text-input | &#9989; module | &#10060; | not-started | EditText focus loss; iOS UITextField delegate planned |
+| tap | &#9989; module (18+ tests) | &#9989; [SwiftUIScreenModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScreenModifiers.swift) | shipped | iOS: `.trackTaps(target:)` SwiftUI ViewModifier emits `ui.tap` log + span, composes with the view's own gestures |
+| text-input | &#9989; module | &#9989; [SwiftUIScrollAndInputModifiers.swift](../otel-ios-mobile/Sources/ScreenInstrumentation/SwiftUIScrollAndInputModifiers.swift) | shipped | iOS: `.trackTextInput(target:)` SwiftUI ViewModifier emits `ui.text_input` on focus loss (field id only, never content) |
 | timber | &#9989; module | N/A | N/A | Timber is a Kotlin/Android logging library; OSLog bridge would be the iOS analog |
 | vitals | &#9989; (app-start, jank, meter gauges) | &#9989; [VitalsInstrumentation.swift](../otel-ios-mobile/Sources/VitalsInstrumentation/VitalsInstrumentation.swift) + [DeviceStatsCollector](../otel-ios-mobile/Sources/OTelMobileSDK/Metrics/DeviceStatsCollector.swift) | shipped | iOS: `CADisplayLink` frame-time watcher for `ui.jank`, `app.start` duration, `app.memory_warning` on UIApplication pressure. `DeviceStatsCollector` provides continuous gauges separately |
 | wireframe | &#9989; module | &#9989; [WireframeInstrumentation.swift](../otel-ios-mobile/Sources/WireframeInstrumentation/WireframeInstrumentation.swift) | shipped | iOS walks `UIView` tree → JSON, same shape as Android. `WireframeConfig` parity: all trigger flags + `dedupeByContentHash` (SHA-256, emits lightweight `ui.wireframe.ref` with `mobile.wireframe.id` on repeats). |
@@ -265,7 +265,7 @@ demo-control-center-ios.sh, otel-ios-mobile/run-tests.sh) &middot; parity **&lt;
 ## Documentation
 
 Android docs live in [`docs/`](../docs/) (31 top-level `.md` files + subfolders).
-**No iOS-specific user-facing docs exist.**
+**iOS-specific user-facing docs now ship:** [IOS_SDK_GUIDE.md](IOS_SDK_GUIDE.md), [IOS_CONFIGURATION.md](IOS_CONFIGURATION.md), [IOS_CRASH_REPORTING.md](IOS_CRASH_REPORTING.md), [IOS_REAL_DEVICE_VALIDATION.md](IOS_REAL_DEVICE_VALIDATION.md), and [HOW_TO_DEMO_IOS.md](HOW_TO_DEMO_IOS.md).
 
 | Topic | Android doc | iOS doc | Status |
 |---|---|---|---|
@@ -294,8 +294,9 @@ Android docs live in [`docs/`](../docs/) (31 top-level `.md` files + subfolders)
 | Battle cards | [`docs/BATTLE_CARD.md`](BATTLE_CARD.md), vs-Datadog, vs-Splunk | &#10060; | not-started (iOS-specific claims not differentiated) |
 | Internal iOS design | &mdash; | [`docs/superpowers/specs/2026-04-08-ios-sdk-port-design.md`](superpowers/specs/2026-04-08-ios-sdk-port-design.md), [`docs/superpowers/plans/2026-04-08-ios-sdk-sprint1.md`](superpowers/plans/2026-04-08-ios-sdk-sprint1.md) | internal-only |
 
-**Doc parity score: 0%** for end-user docs; only internal "superpowers" spec/plan
-files reference iOS.
+**Doc parity: achieved** — dedicated end-user iOS docs now ship (SDK guide,
+configuration, crash reporting, real-device validation, demo runbook) in addition
+to the internal "superpowers" spec/plan files.
 
 ## Demo apps
 

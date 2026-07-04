@@ -150,9 +150,9 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 ### P0 — Critical (before any fleet deployment)
 
 - [x] **SR-001: Cache disk event count** — Done: `DiskLogBuffer` maintains a cached event count updated on insert/delete; gauge callbacks no longer run `runBlocking { COUNT(*) }` (see `DiskLogBuffer.kt` "Cached event count" comment).
-- [ ] **SR-002: Async flush pipeline** — Eliminate `runBlocking` in `flushWindow()`/`forceFlush()`. Dedicated coroutine scope for disk I/O so executor threads never block.
-- [ ] **SR-003: Singleton lifecycle management** — Clear `DiskLogBuffer` and `MobileLoggerProvider` singletons on `shutdown()`. Prevent stale config on re-initialization.
-- [ ] **SR-004: Bound persistedToDisk set** — Remove entries when TTL cleanup deletes disk events. Prevent unbounded memory growth in long sessions.
+- [x] **SR-002: Async flush pipeline** — Done via PR-002 (Production Readiness epic): `runBlocking` removed from `flushWindow()`/`forceFlush()`.
+- [x] **SR-003: Singleton lifecycle management** — Done via PR-006: `DiskLogBuffer` + `MobileLoggerProvider` cleared on `shutdown()`.
+- [x] **SR-004: Bound persistedToDisk set** — Done via PR-005: entries removed on TTL cleanup; set growth bounded.
 - [x] **SR-005: FleetAlertHandler thread safety** — Done: `alertTimestamps` is a `CopyOnWriteArrayList`, `activeOverrides` a `ConcurrentHashMap` (`FleetAlertHandler.kt:18-20`).
 
 ### P0 — High (before beta deployment)
@@ -168,7 +168,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 ### P1 — Medium (before GA)
 
 - [ ] **SR-013: Atomic sampler revert** — Fix DynamicSampler read→write lock upgrade race with `compareAndSet`.
-- [ ] **SR-014: Provider singleton reset** — Clear MobileLoggerProvider on shutdown (covered by SR-003).
+- [x] **SR-014: Provider singleton reset** — Done via PR-006 (with SR-003): MobileLoggerProvider cleared on shutdown.
 - [ ] **SR-015: Logical size enforcement** — Use row count not filesystem bytes for disk buffer limits (covered by SR-007).
 - [ ] **SR-016: Crash recovery accuracy** — Only mark clean shutdown in explicit `stop()`, not on every background event.
 - [ ] **SR-017: Crash-safe flush** — On crash path, persist to disk only (skip gRPC export). Crash-recovery handles re-export on next launch.
@@ -211,45 +211,47 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 **Epic:** [UPSTREAM_SUPERSESSION_EPIC.md](docs/epics/UPSTREAM_SUPERSESSION_EPIC.md) — Compatible superset of `opentelemetry-android`, 31 work items across 4 phases
 
-### Phase 1 — Foundation (P0)
+> **Track status:** ✅ COMPLETE — upstream convergence with `opentelemetry-android` is done (`MobileInstrumentation extends AndroidInstrumentation`; see CLAUDE.md). Phases 1, 2a, 3, 4 shipped. Phase 2b (WebSocket / AndroidLog) is not implemented and remains genuinely open.
 
-- [ ] Remove phantom dep `instrumentation:0.4.1-alpha`, add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
-- [ ] Update semconv `1.39.0` → `1.40.0`
-- [ ] `MobileSessionProvider extends SessionProvider` + `UpstreamSessionProviderAdapter`
-- [ ] `UpstreamInstrumentationAdapter` (upstream modules in our framework)
-- [ ] `MobileInstrumentationAdapter` (our modules in upstream framework)
-- [ ] `@Supersedes` annotation + conflict resolution in `InstrumentationRegistry`
-- [ ] `discoverUpstreamInstrumentations()` + `discoverAllInstrumentations()` on builder
-- [ ] Optional `Clock` field on `InstrumentationContext`
-- [ ] Phase 1 test suite (7 test classes)
-- [ ] iOS spec section 5 stale notice
+### Phase 1 — Foundation (P0) ✅
 
-### Phase 2a — New Modules (P1, parallel with 2b/3)
+- [x] Remove phantom dep `instrumentation:0.4.1-alpha`, add `session:0.10.0-alpha` + `instrumentation-android-instrumentation:0.10.0-alpha`
+- [x] Update semconv `1.39.0` → `1.40.0`
+- [x] `MobileSessionProvider extends SessionProvider` + `UpstreamSessionProviderAdapter`
+- [x] `UpstreamInstrumentationAdapter` (upstream modules in our framework)
+- [x] `MobileInstrumentationAdapter` (our modules in upstream framework)
+- [x] `@Supersedes` annotation + conflict resolution in `InstrumentationRegistry`
+- [x] `discoverUpstreamInstrumentations()` + `discoverAllInstrumentations()` on builder
+- [x] Optional `Clock` field on `InstrumentationContext`
+- [x] Phase 1 test suite (7 test classes)
+- [x] iOS spec section 5 stale notice
 
-- [ ] `ComposeClickInstrumentation` + `ComposeClickConfig` — Compose-aware tap detection
-- [ ] `ScreenOrientationInstrumentation` — orientation change events
-- [ ] New Gradle modules, tests, wire into demo app
+### Phase 2a — New Modules (P1, parallel with 2b/3) ✅
+
+- [x] `ComposeClickInstrumentation` + `ComposeClickConfig` — Compose-aware tap detection
+- [x] `ScreenOrientationInstrumentation` — orientation change events
+- [x] New Gradle modules, tests, wire into demo app
 
 ### Phase 2b — Reimplemented Modules (P2, parallel with 2a/3)
 
 - [ ] `WebSocketInstrumentation` + `OTelWebSocketListener` — OkHttp WebSocket spans
 - [ ] `AndroidLogInstrumentation` — android.util.Log bridge (optional, P2)
 
-### Phase 3 — API Surface Parity (P1, parallel with 2a/2b)
+### Phase 3 — API Surface Parity (P1, parallel with 2a/2b) ✅
 
-- [ ] Kotlin DSL configuration (`mobileOtel { }` entry point + `@MobileOtelDsl`)
-- [ ] Exporter customizer chain (log, span, metric)
-- [ ] `OpenTelemetryRumCompat` shim for upstream migration
-- [ ] Tests for DSL, customizers, compat shim
+- [x] Kotlin DSL configuration (`mobileOtel { }` entry point + `@MobileOtelDsl`)
+- [x] Exporter customizer chain (log, span, metric)
+- [x] `OpenTelemetryRumCompat` shim for upstream migration
+- [x] Tests for DSL, customizers, compat shim
 
-### Phase 4 — Interface Convergence (P1, after all above)
+### Phase 4 — Interface Convergence (P1, after all above) ✅
 
-- [ ] Converge `InstrumentationContext` to embed `InstallationContext`
-- [ ] Converge `MobileInstrumentation extends AndroidInstrumentation`
-- [ ] Update all 20+ modules to converged interface
-- [ ] Remove `MobileInstrumentationAdapter` (no longer needed)
-- [ ] Update iOS port spec section 5 (full rewrite)
-- [ ] Full regression test pass
+- [x] Converge `InstrumentationContext` to embed `InstallationContext`
+- [x] Converge `MobileInstrumentation extends AndroidInstrumentation`
+- [x] Update all 20+ modules to converged interface
+- [x] Remove `MobileInstrumentationAdapter` (no longer needed)
+- [x] Update iOS port spec section 5 (full rewrite)
+- [x] Full regression test pass
 
 ---
 
@@ -279,20 +281,20 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 - [ ] Sync failure → selective flush policy (built-in DSL trigger)
 - [ ] Sync journey breadcrumbs (sync events in breadcrumb buffer)
 
-### Phase 14 — iOS SDK Port (P0, table stakes)
+### Phase 14 — iOS SDK Port (P0, table stakes) ✅ COMPLETE
 
-- [ ] iOS SDK core (Swift package, buffer, export, session, policy engine)
-- [ ] iOS auto-instrumentation (UIViewController, UIKit gestures, URLSession)
-- [ ] iOS SwiftUI support (view lifecycle, navigation, gestures)
-- [ ] iOS crash reporting (NSException, Mach exceptions, signal handlers)
-- [ ] iOS dSYM symbolication (upload + deobfuscation pipeline)
+- [x] iOS SDK core (Swift package, buffer, export, session, policy engine)
+- [x] iOS auto-instrumentation (UIViewController, UIKit gestures, URLSession)
+- [x] iOS SwiftUI support (view lifecycle, navigation, gestures)
+- [x] iOS crash reporting (NSException, Mach exceptions, signal handlers)
+- [x] iOS dSYM symbolication upload (via `symbol-upload ios`); server-side deobfuscation is Symbolication Phase 3 (backend)
 
 ### Phase 15 — Crash Symbolication Pipeline (P0)
 
-- [ ] ProGuard/R8 mapping.txt upload (Gradle task or CLI)
-- [ ] Server-side deobfuscation (mapping storage + stack trace rewriting)
-- [ ] Build ID matching (auto-associate mappings to app versions)
-- [ ] iOS dSYM upload (CLI tool, after Phase 14)
+- [x] ProGuard/R8 mapping.txt upload (CLI — `symbol-upload android`)
+- [ ] Server-side deobfuscation (mapping storage + stack trace rewriting) — Symbolication Phase 3, Dash0 backend track
+- [x] Build ID matching (`app.build.id` resource attr + content-addressed `(platform, build-id)` store)
+- [x] iOS dSYM upload (CLI — `symbol-upload ios`)
 
 ### Phase 16 — Session Replay Viewer (P1)
 
@@ -314,7 +316,7 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### Phase 19 — Cross-Platform Framework Support
 
-- [ ] **React Native bridge (JS → native SDK)** — **P1 (Innovapptive-gated)**; epic: [docs/epics/REACT_NATIVE_EPIC.md](docs/epics/REACT_NATIVE_EPIC.md); scaffold + failing-first tests landed 2026-04-20 under `packages/react-native/` and `examples/upstream-demo-app-rn/`
+- [x] **React Native bridge (JS → native SDK)** — ✅ COMPLETE on Android + iOS (native-first bridge, UAT 12/12 green each, E2E-validated in Dash0); epic: [docs/epics/REACT_NATIVE_EPIC.md](docs/epics/REACT_NATIVE_EPIC.md); code under `packages/react-native/` and `examples/upstream-demo-app-rn/`
 - [ ] Flutter plugin (Dart → native SDK) — P2, **whitespace opportunity**
 - [ ] Realm instrumentation for RN (Innovapptive follow-up; depends on RN bridge)
 - [ ] Amplify DataStore for RN (Innovapptive follow-up; depends on RN bridge)

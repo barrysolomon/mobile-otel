@@ -1,9 +1,11 @@
 # Epic: iOS ↔ Android Parity + 100% OTel-Native SDK
 
-**Status:** Active
-**Owner:** Mobile Observability (iOS + Android SDK teams)
-**Last updated:** 2026-04-17
-**Target GA:** End Q3 2026 — 5 phases, ~12 working weeks
+**Status:** ✅ SUPERSEDED — iOS↔Android parity CLOSED. iOS ships tap/scroll/text-input/screen/errors/lifecycle/vitals/network/screenshot/wireframe and is validated end-to-end in Dash0 (48/48 UAT green across all platforms). This roadmap is retained for history; see [docs/IOS_ANDROID_PARITY.md](../IOS_ANDROID_PARITY.md) for current state.
+**Owner:** Barry Solomon
+**Last updated:** 2026-04-17 (historical; superseded 2026-07-04)
+**Target GA:** ~~End Q3 2026~~ — delivered ahead of plan
+
+> ⚠️ **Historical document.** The phase-by-phase plan and the parity table below are a 2026-04-17 snapshot from before iOS parity closed. They are kept for provenance only and no longer reflect current state.
 
 ## Goal
 

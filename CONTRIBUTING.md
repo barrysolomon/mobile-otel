@@ -1,10 +1,16 @@
-# Contributing to OpenTelemetry Mobile Extensions
+# Contributing to the Mobile Observability SDK
 
 We welcome contributions from the community!
 
+> **This is an independent, OpenTelemetry-native SDK** — not an official
+> OpenTelemetry project, and not affiliated with or endorsed by the
+> OpenTelemetry project or the CNCF. Contributions come here, to this
+> repository, not through OpenTelemetry/CNCF channels.
+
 ## Code of Conduct
 
-This project follows the [OpenTelemetry Code of Conduct](https://github.com/open-telemetry/community/blob/main/code-of-conduct.md).
+Be respectful and constructive. Harassment or abusive behavior is not tolerated.
+Report conduct concerns to the maintainer via the channels in [SECURITY.md](SECURITY.md).
 
 ## How to Contribute
 
@@ -262,7 +268,7 @@ func BenchmarkProcessLogs(b *testing.B) {
 - Add license header to new files:
 
 ```go
-// Copyright The OpenTelemetry Authors
+// Copyright 2025 Barry Solomon
 // SPDX-License-Identifier: Apache-2.0
 ```
 
@@ -270,15 +276,16 @@ func BenchmarkProcessLogs(b *testing.B) {
 
 ### Communication Channels
 
-- **Slack**: [#otel-android](https://cloud-native.slack.com/archives/C01N7PP1THC)
-- **Mailing List**: [cncf-opentelemetry-contributors](https://lists.cncf.io/g/cncf-opentelemetry-contributors)
-- **SIG Meetings**: Check [OpenTelemetry calendar](https://github.com/open-telemetry/community#calendar)
+This is an independent project — please use its own channels, not the
+OpenTelemetry/CNCF ones:
+
+- **GitHub Issues**: [barrysolomon/mobile-otel/issues](https://github.com/barrysolomon/mobile-otel/issues) — bugs and feature requests
+- **GitHub Discussions**: questions and design discussion
 
 ### Getting Help
 
-- **GitHub Discussions**: For questions and discussions
-- **Slack**: For real-time help
-- **Stack Overflow**: Tag with `opentelemetry`
+- **GitHub Discussions**: for questions and discussions
+- **GitHub Issues**: for reproducible bugs and feature requests
 
 ## Recognition
 
@@ -288,4 +295,4 @@ Contributors are recognized in:
 - GitHub contributors page
 - Release notes
 
-Thank you for contributing to OpenTelemetry! 🎉
+Thank you for contributing! 🎉

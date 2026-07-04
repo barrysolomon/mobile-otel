@@ -1,3 +1,6 @@
+// Copyright 2025 Barry Solomon
+// SPDX-License-Identifier: Apache-2.0
+
 // Command symbol-upload pushes crash-symbolication mappings to a mapping store,
 // keyed by the same build id the SDK stamps into app.build.id at runtime.
 //
