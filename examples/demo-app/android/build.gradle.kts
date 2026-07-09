@@ -24,8 +24,12 @@ tasks.register("generateOtelConfig") {
     val outputFile = file("src/debug/assets/otel-config.json")
     val envFile = File(projectDir.parent, ".env")
 
-    inputs.file(templateFile).optional()
-    inputs.file(envFile).optional()
+    // .optional() only allows a NULL property — a set-but-missing file still
+    // fails Gradle 9 validation ("input file was expected to be present").
+    // Neither file exists on CI runners, so register each only when present;
+    // when absent it also shouldn't participate in up-to-date checks.
+    if (templateFile.exists()) inputs.file(templateFile)
+    if (envFile.exists()) inputs.file(envFile)
     outputs.file(outputFile)
 
     doLast {
