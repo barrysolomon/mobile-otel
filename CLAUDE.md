@@ -77,15 +77,17 @@ go vet ./...                          # Vet
 
 ### Emulators
 
-Available AVDs: `Medium_Phone_API_36.1`, `Pixel_3a`, `Pixel_7`
+Available AVDs: `Pixel_10`, `Pixel_7a`, `Pixel_Tablet` (verify with `~/Library/Android/sdk/emulator/emulator -list-avds`)
+
+**Note:** `emulator` is not on PATH in non-login shells — use the full path `~/Library/Android/sdk/emulator/emulator`.
 
 ```bash
 # Start 1-2 emulators WITH windows (for demos / poking around)
-nohup emulator -avd Pixel_7 -no-snapshot-save > /tmp/emu1.log 2>&1 &
-nohup emulator -avd Pixel_3a -no-snapshot-save > /tmp/emu2.log 2>&1 &
+nohup ~/Library/Android/sdk/emulator/emulator -avd Pixel_10 -no-snapshot-save > /tmp/emu1.log 2>&1 &
+nohup ~/Library/Android/sdk/emulator/emulator -avd Pixel_7a -no-snapshot-save > /tmp/emu2.log 2>&1 &
 
 # Or headless (CI / background work)
-# nohup emulator -avd Pixel_7 -no-window -no-audio -no-snapshot-save > /tmp/emu1.log 2>&1 &
+# nohup ~/Library/Android/sdk/emulator/emulator -avd Pixel_10 -no-window -no-audio -no-snapshot-save > /tmp/emu1.log 2>&1 &
 
 # Wait for boot (API 36 can take ~4 min)
 adb wait-for-device
@@ -110,8 +112,8 @@ Run these steps in order. Total time: ~12 minutes with both emulators.
 
 **Step 1 — Start emulators (windowed, so you can watch)**
 ```bash
-nohup emulator -avd Pixel_7 -no-snapshot-save > /tmp/emu1.log 2>&1 &
-nohup emulator -avd Pixel_3a -no-snapshot-save > /tmp/emu2.log 2>&1 &
+nohup ~/Library/Android/sdk/emulator/emulator -avd Pixel_10 -no-snapshot-save > /tmp/emu1.log 2>&1 &
+nohup ~/Library/Android/sdk/emulator/emulator -avd Pixel_7a -no-snapshot-save > /tmp/emu2.log 2>&1 &
 # Wait ~4 min for boot, then:
 adb devices   # Should show emulator-5554 and emulator-5556
 ```

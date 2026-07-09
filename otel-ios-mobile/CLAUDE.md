@@ -11,9 +11,11 @@ Parallel to `otel-android-mobile/` — both repos share the same policy DSL v2 s
 ## Build commands
 
 ```bash
+# Run everything from the REPO ROOT (mobile-otel/) — Package.swift moved there in PR #54 (d879fb17).
+cd /Users/barrysolomon/Projects/Dash0/mobile-observability/mobile-otel
+
 # Host tests (macOS target, fast — ~1-2s):
-cd otel-ios-mobile
-./scripts/ci/run-tests.sh
+./scripts/ci/run-tests.sh --ios
 
 # iOS simulator tests (requires Xcode + iOS 26 runtime installed — first run ~5 min, subsequent ~20s):
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
@@ -21,9 +23,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
     -destination "platform=iOS Simulator,name=iPhone 17"
 
 # Full cross-platform run:
-cd /Users/barrysolomon/Projects/Dash0/Mobile\ Observability/mobile-otel
-./scripts/ci/run-tests.sh --all   # Android + Go + iOS
+./scripts/ci/run-tests.sh --all   # Android + Go + iOS + RN
 ```
+
+Note: `swift test` works from either directory (SwiftPM walks up to find `Package.swift`), but `xcodebuild` run from `otel-ios-mobile/` fails with "does not contain an Xcode project, workspace or package".
 
 ## Key toolchain gotchas (from experience)
 
@@ -66,7 +69,7 @@ Disk buffer (opt-in via `OTelMobile.start(config:diskBuffer:)`) spills RAM-evict
 ## Testing
 
 - Swift Testing (`@Test` / `#expect`), not XCTest. CLT ships one, not the other.
-- 98 tests across 11 suites as of branch `iPhone` HEAD.
+- ~560 tests on the host lane / 575 on the simulator lane, across 77 suites, as of `main` (2026-07-09). A handful of tests are simulator-only.
 - Test support files live in the main SDK module (e.g. `BufferedEventTestSupport.swift`) and are called from test files via `@testable import`. This is the workaround for the `_Testing_Foundation` CLT gap.
 
 ## Safety invariants (enforced in CI)
@@ -78,7 +81,7 @@ See `docs/SDK_SAFETY.md`. CI runs grep checks in `.github/workflows/ios-tests.ym
 
 ## Branch
 
-Active iOS development happens on the `iPhone` branch. Do NOT fast-forward to `main` without explicit approval — the iOS port is still under validation.
+`main` is canonical for iOS — all v1.0.0 work merged there (PR #65, 2026-07-09). The old `iPhone` branch is dead/stale (~170 commits behind, last commit 2026-05-29); do not base work on it.
 
 ## Docs that matter here
 
