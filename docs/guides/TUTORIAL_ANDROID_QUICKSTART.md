@@ -129,7 +129,7 @@ dependencies {
     // ... existing deps ...
 
     // OpenTelemetry Mobile SDK
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 
@@ -148,7 +148,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // ... other deps ...
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 

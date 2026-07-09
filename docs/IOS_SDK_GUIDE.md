@@ -40,11 +40,11 @@ Source entry point: [OTelMobile.swift](../otel-ios-mobile/Sources/OTelMobileSDK/
 
 ## Installation
 
-The SDK ships as a Swift Package with ten library products (the package itself is named `OTelMobile` and lives in `otel-ios-mobile/` at the repo root). Pin the shipped tag `v1.0.0` in your app's `Package.swift`:
+The SDK ships as a Swift Package with ten library products (the package itself is named `OTelMobile` and lives in `otel-ios-mobile/` at the repo root). Pin the shipped tag `v0.9.0-beta` in your app's `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v1.0.0"),
+    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.9.0-beta"),
     // For local development: .package(path: "../mobile-otel/otel-ios-mobile")
 ],
 targets: [
@@ -348,7 +348,7 @@ Every log, span, and metric carries the resource built by [ResourceBuilder.swift
 | `service.name` | From `MobileConfig.serviceName`. |
 | `service.version` | From `MobileConfig.serviceVersion`. |
 | `telemetry.sdk.name` | `"io.dash0.mobile"`. |
-| `telemetry.sdk.version` | `"1.0.0"` — the literal in [ResourceBuilder.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) (`sdkVersion`), matching the shipped package tag `v1.0.0`. |
+| `telemetry.sdk.version` | `"0.9.0-beta"` — the literal in [ResourceBuilder.swift](../otel-ios-mobile/Sources/OTelMobileSDK/Resource/ResourceBuilder.swift) (`sdkVersion`), matching the shipped package tag `v0.9.0-beta`. |
 | `telemetry.sdk.language` | `"swift"`. |
 | `os.type` | `"darwin"` on iOS and macOS. |
 | `os.name` | `"iOS"` or `"macOS"`. |
