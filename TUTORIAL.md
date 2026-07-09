@@ -590,7 +590,7 @@ maven { url = uri("https://barrysolomon.github.io/mobile-otel/maven") }
 
 // build.gradle.kts
 dependencies {
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 
@@ -607,12 +607,12 @@ dependencies {
 > }
 > ```
 
-**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v1.0.0`, product `OTelMobileSDK`.
+**iOS** — SwiftPM, repo `https://github.com/barrysolomon/mobile-otel` at tag `v0.9.0-beta`, product `OTelMobileSDK`.
 
 **React Native** — npm:
 
 ```bash
-npm install @barrysolomon/mobile-react-native   # or pin @1.0.0
+npm install @barrysolomon/mobile-react-native   # or pin @0.9.0-beta
 ```
 
 ### Step 2: Initialize in `Application.onCreate()`

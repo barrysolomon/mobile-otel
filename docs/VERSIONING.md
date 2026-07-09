@@ -3,8 +3,8 @@
 ## Current state
 
 - **API tiers:** every public symbol is assigned a tier in [API_STABILITY.md](API_STABILITY.md) (gate 2, reviewed 2026-06-12); emitted telemetry names are frozen per [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md) (gate 3).
-- **Version:** `1.0.0` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.github.barrysolomon:mobile` + siblings, iOS SwiftPM tag `v1.0.0`).
-- **Stability:** stable as of `1.0.0`. Un-annotated public symbols are covered by SemVer (breaking change ⇒ MAJOR bump + deprecation cycle); symbols annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS) may still change in a MINOR — see the tier table below and [API_STABILITY.md](API_STABILITY.md).
+- **Version:** `0.9.0-beta` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.github.barrysolomon:mobile` + siblings, iOS SwiftPM tag `v0.9.0-beta`).
+- **Stability:** **beta** as of `0.9.0-beta` — the API surface is feature-complete and 1.0-candidate, but the full SemVer guarantee begins at `1.0.0`. Un-annotated public symbols are treated as stable-intent and will follow SemVer from 1.0 (breaking change ⇒ MAJOR bump + deprecation cycle); symbols annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS) may still change in a MINOR — see the tier table below and [API_STABILITY.md](API_STABILITY.md).
 
 ## Semantic Versioning (effective at 1.0)
 
@@ -34,7 +34,7 @@ Every public symbol belongs to one tier. The tier is the contract.
 
 ## The 1.0 gate review (closed 2026-07-08 — all five gates satisfied)
 
-This section originally recommended **against** cutting 1.0 at `0.2.0-alpha`, behind five gates. Status at the `1.0.0` cut:
+This section originally recommended **against** cutting 1.0 at `0.2.0-alpha`, behind five gates. Status at the `0.9.0-beta` cut (all five gates green; 1.0 is deferred only for post-release CI soak, not for any open gate):
 
 1. **External-integration soak** — ✅ the `0.2.x` surface shipped unchanged through `0.5.2-alpha`; consumed externally by the kiosk-demo integration (resolving the published Pages Maven artifact) and a clean-room React Native → Android UAT.
 2. **Stable set deliberately frozen** — ✅ executed 2026-06-12, see [API_STABILITY.md](API_STABILITY.md).

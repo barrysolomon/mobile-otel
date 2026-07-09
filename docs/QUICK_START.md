@@ -17,7 +17,7 @@ Two paths depending on your goal:
 
 ### Step 1: Add the SDK
 
-The SDK (v1.0.0) publishes to a **public Maven repo on GitHub Pages — no PAT / no authentication required:**
+The SDK (v0.9.0-beta) publishes to a **public Maven repo on GitHub Pages — no PAT / no authentication required:**
 
 ```kotlin
 // settings.gradle.kts (or build.gradle.kts repositories block)
@@ -27,7 +27,7 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 

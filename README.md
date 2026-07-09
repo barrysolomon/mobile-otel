@@ -11,7 +11,7 @@ Most mobile RUM SDKs collect everything and upload it all. This one keeps the da
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> **Current release: `1.0.0`** — published for Android (public [GitHub Pages Maven repo](https://barrysolomon.github.io/mobile-otel/maven), no auth), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native`). See the [Changelog](CHANGELOG.md) for full notes.
+> **Current release: `0.9.0-beta` (beta)** — published for Android (public [GitHub Pages Maven repo](https://barrysolomon.github.io/mobile-otel/maven), no auth), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native`). See the [Changelog](CHANGELOG.md) for full notes.
 > **Side note — management plane:** the gateway, control-plane UI, and k8s manifests live in a separate repo, `mobile-otel-control-plane`. It's an early **work in progress**, currently a **private repo** and **not yet usable by others**. If you're interested in it, reach out — I'm happy to grant access to anyone who wants to help move it along.
 
 ## The idea in one diagram
@@ -97,7 +97,7 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 
 The native SDK is published to a **public Maven repo on GitHub Pages** — no
 authentication required. Add the repo, then the dependency
-(artifact `io.github.barrysolomon:mobile:1.0.0`):
+(artifact `io.github.barrysolomon:mobile:0.9.0-beta`):
 
 ```kotlin
 // settings.gradle.kts — dependencyResolutionManagement { repositories { ... } }
@@ -110,7 +110,7 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 
@@ -211,13 +211,13 @@ val client = OkHttpClient.Builder()
 
 ### iOS SDK Integration (SwiftPM)
 
-Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v1.0.0`, and depend on the `OTelMobileSDK` product:
+Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.9.0-beta`, and depend on the `OTelMobileSDK` product:
 
 ```swift
 // Package.swift
 dependencies: [
-    // SwiftPM resolves the git tag literally — the release tag is v1.0.0
-    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v1.0.0"))
+    // SwiftPM resolves the git tag literally — the release tag is v0.9.0-beta
+    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.9.0-beta"))
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -262,7 +262,7 @@ Full RN reference: **[docs/REACT_NATIVE_CONFIGURATION.md](docs/REACT_NATIVE_CONF
 ```bash
 npm install @barrysolomon/mobile-react-native
 # or pin exactly:
-npm install @barrysolomon/mobile-react-native@1.0.0
+npm install @barrysolomon/mobile-react-native@0.9.0-beta
 cd ios && pod install && cd ..   # iOS only
 ```
 

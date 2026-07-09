@@ -57,7 +57,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.barrysolomon:mobile:1.0.0")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 
