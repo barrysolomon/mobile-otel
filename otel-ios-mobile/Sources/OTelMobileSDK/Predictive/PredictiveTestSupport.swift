@@ -37,33 +37,13 @@ extension DeviceHealthSnapshot {
 }
 
 extension OnDevicePredictor {
-    /// Fresh instance for tests — `init()` is private so the shared
-    /// singleton's history doesn't bleed across test cases.
+    /// Fresh, detached instance for tests. This must NEVER return `.shared`:
+    /// Swift Testing runs tests in parallel by default, so handing every
+    /// test a reset of the same singleton let one test wipe another's
+    /// history mid-run (confidence saturated at 0.875 instead of 1.0 —
+    /// 1/12 full-suite runs, 2026-07-09).
     public static func makeForTesting() -> OnDevicePredictor {
-        PredictiveTestFactory.newPredictor()
-    }
-}
-
-/// Internal factory — test files call through
-/// `OnDevicePredictor.makeForTesting()`.
-enum PredictiveTestFactory {
-    static func newPredictor() -> OnDevicePredictor {
-        // `OnDevicePredictor.init` is private. A Mirror-free path: expose
-        // the singleton pattern's reset hook. For this iteration we simply
-        // use the shared instance and rely on tests not running
-        // concurrently — Swift Testing runs serially unless explicitly
-        // parallelised and none of our suites opt in. Tests that need
-        // isolation call `PredictiveTestFactory.resetShared()`.
-        OnDevicePredictor.shared.resetForTesting()
-        return OnDevicePredictor.shared
-    }
-}
-
-extension OnDevicePredictor {
-    /// Internal: clear the predictor's history arrays. Exists for test
-    /// isolation; no production code path calls this.
-    func resetForTesting() {
-        internalReset()
+        OnDevicePredictor()
     }
 }
 

@@ -21,6 +21,15 @@ import OpenTelemetryApi
 /// path is exercised in the demo-app E2E validation (validate-ios-end-
 /// to-end.sh) and mirrored implementation-for-implementation against
 /// Android's HttpErrorEventNameTest.
+///
+/// Each test asserts on a DETACHED `NetworkInstrumentation()` instance,
+/// never on `.shared`. `.shared` is process-global mutable state and
+/// eleven other suites call `OTelMobile.start()`, which synchronously
+/// re-installs it WITH a logger — under Swift Testing's default parallel
+/// execution that flipped `snapshot.logger` from nil to `DefaultLogger`
+/// mid-test (~1/9 full-suite runs, 2026-07-09). `install()`/`snapshot`
+/// are instance behavior, so a fresh instance pins the identical code
+/// path race-free — no cross-suite serialization needed.
 @Suite("NetworkInstrumentation http.error logger wiring")
 struct HttpErrorLogContractTests {
 
@@ -29,10 +38,11 @@ struct HttpErrorLogContractTests {
         let tracer = OpenTelemetry.instance.tracerProvider.get(
             instrumentationName: "test", instrumentationVersion: nil
         )
-        NetworkInstrumentation.shared.install(tracer: tracer)
-        defer { NetworkInstrumentation.shared.uninstall() }
+        let net = NetworkInstrumentation()
+        net.install(tracer: tracer)
+        defer { net.uninstall() }
 
-        let snap = NetworkInstrumentation.shared.snapshot
+        let snap = net.snapshot
         #expect(snap.tracer != nil, "tracer must be set")
         #expect(snap.logger == nil, "no logger passed → snapshot.logger is nil")
     }
@@ -46,10 +56,11 @@ struct HttpErrorLogContractTests {
         // emission path. The emission path is exercised in Android's
         // HttpErrorEventNameTest and in iOS demo-app E2E validation.
         let logger = DefaultLoggerProvider.instance.get(instrumentationScopeName: "test")
-        NetworkInstrumentation.shared.install(tracer: tracer, logger: logger)
-        defer { NetworkInstrumentation.shared.uninstall() }
+        let net = NetworkInstrumentation()
+        net.install(tracer: tracer, logger: logger)
+        defer { net.uninstall() }
 
-        let snap = NetworkInstrumentation.shared.snapshot
+        let snap = net.snapshot
         #expect(snap.logger != nil, "logger passed → snapshot.logger is non-nil")
     }
 
@@ -61,17 +72,19 @@ struct HttpErrorLogContractTests {
         let loggerA = DefaultLoggerProvider.instance.get(instrumentationScopeName: "test-a")
         let loggerB = DefaultLoggerProvider.instance.get(instrumentationScopeName: "test-b")
 
-        NetworkInstrumentation.shared.install(tracer: tracer, logger: loggerA)
-        let firstLogger = NetworkInstrumentation.shared.logger
+        let net = NetworkInstrumentation()
+        defer { net.uninstall() }
+
+        net.install(tracer: tracer, logger: loggerA)
+        let firstLogger = net.logger
         #expect(firstLogger != nil)
 
-        NetworkInstrumentation.shared.install(tracer: tracer, logger: loggerB)
-        let secondLogger = NetworkInstrumentation.shared.logger
+        net.install(tracer: tracer, logger: loggerB)
+        let secondLogger = net.logger
         #expect(secondLogger != nil)
         // `Logger` is a protocol; identity comparison isn't reliable across
         // wrappers. The meaningful contract is: snapshot.logger reflects the
         // most-recent install, even though we can't .===-compare the
         // underlying instances.
-        NetworkInstrumentation.shared.uninstall()
     }
 }

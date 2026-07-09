@@ -61,7 +61,13 @@ public final class NetworkInstrumentation: @unchecked Sendable {
         return _enabled
     }
 
-    private init() {}
+    /// Internal so contract tests can assert `install()` semantics on a
+    /// detached instance. Production code must use `.shared` — that is the
+    /// instance `OTelURLProtocol` reads on the hot path. Tests must NOT
+    /// assert on `.shared`'s mutable state: every concurrent suite that
+    /// calls `OTelMobile.start()` re-installs it (with a logger), so such
+    /// assertions flake under parallel test execution.
+    internal init() {}
 
     /// Install the URLProtocol and protocol-class swizzle.
     /// Safe to call multiple times — second call updates tracer/logger/config in place.

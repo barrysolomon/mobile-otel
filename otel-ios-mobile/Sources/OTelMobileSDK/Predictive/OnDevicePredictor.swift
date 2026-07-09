@@ -54,7 +54,12 @@ public final class OnDevicePredictor: @unchecked Sendable {
     private var networkHistory: [NetworkEvent] = []
     private let maxHistory = 20
 
-    private init() {}
+    /// Internal so `OnDevicePredictor.makeForTesting()` can hand each test
+    /// a genuinely fresh instance. Production code uses `.shared` (the
+    /// default `PredictiveExportPolicy` injection); tests must NOT share it —
+    /// Swift Testing runs tests in parallel by default, and concurrent
+    /// resets/records on the singleton corrupt each other's history.
+    internal init() {}
 
     public func recordNetworkEvent(_ event: NetworkEvent) {
         lock.lock(); defer { lock.unlock() }
@@ -172,13 +177,5 @@ public final class OnDevicePredictor: @unchecked Sendable {
 
     private func clamp(_ value: Double) -> Double {
         min(1.0, max(0.0, value))
-    }
-
-    /// Internal reset used only by test-support helpers. Wipes both
-    /// history deques so tests see a predictor with empty state.
-    func internalReset() {
-        lock.lock(); defer { lock.unlock() }
-        healthHistory.removeAll()
-        networkHistory.removeAll()
     }
 }
