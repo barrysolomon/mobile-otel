@@ -215,7 +215,7 @@ see `MobileConfig.protocol` (`OtlpProtocol.HTTP_PROTOBUF` default, `GRPC` opt-in
 
 ### Components in This Repo
 
-1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.github.barrysolomon:mobile:0.5.2-alpha` to a public GitHub Pages Maven repo (`https://barrysolomon.github.io/mobile-otel/maven`, no auth); coordinate/version single-sourced in `examples/demo-app/gradle.properties` (`sdkGroupId`/`sdkVersionName`). Kotlin package namespace stays `io.opentelemetry.android.mobile`. `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with the opentelemetry-android project is complete.
+1. **Android SDK** (`otel-android-mobile/`) — Kotlin library, Android API 26+, JDK 17. Published as `io.github.barrysolomon:mobile:1.0.0` to a public GitHub Pages Maven repo (`https://barrysolomon.github.io/mobile-otel/maven`, no auth); coordinate/version single-sourced in `examples/demo-app/gradle.properties` (`sdkGroupId`/`sdkVersionName`). Kotlin package namespace stays `io.opentelemetry.android.mobile`. `MobileInstrumentation extends AndroidInstrumentation` — upstream convergence with the opentelemetry-android project is complete.
 
 2. **Collector Processor** (`collector-processor/mobilepolicyprocessor/`) — Custom OTEL Collector processor plugin (Go) that evaluates mobile export policies server-side.
 

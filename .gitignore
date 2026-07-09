@@ -177,6 +177,9 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 !packages/react-native/package-lock.json
+# device-tests.yml runs `npm ci` against the demo backend — that requires a
+# committed lockfile, so carve it out like the RN one above.
+!examples/demo-backend/package-lock.json
 yarn.lock
 
 # OpenTelemetry Collector test data

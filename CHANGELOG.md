@@ -7,9 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [Unreleased] — 0.5.3-alpha
+## [1.0.0] — 2026-07-08
 
-Roadmap NOW items (2026-07-03): RN kill-switch plumbing, host-safety guards, release-pipeline hardening, and doc-truth fixes. Working version bumped to 0.5.3-alpha across all four surfaces (npm / gradle / RN distro / iOS ResourceBuilder) so the RN-android harness resolves the in-tree SDK from mavenLocal instead of the published 0.5.2-alpha on the Pages repo.
+**First stable release.** All 48 UAT matrix cells are green across the four platform variants (Android native, iOS native, RN Android, RN iOS), the production-readiness and security NOW tiers are closed, and every version surface (npm / gradle / RN distro / iOS ResourceBuilder / git tag) is parity-gated at publish time. From here on, [semantic versioning](https://semver.org/spec/v2.0.0.html) applies in earnest: breaking public-API changes require a major bump. This release folds in the never-published 0.5.3-alpha working set — roadmap NOW items (2026-07-03): RN kill-switch plumbing, host-safety guards, release-pipeline hardening, and doc-truth fixes — plus the release-day fixes below.
+
+### Release engineering (1.0.0)
+
+- **Fixed: nightly Device Tests workflow was failing on both jobs.** The iOS simulator job still ran `xcodebuild` from `otel-ios-mobile/` after #54 moved `Package.swift` to the repo root (SwiftPM tooling walks up to find the manifest; `xcodebuild` does not) — it now runs at the root, with the SwiftPM cache keyed on the root `Package.resolved`. The Android job died at `npm ci` because `.gitignore` blanket-ignored `package-lock.json` and the demo backend's lockfile was never committed — the lockfile is now carved out and committed.
+- **Fixed: `ios-ci.yml` SwiftPM cache captured nothing** for the same package-root reason (it cached `otel-ios-mobile/.build`, but SwiftPM writes `.build` at the package root) — every run cold-compiled the dependency tree.
+- **Removed: stale `otel-ios-mobile/Package.resolved`** left behind by the #54 move; the root copy is the single source of truth.
+- **Added: `SchedulrJourneyUITest`** — XCUITest sustained-load journey driver for the Schedulr iOS demo app (real synthetic `UITouch` events across all four tabs, mirroring `AstronomyShopJourneyUITest` and the Android monkey loop).
+- **Docs**: install snippets and current-version references across README, tutorials, and platform guides bumped from 0.5.2-alpha to 1.0.0; obsolete `@alpha` npm dist-tag install advice replaced with plain (`latest`) installs now that a stable release owns `latest`.
 
 ### Added
 

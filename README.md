@@ -11,7 +11,7 @@ Most mobile RUM SDKs collect everything and upload it all. This one keeps the da
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
-> **Current release: `0.5.2-alpha`** — published for Android (public [GitHub Pages Maven repo](https://barrysolomon.github.io/mobile-otel/maven), no auth), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native@alpha`). See the [Changelog](CHANGELOG.md) for full notes.
+> **Current release: `1.0.0`** — published for Android (public [GitHub Pages Maven repo](https://barrysolomon.github.io/mobile-otel/maven), no auth), iOS (SwiftPM), and React Native (npm `@barrysolomon/mobile-react-native`). See the [Changelog](CHANGELOG.md) for full notes.
 > **Side note — management plane:** the gateway, control-plane UI, and k8s manifests live in a separate repo, `mobile-otel-control-plane`. It's an early **work in progress**, currently a **private repo** and **not yet usable by others**. If you're interested in it, reach out — I'm happy to grant access to anyone who wants to help move it along.
 
 ## The idea in one diagram
@@ -77,7 +77,7 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 ## Quick Start
 
 > **Fastest path:** React Native installs straight from npm with no auth —
-> `npm install @barrysolomon/mobile-react-native@alpha`. The native Android SDK
+> `npm install @barrysolomon/mobile-react-native`. The native Android SDK
 > resolves from a **public GitHub Pages Maven repo — no PAT, no login** (see below).
 > Maven Central is wired and awaiting the owner's signing credentials
 > ([docs/MAVEN_CENTRAL.md](docs/MAVEN_CENTRAL.md)). To just *see it work*, run the
@@ -97,7 +97,7 @@ The SDK captures telemetry locally in a two-tier ring buffer (RAM + SQLite), eva
 
 The native SDK is published to a **public Maven repo on GitHub Pages** — no
 authentication required. Add the repo, then the dependency
-(artifact `io.github.barrysolomon:mobile:0.5.2-alpha`):
+(artifact `io.github.barrysolomon:mobile:1.0.0`):
 
 ```kotlin
 // settings.gradle.kts — dependencyResolutionManagement { repositories { ... } }
@@ -110,7 +110,7 @@ repositories {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
+    implementation("io.github.barrysolomon:mobile:1.0.0")
 }
 ```
 
@@ -211,13 +211,13 @@ val client = OkHttpClient.Builder()
 
 ### iOS SDK Integration (SwiftPM)
 
-Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v0.5.2-alpha`, and depend on the `OTelMobileSDK` product:
+Add the package in Xcode (**File → Add Package Dependencies…**) or in `Package.swift`, pointing at tag `v1.0.0`, and depend on the `OTelMobileSDK` product:
 
 ```swift
 // Package.swift
 dependencies: [
-    // SwiftPM resolves the git tag literally — the release tag is v0.5.2-alpha
-    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v0.5.2-alpha"))
+    // SwiftPM resolves the git tag literally — the release tag is v1.0.0
+    .package(url: "https://github.com/barrysolomon/mobile-otel", .exact("v1.0.0"))
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -260,9 +260,9 @@ Full RN reference: **[docs/REACT_NATIVE_CONFIGURATION.md](docs/REACT_NATIVE_CONF
 **1. Install the JS package** (use the `alpha` dist-tag; a pin is also shown):
 
 ```bash
-npm install @barrysolomon/mobile-react-native@alpha
+npm install @barrysolomon/mobile-react-native
 # or pin exactly:
-npm install @barrysolomon/mobile-react-native@0.5.2-alpha
+npm install @barrysolomon/mobile-react-native@1.0.0
 cd ios && pod install && cd ..   # iOS only
 ```
 

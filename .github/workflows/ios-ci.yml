@@ -42,8 +42,11 @@ jobs:
       - name: Cache SwiftPM build
         uses: actions/cache@v5
         with:
-          path: otel-ios-mobile/.build
-          key: spm-ios-sdk-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}
+          # Package.swift lives at the repo ROOT since #54, so SwiftPM writes
+          # .build (and reads Package.resolved) there — caching the old
+          # otel-ios-mobile/ paths captured nothing and every run was cold.
+          path: .build
+          key: spm-ios-sdk-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-ios-sdk-${{ runner.os }}-
       - name: iOS SDK compile gate (host, no simulator)
         # Compile-only on purpose, and library-only (not --build-tests):

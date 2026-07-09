@@ -1,6 +1,6 @@
 {
   "name": "@barrysolomon/mobile-react-native",
-  "version": "0.5.3-alpha",
+  "version": "1.0.0",
   "description": "Dash0 Mobile Observability SDK for React Native (JS/TS bridge) — OpenTelemetry auto-instrumentation for React Native apps: network/fetch spans, JS errors, crash recovery, offline buffering, native Android + iOS SDKs. For native iOS use the Swift Package at https://github.com/barrysolomon/mobile-otel. For native Android use io.github.barrysolomon:mobile from the public Maven repo (https://barrysolomon.github.io/mobile-otel/maven).",
   "main": "lib/index.js",
   "module": "lib/index.js",
