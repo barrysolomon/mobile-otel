@@ -380,35 +380,57 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// forceFlush) or in a future process (via start-time recovery).
     @discardableResult
     internal func forceFlushBuffered() -> BufferExportResult {
+        // Sync bridge over forceFlushBufferedAsync() for callers that cannot
+        // await: the OTel `LogRecordProcessor.forceFlush` protocol surface,
+        // the CONTINUOUS-mode timer, and the lifecycle autoFlushQueue — all
+        // libdispatch threads.
+        //
+        // NEVER call this from Swift-concurrency (async) code. It parks the
+        // calling thread on a DispatchSemaphore until a detached Task — which
+        // needs a slot on the SAME width-limited cooperative executor —
+        // signals it. Enough concurrent async callers (e.g. Swift Testing's
+        // parallel suites on a 3-core CI runner) park every executor thread,
+        // the detached tasks can never run, and the whole pool deadlocks
+        // (issue #66). From a libdispatch thread the wait is non-circular and
+        // safe. Async callers use `forceFlushBufferedAsync()` directly.
         let semaphore = DispatchSemaphore(value: 0)
         final class Box: @unchecked Sendable { var value: BufferExportResult = .success }
         let box = Box()
         Task.detached { [weak self] in
-            guard let self = self else { semaphore.signal(); return }
-            let ramEvents = await self.buffer.flush()
-            let combined = await self.combineWithDisk(ramEvents: ramEvents, windowMs: nil)
-            if !combined.isEmpty {
-                box.value = await self.exportBuffered(events: combined)
-                if case .success = box.value, let disk = self.diskBuffer,
-                   let maxSeq = combined.map({ $0.sequenceId }).max() {
-                    await disk.deleteUpTo(sequenceId: maxSeq)
-                } else if case .failure = box.value, let disk = self.diskBuffer {
-                    // Export failed. `buffer.flush()` above already emptied
-                    // the RAM buffer, so these events only survive if we
-                    // persist them now. Dedup-by-seqId: events already on
-                    // disk are harmless to skip; we only insert the
-                    // RAM-originated ones so we don't double up.
-                    let diskEvents = await disk.fetchAll()
-                    let onDisk = Set(diskEvents.map { $0.sequenceId })
-                    for event in combined where !onDisk.contains(event.sequenceId) {
-                        await disk.insert(event)
-                    }
-                }
+            if let self = self {
+                box.value = await self.forceFlushBufferedAsync()
             }
             semaphore.signal()
         }
         semaphore.wait()
         return box.value
+    }
+
+    /// Async core of the dual-tier drain: flush RAM, merge + dedup disk,
+    /// export, and apply the failure-persistence contract documented above.
+    /// Safe from any async context — unlike the sync bridge, it never parks
+    /// a thread, so it cannot starve the cooperative executor (issue #66).
+    @discardableResult
+    internal func forceFlushBufferedAsync() async -> BufferExportResult {
+        let ramEvents = await buffer.flush()
+        let combined = await combineWithDisk(ramEvents: ramEvents, windowMs: nil)
+        guard !combined.isEmpty else { return .success }
+        let result = await exportBuffered(events: combined)
+        if case .success = result, let disk = diskBuffer,
+           let maxSeq = combined.map({ $0.sequenceId }).max() {
+            await disk.deleteUpTo(sequenceId: maxSeq)
+        } else if case .failure = result, let disk = diskBuffer {
+            // Export failed. `buffer.flush()` above already emptied the RAM
+            // buffer, so these events only survive if we persist them now.
+            // Dedup-by-seqId: events already on disk are harmless to skip; we
+            // only insert the RAM-originated ones so we don't double up.
+            let diskEvents = await disk.fetchAll()
+            let onDisk = Set(diskEvents.map { $0.sequenceId })
+            for event in combined where !onDisk.contains(event.sequenceId) {
+                await disk.insert(event)
+            }
+        }
+        return result
     }
 
     // MARK: - NF-010: Network-restored flush hook
@@ -444,10 +466,12 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// listener (a private class declared in the same module) can call back
     /// without breaking the actor isolation contract.
     func onNetworkRestored() {
-        // forceFlushBuffered() is blocking (DispatchSemaphore). Hop onto a
-        // detached Task so the watcher's notify path doesn't stall.
+        // Hop onto a detached Task so the watcher's notify path doesn't
+        // stall — and take the async drain path directly: calling the sync
+        // bridge here would park this cooperative-pool thread on its
+        // semaphore (issue #66).
         Task.detached { [weak self] in
-            _ = self?.forceFlushBuffered()
+            _ = await self?.forceFlushBufferedAsync()
         }
     }
 

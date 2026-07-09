@@ -3,8 +3,8 @@
 ## Current state
 
 - **API tiers:** every public symbol is assigned a tier in [API_STABILITY.md](API_STABILITY.md) (gate 2, reviewed 2026-06-12); emitted telemetry names are frozen per [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md) (gate 3).
-- **Version:** `0.5.2-alpha` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.github.barrysolomon:mobile` + siblings, iOS SwiftPM tag `v0.5.2-alpha`).
-- **Stability:** pre-1.0. Public entry points are annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS). **APIs may change between `0.x` releases.**
+- **Version:** `1.0.0` across all three artifacts (npm `@barrysolomon/mobile-react-native`, Android Maven `io.github.barrysolomon:mobile` + siblings, iOS SwiftPM tag `v1.0.0`).
+- **Stability:** stable as of `1.0.0`. Un-annotated public symbols are covered by SemVer (breaking change ⇒ MAJOR bump + deprecation cycle); symbols annotated `@Incubating` (Kotlin) / documented as experimental (Swift/TS) may still change in a MINOR — see the tier table below and [API_STABILITY.md](API_STABILITY.md).
 
 ## Semantic Versioning (effective at 1.0)
 
@@ -28,21 +28,19 @@ Every public symbol belongs to one tier. The tier is the contract.
 
 **Emitted telemetry** (attribute names, semantic conventions) has its own stability: it tracks the upstream OpenTelemetry semantic-convention stability for each signal. Mobile-specific attributes not yet in a stable semconv are **experimental** until the convention stabilizes.
 
-### Target tiering for 1.0 (proposed)
+### Tiering adopted at 1.0
 - **Stable:** `OTelMobile.start`/builder core, `MobileConfig` core fields (serviceName, endpoint, auth, exportMode, sampling, protocol), `start`/`shutdown`/`flushWindow`, manual `startSpan`/`log`/`recordMetric`, the RN `StartConfig` core, network/lifecycle/crash auto-instrumentation.
 - **Incubating (stay experimental past 1.0):** screenshot/wireframe capture + consent API, the policy DSL / predictive export, the remote kill-switch wire schema, transport pinning/HMAC config, debug-widget.
 
-## When to cut 1.0 (recommendation: not yet)
+## The 1.0 gate review (closed 2026-07-08 — all five gates satisfied)
 
-`0.2.0-alpha` just **expanded** the public surface substantially — `protocol`, `sampling` (RN), `shouldCapture` consent, transport `allowInsecureTransport`/`pinning`/`configSigningKey`, the kill-switch wire schema, Android `encryptDiskBufferAtRest` + RAM byte caps. **Freezing the API now would commit us to surfaces that are days old.** Recommended gates before `1.0.0`:
+This section originally recommended **against** cutting 1.0 at `0.2.0-alpha`, behind five gates. Status at the `1.0.0` cut:
 
-1. The `0.2.x` surface soaks through ≥1 more external integration without signature churn.
-2. The **stable** set above is reviewed and each member's signature is deliberately frozen; everything else is explicitly `@Incubating`.
-3. Emitted attribute names audited against current OTel mobile semconv; experimental ones documented as such.
-4. A deprecation policy is in place (one MINOR with `@Deprecated` before removal).
-5. CI green on all platforms incl. the iOS + RN-android jobs added in `0.2.0-alpha`.
-
-Until then, continue `0.x` with the "minor may break" caveat, and keep `@Incubating` honest (annotate anything that might move; don't annotate what we intend to freeze). Gates 2 and 3 were executed 2026-06-12 — see [API_STABILITY.md](API_STABILITY.md) and [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md); the remaining open gates are the external-integration soak (1) and full-platform CI (5).
+1. **External-integration soak** — ✅ the `0.2.x` surface shipped unchanged through `0.5.2-alpha`; consumed externally by the kiosk-demo integration (resolving the published Pages Maven artifact) and a clean-room React Native → Android UAT.
+2. **Stable set deliberately frozen** — ✅ executed 2026-06-12, see [API_STABILITY.md](API_STABILITY.md).
+3. **Semconv audit** — ✅ executed 2026-06-12, see [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md).
+4. **Deprecation policy in force** — ✅ below.
+5. **CI green on all platforms** — ✅ `ci.yml` (Android, minified, AAR-size, Go, RN, RN-android) + `ios-ci.yml` (iOS SDK, RN-iOS) per push, `device-tests.yml` (Android emulator + iOS simulator suites) nightly/on-tag.
 
 ## Deprecation policy (gate 4 — in force now)
 

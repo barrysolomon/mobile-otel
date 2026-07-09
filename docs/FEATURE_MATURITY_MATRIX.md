@@ -1,17 +1,17 @@
 # Feature Maturity Matrix
 
-**Last updated:** 2026-06-10  
-**SDK version:** 0.5.2-alpha
+**Last updated:** 2026-07-08  
+**SDK version:** 1.0.0
 
 This document defines the **functional maturity** level of every feature in the Dash0 Mobile Observability SDK across Android, iOS, and React Native platforms.
 
-> **API stability vs. functional maturity.** The whole SDK is at `0.5.2-alpha`,
-> and **every public API surface is annotated `@Incubating`** (Android
-> `@Incubating`, iOS public structs/enums, RN exported functions) — meaning the
-> *API shape* may still change without a deprecation cycle. The "GA / Beta /
-> Incubating" labels in the tables below describe how **complete and tested a
-> feature's behaviour** is, not an API-stability promise. Until the SDK reaches
-> a stable (non-alpha) release, treat all signatures as subject to change.
+> **API stability vs. functional maturity.** As of `1.0.0` the un-annotated
+> public API is **stable under SemVer** (breaking change ⇒ MAJOR bump +
+> deprecation cycle); surfaces still marked `@Incubating` (Android) /
+> experimental (iOS/RN) may change in a MINOR — see
+> [API_STABILITY.md](API_STABILITY.md) for the per-symbol tiers. The
+> "GA / Beta / Incubating" labels in the tables below describe how **complete
+> and tested a feature's behaviour** is, not an API-stability promise.
 
 ## Maturity Levels
 

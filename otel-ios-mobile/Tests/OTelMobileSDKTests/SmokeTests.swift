@@ -21,7 +21,7 @@ struct SmokeTests {
         // Let fire-and-forget buffer-append tasks settle before flushing.
         try await MobileLogRecordProcessor.waitForBufferedAppends(timeoutMs: 500)
 
-        let result = mobile.forceFlush()
+        let result = await mobile.forceFlushAsync()
         #expect(result == .success)
 
         let events = await captured.events
@@ -47,7 +47,10 @@ struct SmokeTests {
         let captured = CapturingExporter()
         let config = MobileConfig(serviceName: "smoke", endpoint: "https://unused")
         let mobile = try OTelMobile.start(config: config, exporter: captured)
-        #expect(mobile.forceFlush() == .success)
+        // Keep coverage of the sync bridge, but call it from a dispatch
+        // thread so this async test never parks its executor thread (#66).
+        let result = await onDispatchThread { mobile.forceFlush() }
+        #expect(result == .success)
         let events = await captured.events
         #expect(events.isEmpty)
     }

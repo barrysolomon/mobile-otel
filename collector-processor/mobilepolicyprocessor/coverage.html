@@ -59,7 +59,7 @@
 				
 				<option value="file1">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/factory.go (100.0%)</option>
 				
-				<option value="file2">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/processor.go (100.0%)</option>
+				<option value="file2">github.com/open-telemetry/opentelemetry-collector-contrib/processor/mobilepolicyprocessor/processor.go (98.5%)</option>
 				
 				</select>
 			</div>
@@ -82,7 +82,7 @@
 		</div>
 		<div id="content">
 		
-		<pre class="file" id="file0" style="display: none">// Copyright The OpenTelemetry Authors
+		<pre class="file" id="file0" style="display: none">// Copyright 2025 Barry Solomon
 // SPDX-License-Identifier: Apache-2.0
 
 package mobilepolicyprocessor
@@ -215,7 +215,7 @@ func validateCondition(attrKey string, condition Condition) error <span class="c
 var _ component.Config = (*Config)(nil)
 </pre>
 		
-		<pre class="file" id="file1" style="display: none">// Copyright The OpenTelemetry Authors
+		<pre class="file" id="file1" style="display: none">// Copyright 2025 Barry Solomon
 // SPDX-License-Identifier: Apache-2.0
 
 package mobilepolicyprocessor
@@ -265,7 +265,7 @@ func createLogsProcessor(
 }</span>
 </pre>
 		
-		<pre class="file" id="file2" style="display: none">// Copyright The OpenTelemetry Authors
+		<pre class="file" id="file2" style="display: none">// Copyright 2025 Barry Solomon
 // SPDX-License-Identifier: Apache-2.0
 
 package mobilepolicyprocessor
@@ -275,6 +275,7 @@ import (
         "fmt"
         "regexp"
         "strconv"
+        "sync"
 
         "go.opentelemetry.io/collector/component"
         "go.opentelemetry.io/collector/consumer"
@@ -283,12 +284,24 @@ import (
         "go.uber.org/zap"
 )
 
+// regexCacheMax bounds the per-processor compiled-regex cache. Aligned with
+// the Android SDK's MAX_REGEX_CACHE so both sides hold a comparable working
+// set under load.
+const regexCacheMax = 256
+
 // mobilePolicyProcessor implements policy-based annotation and filtering for mobile telemetry
 type mobilePolicyProcessor struct {
         logger   *zap.Logger
         config   *Config
         policies []Policy
         next     consumer.Logs
+
+        // SR-012: cache compiled regexes per pattern to avoid recompiling on
+        // every policy evaluation. Bounded to regexCacheMax entries; eviction
+        // is best-effort drop-all on overflow (simple and correct under
+        // concurrent load).
+        regexCacheMu sync.RWMutex
+        regexCache   map[string]*regexp.Regexp
 }
 
 // newMobilePolicyProcessor creates a new mobile policy processor
@@ -296,14 +309,48 @@ func newMobilePolicyProcessor(
         cfg *Config,
         logger *zap.Logger,
         next consumer.Logs,
-) (*mobilePolicyProcessor, error) <span class="cov5" title="46">{
+) (*mobilePolicyProcessor, error) <span class="cov5" title="49">{
         return &amp;mobilePolicyProcessor{
-                logger:   logger,
-                config:   cfg,
-                policies: cfg.Policies,
-                next:     next,
+                logger:     logger,
+                config:     cfg,
+                policies:   cfg.Policies,
+                next:       next,
+                regexCache: make(map[string]*regexp.Regexp, regexCacheMax),
         }, nil
 }</span>
+
+// getOrCompileRegex returns the compiled regex for `pattern`, compiling and
+// caching on first use. Concurrency: many readers + occasional writers, so
+// RWMutex with a double-check under the write lock. Bounded to
+// regexCacheMax — on overflow we drop the cache (best-effort eviction); the
+// alternative is an LRU which adds dependency weight for negligible benefit
+// on a single config that's loaded a handful of times.
+func (mpp *mobilePolicyProcessor) getOrCompileRegex(pattern string) (*regexp.Regexp, error) <span class="cov3" title="9">{
+        mpp.regexCacheMu.RLock()
+        if cached, ok := mpp.regexCache[pattern]; ok </span><span class="cov2" title="3">{
+                mpp.regexCacheMu.RUnlock()
+                return cached, nil
+        }</span>
+        <span class="cov3" title="6">mpp.regexCacheMu.RUnlock()
+
+        compiled, err := regexp.Compile(pattern)
+        if err != nil </span><span class="cov1" title="2">{
+                return nil, err
+        }</span>
+
+        <span class="cov2" title="4">mpp.regexCacheMu.Lock()
+        defer mpp.regexCacheMu.Unlock()
+        // Double-check after acquiring the write lock — another goroutine may
+        // have populated the entry while we were compiling.
+        if existing, ok := mpp.regexCache[pattern]; ok </span><span class="cov0" title="0">{
+                return existing, nil
+        }</span>
+        <span class="cov2" title="4">if len(mpp.regexCache) &gt;= regexCacheMax </span><span class="cov0" title="0">{
+                mpp.regexCache = make(map[string]*regexp.Regexp, regexCacheMax)
+        }</span>
+        <span class="cov2" title="4">mpp.regexCache[pattern] = compiled
+        return compiled, nil</span>
+}
 
 // Start is called when the processor is started
 func (mpp *mobilePolicyProcessor) Start(ctx context.Context, host component.Host) error <span class="cov1" title="1">{
@@ -346,7 +393,7 @@ func (mpp *mobilePolicyProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs)
 }
 
 // processLogRecord evaluates policies and annotates the log record
-func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) <span class="cov9" title="1234">{
+func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) <span class="cov9" title="1235">{
         // Extract attributes for policy evaluation
         attrs := make(map[string]interface{})
 
@@ -354,60 +401,69 @@ func (mpp *mobilePolicyProcessor) processLogRecord(lr plog.LogRecord, resourceAt
         attrs["event.name"] = lr.Body().AsString()
 
         // Add all log record attributes
-        lr.Attributes().Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="14">{
+        lr.Attributes().Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="16">{
                 attrs[k] = convertValue(v)
                 return true
         }</span>)
 
         // Add resource attributes (prefixed with "resource.")
-        <span class="cov9" title="1234">resourceAttrs.Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="19">{
+        <span class="cov9" title="1235">resourceAttrs.Range(func(k string, v pcommon.Value) bool </span><span class="cov4" title="19">{
                 attrs["resource."+k] = convertValue(v)
                 return true
         }</span>)
 
         // Evaluate policies (first match wins for policy.id annotation)
-        <span class="cov9" title="1234">for _, policy := range mpp.policies </span><span class="cov9" title="1234">{
-                if mpp.evaluatePolicy(policy, attrs) </span><span class="cov7" title="225">{
-                        mpp.logger.Debug("Policy matched",
+        <span class="cov9" title="1235">for _, policy := range mpp.policies </span><span class="cov9" title="1235">{
+                if mpp.evaluatePolicy(policy, attrs) </span><span class="cov7" title="226">{
+                        // SR-025: a log record may carry an attribute literally named
+                        // "event.name" with a non-string value. That overwrites the
+                        // string seeded from the body, so a bare `.(string)` would
+                        // panic here and take down the whole batch. Comma-ok form,
+                        // with the body as the always-string fallback for the log.
+                        eventName, ok := attrs["event.name"].(string)
+                        if !ok </span><span class="cov1" title="1">{
+                                eventName = lr.Body().AsString()
+                        }</span>
+                        <span class="cov7" title="226">mpp.logger.Debug("Policy matched",
                                 zap.String("policy_id", policy.ID),
-                                zap.String("event.name", attrs["event.name"].(string)))
+                                zap.String("event.name", eventName))
 
                         // Annotate log record with policy match
-                        mpp.annotateLogRecord(lr, policy)
-                }</span>
+                        mpp.annotateLogRecord(lr, policy)</span>
+                }
         }
 }
 
 // evaluatePolicy checks if attributes match the policy's match conditions
-func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool <span class="cov9" title="1252">{
+func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string]interface{}) bool <span class="cov9" title="1253">{
         if !policy.Enabled </span><span class="cov2" title="3">{
                 return false
         }</span>
-        <span class="cov9" title="1249">match := policy.Match
+        <span class="cov9" title="1250">match := policy.Match
         results := make([]bool, 0, len(match.Attributes))
 
         // Evaluate each attribute condition
-        for attrKey, condition := range match.Attributes </span><span class="cov9" title="1262">{
+        for attrKey, condition := range match.Attributes </span><span class="cov9" title="1263">{
                 attrValue, exists := attrs[attrKey]
                 if !exists </span><span class="cov2" title="4">{
                         results = append(results, false)
                         continue</span>
                 }
 
-                <span class="cov9" title="1258">matched := mpp.evaluateCondition(attrValue, condition)
+                <span class="cov9" title="1259">matched := mpp.evaluateCondition(attrValue, condition)
                 results = append(results, matched)</span>
         }
 
         // Apply logical operator
-        <span class="cov9" title="1249">if match.LogicalOperator == "and" </span><span class="cov9" title="1241">{
+        <span class="cov9" title="1250">if match.LogicalOperator == "and" </span><span class="cov9" title="1242">{
                 for _, result := range results </span><span class="cov9" title="1247">{
                         if !result </span><span class="cov9" title="1011">{
                                 return false
                         }</span>
                 }
-                <span class="cov7" title="230">return len(results) &gt; 0</span>
+                <span class="cov7" title="231">return len(results) &gt; 0</span>
         } else<span class="cov3" title="8"> if match.LogicalOperator == "or" </span><span class="cov3" title="7">{
-                for _, result := range results </span><span class="cov3" title="10">{
+                for _, result := range results </span><span class="cov4" title="11">{
                         if result </span><span class="cov2" title="4">{
                                 return true
                         }</span>
@@ -419,9 +475,9 @@ func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string
 }
 
 // evaluateCondition checks if a value matches a condition
-func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition Condition) bool <span class="cov10" title="1270">{
+func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition Condition) bool <span class="cov10" title="1271">{
         // Equals
-        if condition.Equals != nil </span><span class="cov9" title="1043">{
+        if condition.Equals != nil </span><span class="cov9" title="1044">{
                 return fmt.Sprintf("%v", value) == *condition.Equals
         }</span>
 
@@ -467,35 +523,35 @@ func (mpp *mobilePolicyProcessor) evaluateCondition(value interface{}, condition
                 return containsString(strValue, *condition.Contains)
         }</span>
 
-        // Regex
+        // Regex (compiled-once via cache — SR-012)
         <span class="cov3" title="6">if condition.Regex != nil </span><span class="cov3" title="5">{
                 strValue := fmt.Sprintf("%v", value)
-                matched, err := regexp.MatchString(*condition.Regex, strValue)
+                compiled, err := mpp.getOrCompileRegex(*condition.Regex)
                 if err != nil </span><span class="cov1" title="1">{
                         mpp.logger.Warn("Invalid regex", zap.String("regex", *condition.Regex), zap.Error(err))
                         return false
                 }</span>
-                <span class="cov2" title="4">return matched</span>
+                <span class="cov2" title="4">return compiled.MatchString(strValue)</span>
         }
 
         <span class="cov1" title="1">return false</span>
 }
 
 // annotateLogRecord adds policy match annotations to the log record (first match wins)
-func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) <span class="cov7" title="225">{
+func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Policy) <span class="cov7" title="226">{
         // Add policy match marker; preserve first-matching policy.id
         lr.Attributes().PutStr("policy.matched", "true")
-        if _, exists := lr.Attributes().Get("policy.id"); !exists </span><span class="cov7" title="223">{
+        if _, exists := lr.Attributes().Get("policy.id"); !exists </span><span class="cov7" title="224">{
                 lr.Attributes().PutStr("policy.id", policy.ID)
         }</span>
 
         // Add action parameters as annotations
-        <span class="cov7" title="225">for _, action := range policy.Actions </span><span class="cov7" title="226">{
+        <span class="cov7" title="226">for _, action := range policy.Actions </span><span class="cov7" title="227">{
                 switch action.Type </span>{
-                case "annotate":<span class="cov7" title="217">
+                case "annotate":<span class="cov7" title="218">
                         // Add custom annotations from action parameters
-                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov3" title="9">{
-                                for k, v := range params </span><span class="cov3" title="10">{
+                        if params, ok := action.Parameters.(map[string]interface{}); ok </span><span class="cov3" title="10">{
+                                for k, v := range params </span><span class="cov4" title="11">{
                                         lr.Attributes().PutStr(fmt.Sprintf("policy.%s", k), fmt.Sprintf("%v", v))
                                 }</span>
                         }
@@ -513,18 +569,18 @@ func (mpp *mobilePolicyProcessor) annotateLogRecord(lr plog.LogRecord, policy Po
                 }
         }
 
-        <span class="cov7" title="225">mpp.logger.Debug("Annotated log record",
+        <span class="cov7" title="226">mpp.logger.Debug("Annotated log record",
                 zap.String("policy_id", policy.ID),
                 zap.Int("action_count", len(policy.Actions)))</span>
 }
 
 // Helper functions
 
-func convertValue(v pcommon.Value) interface{} <span class="cov5" title="45">{
+func convertValue(v pcommon.Value) interface{} <span class="cov5" title="47">{
         switch v.Type() </span>{
-        case pcommon.ValueTypeStr:<span class="cov5" title="31">
+        case pcommon.ValueTypeStr:<span class="cov5" title="32">
                 return v.Str()</span>
-        case pcommon.ValueTypeInt:<span class="cov4" title="11">
+        case pcommon.ValueTypeInt:<span class="cov4" title="12">
                 return v.Int()</span>
         case pcommon.ValueTypeDouble:<span class="cov1" title="1">
                 return v.Double()</span>

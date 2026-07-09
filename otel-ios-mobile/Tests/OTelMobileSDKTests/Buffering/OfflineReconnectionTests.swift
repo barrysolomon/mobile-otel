@@ -81,7 +81,7 @@ struct OfflineReconnectionTests {
         for i in 0..<10 {
             await processor.emitForTesting(body: "offline.\(i)")
         }
-        let offlineResult = processor.forceFlushBuffered()
+        let offlineResult = await processor.forceFlushBufferedAsync()
         if case .success = offlineResult {
             Issue.record("forceFlush should fail while offline")
         }
@@ -95,7 +95,7 @@ struct OfflineReconnectionTests {
 
         // Phase 2: reconnect. Same events flush out cleanly from disk.
         await exporter.setOffline(false)
-        let onlineResult = processor.forceFlushBuffered()
+        let onlineResult = await processor.forceFlushBufferedAsync()
         #expect(onlineResult == .success)
 
         let exportedAfter = await exporter.received.count
@@ -116,11 +116,11 @@ struct OfflineReconnectionTests {
             await processor.emitForTesting(body: "dedup.\(i)")
         }
         // Failing flush persists events to disk.
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
 
         // Reconnect; combineWithDisk dedupes by sequenceId.
         await exporter.setOffline(false)
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
 
         let received = await exporter.received
         let uniqueIds = Set(received.map { $0.sequenceId })
@@ -138,7 +138,7 @@ struct OfflineReconnectionTests {
             await processor.emitForTesting(body: "window.\(i)")
         }
         // Failed forceFlush persists events to disk.
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
 
         // Reconnect and flush a 5-minute window — should drain disk too.
         await exporter.setOffline(false)
@@ -159,11 +159,11 @@ struct OfflineReconnectionTests {
         for i in 0..<3 {
             await processor.emitForTesting(body: "intermittent.a.\(i)")
         }
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
 
         // Brief reconnection — disk drains.
         await exporter.setOffline(false)
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         let firstBatchExported = await exporter.received.count
         #expect(firstBatchExported == 3)
         let diskAfterFirstDrain = await disk.rowCount()
@@ -174,13 +174,13 @@ struct OfflineReconnectionTests {
         for i in 0..<4 {
             await processor.emitForTesting(body: "intermittent.b.\(i)")
         }
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         let stillFirstBatch = await exporter.received.count
         #expect(stillFirstBatch == 3, "no exports while offline")
 
         // Final reconnection — second batch drains from disk.
         await exporter.setOffline(false)
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         let totalExported = await exporter.received.count
         #expect(totalExported == 7, "every event must export exactly once across reconnects")
     }

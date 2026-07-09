@@ -97,10 +97,10 @@ struct TtlEvictionStressTests {
             for i in 0..<20 {
                 await processor.emitForTesting(body: "round\(round).event\(i)")
             }
-            _ = processor.forceFlushBuffered()
+            _ = await processor.forceFlushBufferedAsync()
         }
         // Final drain after the last batch.
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         try await Task.sleep(nanoseconds: 200_000_000)
 
         let received = await exporter.received
@@ -125,7 +125,7 @@ struct TtlEvictionStressTests {
         try await Task.sleep(nanoseconds: 1_500_000_000)
 
         // Drain everything.
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         try await Task.sleep(nanoseconds: 500_000_000)
 
         let received = await exporter.received
@@ -150,7 +150,7 @@ struct TtlEvictionStressTests {
             await processor.emitForTesting(body: "sized.\(i)")
         }
         // Trigger a failed flush so the failure-persistence path also runs.
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         try await Task.sleep(nanoseconds: 500_000_000)
 
         let bytes = await disk.totalSizeBytes()

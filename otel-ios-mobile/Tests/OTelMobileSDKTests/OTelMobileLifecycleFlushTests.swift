@@ -84,12 +84,20 @@ struct OTelMobileLifecycleFlushTests {
 
         sdk.triggerAutoFlush()
 
-        // Poll up to 2 s; export should land well before that.
+        // Deadline-based poll, generous on purpose: `autoFlushQueue` is a
+        // static SERIAL queue shared by every OTelMobile instance in the
+        // process, and the sibling test `triggerAutoFlushIsNonBlocking`
+        // parks a 3 s blocking forceFlush() on it — under Swift Testing's
+        // parallel execution this test's flush can queue behind that
+        // residue. A fixed 2 s poll flaked 3/20 suite runs (2026-07-09,
+        // always failing at ~2.1 s with count=0). 15 s covers the 3 s
+        // block plus full-suite load margin; the loop exits on the first
+        // observed export, so the happy path stays ~200 ms.
+        let deadline = DispatchTime.now() + .seconds(15)
         var count = 0
-        for _ in 0..<20 {
+        while count < 1 && DispatchTime.now() < deadline {
             try await Task.sleep(nanoseconds: 100_000_000)  // 100 ms
             count = await slow.exportCallCount
-            if count >= 1 { break }
         }
         #expect(count >= 1, "export must be called after triggerAutoFlush — got \(count) calls")
     }

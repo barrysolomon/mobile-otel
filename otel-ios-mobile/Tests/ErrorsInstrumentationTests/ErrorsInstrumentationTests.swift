@@ -11,8 +11,11 @@ import OpenTelemetrySdk
 /// specific paths like Coroutine error capture that don't apply here).
 ///
 /// `.serialized` because `ErrorsInstrumentation.shared` and the on-disk
-/// crash-marker file are process-wide singletons.
-@Suite("ErrorsInstrumentation", .serialized, .isolatedCrashMarker)
+/// crash-marker file are process-wide singletons; `.exclusiveSignalHandlers`
+/// because install()/uninstall() here mutate the same process-global signal
+/// dispositions `CrashHandlerChainingTests` asserts on, and `.serialized`
+/// alone doesn't order suites against each other.
+@Suite("ErrorsInstrumentation", .serialized, .isolatedCrashMarker, .exclusiveSignalHandlers)
 struct ErrorsInstrumentationTests {
 
     // MARK: - recordError

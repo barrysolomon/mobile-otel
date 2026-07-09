@@ -42,8 +42,11 @@ jobs:
       - name: Cache SwiftPM build
         uses: actions/cache@v5
         with:
-          path: otel-ios-mobile/.build
-          key: spm-ios-sdk-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}
+          # Package.swift lives at the repo ROOT since #54, so SwiftPM writes
+          # .build (and reads Package.resolved) there — caching the old
+          # otel-ios-mobile/ paths captured nothing and every run was cold.
+          path: .build
+          key: spm-ios-sdk-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-ios-sdk-${{ runner.os }}-
       - name: iOS SDK compile gate (host, no simulator)
         # Compile-only on purpose, and library-only (not --build-tests):
@@ -61,6 +64,30 @@ jobs:
         # tests run host-side in the react-native-ios job below.
         working-directory: otel-ios-mobile
         run: swift build
+      - name: Executor-starvation guard (strict cooperative pool, issue #66)
+        # Runs the buffering/policy suites with the Swift cooperative executor
+        # clamped to ONE thread (LIBDISPATCH_COOPERATIVE_POOL_STRICT=1). Any
+        # code path that parks an executor thread while waiting on other
+        # executor work — the deadlock class that froze the nightly simulator
+        # lane in issue #66 — hangs immediately under this clamp, instead of
+        # only surfacing on small CI runners under parallel-suite load. The
+        # bash watchdog turns such a hang into a named failure in ~20 min
+        # rather than an opaque job timeout. Filtered to suites proven to run
+        # host-side: the full suite includes run-loop/notification tests that
+        # legitimately need a simulator (see the compile-gate comment above).
+        working-directory: otel-ios-mobile
+        run: |
+          set -uo pipefail
+          FILTER='OfflineReconnection|NetworkRestoredFlush|TtlEvictionStress|MobileLogRecordProcessor|PolicyPipelineIntegration|ErrorCoalescer|OfflinePolicy|EndToEndSmoke'
+          LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 swift test --filter "$FILTER" &
+          pid=$!
+          for _ in $(seq 1 1200); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$pid" 2>/dev/null; then
+            echo '::error::Executor-starvation guard timed out — a test parked a cooperative-executor thread (deadlock class of issue #66)'
+            kill -9 "$pid"
+            exit 1
+          fi
+          wait "$pid"
 
   react-native-ios:
     runs-on: macos-15

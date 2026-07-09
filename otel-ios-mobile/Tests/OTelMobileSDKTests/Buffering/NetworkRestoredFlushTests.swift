@@ -72,7 +72,7 @@ struct NetworkRestoredFlushTests {
         for i in 0..<5 {
             await processor.emitForTesting(body: "airplane.\(i)")
         }
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         let exportedWhileOffline = await exporter.received.count
         #expect(exportedWhileOffline == 0)
 
@@ -105,7 +105,7 @@ struct NetworkRestoredFlushTests {
         for i in 0..<3 {
             await processor.emitForTesting(body: "warmup.\(i)")
         }
-        _ = processor.forceFlushBuffered()
+        _ = await processor.forceFlushBufferedAsync()
         let baseline = await exporter.received.count
 
         // Spurious onAvailable (no prior onLost) — must NOT trigger flush.

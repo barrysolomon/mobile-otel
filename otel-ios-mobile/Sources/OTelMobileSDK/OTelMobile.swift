@@ -987,6 +987,18 @@ public final class OTelMobile: @unchecked Sendable {
         return processor.forceFlushBuffered()
     }
 
+    /// Async twin of `forceFlush()` for Swift-concurrency callers. The sync
+    /// variant parks its calling thread on a semaphore, which must never
+    /// happen on a cooperative-executor thread — enough concurrent async
+    /// callers starve the executor and deadlock (issue #66). From async
+    /// code, await this instead.
+    @discardableResult
+    public func forceFlushAsync() async -> BufferExportResult {
+        tracerProvider?.forceFlush()
+        _ = meterProvider?.forceFlush()
+        return await processor.forceFlushBufferedAsync()
+    }
+
     /// Selective time-window flush: export events from the last `minutes`.
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {

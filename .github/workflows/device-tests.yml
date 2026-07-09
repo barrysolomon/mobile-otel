@@ -112,10 +112,10 @@ jobs:
       - name: Restore SwiftPM build cache
         uses: actions/cache/restore@v5
         with:
-          path: otel-ios-mobile/.build-xcode
-          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}
+          path: .build-xcode
+          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}-
+            spm-ios-sim-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
             spm-ios-sim-${{ runner.os }}-
       - name: Run the full test suite on a simulator
         # ios-ci.yml is compile-only because `swift test` on the macOS host
@@ -123,7 +123,10 @@ jobs:
         # simulator the full suite passes — this is where it runs in CI.
         # The simulator name is resolved dynamically so Xcode image bumps on
         # the runner don't break the job.
-        working-directory: otel-ios-mobile
+        #
+        # Runs at the repo root: Package.swift moved there in #54 (SwiftPM
+        # tooling walks up to find it, xcodebuild does NOT — running from
+        # otel-ios-mobile/ fails with "does not contain an Xcode project").
         run: |
           set -euo pipefail
           SIM_NAME=$(xcrun simctl list devices available | grep -E '^\s+iPhone' | head -1 | sed -E 's/ \(.*$//' | xargs)
@@ -131,25 +134,31 @@ jobs:
             echo "::error::No available iPhone simulator on this runner"; exit 1
           fi
           echo "Using simulator: $SIM_NAME"
+          # Per-test time limits (issue #66): a hung test becomes a NAMED
+          # failure after 2 min (10 min hard cap) instead of an opaque
+          # 90-minute job timeout that also loses the result bundle.
           xcodebuild test \
             -scheme OTelMobile-Package \
             -destination "platform=iOS Simulator,name=$SIM_NAME" \
             -derivedDataPath .build-xcode \
             -resultBundlePath TestResults.xcresult \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 600 \
             CODE_SIGNING_ALLOWED=NO
       - name: Save SwiftPM build cache (even on timeout)
         if: always()
         uses: actions/cache/save@v5
         with:
-          path: otel-ios-mobile/.build-xcode
+          path: .build-xcode
           # run-id suffix: cache keys are immutable, and the restore above
           # falls back by prefix — each run saves its own (more complete)
           # snapshot and the next run restores the newest matching prefix.
-          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('otel-ios-mobile/Package.resolved') }}-${{ github.run_id }}
+          key: spm-ios-sim-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.run_id }}
       - name: Upload result bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-simulator-results
-          path: otel-ios-mobile/TestResults.xcresult
+          path: TestResults.xcresult
           if-no-files-found: ignore
