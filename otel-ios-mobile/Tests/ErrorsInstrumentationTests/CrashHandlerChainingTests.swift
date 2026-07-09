@@ -30,12 +30,23 @@ private func recordingSignalHandler(_ sig: Int32) {
 ///   crash reporter). Actually delivering a fatal signal would kill the
 ///   test process; the in-handler chain call is exercised by the
 ///   real-crash device legs (`run-platform-e2e.sh`).
-@Suite(.serialized) struct CrashHandlerChainingTests {
+@Suite(.serialized, .exclusiveSignalHandlers) struct CrashHandlerChainingTests {
+
+    /// `ErrorsInstrumentation.shared` is a process-wide singleton and other
+    /// suites install() without a matching uninstall(), so `installed` can
+    /// arrive here `true` — making our install() a silent no-op that
+    /// captures nothing. Reset to a known "not installed" state first
+    /// (safe: `.exclusiveSignalHandlers` guarantees nobody re-installs
+    /// concurrently, and each test stages its own handlers after this).
+    private func resetToUninstalled() {
+        ErrorsInstrumentation.shared.uninstall()
+    }
 
     // MARK: NSException path
 
     @Test("a pre-installed NSException handler still runs after ours (chained)")
     func nsExceptionChainsToPreviousHandler() throws {
+        resetToUninstalled()
         previousExceptionHandlerRan = false
         let original = NSGetUncaughtExceptionHandler()
         defer { NSSetUncaughtExceptionHandler(original) }
@@ -57,6 +68,7 @@ private func recordingSignalHandler(_ sig: Int32) {
 
     @Test("uninstall restores the previously-installed NSException handler")
     func nsExceptionUninstallRestores() {
+        resetToUninstalled()
         let original = NSGetUncaughtExceptionHandler()
         defer { NSSetUncaughtExceptionHandler(original) }
 
@@ -77,6 +89,7 @@ private func recordingSignalHandler(_ sig: Int32) {
 
     @Test("install captures the host's signal handler; uninstall restores it")
     func signalDispositionCapturedAndRestored() throws {
+        resetToUninstalled()
         previousSignalHandlerRan = false
         let sig = SIGTRAP // one of ErrorsInstrumentation.fatalSignals
 
@@ -124,6 +137,7 @@ private func recordingSignalHandler(_ sig: Int32) {
 
     @Test("install with no prior handler captures SIG_DFL and uninstall returns to it")
     func signalDispositionDefaultRoundTrip() {
+        resetToUninstalled()
         let sig = SIGPIPE
         var runnerOriginal = sigaction()
         sigaction(sig, nil, &runnerOriginal)
