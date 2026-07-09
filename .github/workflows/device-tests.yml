@@ -134,11 +134,17 @@ jobs:
             echo "::error::No available iPhone simulator on this runner"; exit 1
           fi
           echo "Using simulator: $SIM_NAME"
+          # Per-test time limits (issue #66): a hung test becomes a NAMED
+          # failure after 2 min (10 min hard cap) instead of an opaque
+          # 90-minute job timeout that also loses the result bundle.
           xcodebuild test \
             -scheme OTelMobile-Package \
             -destination "platform=iOS Simulator,name=$SIM_NAME" \
             -derivedDataPath .build-xcode \
             -resultBundlePath TestResults.xcresult \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 600 \
             CODE_SIGNING_ALLOWED=NO
       - name: Save SwiftPM build cache (even on timeout)
         if: always()

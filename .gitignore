@@ -260,6 +260,8 @@ scripts/test/collector/output/
 
 # Swift Package Manager build artifacts
 /.build/
+# xcodebuild derivedDataPath used by device-tests.yml and local simulator runs
+/.build-xcode/
 otel-ios-mobile/.build/
 packages/react-native/.build/
 **/.swiftpm/

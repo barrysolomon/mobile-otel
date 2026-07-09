@@ -50,7 +50,10 @@ struct MobileLogRecordProcessorTests {
         let (processor, exporter, buffer) = makeProcessor()
         await processor.emitForTesting(body: "a")
         await processor.emitForTesting(body: "b")
-        _ = processor.forceFlush()
+        // Protocol-surface coverage: the sync forceFlush() bridge, called via
+        // a dispatch thread so this async test never parks its executor
+        // thread on the bridge's semaphore (#66).
+        _ = await onDispatchThread { processor.forceFlush() }
         let remaining = await buffer.count
         #expect(remaining == 0)
         let received = await exporter.received
@@ -96,7 +99,7 @@ struct MobileLogRecordProcessorTests {
         await processor.emitForTesting(body: "one")
         await processor.emitForTesting(body: "two")
         await processor.emitForTesting(body: "three")
-        _ = processor.forceFlush()
+        _ = await onDispatchThread { processor.forceFlush() }
         let received = await exporter.received
         #expect(received.count == 3)
         // sequenceId is assigned synchronously in onEmit in call order
