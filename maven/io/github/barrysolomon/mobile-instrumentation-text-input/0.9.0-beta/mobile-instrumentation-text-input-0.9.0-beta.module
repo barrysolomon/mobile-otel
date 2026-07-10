@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-text-input",
+    "version": "0.9.0-beta",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-text-input-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-text-input-0.9.0-beta.aar",
+          "size": 10876,
+          "sha512": "3d40c86c87f3a38134b1e71d3b3dc3bfcf0b502527e6a5845113009b4c00227acc3cd9648f359770cd893e784125ff11d5216acdfe80fa3c69d40f2ef4383428",
+          "sha256": "08f084c4dd419e661bab749b390464a15af68e93de2dc58ecaf1db08ed233057",
+          "sha1": "ffa0976286b8ddf9bf86dfe9818b06182d3163b6",
+          "md5": "1fd421574a79b70c0683b98d3954adbd"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-text-input-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-text-input-0.9.0-beta.aar",
+          "size": 10876,
+          "sha512": "3d40c86c87f3a38134b1e71d3b3dc3bfcf0b502527e6a5845113009b4c00227acc3cd9648f359770cd893e784125ff11d5216acdfe80fa3c69d40f2ef4383428",
+          "sha256": "08f084c4dd419e661bab749b390464a15af68e93de2dc58ecaf1db08ed233057",
+          "sha1": "ffa0976286b8ddf9bf86dfe9818b06182d3163b6",
+          "md5": "1fd421574a79b70c0683b98d3954adbd"
+        }
+      ]
+    }
+  ]
+}

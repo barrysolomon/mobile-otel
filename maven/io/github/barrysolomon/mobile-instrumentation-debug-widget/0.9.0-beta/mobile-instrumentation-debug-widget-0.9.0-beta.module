@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-debug-widget",
+    "version": "0.9.0-beta",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-debug-widget-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-debug-widget-0.9.0-beta.aar",
+          "size": 30122,
+          "sha512": "5ddcfbc34cf1c14f2e457d6cc650077573766966e6d1fa8fd89ec893010b268ac33d7719690b4ec02d6491f5fca134e1e549a726dc56c59779b2ce2cd93dce09",
+          "sha256": "e630f6602d5616fa1ee1f4848ef7c1dfa217959c9a4229f014d8312c24ad2209",
+          "sha1": "83f9ecd111590e3277e009cd1d46fd339544cdf9",
+          "md5": "c3a76f3dd139f82171fd9e61e4a7f140"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-debug-widget-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-debug-widget-0.9.0-beta.aar",
+          "size": 30122,
+          "sha512": "5ddcfbc34cf1c14f2e457d6cc650077573766966e6d1fa8fd89ec893010b268ac33d7719690b4ec02d6491f5fca134e1e549a726dc56c59779b2ce2cd93dce09",
+          "sha256": "e630f6602d5616fa1ee1f4848ef7c1dfa217959c9a4229f014d8312c24ad2209",
+          "sha1": "83f9ecd111590e3277e009cd1d46fd339544cdf9",
+          "md5": "c3a76f3dd139f82171fd9e61e4a7f140"
+        }
+      ]
+    }
+  ]
+}

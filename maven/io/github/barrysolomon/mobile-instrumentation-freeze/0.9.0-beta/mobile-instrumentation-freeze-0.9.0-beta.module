@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-freeze",
+    "version": "0.9.0-beta",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-freeze-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-freeze-0.9.0-beta.aar",
+          "size": 7779,
+          "sha512": "435dfd77e8538a5aca2cdceeb506865800f5f47dbc41fae80789c74732d953f68fed1da31140b94c1539304f51159455e592bfa5cec64f71cd7cecfbbb3c286e",
+          "sha256": "95be936d93c2de702c7b24c0c2e96bdd9e57e31ba14d815401cce33704ab06de",
+          "sha1": "122883784ba4e9bae1d867c2a56b2f481eaf549e",
+          "md5": "55cb725c5c2953980ba4a46a0f3888f3"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-freeze-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-freeze-0.9.0-beta.aar",
+          "size": 7779,
+          "sha512": "435dfd77e8538a5aca2cdceeb506865800f5f47dbc41fae80789c74732d953f68fed1da31140b94c1539304f51159455e592bfa5cec64f71cd7cecfbbb3c286e",
+          "sha256": "95be936d93c2de702c7b24c0c2e96bdd9e57e31ba14d815401cce33704ab06de",
+          "sha1": "122883784ba4e9bae1d867c2a56b2f481eaf549e",
+          "md5": "55cb725c5c2953980ba4a46a0f3888f3"
+        }
+      ]
+    }
+  ]
+}

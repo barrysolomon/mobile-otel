@@ -1,0 +1,97 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-scroll",
+    "version": "0.9.0-beta",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-scroll-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-scroll-0.9.0-beta.aar",
+          "size": 9753,
+          "sha512": "4db4db0b8f8cc0710c1e1bf3bd0f9654b1e7e485cf03352ff974703484972aff1f647e04e244400f5fa1840785362262b1a90d06659b3347331833bc8d0c9e97",
+          "sha256": "7f0b9261d0138eef131aff767fd99d014a23500553f9755c5d9a0cc82a87461f",
+          "sha1": "2de87c96e37bfe7b2fc6e4bacafe01af27c98e43",
+          "md5": "713e70df82dae6384961b03c8b7e5d48"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.recyclerview",
+          "module": "recyclerview",
+          "version": {
+            "requires": "1.4.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "0.9.0-beta"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-scroll-0.9.0-beta.aar",
+          "url": "mobile-instrumentation-scroll-0.9.0-beta.aar",
+          "size": 9753,
+          "sha512": "4db4db0b8f8cc0710c1e1bf3bd0f9654b1e7e485cf03352ff974703484972aff1f647e04e244400f5fa1840785362262b1a90d06659b3347331833bc8d0c9e97",
+          "sha256": "7f0b9261d0138eef131aff767fd99d014a23500553f9755c5d9a0cc82a87461f",
+          "sha1": "2de87c96e37bfe7b2fc6e4bacafe01af27c98e43",
+          "md5": "713e70df82dae6384961b03c8b7e5d48"
+        }
+      ]
+    }
+  ]
+}
