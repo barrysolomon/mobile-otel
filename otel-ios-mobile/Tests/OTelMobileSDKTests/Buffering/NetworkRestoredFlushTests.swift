@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -9,13 +10,18 @@ fileprivate final class NetworkRestoredStubSession: SessionProvider, @unchecked 
     func rotateSession() -> String { "network-restored-session" }
 }
 
-fileprivate actor RestoredTogglingExporter: BufferedEventExporter {
-    private(set) var received: [BufferedEvent] = []
-    private var shouldFail: Bool = false
-    func setOffline(_ offline: Bool) { shouldFail = offline }
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        if shouldFail { return .failure(reason: "offline") }
-        received.append(contentsOf: events)
+fileprivate final class RestoredTogglingExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _received: [BufferedEvent] = []
+    private var _shouldFail: Bool = false
+    var received: [BufferedEvent] {
+        get async { lock.lock(); defer { lock.unlock() }; return _received }
+    }
+    func setOffline(_ offline: Bool) async { lock.lock(); _shouldFail = offline; lock.unlock() }
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); defer { lock.unlock() }
+        if _shouldFail { return .failure(reason: "offline") }
+        _received.append(contentsOf: events)
         return .success
     }
 }
@@ -55,7 +61,7 @@ struct NetworkRestoredFlushTests {
     }
 
     private func cleanup(_ disk: DiskLogBuffer, path: DiskLogBuffer.TestPath) async {
-        await disk.shutdown()
+        disk.shutdown()
         DiskLogBuffer.removeTestFiles(at: path)
     }
 

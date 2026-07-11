@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -11,19 +12,28 @@ fileprivate final class OfflineReconnectStubSession: SessionProvider, @unchecked
 
 /// Mock exporter that can be flipped between failing (offline) and succeeding (online).
 /// Mirrors Android's `MockLogRecordExporter.shouldFail` semantics.
-fileprivate actor TogglingExporter: BufferedEventExporter {
-    private(set) var received: [BufferedEvent] = []
-    private(set) var callCount: Int = 0
-    private var shouldFail: Bool = false
+fileprivate final class TogglingExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _received: [BufferedEvent] = []
+    private var _callCount: Int = 0
+    private var _shouldFail: Bool = false
 
-    func setOffline(_ offline: Bool) { shouldFail = offline }
+    var received: [BufferedEvent] {
+        get async { lock.lock(); defer { lock.unlock() }; return _received }
+    }
+    var callCount: Int {
+        get async { lock.lock(); defer { lock.unlock() }; return _callCount }
+    }
 
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        callCount += 1
-        if shouldFail {
+    func setOffline(_ offline: Bool) async { lock.lock(); _shouldFail = offline; lock.unlock() }
+
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); defer { lock.unlock() }
+        _callCount += 1
+        if _shouldFail {
             return .failure(reason: "offline")
         }
-        received.append(contentsOf: events)
+        _received.append(contentsOf: events)
         return .success
     }
 }
@@ -66,7 +76,7 @@ struct OfflineReconnectionTests {
     }
 
     private func cleanup(_ disk: DiskLogBuffer, path: DiskLogBuffer.TestPath) async {
-        await disk.shutdown()
+        disk.shutdown()
         DiskLogBuffer.removeTestFiles(at: path)
     }
 
@@ -90,7 +100,7 @@ struct OfflineReconnectionTests {
 
         // After failed flush, events must be persisted to disk so they
         // survive the offline window.
-        let diskCount = await disk.rowCount()
+        let diskCount = disk.rowCount()
         #expect(diskCount == 10, "events must land on disk after failed export")
 
         // Phase 2: reconnect. Same events flush out cleanly from disk.
@@ -102,7 +112,7 @@ struct OfflineReconnectionTests {
         #expect(exportedAfter == 10, "all offline-buffered events must export on reconnection")
 
         // Disk should be drained on successful export.
-        let diskAfter = await disk.rowCount()
+        let diskAfter = disk.rowCount()
         #expect(diskAfter == 0)
     }
 
@@ -166,7 +176,7 @@ struct OfflineReconnectionTests {
         _ = await processor.forceFlushBufferedAsync()
         let firstBatchExported = await exporter.received.count
         #expect(firstBatchExported == 3)
-        let diskAfterFirstDrain = await disk.rowCount()
+        let diskAfterFirstDrain = disk.rowCount()
         #expect(diskAfterFirstDrain == 0)
 
         // Second offline window.

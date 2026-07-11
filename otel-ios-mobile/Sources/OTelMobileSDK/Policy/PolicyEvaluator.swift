@@ -18,9 +18,11 @@ import Foundation
 
 /// Thread-safe policy matcher. The underlying `PolicyConfig` is swappable via
 /// `updatePolicies(_:)`; every `evaluate(...)` call reads whatever config was
-/// installed at that moment. Implemented as a Swift `actor` so config swaps
-/// and regex-cache mutations can't race with concurrent evaluations.
-public actor PolicyEvaluator {
+/// installed at that moment. Lock-protected (NSLock) so config swaps and
+/// regex-cache mutations cannot race with concurrent evaluations — and so
+/// the synchronous `onEmit` hot path can evaluate policies without needing
+/// a cooperative-executor slot (issue #66).
+public final class PolicyEvaluator: @unchecked Sendable {
 
     // MARK: Constants
 
@@ -33,6 +35,8 @@ public actor PolicyEvaluator {
 
     // MARK: State
 
+    private let lock = NSLock()
+
     private var policies: [Policy]
 
     /// Regex cache. A `nil` value means "we tried to compile this pattern and
@@ -42,7 +46,7 @@ public actor PolicyEvaluator {
     private var regexCache: [String: NSRegularExpression?] = [:]
 
     /// Parallel LRU queue — oldest pattern at index 0. We only mutate this
-    /// inside the actor, so a plain array is race-free here.
+    /// under `lock`, so a plain array is race-free here.
     private var regexLruOrder: [String] = []
 
     // MARK: Init
@@ -58,13 +62,15 @@ public actor PolicyEvaluator {
     /// new config — prevents stale compilations from lingering after a
     /// config refresh.
     public func updatePolicies(_ policies: [Policy]) {
+        lock.lock(); defer { lock.unlock() }
         self.policies = policies
         pruneRegexCacheAgainstCurrentPolicies()
     }
 
     /// Number of policies currently loaded. Useful for tests and diagnostics.
     public func currentPolicyCount() -> Int {
-        policies.count
+        lock.lock(); defer { lock.unlock() }
+        return policies.count
     }
 
     /// Evaluate an event's attributes against every enabled policy in order.
@@ -78,6 +84,7 @@ public actor PolicyEvaluator {
         attributes: [String: String],
         contextSnapshot: ContextSnapshot? = nil
     ) -> PolicyMatchResult? {
+        lock.lock(); defer { lock.unlock() }
         _ = contextSnapshot  // reserved; suppress unused warning
         for policy in policies {
             if !policy.enabled { continue }

@@ -238,6 +238,6 @@ fileprivate final class CoalescerStubSession: SessionProvider, @unchecked Sendab
     func rotateSession() -> String { "coalescer-session" }
 }
 
-fileprivate actor InertExporter: BufferedEventExporter {
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult { .success }
+fileprivate struct InertExporter: BufferedEventExporter {
+    func export(_ events: [BufferedEvent]) -> BufferExportResult { .success }
 }

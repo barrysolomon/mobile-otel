@@ -16,9 +16,10 @@ import OTelMobileCore
 ///   dependencies beyond what Apple ships. On iOS/macOS the system SDK
 ///   provides the `SQLite3` module, so no `.linkedLibrary("sqlite3")` is
 ///   required in `Package.swift`.
-/// - `actor` isolation serialises all sqlite3 handles. No lock needed; all
-///   prepared statements, binds and steps happen inside the actor's
-///   execution context.
+/// - An `NSLock` serialises all sqlite3 handles WITHOUT requiring a
+///   cooperative-executor slot (issue #66): sqlite3 calls are blocking
+///   syscalls anyway, so actor isolation bought no concurrency — only a
+///   dependency on the width-limited Swift concurrency pool.
 /// - `BufferedEvent.record` (OTel `ReadableLogRecord`) is serialised to JSON
 ///   using `JSONEncoder` — `ReadableLogRecord: Codable`. On recovery we
 ///   decode with `JSONDecoder` and re-hand the record to the OTel exporter.
@@ -43,11 +44,11 @@ import OTelMobileCore
 /// - `journal_mode=WAL` — crash-safe, better concurrent read performance.
 /// - `synchronous=NORMAL` — acceptable durability for observability data.
 /// - `temp_store=MEMORY` — avoids cluttering the device sandbox.
-public actor DiskLogBuffer {
+public final class DiskLogBuffer: @unchecked Sendable {
     // MARK: - Public configuration
 
     /// Absolute path on disk where the sqlite file lives.
-    public nonisolated let dbPath: URL
+    public let dbPath: URL
 
     /// Upper bound on the cumulative `size_bytes` column. The buffer self-prunes
     /// oldest events when inserts would exceed this. 50 MB default matches
@@ -58,7 +59,9 @@ public actor DiskLogBuffer {
     /// `pruneByTTL()`. 24 hours default matches Android.
     public let retentionSeconds: TimeInterval
 
-    // MARK: - sqlite3 state (actor-isolated)
+    // MARK: - sqlite3 state (lock-protected)
+
+    private let lock = NSLock()
 
     private var db: OpaquePointer?
     private var insertStmt: OpaquePointer?
@@ -79,7 +82,7 @@ public actor DiskLogBuffer {
         dbPath: URL? = nil,
         maxTotalBytes: Int = 50 * 1024 * 1024,
         retentionSeconds: TimeInterval = 24 * 3600
-    ) async throws {
+    ) throws {
         self.dbPath = try Self.resolveDbPath(preferred: dbPath)
         self.maxTotalBytes = maxTotalBytes
         self.retentionSeconds = retentionSeconds
@@ -94,7 +97,8 @@ public actor DiskLogBuffer {
     /// Closes the sqlite handle and finalises any cached prepared statements.
     /// Idempotent — safe to call multiple times. Any further public call
     /// becomes a no-op after shutdown.
-    public func shutdown() async {
+    public func shutdown() {
+        lock.lock(); defer { lock.unlock() }
         if closed { return }
         closed = true
         if let stmt = insertStmt {
@@ -111,7 +115,8 @@ public actor DiskLogBuffer {
 
     /// Inserts a single event. Enforces `maxTotalBytes` after the insert.
     /// No-op on any sqlite3 error — the host app never crashes.
-    public func insert(_ event: BufferedEvent) async {
+    public func insert(_ event: BufferedEvent) {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return }
         _ = insertRow(event)
         pruneIfOverBudgetInternal()
@@ -119,7 +124,8 @@ public actor DiskLogBuffer {
 
     /// Inserts a batch of events inside a single transaction. Much cheaper
     /// than N `insert(_:)` calls when spilling a flush from RAM to disk.
-    public func insertBatch(_ events: [BufferedEvent]) async {
+    public func insertBatch(_ events: [BufferedEvent]) {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil, !events.isEmpty else { return }
         execSQL("BEGIN IMMEDIATE TRANSACTION;")
         for event in events {
@@ -130,14 +136,16 @@ public actor DiskLogBuffer {
     }
 
     /// Returns the oldest `limit` events by `seq_id` ascending. Empty on error.
-    public func fetchAll(limit: Int = 500) async -> [BufferedEvent] {
+    public func fetchAll(limit: Int = 500) -> [BufferedEvent] {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return [] }
         let sql = "SELECT id, seq_id, timestamp_ms, session_id, record_json, size_bytes, created_at FROM buffered_events ORDER BY seq_id ASC LIMIT ?;"
         return fetchEvents(sql: sql, limit: limit)
     }
 
     /// Returns events with `timestamp_ms >= now - lastMs`. Bounded by `limit`.
-    public func fetchWindow(lastMs: UInt64, limit: Int = 500) async -> [BufferedEvent] {
+    public func fetchWindow(lastMs: UInt64, limit: Int = 500) -> [BufferedEvent] {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return [] }
         let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
         let cutoff: Int64 = {
@@ -152,7 +160,8 @@ public actor DiskLogBuffer {
 
     /// Deletes every row whose `seq_id <= sequenceId`. Used after a
     /// successful export to clear the drained window.
-    public func deleteUpTo(sequenceId: UInt64) async {
+    public func deleteUpTo(sequenceId: UInt64) {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return }
         let sql = "DELETE FROM buffered_events WHERE seq_id <= ?;"
         var stmt: OpaquePointer?
@@ -164,7 +173,8 @@ public actor DiskLogBuffer {
 
     /// Deletes rows by internal autoincrement id. Useful after a partial
     /// export where only some rows succeeded.
-    public func deleteEvents(ids: [Int64]) async {
+    public func deleteEvents(ids: [Int64]) {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil, !ids.isEmpty else { return }
         execSQL("BEGIN IMMEDIATE TRANSACTION;")
         let sql = "DELETE FROM buffered_events WHERE id = ?;"
@@ -181,19 +191,22 @@ public actor DiskLogBuffer {
     }
 
     /// Sum of `size_bytes` across all rows. 0 on error.
-    public func totalSizeBytes() async -> Int {
+    public func totalSizeBytes() -> Int {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return 0 }
         return scalarInt(sql: "SELECT COALESCE(SUM(size_bytes), 0) FROM buffered_events;")
     }
 
     /// Total row count. 0 on error.
-    public func rowCount() async -> Int {
+    public func rowCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return 0 }
         return scalarInt(sql: "SELECT COUNT(*) FROM buffered_events;")
     }
 
     /// Deletes rows older than `now - retentionSeconds`.
-    public func pruneByTTL() async {
+    public func pruneByTTL() {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let cutoff = nowMs - Int64(retentionSeconds * 1000)
@@ -207,7 +220,8 @@ public actor DiskLogBuffer {
 
     /// Evicts oldest events (by `seq_id` ascending) until cumulative
     /// `size_bytes` is at or below `maxBytes`.
-    public func pruneBySize(maxBytes: Int) async {
+    public func pruneBySize(maxBytes: Int) {
+        lock.lock(); defer { lock.unlock() }
         guard !closed, db != nil else { return }
         pruneBySizeInternal(maxBytes: maxBytes)
     }
@@ -220,7 +234,8 @@ public actor DiskLogBuffer {
     ///
     /// After deletion, runs VACUUM to reclaim disk space — SQLite doesn't
     /// shrink the file on DELETE alone.
-    public func enforceOfflineBudget(_ config: OfflineBudgetConfig) async {
+    public func enforceOfflineBudget(_ config: OfflineBudgetConfig) {
+        lock.lock(); defer { lock.unlock() }
         guard config.enabled, !closed, db != nil else { return }
         let currentSize = fileSizeBytes()
         guard currentSize > config.maxOfflineDiskBytes else { return }
@@ -242,7 +257,7 @@ public actor DiskLogBuffer {
     }
 
     /// Returns the actual file size on disk in bytes. 0 on error.
-    public nonisolated func fileSizeBytes() -> Int {
+    public func fileSizeBytes() -> Int {
         let path = dbPath.path
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attrs[.size] as? Int else { return 0 }
@@ -284,7 +299,7 @@ public actor DiskLogBuffer {
 
     // MARK: - Private: open / prepare
 
-    private nonisolated static func resolveDbPath(preferred: URL?) throws -> URL {
+    private static func resolveDbPath(preferred: URL?) throws -> URL {
         if let preferred = preferred {
             let dir = preferred.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

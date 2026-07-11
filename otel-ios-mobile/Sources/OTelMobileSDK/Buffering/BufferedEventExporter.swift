@@ -11,8 +11,13 @@ import Foundation
 /// pattern shown in `HybridHttpErrorFlushTests`. Only reach for this protocol
 /// when the test genuinely depends on `BufferedEvent` fields the OTel record
 /// doesn't have.
+/// Synchronous by design: the drain surface (`forceFlushBuffered()`) must be
+/// callable from libdispatch threads without touching the width-limited
+/// cooperative executor (issue #66), so its exporter sink cannot be `async`.
+/// Conformers needing thread safety use a lock, not an actor — an
+/// actor-isolated method cannot witness a synchronous requirement.
 internal protocol BufferedEventExporter: Sendable {
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult
+    func export(_ events: [BufferedEvent]) -> BufferExportResult
 }
 
 /// Result of a buffered-event export attempt. Named to avoid collision with
@@ -30,5 +35,5 @@ public enum BufferExportResult: Sendable, Equatable {
 /// `OTelMobile.start(config:)` path — the instance must be constructible and
 /// safe to call, but nothing may leave the device.
 internal struct NoopBufferedEventExporter: BufferedEventExporter {
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult { .success }
+    func export(_ events: [BufferedEvent]) -> BufferExportResult { .success }
 }

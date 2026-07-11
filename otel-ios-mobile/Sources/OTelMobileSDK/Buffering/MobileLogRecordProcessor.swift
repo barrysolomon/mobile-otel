@@ -99,6 +99,14 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     private let timerQueue = DispatchQueue(label: "io.dash0.mobile.MobileLogRecordProcessor.timer",
                                            qos: .utility)
 
+    /// Serial libdispatch queue for work that must leave the caller's thread
+    /// but must NOT consume a cooperative-executor slot (issue #66): disk
+    /// spills on RAM eviction, policy-match flushes, and the async drain
+    /// wrappers. A plain dispatch queue keeps the SDK's background work
+    /// entirely off the width-limited Swift concurrency pool.
+    private let workQueue = DispatchQueue(label: "io.dash0.mobile.MobileLogRecordProcessor.work",
+                                          qos: .utility)
+
     /// NF-010: Active network-restored subscription, if any. The processor owns
     /// the listener so it can be detached on re-attach / shutdown. Pure storage —
     /// the watcher's `addListener` already holds a weak ref, so we hold strong
@@ -213,32 +221,38 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
         if errorCoalescer.tryCoalesce(enriched) { return }
 
         let event = makeEvent(from: enriched)
-        // Fire-and-forget append. `onEmit` is synchronous per the protocol
-        // contract; the actor append completes asynchronously. Tests that need
-        // to observe the buffer after `onEmit` should `await` on a peek/flush
-        // after giving the detached task a chance to run.
-        //
+        // Synchronous, lock-protected append: the event is durable in RAM the
+        // moment `onEmit` returns (Android parity — ConcurrentLinkedQueue.add),
+        // and the emit hot path never touches the width-limited cooperative
+        // executor (issue #66). The append is a nanoseconds-scale deque push
+        // under NSLock, well within the OTel-synchronous `onEmit` contract.
+        let evicted = buffer.append(event)
+
         // If a disk buffer is configured, any event evicted from the RAM
         // buffer (capacity or size-budget eviction) is spilled to disk so we
-        // preserve it across process death.
-        //
-        // If a policy evaluator is configured, the event's attributes are
-        // run through it and a matching policy schedules a selective flush.
-        // Both branches run concurrently off `onEmit`'s synchronous thread —
-        // evaluation cost never blocks the emit path.
-        Task.detached { [buffer, diskBuffer, policyEvaluator, weak self] in
-            let evicted = await buffer.append(event)
-            if let evicted = evicted, let diskBuffer = diskBuffer {
-                await diskBuffer.insert(evicted)
-            }
-            if let evaluator = policyEvaluator, let self = self {
-                let attrs = Self.attributesForEval(logRecord)
-                if let match = await evaluator.evaluate(attributes: attrs) {
+        // preserve it across process death. sqlite I/O doesn't belong on the
+        // caller's (possibly main) thread — hop to the serial work queue.
+        if let evicted = evicted, let diskBuffer = diskBuffer {
+            workQueue.async { diskBuffer.insert(evicted) }
+        }
+
+        // If a policy evaluator is configured, the event's attributes are run
+        // through it inline (lock-protected string/regex matching — cheap,
+        // same as Android's synchronous evaluation in onEmit). Only a MATCH
+        // pays for a queue hop: the journey-replay capture hook and the
+        // selective flush run on the work queue, keeping export I/O off the
+        // emit thread. The just-appended event is already in RAM, so the
+        // windowed flush below always includes it.
+        if let evaluator = policyEvaluator {
+            let attrs = Self.attributesForEval(logRecord)
+            if let match = evaluator.evaluate(attributes: attrs) {
+                let minutes = UInt64(match.flushWindowMinutes)
+                workQueue.async { [weak self] in
                     // Capture journey-replay artifacts BEFORE the flush so they
                     // land in the same flush window. Wrapped so a capture failure
                     // can't derail the flush.
-                    self.policyMatchHook?(match.policyId)
-                    _ = await self.flushWindow(minutes: UInt64(match.flushWindowMinutes))
+                    self?.policyMatchHook?(match.policyId)
+                    _ = self?.flushWindowSync(minutes: minutes)
                 }
             }
         }
@@ -297,11 +311,11 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// Track 5: one public drain method, always drains both tiers. See
     /// docs/contracts/buffer-drain-surface.md.
     public func forceFlush(explicitTimeout: TimeInterval? = nil) -> ExportResult {
-        // explicitTimeout is part of the OTel protocol surface; forceFlushBuffered
-        // uses its own DispatchSemaphore-based wait without a caller-supplied
-        // bound, so the timeout is honoured implicitly by the underlying
-        // SynchronousHTTPClient's request.timeoutInterval. Surfaced here so the
-        // signature remains protocol-compliant.
+        // explicitTimeout is part of the OTel protocol surface; the
+        // synchronous drain has no caller-supplied bound, so the timeout is
+        // honoured implicitly by the underlying SynchronousHTTPClient's
+        // request.timeoutInterval. Surfaced here so the signature remains
+        // protocol-compliant.
         _ = explicitTimeout
         switch forceFlushBuffered() {
         case .success: return .success
@@ -353,14 +367,27 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// matching window from disk (dedup-by-seqId against the RAM events).
     @discardableResult
     public func flushWindow(minutes: UInt64) async -> BufferExportResult {
+        // Async surface kept for API compat; the core is synchronous. Hop to
+        // the work queue so the caller's executor thread suspends (never
+        // blocks) during export I/O — see forceFlushBufferedAsync().
+        await withCheckedContinuation { cont in
+            workQueue.async { cont.resume(returning: self.flushWindowSync(minutes: minutes)) }
+        }
+    }
+
+    /// Synchronous core of the selective flush. Safe from any thread — the
+    /// buffers are lock-protected and the exporter is synchronous, so this
+    /// never needs a cooperative-executor slot (issue #66).
+    @discardableResult
+    internal func flushWindowSync(minutes: UInt64) -> BufferExportResult {
         let windowMs = minutes * 60 * 1000
-        let ramEvents = await buffer.flushWindow(lastMs: windowMs)
-        let combined = await combineWithDisk(ramEvents: ramEvents, windowMs: windowMs)
+        let ramEvents = buffer.flushWindow(lastMs: windowMs)
+        let combined = combineWithDisk(ramEvents: ramEvents, windowMs: windowMs)
         if combined.isEmpty { return .success }
-        let result = await exportBuffered(events: combined)
+        let result = exportBuffered(events: combined)
         if case .success = result, let disk = diskBuffer,
            let maxSeq = combined.map({ $0.sequenceId }).max() {
-            await disk.deleteUpTo(sequenceId: maxSeq)
+            disk.deleteUpTo(sequenceId: maxSeq)
         }
         return result
     }
@@ -380,57 +407,49 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// forceFlush) or in a future process (via start-time recovery).
     @discardableResult
     internal func forceFlushBuffered() -> BufferExportResult {
-        // Sync bridge over forceFlushBufferedAsync() for callers that cannot
-        // await: the OTel `LogRecordProcessor.forceFlush` protocol surface,
-        // the CONTINUOUS-mode timer, and the lifecycle autoFlushQueue — all
-        // libdispatch threads.
-        //
-        // NEVER call this from Swift-concurrency (async) code. It parks the
-        // calling thread on a DispatchSemaphore until a detached Task — which
-        // needs a slot on the SAME width-limited cooperative executor —
-        // signals it. Enough concurrent async callers (e.g. Swift Testing's
-        // parallel suites on a 3-core CI runner) park every executor thread,
-        // the detached tasks can never run, and the whole pool deadlocks
-        // (issue #66). From a libdispatch thread the wait is non-circular and
-        // safe. Async callers use `forceFlushBufferedAsync()` directly.
-        let semaphore = DispatchSemaphore(value: 0)
-        final class Box: @unchecked Sendable { var value: BufferExportResult = .success }
-        let box = Box()
-        Task.detached { [weak self] in
-            if let self = self {
-                box.value = await self.forceFlushBufferedAsync()
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return box.value
-    }
-
-    /// Async core of the dual-tier drain: flush RAM, merge + dedup disk,
-    /// export, and apply the failure-persistence contract documented above.
-    /// Safe from any async context — unlike the sync bridge, it never parks
-    /// a thread, so it cannot starve the cooperative executor (issue #66).
-    @discardableResult
-    internal func forceFlushBufferedAsync() async -> BufferExportResult {
-        let ramEvents = await buffer.flush()
-        let combined = await combineWithDisk(ramEvents: ramEvents, windowMs: nil)
+        // Fully synchronous dual-tier drain: flush RAM, merge + dedup disk,
+        // export, and apply the failure-persistence contract documented
+        // above. The buffers are lock-protected and the exporter is
+        // synchronous, so this needs NO cooperative-executor slot — the
+        // issue #66 semaphore-over-Task.detached bridge that used to live
+        // here (and could starve the width-limited pool) is gone. Safe from
+        // ANY thread: libdispatch callers (the OTel protocol surface, the
+        // CONTINUOUS-mode timer, the lifecycle autoFlushQueue) block only on
+        // the export I/O itself; async callers should still prefer
+        // `forceFlushBufferedAsync()`, which suspends instead of blocking
+        // for the duration of the export.
+        let ramEvents = buffer.flush()
+        let combined = combineWithDisk(ramEvents: ramEvents, windowMs: nil)
         guard !combined.isEmpty else { return .success }
-        let result = await exportBuffered(events: combined)
+        let result = exportBuffered(events: combined)
         if case .success = result, let disk = diskBuffer,
            let maxSeq = combined.map({ $0.sequenceId }).max() {
-            await disk.deleteUpTo(sequenceId: maxSeq)
+            disk.deleteUpTo(sequenceId: maxSeq)
         } else if case .failure = result, let disk = diskBuffer {
             // Export failed. `buffer.flush()` above already emptied the RAM
             // buffer, so these events only survive if we persist them now.
             // Dedup-by-seqId: events already on disk are harmless to skip; we
             // only insert the RAM-originated ones so we don't double up.
-            let diskEvents = await disk.fetchAll()
+            let diskEvents = disk.fetchAll()
             let onDisk = Set(diskEvents.map { $0.sequenceId })
             for event in combined where !onDisk.contains(event.sequenceId) {
-                await disk.insert(event)
+                disk.insert(event)
             }
         }
         return result
+    }
+
+    /// Async wrapper over the synchronous drain for Swift-concurrency
+    /// callers (`OTelMobile.forceFlushAsync()`, tests). Hops to the serial
+    /// work queue via a continuation so the caller's cooperative-executor
+    /// thread SUSPENDS (is returned to the pool) while the export runs on
+    /// libdispatch — the opposite of the old semaphore bridge, which parked
+    /// an executor thread and could deadlock the pool (issue #66).
+    @discardableResult
+    internal func forceFlushBufferedAsync() async -> BufferExportResult {
+        await withCheckedContinuation { cont in
+            workQueue.async { cont.resume(returning: self.forceFlushBuffered()) }
+        }
     }
 
     // MARK: - NF-010: Network-restored flush hook
@@ -467,11 +486,11 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// without breaking the actor isolation contract.
     func onNetworkRestored() {
         // Hop onto a detached Task so the watcher's notify path doesn't
-        // stall — and take the async drain path directly: calling the sync
-        // bridge here would park this cooperative-pool thread on its
-        // semaphore (issue #66).
-        Task.detached { [weak self] in
-            _ = await self?.forceFlushBufferedAsync()
+        // stall: the drain (and its export I/O) runs on the serial work
+        // queue, touching neither the watcher's thread nor the cooperative
+        // executor (issue #66).
+        workQueue.async { [weak self] in
+            _ = self?.forceFlushBuffered()
         }
     }
 
@@ -482,13 +501,13 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     private func combineWithDisk(
         ramEvents: [BufferedEvent],
         windowMs: UInt64?
-    ) async -> [BufferedEvent] {
+    ) -> [BufferedEvent] {
         guard let disk = diskBuffer else { return ramEvents }
         let diskEvents: [BufferedEvent]
         if let windowMs = windowMs {
-            diskEvents = await disk.fetchWindow(lastMs: windowMs)
+            diskEvents = disk.fetchWindow(lastMs: windowMs)
         } else {
-            diskEvents = await disk.fetchAll()
+            diskEvents = disk.fetchAll()
         }
         if diskEvents.isEmpty { return ramEvents }
         // Dedup: start with RAM (wins), layer in disk events whose seqId is
@@ -512,12 +531,22 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// disk contents through the exporter and on success clears them. Runs
     /// on a detached task; never blocks startup.
     public func recoverFromDisk() async -> BufferExportResult {
+        // Async surface kept for API compat; the recovery export runs on the
+        // work queue so startup's task suspends rather than blocking a
+        // cooperative-executor thread during the export.
+        await withCheckedContinuation { cont in
+            workQueue.async { cont.resume(returning: self.recoverFromDiskSync()) }
+        }
+    }
+
+    /// Synchronous core of the disk recovery drain.
+    internal func recoverFromDiskSync() -> BufferExportResult {
         guard let disk = diskBuffer else { return .success }
-        let events = await disk.fetchAll(limit: 10_000)
+        let events = disk.fetchAll(limit: 10_000)
         guard !events.isEmpty else { return .success }
-        let result = await exportBuffered(events: events)
+        let result = exportBuffered(events: events)
         if case .success = result, let maxSeq = events.map({ $0.sequenceId }).max() {
-            await disk.deleteUpTo(sequenceId: maxSeq)
+            disk.deleteUpTo(sequenceId: maxSeq)
         }
         return result
     }
@@ -527,8 +556,8 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     /// so startup can report the size of the pending backlog.
     public func diskStats() async -> (count: Int, bytes: Int)? {
         guard let disk = diskBuffer else { return nil }
-        let count = await disk.rowCount()
-        let bytes = await disk.totalSizeBytes()
+        let count = disk.rowCount()
+        let bytes = disk.totalSizeBytes()
         return (count, bytes)
     }
 
@@ -554,26 +583,28 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
 
     /// Routes a batch of buffered events through the configured sink — OTel
     /// `LogRecordExporter` in production, `BufferedEventExporter` in tests.
-    private func exportBuffered(events: [BufferedEvent]) async -> BufferExportResult {
+    private func exportBuffered(events: [BufferedEvent]) -> BufferExportResult {
         if let otelExporter = otelExporter {
             // OTel-native path: preserve the upstream ReadableLogRecord and
             // hand it to the OTel exporter directly. No custom encoding.
+            // Calls the SYNCHRONOUS protocol requirement (upstream declares
+            // both) — the concrete exporters are SynchronousHTTPClient-based.
             let records = events.compactMap { $0.record }
             guard !records.isEmpty else { return .success }
-            let result = await otelExporter.export(logRecords: records, explicitTimeout: nil)
+            let result = otelExporter.export(logRecords: records, explicitTimeout: nil)
             switch result {
             case .success: return .success
             case .failure: return .failure(reason: "OTel exporter failure")
             }
         }
         if let legacy = legacyExporter {
-            return await legacy.export(events)
+            return legacy.export(events)
         }
         return .success
     }
 
-    private func exportThroughConfiguredSink(events: [BufferedEvent]) async -> ExportResult {
-        switch await exportBuffered(events: events) {
+    private func exportThroughConfiguredSink(events: [BufferedEvent]) -> ExportResult {
+        switch exportBuffered(events: events) {
         case .success: return .success
         case .failure: return .failure
         }
@@ -601,10 +632,11 @@ public final class MobileLogRecordProcessor: LogRecordProcessor, @unchecked Send
     // MARK: - Test seam
 
     /// Test-only hook that bypasses the OTel-Swift `ReadableLogRecord`
-    /// encoding path. This awaits the buffer append so tests can observe the
-    /// result deterministically.
+    /// encoding path. The append is synchronous now; the `async` signature is
+    /// kept so existing `await processor.injectEvent(...)` call sites stay
+    /// warning-free.
     internal func injectEvent(_ event: BufferedEvent) async {
-        _ = await buffer.append(event)
+        _ = buffer.append(event)
     }
 
     /// Test-only accessor that returns the sequence ID that would be assigned

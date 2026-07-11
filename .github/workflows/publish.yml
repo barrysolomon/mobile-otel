@@ -44,7 +44,10 @@ jobs:
 
           # Poll ci.yml (runs on every push to main) until it COMPLETES for this
           # SHA. Up to 30 attempts * 30s = 15 min — comfortably longer than the
-          # ~8m20s ci.yml runtime, with headroom for queue delay.
+          # ~8m20s ci.yml runtime, with headroom for queue delay. NOTE: optional
+          # workflows may legitimately outlive this window (ios-ci.yml's
+          # executor-starvation guard job can exceed 25 min — issue #66), which
+          # is why the timeout path below must not block on optional workflows.
           wait_for_completion() {
             local wf="$1" label="$2" required="$3"
             local attempts=30 conclusion status
@@ -77,6 +80,15 @@ jobs:
               fi
               sleep 30
             done
+            # Timeout parity with the conclusion check above: an OPTIONAL
+            # workflow that is still running when the window expires must warn,
+            # not block. The v0.9.0-beta release (run 29057516109) was
+            # false-blocked here by ios-ci.yml's ~25-min guard job (#66) still
+            # being in_progress after 15 min.
+            if [ "$required" = "optional" ]; then
+              echo "::warning::$label for $SHA did not complete within the wait window but is OPTIONAL — continuing without blocking the release."
+              return 0
+            fi
             echo "::error::Refusing to publish: $label did not complete for $SHA within the wait window."
             exit 1
           }

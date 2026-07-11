@@ -1,9 +1,13 @@
 import Foundation
 import DequeModule
 
-/// Bounded RAM ring buffer of `BufferedEvent`s. Actor-isolated so appends
-/// from any thread are serialized. Three separate caps keep us a "good
-/// citizen" on host apps:
+/// Bounded RAM ring buffer of `BufferedEvent`s. Lock-protected (NSLock) so
+/// appends from any thread are serialized WITHOUT requiring a
+/// cooperative-executor slot — `onEmit` appends synchronously and the sync
+/// drain surface reads synchronously, so neither can starve the
+/// width-limited Swift concurrency pool (issue #66). Mirrors the Android
+/// SDK's lock-free ConcurrentLinkedQueue design. Three separate caps keep
+/// us a "good citizen" on host apps:
 ///
 /// - **Event count cap** (`capacity`) — hard upper bound on number of events
 ///   held. Oldest is evicted when full.
@@ -17,7 +21,8 @@ import DequeModule
 /// Defaults are conservative (50k events hypothetical, but we honor the
 /// caller's explicit `capacity`; bytes default to 10 MB / 256 KB). Adjust
 /// via the full init for more aggressive limits.
-public actor RAMEventBuffer {
+public final class RAMEventBuffer: @unchecked Sendable {
+    private let lock = NSLock()
     private var events: Deque<BufferedEvent>
     private var totalBytes: Int = 0
     private let capacity: Int
@@ -26,9 +31,13 @@ public actor RAMEventBuffer {
 
     /// Count of events dropped because they exceeded `maxEventBytes`. Useful
     /// for test assertions and a future health-metric gauge.
-    public private(set) var droppedOversizeCount: Int = 0
+    private var _droppedOversizeCount: Int = 0
+    public var droppedOversizeCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _droppedOversizeCount
+    }
 
-    public init(capacity: Int) {
+    public convenience init(capacity: Int) {
         self.init(
             capacity: capacity,
             maxTotalBytes: 10 * 1024 * 1024,  // 10 MB default
@@ -43,16 +52,24 @@ public actor RAMEventBuffer {
         self.events = Deque()
     }
 
-    public var count: Int { events.count }
-    public var approximateBytes: Int { totalBytes }
+    public var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return events.count
+    }
+
+    public var approximateBytes: Int {
+        lock.lock(); defer { lock.unlock() }
+        return totalBytes
+    }
 
     @discardableResult
     public func append(_ event: BufferedEvent) -> BufferedEvent? {
+        lock.lock(); defer { lock.unlock() }
         // P2 safety: per-event size cap. Silently drop anything too large.
         // A rogue caller that tries to buffer megabyte payloads should NOT be
         // able to balloon app memory.
         if event.sizeBytes > maxEventBytes {
-            droppedOversizeCount += 1
+            _droppedOversizeCount += 1
             return event
         }
 
@@ -80,6 +97,7 @@ public actor RAMEventBuffer {
     }
 
     public func flush() -> [BufferedEvent] {
+        lock.lock(); defer { lock.unlock() }
         let result = Array(events)
         events.removeAll()
         totalBytes = 0
@@ -87,6 +105,7 @@ public actor RAMEventBuffer {
     }
 
     public func flushWindow(lastMs: UInt64) -> [BufferedEvent] {
+        lock.lock(); defer { lock.unlock() }
         let now = UInt64(Date().timeIntervalSince1970 * 1000)
         let cutoff = now - lastMs
         let matching = events.filter { $0.timestampMs >= cutoff }
@@ -96,6 +115,7 @@ public actor RAMEventBuffer {
     }
 
     public func peek() -> [BufferedEvent] {
-        Array(events)
+        lock.lock(); defer { lock.unlock() }
+        return Array(events)
     }
 }

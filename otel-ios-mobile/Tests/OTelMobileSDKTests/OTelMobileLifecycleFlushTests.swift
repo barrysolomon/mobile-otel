@@ -1,4 +1,5 @@
 import Dispatch
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -7,17 +8,25 @@ import OTelMobileCore
 
 /// Exporter that blocks for `delayNanoseconds` before returning success.
 /// Used to prove the caller thread is NOT held waiting for the export.
-fileprivate actor SlowExporter: BufferedEventExporter {
+fileprivate final class SlowExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
     private let delayNanoseconds: UInt64
-    private(set) var exportCallCount = 0
+    private var _exportCallCount = 0
 
     init(delayNanoseconds: UInt64 = 3_000_000_000) {  // 3 s default
         self.delayNanoseconds = delayNanoseconds
     }
 
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        exportCallCount += 1
-        try? await Task.sleep(nanoseconds: delayNanoseconds)
+    var exportCallCount: Int {
+        get async { lock.lock(); defer { lock.unlock() }; return _exportCallCount }
+    }
+
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); _exportCallCount += 1; lock.unlock()
+        // Blocking sleep on purpose: export is a synchronous sink and this
+        // double simulates slow network I/O holding the EXPORTING thread
+        // (never the caller of the async surfaces).
+        Thread.sleep(forTimeInterval: Double(delayNanoseconds) / 1_000_000_000)
         return .success
     }
 }

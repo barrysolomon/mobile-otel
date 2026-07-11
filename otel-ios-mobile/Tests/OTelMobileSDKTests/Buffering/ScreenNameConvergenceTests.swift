@@ -20,8 +20,8 @@ struct ScreenNameConvergenceTests {
         func rotateSession() -> String { "conv-session" }
     }
 
-    fileprivate actor StubExporter: BufferedEventExporter {
-        func export(_ events: [BufferedEvent]) async -> BufferExportResult { .success }
+    fileprivate struct StubExporter: BufferedEventExporter {
+        func export(_ events: [BufferedEvent]) -> BufferExportResult { .success }
     }
 
     private func makeProcessor() -> (MobileLogRecordProcessor, RAMEventBuffer) {

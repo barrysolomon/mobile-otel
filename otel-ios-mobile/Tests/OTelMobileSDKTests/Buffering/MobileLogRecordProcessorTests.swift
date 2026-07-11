@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -9,13 +10,22 @@ fileprivate final class MockSessionProvider: SessionProvider, @unchecked Sendabl
     func rotateSession() -> String { "mock-session" }
 }
 
-fileprivate actor MockExporter: BufferedEventExporter {
-    private(set) var received: [BufferedEvent] = []
-    private(set) var callCount: Int = 0
+fileprivate final class MockExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _received: [BufferedEvent] = []
+    private var _callCount: Int = 0
 
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        received.append(contentsOf: events)
-        callCount += 1
+    var received: [BufferedEvent] {
+        get async { lock.lock(); defer { lock.unlock() }; return _received }
+    }
+    var callCount: Int {
+        get async { lock.lock(); defer { lock.unlock() }; return _callCount }
+    }
+
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); defer { lock.unlock() }
+        _received.append(contentsOf: events)
+        _callCount += 1
         return .success
     }
 }
@@ -41,7 +51,7 @@ struct MobileLogRecordProcessorTests {
         await processor.emitForTesting(body: "one")
         await processor.emitForTesting(body: "two")
         await processor.emitForTesting(body: "three")
-        let peeked = await buffer.peek()
+        let peeked = buffer.peek()
         #expect(peeked.count == 3)
     }
 
@@ -54,7 +64,7 @@ struct MobileLogRecordProcessorTests {
         // a dispatch thread so this async test never parks its executor
         // thread on the bridge's semaphore (#66).
         _ = await onDispatchThread { processor.forceFlush() }
-        let remaining = await buffer.count
+        let remaining = buffer.count
         #expect(remaining == 0)
         let received = await exporter.received
         #expect(received.count == 2)

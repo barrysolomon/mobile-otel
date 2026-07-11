@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -63,7 +64,7 @@ struct OfflinePolicyTests {
             offlinePolicy: .errorOnly
         )
         await processor.emitForTesting(body: "info-event", severity: .info)
-        let events = await buffer.peek()
+        let events = buffer.peek()
         #expect(events.isEmpty, "INFO should be dropped when offline + errorOnly")
     }
 
@@ -81,7 +82,7 @@ struct OfflinePolicyTests {
             offlinePolicy: .errorOnly
         )
         await processor.emitForTesting(body: "error-event", severity: .error)
-        let events = await buffer.peek()
+        let events = buffer.peek()
         #expect(events.count == 1, "ERROR should be buffered when offline + errorOnly")
     }
 
@@ -99,7 +100,7 @@ struct OfflinePolicyTests {
             offlinePolicy: .errorOnly
         )
         await processor.emitForTesting(body: "info-online", severity: .info)
-        let events = await buffer.peek()
+        let events = buffer.peek()
         #expect(events.count == 1, "all events should buffer when online regardless of policy")
     }
 
@@ -117,7 +118,7 @@ struct OfflinePolicyTests {
             offlinePolicy: .dropAll
         )
         await processor.emitForTesting(body: "error-drop", severity: .error)
-        let events = await buffer.peek()
+        let events = buffer.peek()
         #expect(events.isEmpty, "DROP_ALL should drop even ERROR when offline")
     }
 
@@ -137,7 +138,7 @@ struct OfflinePolicyTests {
         await processor.emitForTesting(body: "info-drop", severity: .info)
         await processor.emitForTesting(body: "warn-keep", severity: .warn)
         await processor.emitForTesting(body: "error-keep", severity: .error)
-        let events = await buffer.peek()
+        let events = buffer.peek()
         #expect(events.count == 2, "WARN_AND_ABOVE should keep WARN + ERROR, drop INFO")
     }
 }
@@ -149,10 +150,15 @@ fileprivate final class PolicyStubSession: SessionProvider, @unchecked Sendable 
     func rotateSession() -> String { "offline-policy-session" }
 }
 
-fileprivate actor PolicyTestExporter: BufferedEventExporter {
-    private(set) var received: [BufferedEvent] = []
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        received.append(contentsOf: events)
+fileprivate final class PolicyTestExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _received: [BufferedEvent] = []
+    var received: [BufferedEvent] {
+        get async { lock.lock(); defer { lock.unlock() }; return _received }
+    }
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); defer { lock.unlock() }
+        _received.append(contentsOf: events)
         return .success
     }
 }

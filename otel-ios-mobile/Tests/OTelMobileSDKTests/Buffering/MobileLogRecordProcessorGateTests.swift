@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -20,10 +21,15 @@ struct MobileLogRecordProcessorGateTests {
         func rotateSession() -> String { "gate-session" }
     }
 
-    fileprivate actor GateExporter: BufferedEventExporter {
-        private(set) var received: [BufferedEvent] = []
-        func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-            received.append(contentsOf: events)
+    fileprivate final class GateExporter: BufferedEventExporter, @unchecked Sendable {
+        private let lock = NSLock()
+        private var _received: [BufferedEvent] = []
+        var received: [BufferedEvent] {
+            get async { lock.lock(); defer { lock.unlock() }; return _received }
+        }
+        func export(_ events: [BufferedEvent]) -> BufferExportResult {
+            lock.lock(); defer { lock.unlock() }
+            _received.append(contentsOf: events)
             return .success
         }
     }
@@ -58,7 +64,7 @@ struct MobileLogRecordProcessorGateTests {
         let gate = RemoteGate(initial: SDKRemoteConfig(enabled: false, sampleRate: 1.0))
         let (processor, _, buffer) = makeProcessor(gate: gate)
         await processor.emitForTesting(body: "should-be-dropped")
-        let peeked = await buffer.peek()
+        let peeked = buffer.peek()
         #expect(peeked.isEmpty, "a remotely-disabled SDK must not buffer the record")
     }
 
@@ -67,7 +73,7 @@ struct MobileLogRecordProcessorGateTests {
         let gate = RemoteGate(initial: SDKRemoteConfig(enabled: true, sampleRate: 1.0))
         let (processor, _, buffer) = makeProcessor(gate: gate)
         await processor.emitForTesting(body: "should-be-kept")
-        let peeked = await buffer.peek()
+        let peeked = buffer.peek()
         #expect(peeked.count == 1)
     }
 
@@ -95,7 +101,7 @@ struct MobileLogRecordProcessorGateTests {
         let gate = RemoteGate(initial: SDKRemoteConfig(enabled: true, sampleRate: 0.0))
         let (processor, _, buffer) = makeProcessor(gate: gate)
         for _ in 0..<10 { await processor.emitForTesting(body: "x") }
-        let peeked = await buffer.peek()
+        let peeked = buffer.peek()
         #expect(peeked.isEmpty)
     }
 

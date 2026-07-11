@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OTelMobileSDK
 import OTelMobileCore
@@ -9,17 +10,23 @@ fileprivate final class TtlStressStubSession: SessionProvider, @unchecked Sendab
     func rotateSession() -> String { "ttl-stress" }
 }
 
-fileprivate actor TtlStressExporter: BufferedEventExporter {
-    private(set) var received: [BufferedEvent] = []
-    private var shouldFail: Bool = false
+fileprivate final class TtlStressExporter: BufferedEventExporter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _received: [BufferedEvent] = []
+    private var _shouldFail: Bool = false
 
-    func setOffline(_ offline: Bool) { shouldFail = offline }
+    var received: [BufferedEvent] {
+        get async { lock.lock(); defer { lock.unlock() }; return _received }
+    }
 
-    func export(_ events: [BufferedEvent]) async -> BufferExportResult {
-        if shouldFail {
+    func setOffline(_ offline: Bool) async { lock.lock(); _shouldFail = offline; lock.unlock() }
+
+    func export(_ events: [BufferedEvent]) -> BufferExportResult {
+        lock.lock(); defer { lock.unlock() }
+        if _shouldFail {
             return .failure(reason: "offline")
         }
-        received.append(contentsOf: events)
+        _received.append(contentsOf: events)
         return .success
     }
 }
@@ -66,7 +73,7 @@ struct TtlEvictionStressTests {
     }
 
     private func cleanup(_ disk: DiskLogBuffer, path: DiskLogBuffer.TestPath) async {
-        await disk.shutdown()
+        disk.shutdown()
         DiskLogBuffer.removeTestFiles(at: path)
     }
 
@@ -82,7 +89,7 @@ struct TtlEvictionStressTests {
         // Give the detached append + spill tasks a generous tick to settle.
         try await Task.sleep(nanoseconds: 500_000_000)
 
-        let diskCount = await disk.rowCount()
+        let diskCount = disk.rowCount()
         // RAM holds at most 20; the rest must be on disk. Total emitted = 50.
         #expect(diskCount >= 20, "spillover must persist; got disk=\(diskCount)")
     }
@@ -153,7 +160,7 @@ struct TtlEvictionStressTests {
         _ = await processor.forceFlushBufferedAsync()
         try await Task.sleep(nanoseconds: 500_000_000)
 
-        let bytes = await disk.totalSizeBytes()
+        let bytes = disk.totalSizeBytes()
         // SQLite + small JSON record overhead means per-row size is small but
         // non-zero. The contract is: must not grow unbounded — 5x budget is
         // the same tolerance Android uses for the same test.
@@ -175,7 +182,7 @@ struct TtlEvictionStressTests {
         }
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        let beforeStale = await disk.rowCount()
+        let beforeStale = disk.rowCount()
         #expect(beforeStale >= 20, "RAM-overflowed events must reach disk; got \(beforeStale)")
 
         // Wait past the 1-second retention window.
@@ -192,8 +199,8 @@ struct TtlEvictionStressTests {
         // that fit in the 10-slot RAM buffer may not be on disk yet — that's
         // fine; the contract is "TTL prunes old events" not "all writes hit
         // disk."
-        await disk.pruneByTTL()
-        let afterPrune = await disk.rowCount()
+        disk.pruneByTTL()
+        let afterPrune = disk.rowCount()
         #expect(afterPrune < beforeStale,
                 "TTL prune must remove old events; before=\(beforeStale), after=\(afterPrune)")
     }
