@@ -32,11 +32,11 @@ Each target ships as a separate `.library(...)` product in `Package.swift` so co
 
 ## Quick install (consumer)
 
-The package lives at the repo root in `otel-ios-mobile/`. In `Package.swift`, pin the shipped tag `v0.5.2-alpha`:
+The package lives at the repo root in `otel-ios-mobile/`. In `Package.swift`, pin the shipped tag `v0.9.0-beta`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.5.2-alpha"),
+    .package(url: "https://github.com/barrysolomon/mobile-otel.git", exact: "v0.9.0-beta"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [

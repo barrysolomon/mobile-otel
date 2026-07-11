@@ -36,7 +36,7 @@ Every public symbol belongs to one tier. The tier is the contract.
 
 This section originally recommended **against** cutting 1.0 at `0.2.0-alpha`, behind five gates. Status at the `0.9.0-beta` cut (all five gates green; 1.0 is deferred only for post-release CI soak, not for any open gate):
 
-1. **External-integration soak** — ✅ the `0.2.x` surface shipped unchanged through `0.5.2-alpha`; consumed externally by the kiosk-demo integration (resolving the published Pages Maven artifact) and a clean-room React Native → Android UAT.
+1. **External-integration soak** — ✅ the `0.2.x` surface shipped unchanged through `0.9.0-beta`; consumed externally by the kiosk-demo integration (resolving the published Pages Maven artifact) and a clean-room React Native → Android UAT.
 2. **Stable set deliberately frozen** — ✅ executed 2026-06-12, see [API_STABILITY.md](API_STABILITY.md).
 3. **Semconv audit** — ✅ executed 2026-06-12, see [SEMCONV_AUDIT.md](SEMCONV_AUDIT.md).
 4. **Deprecation policy in force** — ✅ below.

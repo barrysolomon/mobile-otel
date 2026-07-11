@@ -34,7 +34,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("io.github.barrysolomon:mobile:0.5.2-alpha")
+    implementation("io.github.barrysolomon:mobile:0.9.0-beta")
 }
 ```
 

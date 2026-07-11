@@ -1,6 +1,7 @@
 # Roadmap: Becoming the Best Mobile OTel SDK
 
-**Audited:** 2026-07-03 against `main` @ `ae772dfa` (v0.5.2-alpha)
+**Current release:** `v0.9.0-beta` (shipped 2026-07-09) — feature-complete beta, the 1.0 release candidate. Published to npm (`latest` + `beta`), the public Pages Maven, and GitHub Packages; all 48 UAT matrix cells green across the four platform variants. See [CHANGELOG.md](CHANGELOG.md).
+**Audited:** 2026-07-03 against `main` @ `ae772dfa` (then v0.5.2-alpha; the NOW tier below has since been closed and shipped in 0.9.0-beta)
 **Method:** 12-dimension audit (Android core, iOS, React Native, instrumentation modules, docs, testing/CI/release, OTel compliance, competitive landscape, ops/security/privacy/perf, backlog inventory, ecosystem repos, OSS hygiene). Findings cite `file:line` evidence. Items already tracked in BACKLOG.md/epics are marked *(tracked)*.
 **How to read:** Three horizons — **NOW** (0–2 weeks, trust/correctness blockers), **NEXT** (2–8 weeks, competitive parity), **LATER** (quarter+, strategic bets). Effort: S(<1d) M(1–3d) L(1–2wk) XL(>2wk).
 
@@ -30,7 +31,7 @@ These are cheap, and every one of them is the kind of thing an evaluating enterp
 | N3 | ✅ **CLOSED (was already fixed — audit claim was stale)**: `AutoCaptureOptions.default = all.subtracting([.screenshot, .wireframe])`, matching Android; pinned by `MobileConfigTests` | `AutoCaptureOptions.swift:30` | — |
 | N4 | ✅ **DONE 2026-07-03**: `PrivacyInfo.xcprivacy` shipped for `OTelMobileCore` (SystemBootTime 35F9.1) and `OTelMobileSDK` (UserDefaults CA92.1, DiskSpace E174.1, SystemBootTime 35F9.1 + collected-data declarations, no tracking); registered as SPM resources; guarded by `PrivacyManifestTests` (7 tests). Note: audit's "file timestamps" claim was wrong — no such API is used | `otel-ios-mobile/Sources/*/PrivacyInfo.xcprivacy` | — |
 | N5 | ✅ **DONE 2026-07-03**: SECURITY.md added (channels, timelines, scope); GitHub Private Vulnerability Reporting enabled via API; CONTRIBUTING.md now links it | SECURITY.md | — |
-| N6 | **Crash-loop self-disable** — SDK never disables itself after repeated crashes; SDK_SAFETY.md flags the risk with no mitigation. Count crash markers on launch → degrade/disable after N crashes, self-clear on clean session | grep `crashLoop` → zero hits | M |
+| N6 | ✅ **DONE (shipped 0.9.0-beta)**: `CrashLoopDetector` on both platforms counts consecutive crash-marker launches; at `MobileConfig.crashLoopThreshold` (default 3) the SDK refuses to initialize for that launch (Android degraded no-op; iOS inert instance with `crashLoopDisabled == true`), self-clears on the first clean launch, `0` disables the guard. RN inherits it via the native SDKs | CrashLoopDetector (both platforms) | — |
 | N7 | ✅ **DONE 2026-07-03**: kill switch verified both platforms (earlier same day) AND RN plumbing shipped — `gatewayEndpoint`/`enablePolicyPolling`/`configPollIntervalSeconds` flow JS → both bridges → native `MobileConfig`; new native `gatewayEndpoint` field on Android + iOS so config polling can target the gateway when `endpoint` is plain OTLP ingest. Tests: GatewayEndpointTest (Android), MobileConfigTests + dispatcher tests (iOS), module tests (RN) | packages/react-native + both SDK configs | — |
 
 ### Correctness / adoption blockers
