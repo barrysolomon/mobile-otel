@@ -64,24 +64,59 @@ jobs:
         # tests run host-side in the react-native-ios job below.
         working-directory: otel-ios-mobile
         run: swift build
+      - name: Build test bundle (unclamped — llbuild deadlocks under strict pool)
+        # The executor-starvation guard below runs the tests with
+        # LIBDISPATCH_COOPERATIVE_POOL_STRICT=1. That clamp applies to the WHOLE
+        # process, and `swift test`'s build phase is driven by llbuild
+        # (libdispatch-backed), which DEADLOCKS under the clamp on low-core CI
+        # runners BEFORE any test runs — root-caused via a thread sample in #66:
+        # swift-package stuck in BuildEngineImpl::build → condition_variable::wait,
+        # no compiler subprocess, no test binary. `swift test --skip-build` does
+        # NOT help: its driver still re-plans the build through llbuild and hangs
+        # the same way. So compile the test bundle here, UNCLAMPED; the guard
+        # step then runs the already-built bundle directly, no build driver.
+        run: swift build --build-tests
       - name: Executor-starvation guard (strict cooperative pool, issue #66)
-        # Runs the buffering/policy suites with the Swift cooperative executor
-        # clamped to ONE thread (LIBDISPATCH_COOPERATIVE_POOL_STRICT=1). Any
-        # code path that parks an executor thread while waiting on other
-        # executor work — the deadlock class that froze the nightly simulator
-        # lane in issue #66 — hangs immediately under this clamp, instead of
-        # only surfacing on small CI runners under parallel-suite load. The
-        # bash watchdog turns such a hang into a named failure in ~20 min
-        # rather than an opaque job timeout. Filtered to suites proven to run
-        # host-side: the full suite includes run-loop/notification tests that
-        # legitimately need a simulator (see the compile-gate comment above).
-        working-directory: otel-ios-mobile
+        # Runs the buffering/policy suites with the Swift cooperative-executor
+        # pool held to its strict width (LIBDISPATCH_COOPERATIVE_POOL_STRICT=1):
+        # the pool cannot spawn overflow threads to rescue a blocked cooperative
+        # thread, so any SDK path that parks one while awaiting other executor
+        # work — the deadlock class that froze the nightly simulator lane in
+        # issue #66 — hangs. We invoke `swiftpm-testing-helper` on the
+        # ALREADY-BUILT .xctest bundle directly (the same helper `swift test`
+        # uses to host swift-testing tests), so NO build driver runs under the
+        # clamp — only test execution, which is exactly what the guard must
+        # exercise. MobileLogRecordProcessorStarvationTests deterministically
+        # saturates the pool (activeProcessorCount+2 spinners), so this catches
+        # regressions regardless of runner core count. The watchdog turns a real
+        # hang into a named failure instead of an opaque job timeout. Filtered to
+        # suites proven to run host-side (the full suite includes run-loop /
+        # notification tests that legitimately need a simulator — see the
+        # compile-gate comment above).
         run: |
           set -uo pipefail
+          BIN_PATH="$(swift build --show-bin-path)"
+          BUNDLE="$(find "$BIN_PATH" -maxdepth 1 -name '*PackageTests.xctest' | head -1)"
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::test bundle (*PackageTests.xctest) not found in $BIN_PATH"
+            exit 1
+          fi
+          MACHO="$BUNDLE/Contents/MacOS/$(basename "$BUNDLE" .xctest)"
+          # swiftpm-testing-helper lives beside `swift` in the toolchain; it is
+          # what `swift test` execs to dlopen the bundle and run swift-testing.
+          HELPER="$(dirname "$(dirname "$(xcrun --find swift)")")/libexec/swift/pm/swiftpm-testing-helper"
+          # The bundle links Testing.framework via @rpath; point dyld at the
+          # platform framework dir so the helper can dlopen it.
+          FWPATH="$(xcrun --sdk macosx --show-sdk-platform-path)/Developer/Library/Frameworks"
           FILTER='OfflineReconnection|NetworkRestoredFlush|TtlEvictionStress|MobileLogRecordProcessor|PolicyPipelineIntegration|ErrorCoalescer|OfflinePolicy|EndToEndSmoke'
-          LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 swift test --filter "$FILTER" &
+          echo "bundle=$BUNDLE"
+          echo "helper=$HELPER"
+          LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 \
+          DYLD_FRAMEWORK_PATH="$FWPATH" DYLD_LIBRARY_PATH="$FWPATH" \
+            "$HELPER" --test-bundle-path "$MACHO" \
+              --testing-library swift-testing --filter "$FILTER" &
           pid=$!
-          for _ in $(seq 1 1200); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          for _ in $(seq 1 600); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
           if kill -0 "$pid" 2>/dev/null; then
             echo '::error::Executor-starvation guard timed out — a test parked a cooperative-executor thread (deadlock class of issue #66)'
             kill -9 "$pid"
