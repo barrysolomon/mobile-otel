@@ -188,23 +188,24 @@ func (mpp *mobilePolicyProcessor) evaluatePolicy(policy Policy, attrs map[string
 	}
 
 	// Apply logical operator
-	if match.LogicalOperator == "and" {
+	switch match.LogicalOperator {
+	case "and":
 		for _, result := range results {
 			if !result {
 				return false
 			}
 		}
 		return len(results) > 0
-	} else if match.LogicalOperator == "or" {
+	case "or":
 		for _, result := range results {
 			if result {
 				return true
 			}
 		}
 		return false
+	default:
+		return false
 	}
-
-	return false
 }
 
 // evaluateCondition checks if a value matches a condition

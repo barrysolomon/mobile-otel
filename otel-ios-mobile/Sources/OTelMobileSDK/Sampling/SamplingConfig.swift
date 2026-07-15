@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 
 /// Sampling strategy for traces and spans. Direct port of Android's

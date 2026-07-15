@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * Dash0MobileModule — React Native bridge for @dash0/mobile-react-native.
  *
  * Responsibilities (kept deliberately thin):

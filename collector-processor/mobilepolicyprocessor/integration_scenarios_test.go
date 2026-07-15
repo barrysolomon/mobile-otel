@@ -65,7 +65,7 @@ func TestScenario_UIFreezeWithDuration(t *testing.T) {
 			Match: Match{
 				LogicalOperator: "and",
 				Attributes: map[string]Condition{
-					"event.name": {Equals: stringPtr("ui.freeze")},
+					"event.name":  {Equals: stringPtr("ui.freeze")},
 					"duration_ms": {Gt: float64Ptr(2000.0)},
 				},
 			},

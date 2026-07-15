@@ -436,9 +436,9 @@ func TestComplexPolicyScenarios(t *testing.T) {
 				Match: Match{
 					LogicalOperator: "and",
 					Attributes: map[string]Condition{
-						"event.name":      {Equals: stringPtr("http.error")},
+						"event.name":       {Equals: stringPtr("http.error")},
 						"http.status_code": {Gte: float64Ptr(500.0)},
-						"http.route":      {Contains: stringPtr("/appointments")},
+						"http.route":       {Contains: stringPtr("/appointments")},
 					},
 				},
 				Actions: []Action{

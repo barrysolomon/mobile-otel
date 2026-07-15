@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 
 /// Thread-safe holder for the remote kill-switch + global sampling state

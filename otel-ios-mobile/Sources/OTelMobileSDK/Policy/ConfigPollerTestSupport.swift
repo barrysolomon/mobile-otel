@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 
 /// Test-only helpers that avoid importing Foundation directly in the test

@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /// Configures the maximum disk budget consumed during offline periods.
 ///
 /// Mirrors Android's `io.opentelemetry.android.mobile.config.OfflineBudgetConfig`.

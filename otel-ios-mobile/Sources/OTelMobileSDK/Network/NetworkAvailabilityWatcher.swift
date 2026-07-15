@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 
 /// Listener invoked by `NetworkAvailabilityWatcher` on a genuine network transition.

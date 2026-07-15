@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * Seam between the RN bridge and the native OTel Mobile SDK.
  *
  * The production implementation (`OTelMobileCallSink`) forwards calls into

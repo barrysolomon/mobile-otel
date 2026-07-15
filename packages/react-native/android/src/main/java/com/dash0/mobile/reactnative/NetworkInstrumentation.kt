@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * NetworkInstrumentation — the single shared seam between the two halves of
  * the Android network story that run at different times:
  *

@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * OTelNetworkInterceptor — the Android network-instrumentation story for
  * @dash0/mobile-react-native.
  *

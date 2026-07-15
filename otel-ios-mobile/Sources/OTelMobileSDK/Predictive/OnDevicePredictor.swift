@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 
 /// Rule-based risk prediction. Computes four risk scores (`0.0..1.0`) from

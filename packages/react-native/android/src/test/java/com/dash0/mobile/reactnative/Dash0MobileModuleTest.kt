@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * RN-012 unit tests for Dash0MobileModule.
  *
  * These tests feed ReadableMap/ReadableArray fixtures into the module and
