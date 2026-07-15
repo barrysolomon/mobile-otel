@@ -9,13 +9,13 @@ plugins {
 fun loadEnv(): Map<String, String> {
     val envFile = File(projectDir.parent, ".env")
     if (!envFile.exists()) return emptyMap()
-    return envFile.readLines()
+    return envFile
+        .readLines()
         .filter { it.isNotBlank() && !it.startsWith("#") }
         .mapNotNull { line ->
             val idx = line.indexOf('=')
             if (idx < 0) null else line.substring(0, idx).trim() to line.substring(idx + 1).trim()
-        }
-        .toMap()
+        }.toMap()
 }
 
 // Generate otel-config.json from template + .env before assets are merged
@@ -44,7 +44,9 @@ tasks.register("generateOtelConfig") {
         env["DASH0_DATASET"]?.let { content = content.replace("YOUR_DATASET_NAME", it) }
         outputFile.writeText(content)
         if (env.isEmpty()) {
-            logger.warn("No .env file found — otel-config.json still contains placeholders. Copy .env.template to .env and fill in your values.")
+            logger.warn(
+                "No .env file found — otel-config.json still contains placeholders. Copy .env.template to .env and fill in your values.",
+            )
         } else {
             logger.lifecycle("Generated otel-config.json from .env (endpoint: ${env["DASH0_ENDPOINT"] ?: "not set"})")
         }

@@ -241,7 +241,12 @@ public final class DiskLogBuffer: @unchecked Sendable {
     public func enforceOfflineBudget(_ config: OfflineBudgetConfig) {
         lock.lock(); defer { lock.unlock() }
         guard config.enabled, !closed, db != nil else { return }
-        let currentSize = fileSizeBytes()
+        // SR-015 parity with Android: key the offline budget on the LOGICAL
+        // byte total (SUM of the `size_bytes` column) — the same accounting the
+        // insert path (`pruneIfOverBudgetInternal`) uses — not the physical file
+        // size, which includes sqlite page slack / WAL / freelist overhead and
+        // (in WAL mode) under-reports data still living in the -wal sidecar.
+        let currentSize = scalarInt(sql: "SELECT COALESCE(SUM(size_bytes), 0) FROM buffered_events;")
         guard currentSize > config.maxOfflineDiskBytes else { return }
 
         let rowTotal = scalarInt(sql: "SELECT COUNT(*) FROM buffered_events;")
@@ -258,6 +263,29 @@ public final class DiskLogBuffer: @unchecked Sendable {
         }
 
         execSQL("VACUUM;")
+    }
+
+    /// Test-only: inserts a row with an explicit `size_bytes` value, decoupled
+    /// from the (empty) `record_json` blob. Lets tests drive the LOGICAL byte
+    /// total (SUM of `size_bytes`) independently of the physical file size, so
+    /// offline-budget enforcement can be proven to key on logical bytes rather
+    /// than filesystem slack (SR-015 parity with Android). `internal` — visible
+    /// to tests via `@testable import`, never part of the public API.
+    func insertRawForTesting(sequenceId: UInt64, sizeBytes: Int, timestampMs: UInt64? = nil) {
+        lock.lock(); defer { lock.unlock() }
+        guard !closed, db != nil, let stmt = insertStmt else { return }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+        let ts = timestampMs ?? UInt64(Date().timeIntervalSince1970 * 1000)
+        sqlite3_bind_int64(stmt, 1, Int64(bitPattern: sequenceId))
+        sqlite3_bind_int64(stmt, 2, Int64(bitPattern: ts))
+        _ = "raw-test-session".withCString { ptr in
+            sqlite3_bind_text(stmt, 3, ptr, -1, Self.sqliteTransient)
+        }
+        sqlite3_bind_zeroblob(stmt, 4, 0)
+        sqlite3_bind_int64(stmt, 5, Int64(sizeBytes))
+        sqlite3_bind_int64(stmt, 6, Int64(Date().timeIntervalSince1970 * 1000))
+        _ = step(stmt)
     }
 
     /// Returns the actual file size on disk in bytes. 0 on error.
