@@ -72,6 +72,10 @@
 - [Comparison Tutorial](COMPARISON_TUTORIAL.md) — Runnable side-by-side demo (`upstream` vs `dash0` Gradle flavors)
 - [Upstream Supersession Epic](epics/UPSTREAM_SUPERSESSION_EPIC.md) — Convergence plan and phase tracker
 
+## Roadmap
+
+- [Post-v1.0 Roadmap](ROADMAP_POST_V1.md) — forward-looking themed tracks + priority tiering (companion to [BACKLOG.md](../BACKLOG.md))
+
 ## Other Resources
 
 - [Why Not a Fork](../WHY_NOT_A_FORK.md) — OTel alignment and composition-over-forking rationale

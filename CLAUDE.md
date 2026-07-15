@@ -325,6 +325,7 @@ cp examples/demo-app/android/src/debug/assets/otel-config.json.template \
 - **[docs/README.md](docs/README.md)** — Full documentation index
 - **[DESIGN.md](DESIGN.md)** — Vision, system architecture, core concepts, SDK modules, OTel compliance
 - **[BACKLOG.md](BACKLOG.md)** — Prioritized remaining work across 5 tracks
+- **[docs/ROADMAP_POST_V1.md](docs/ROADMAP_POST_V1.md)** — Post-v1.0 forward-looking roadmap (themed tracks + priority tiering)
 - **[HOW_TO_DEMO.md](HOW_TO_DEMO.md)** — Full demo runbook (2 emulators, 12 min)
 - **[docs/QUICK_START.md](docs/QUICK_START.md)** — SDK integration or demo setup
 - **[docs/ANDROID_SDK_GUIDE.md](docs/ANDROID_SDK_GUIDE.md)** — Android SDK integration guide
