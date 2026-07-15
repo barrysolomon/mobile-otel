@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * Production BridgeCallSink. Forwards RN bridge calls into the existing
  * io.opentelemetry.android.mobile.OTelMobile SDK.
  *

@@ -7,6 +7,42 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.0] — 2026-07-14
+
+**First GA / SemVer-stable release.** `1.0.0` promotes the feature-complete
+`0.9.0-beta` to general availability: the post-release CI soak is complete and
+the full [Semantic Versioning](https://semver.org/spec/v2.0.0.html) guarantee is
+now in force. Un-annotated public symbols are stable (breaking change ⇒ MAJOR
+bump + deprecation cycle); `@Incubating` / experimental symbols may still change
+in a MINOR. Version parity is enforced across all four code surfaces (npm /
+gradle / iOS `ResourceBuilder` / RN distro) plus the git tag.
+
+### Fixed
+- **#66 CI guard** — the executor-starvation guard now runs via the
+  `swiftpm-testing-helper` binary instead of `swift test`, so the width-limited
+  cooperative-pool clamp no longer deadlocks llbuild's build phase on 3-core
+  runners before any test executes.
+- **SR-007** — SQLite `VACUUM` removed from the disk-buffer insert hot path
+  (it now runs only during offline-budget enforcement), eliminating per-insert
+  stalls.
+- **SR-010** — trigger/policy evaluation made lock-free on the hot path,
+  removing contention during high-rate event capture.
+- **SR-015** — the offline disk budget is now keyed on the **logical** byte
+  total (SUM of stored payload sizes) rather than the physical file size, on
+  **both** Android and iOS. Filesystem slack / WAL sidecar bytes no longer
+  cause spurious eviction. (iOS parity landed this release, TDD.)
+
+### Changed / Hardened
+- **Executor-starvation hardening** (`ad0513c7`) — retained as defensive
+  hardening even though #66's root cause was the build-tool deadlock, not SDK
+  code.
+- **Apache-2.0 license headers** added across all source files (Android, iOS,
+  RN, Go), preserving upstream-derived notices per §4(c).
+
+### CI
+- **golangci-lint** gate added for the Go collector processor.
+- **ktlint** (`ktlintCheck`) gate added across all Android/Kotlin modules.
+
 ## [0.9.0-beta] — 2026-07-09
 
 **Feature-complete beta — the 1.0 release candidate.** Cut as `0.9.0-beta` rather than `1.0.0` to allow a post-release CI soak (residual slow-runner executor-pressure signal, issue #66 family) before the stable SemVer guarantee is switched on. All 48 UAT matrix cells are green across the four platform variants (Android native, iOS native, RN Android, RN iOS), the production-readiness and security NOW tiers are closed, and every version surface (npm / gradle / RN distro / iOS ResourceBuilder / git tag) is parity-gated at publish time. [Semantic versioning](https://semver.org/spec/v2.0.0.html) applies in earnest from `1.0.0`; this beta is API-frozen with stable intent. This release folds in the never-published 0.5.3-alpha working set — roadmap NOW items (2026-07-03): RN kill-switch plumbing, host-safety guards, release-pipeline hardening, and doc-truth fixes — plus the release-day fixes below.

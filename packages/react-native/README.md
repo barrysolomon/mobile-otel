@@ -5,7 +5,7 @@ existing native Android (`otel-android-mobile`) and iOS (`otel-ios-mobile`)
 SDKs — native owns buffering, policy evaluation, OTLP export, and crash
 recovery. JS stays thin.
 
-**Version:** `0.9.0-beta`, published under the `latest` and `beta` dist-tags.
+**Version:** `1.0.0` (GA / stable), published under the `latest` dist-tag.
 
 **Status:** Validated end-to-end in Dash0. All 4 platforms (Android native,
 iOS native, RN Android, RN iOS) have a UAT matrix of 12/12 cells green.
@@ -13,11 +13,11 @@ iOS native, RN Android, RN iOS) have a UAT matrix of 12/12 cells green.
 ## Install
 
 ```bash
-# The publish pipeline's pre-1.0 exception points the `latest` dist-tag at
-# every 0.x release, so a bare install resolves to the current beta:
+# The `latest` dist-tag points at the current stable release (1.0.0 GA),
+# so a bare install resolves to it:
 npm install @barrysolomon/mobile-react-native
 # or pin the exact version:
-# npm install @barrysolomon/mobile-react-native@0.9.0-beta
+# npm install @barrysolomon/mobile-react-native@1.0.0
 
 cd ios && pod install
 ```
@@ -25,13 +25,13 @@ cd ios && pod install
 This JS package wraps the native SDKs; install those too:
 
 - **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel`
-  at tag `v0.9.0-beta` to your app target, then copy
+  at tag `v1.0.0` to your app target, then copy
   `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package
   into your app target and call
   `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod intentionally
   excludes the sink because it depends on the SwiftPM SDK delivered on the app
   side.
-- **Android** — `io.github.barrysolomon:mobile:0.9.0-beta` from the public
+- **Android** — `io.github.barrysolomon:mobile:1.0.0` from the public
   Maven repo on GitHub Pages
   (`https://barrysolomon.github.io/mobile-otel/maven`) — no PAT / no
   authentication required. As of 0.2.0-alpha the full module set

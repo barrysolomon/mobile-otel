@@ -158,31 +158,31 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 ### P0 — High (before beta deployment)
 
 - [x] **SR-006: Explicit Room migrations** — Added explicit `Migration` objects for v1→v2→v3→v4. `fallbackToDestructiveMigration` kept as safety net. Done 2026-04-09.
-- [ ] **SR-007: Deferred VACUUM** — Move `VACUUM` from hot insert path to periodic cleanup. Prevent exclusive DB lock during burst ingestion.
-- [ ] **SR-008: Shared OkHttpClient** — Inject app-level OkHttpClient into PolicyEvaluator instead of creating per-instance.
-- [ ] **SR-009: Retry jitter** — Add `* (0.5 + random * 0.5)` to RetryableExporter backoff. Prevent thundering herd on collector recovery.
-- [ ] **SR-010: Lock-free trigger evaluation** — Snapshot buffer before evaluating user predicates in LogTailBuffer. Prevent deadlock from user code.
-- [ ] **SR-011: Remove demo_app_prefs from SDK** — ContextSnapshot reads demo app SharedPreferences in library code. Remove and use explicit API.
-- [ ] **SR-012: Pre-compile Go regexes** — Cache compiled regexes in Go processor at policy load time. Currently recompiles on every ConsumeLogs call.
+- [x] **SR-007: Deferred VACUUM** — Move `VACUUM` from hot insert path to periodic cleanup. Prevent exclusive DB lock during burst ingestion. **Fixed (v1.0.0).**
+- [x] **SR-008: Shared OkHttpClient** — Inject app-level OkHttpClient into PolicyEvaluator instead of creating per-instance. **Audit-confirmed already done.**
+- [x] **SR-009: Retry jitter** — Add `* (0.5 + random * 0.5)` to RetryableExporter backoff. Prevent thundering herd on collector recovery. **Audit-confirmed already done.**
+- [x] **SR-010: Lock-free trigger evaluation** — Snapshot buffer before evaluating user predicates in LogTailBuffer. Prevent deadlock from user code. **Fixed (v1.0.0).**
+- [x] **SR-011: Remove demo_app_prefs from SDK** — ContextSnapshot reads demo app SharedPreferences in library code. Remove and use explicit API. **Audit-confirmed already done.**
+- [x] **SR-012: Pre-compile Go regexes** — Cache compiled regexes in Go processor at policy load time. Currently recompiles on every ConsumeLogs call. **Audit-confirmed already done.**
 
 ### P1 — Medium (before GA)
 
-- [ ] **SR-013: Atomic sampler revert** — Fix DynamicSampler read→write lock upgrade race with `compareAndSet`.
+- [x] **SR-013: Atomic sampler revert** — Fix DynamicSampler read→write lock upgrade race with `compareAndSet`. **Audit-confirmed already done.**
 - [x] **SR-014: Provider singleton reset** — Done via PR-006 (with SR-003): MobileLoggerProvider cleared on shutdown.
-- [ ] **SR-015: Logical size enforcement** — Use row count not filesystem bytes for disk buffer limits (covered by SR-007).
-- [ ] **SR-016: Crash recovery accuracy** — Only mark clean shutdown in explicit `stop()`, not on every background event.
-- [ ] **SR-017: Crash-safe flush** — On crash path, persist to disk only (skip gRPC export). Crash-recovery handles re-export on next launch.
+- [x] **SR-015: Logical size enforcement** — Key disk-buffer / offline-budget limits on the logical byte total (SUM of `size_bytes`), not filesystem bytes. **Fixed (v1.0.0) on both Android and iOS.**
+- [x] **SR-016: Crash recovery accuracy** — Only mark clean shutdown in explicit `stop()`, not on every background event. **WONTFIX — clean-shutdown-on-background is load-bearing for the dual-detector fg/bg distinction; changing it false-positives every background eviction as a force-close.**
+- [x] **SR-017: Crash-safe flush** — On crash path, persist to disk only (skip gRPC export). Crash-recovery handles re-export on next launch. **Audit-confirmed already done.**
 - [x] **SR-018: Multi-type attribute lookup** — Try all 4 `AttributeKey` types (string, long, double, bool) in PolicyEvaluator.getAttributeValue(). Done 2026-04-14.
-- [ ] **SR-019: ID-based delete in flushWindow** — Delete by row ID list instead of timestamp range to eliminate TOCTOU data loss.
+- [x] **SR-019: ID-based delete in flushWindow** — Delete by row ID list instead of timestamp range to eliminate TOCTOU data loss. **Audit-confirmed already done.**
 
 ### P2 — Low (opportunistic)
 
-- [ ] **SR-020:** Replace synchronized regexCache with ConcurrentHashMap
-- [ ] **SR-021:** Add IPv6 loopback `[::1]` to isLocalhostEndpoint()
-- [ ] **SR-022:** Ensure JankDetector constructs Choreographer on main thread
+- [x] **SR-020:** Replace synchronized regexCache with ConcurrentHashMap. **Audit-confirmed already done.**
+- [x] **SR-021:** Add IPv6 loopback `[::1]` to isLocalhostEndpoint(). **Audit-confirmed already done.**
+- [x] **SR-022:** Ensure JankDetector constructs Choreographer on main thread. **Audit-confirmed already done.**
 - [x] **SR-023:** Fixed — `DynamicSampler` now divides as unsigned (`ULong`); see the SR-023 comment at the ratio computation.
-- [ ] **SR-024:** Add GDPR/CCPA privacy docs for ContextSnapshot demographics
-- [ ] **SR-025:** Use two-value type assertion in Go processor event.name
+- [x] **SR-024:** GDPR/CCPA privacy docs for ContextSnapshot demographics — the demographic fields (`ageGroup` / `tier` / `userRegion` / `deviceType`) are covered by the existing GDPR/CCPA guidance in the `MobileConfig.kt` `userContextPrefsName` KDoc and [docs/DEVICE_METRICS.md](docs/DEVICE_METRICS.md). **Done.**
+- [x] **SR-025:** Use two-value type assertion in Go processor event.name. **Audit-confirmed already done.**
 
 ---
 
@@ -190,12 +190,12 @@ consuming `ui.wireframe`, `ui.screenshot`, and interaction events from the backe
 
 ### P2 — Code Cleanup (includes SR-011, SR-020–SR-025)
 
-- [ ] Remove demo-specific code from Android library
-- [ ] Remove hardcoded values, add configuration validation
+- [x] Remove demo-specific code from Android library
+- [x] Remove hardcoded values, add configuration validation
 - [ ] Run ktlint and fix all issues
 - [ ] Run golangci-lint and fix all issues
 - [ ] Add Apache-2.0 license headers to all source files
-- [ ] Create CHANGELOG.md
+- [x] Create CHANGELOG.md
 
 ### P2 — Community Engagement
 

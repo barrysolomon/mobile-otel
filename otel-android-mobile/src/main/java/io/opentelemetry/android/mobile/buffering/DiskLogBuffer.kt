@@ -656,6 +656,14 @@ internal class DiskLogBuffer private constructor(
                     Log.i(TAG, "Cleanup: deleted $deletedCount expired events (TTL: ${ttlHours}h)")
                     try { onExpiredEvents?.invoke(deletedCount) } catch (_: Throwable) {}
                 }
+                // SR-007: the expensive VACUUM/defrag runs here on the periodic
+                // (hourly) cleanup path — NOT on the hot insert path. This reclaims
+                // the free pages left by size-enforcement DELETEs done during inserts.
+                try {
+                    vacuumNow()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Periodic cleanup VACUUM failed (non-fatal)", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during cleanup", e)
             }
@@ -678,6 +686,36 @@ internal class DiskLogBuffer private constructor(
     }
 
     /**
+     * Test/diagnostic hook: invoked after each successful VACUUM. Lets tests
+     * assert WHERE defrag happens (periodic cleanup path, not the hot insert
+     * path — SR-007).
+     */
+    @Volatile internal var onVacuum: (() -> Unit)? = null
+
+    /**
+     * Runs SQLite VACUUM synchronously on the calling coroutine and notifies
+     * [onVacuum]. Throws on failure so callers can log with their own context.
+     */
+    private fun vacuumNow() {
+        database.openHelper.writableDatabase.execSQL("VACUUM")
+        try { onVacuum?.invoke() } catch (_: Throwable) {}
+    }
+
+    /**
+     * Summed logical payload size (bytes) of the buffered records — a measure
+     * immune to filesystem slack (SQLite free pages, page granularity, WAL).
+     * Exposed for tests/diagnostics; enforcement uses the same measure.
+     */
+    internal suspend fun logicalSizeBytes(): Long = withContext(Dispatchers.IO) {
+        try {
+            logDao.getTotalLogicalBytes()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error computing logical size", e)
+            0L
+        }
+    }
+
+    /**
      * Runs SQLite VACUUM to reclaim disk space after deletions.
      *
      * This compacts the database file. Runs asynchronously in the background.
@@ -685,7 +723,7 @@ internal class DiskLogBuffer private constructor(
     fun vacuum() {
         scope.launch {
             try {
-                database.openHelper.writableDatabase.execSQL("VACUUM")
+                vacuumNow()
                 Log.i(TAG, "VACUUM completed")
             } catch (e: Exception) {
                 Log.e(TAG, "Error during VACUUM", e)
@@ -705,10 +743,10 @@ internal class DiskLogBuffer private constructor(
         strategy: io.opentelemetry.android.mobile.config.EvictionStrategy
     ): Int = withContext(Dispatchers.IO) {
         try {
-            val dbFile = context.getDatabasePath(DB_NAME)
-            if (!dbFile.exists()) return@withContext 0
-
-            val currentSizeBytes = dbFile.length()
+            // Enforce on LOGICAL payload size (summed bytes), not the filesystem
+            // file length — SQLite free pages / page granularity / WAL make the
+            // file length a misleading over-estimate (SR-015).
+            val currentSizeBytes = logDao.getTotalLogicalBytes()
             if (currentSizeBytes <= maxBytes) return@withContext 0
 
             val totalCount = logDao.getCount()
@@ -729,7 +767,7 @@ internal class DiskLogBuffer private constructor(
                 "(was ${currentSizeBytes / 1024}KB, budget ${maxBytes / 1024}KB, strategy=$strategy)")
 
             try {
-                database.openHelper.writableDatabase.execSQL("VACUUM")
+                vacuumNow()
             } catch (e: Exception) {
                 Log.w(TAG, "VACUUM after budget enforcement failed (non-fatal)", e)
             }
@@ -743,24 +781,27 @@ internal class DiskLogBuffer private constructor(
 
     /**
      * Enforces the maximum size limit by removing oldest events.
+     *
+     * Runs on the hot insert path. Size is measured LOGICALLY (summed payload
+     * bytes) rather than by the filesystem file length, which is misleadingly
+     * inflated by SQLite free pages / page granularity / WAL (SR-015). Rows are
+     * DELETEd to stay under budget, but the expensive VACUUM/defrag is deferred
+     * to the periodic [cleanup] path — never per-insert (SR-007).
      */
     private suspend fun enforceSizeLimit() {
         try {
-            val dbFile = context.getDatabasePath(DB_NAME)
-            if (!dbFile.exists()) return
+            val maxBytes = maxSizeMb.toLong() * 1024L * 1024L
+            val logicalBytes = logDao.getTotalLogicalBytes()
 
-            val currentSizeMb = dbFile.length() / (1024.0 * 1024.0)
-
-            if (currentSizeMb > maxSizeMb) {
+            if (logicalBytes > maxBytes) {
                 // Calculate how many events to delete (approximately)
-                val excessRatio = (currentSizeMb - maxSizeMb) / currentSizeMb
+                val excessRatio = (logicalBytes - maxBytes).toDouble() / logicalBytes
                 val totalCount = logDao.getCount()
                 val deleteCount = (totalCount * excessRatio).toInt() + 100 // Add buffer
 
-                logDao.deleteOldest(deleteCount)
-                adjustCachedCount(-deleteCount)
-                Log.i(TAG, "Size limit enforcement: deleted $deleteCount oldest events (was ${currentSizeMb}MB, limit ${maxSizeMb}MB)")
-                database.openHelper.writableDatabase.execSQL("VACUUM")
+                val deleted = logDao.deleteOldest(deleteCount)
+                adjustCachedCount(-deleted)
+                Log.i(TAG, "Size limit enforcement: deleted $deleted oldest events (logical ${logicalBytes / 1024}KB, limit ${maxSizeMb}MB) — VACUUM deferred to periodic cleanup")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error enforcing size limit", e)
@@ -881,6 +922,15 @@ internal interface LogDao {
 
     @Query("SELECT COUNT(*) FROM log_records")
     suspend fun getCount(): Int
+
+    /**
+     * Summed logical payload size (bytes) of the stored text columns. This is a
+     * measure of the buffered data itself, immune to SQLite free pages, page
+     * granularity, and WAL — unlike the filesystem file length. Used for
+     * size-budget enforcement (SR-015).
+     */
+    @Query("SELECT COALESCE(SUM(LENGTH(body) + LENGTH(attributes) + LENGTH(resource)), 0) FROM log_records")
+    suspend fun getTotalLogicalBytes(): Long
 
     @Query("DELETE FROM log_records WHERE timestampMs < :expiryMs")
     suspend fun deleteOlderThan(expiryMs: Long): Int

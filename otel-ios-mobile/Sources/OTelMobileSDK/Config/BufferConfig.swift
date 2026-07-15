@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 public struct BufferConfig: Sendable {
     public let ramEvents: Int
     public let diskMb: Int

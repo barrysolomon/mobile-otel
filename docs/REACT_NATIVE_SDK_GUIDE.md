@@ -1,6 +1,6 @@
 # React Native SDK Guide
 
-`@barrysolomon/mobile-react-native@0.9.0-beta` — a native-first React Native bridge over the existing Android and iOS Dash0 Mobile SDKs.
+`@barrysolomon/mobile-react-native@1.0.0` — a native-first React Native bridge over the existing Android and iOS Dash0 Mobile SDKs.
 
 ## TL;DR
 
@@ -31,7 +31,7 @@ See [docs/epics/REACT_NATIVE_EPIC.md](epics/REACT_NATIVE_EPIC.md) for the archit
 ```bash
 # Stable release — `latest` resolves it; pin the exact version if you prefer:
 npm install @barrysolomon/mobile-react-native
-# or: npm install @barrysolomon/mobile-react-native@0.9.0-beta
+# or: npm install @barrysolomon/mobile-react-native@1.0.0
 
 cd ios && pod install
 ```
@@ -40,8 +40,8 @@ Autolinking picks up the native module via the podspec + `react-native.config.js
 
 This JS package **wraps** the native SDKs — install those too:
 
-- **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel` at tag `v0.9.0-beta` to your app target, then copy `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package into your app target and call `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod excludes the sink because it depends on the SwiftPM SDK delivered on the app side.
-- **Android** — `io.github.barrysolomon:mobile:0.9.0-beta` from the public Maven repo on GitHub Pages (`https://barrysolomon.github.io/mobile-otel/maven`) — no PAT / no authentication required. As of 0.2.0-alpha the full module set (`mobile-core` + all `mobile-instrumentation-*` modules) publishes there, so the dependency tree resolves. (Legacy / transition: the artifact is also still available from GitHub Packages at `https://maven.pkg.github.com/barrysolomon/mobile-otel`, which requires a `read:packages` PAT — prefer the public repo above.)
+- **iOS** — add the Swift Package `https://github.com/barrysolomon/mobile-otel` at tag `v1.0.0` to your app target, then copy `OTelMobileCallSink.swift` (+ `BoundedLiveSpanStore.swift`) from this package into your app target and call `Dash0MobileModule.installSink { OTelMobileCallSink() }`. The pod excludes the sink because it depends on the SwiftPM SDK delivered on the app side.
+- **Android** — `io.github.barrysolomon:mobile:1.0.0` from the public Maven repo on GitHub Pages (`https://barrysolomon.github.io/mobile-otel/maven`) — no PAT / no authentication required. As of 0.2.0-alpha the full module set (`mobile-core` + all `mobile-instrumentation-*` modules) publishes there, so the dependency tree resolves. (Legacy / transition: the artifact is also still available from GitHub Packages at `https://maven.pkg.github.com/barrysolomon/mobile-otel`, which requires a `read:packages` PAT — prefer the public repo above.)
 
 > **RN 0.85 / Kotlin 2.1.x — required Android build pin.** RN 0.85 bundles
 > Kotlin 2.1.20, whose compiler cannot read the `kotlin-stdlib` 2.4.0 that the

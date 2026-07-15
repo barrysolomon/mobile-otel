@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
@@ -21,7 +25,7 @@ public enum ResourceBuilder {
     /// SDK version constant — bump on release. Kept in lockstep with the npm
     /// package.json version + native gradle sdkVersionName; the publish gate
     /// (scripts/ci/check-version-parity.sh) fails the release on drift.
-    public static let sdkVersion = "0.9.0-beta"
+    public static let sdkVersion = "1.0.0"
 
     /// Build a `Resource` with iOS-identifying attributes plus the caller's
     /// service metadata and any extra attributes they want to merge on top.

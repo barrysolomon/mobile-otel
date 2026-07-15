@@ -1,4 +1,8 @@
 /*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
  * Unit tests for OTelNetworkInterceptor — the OkHttp interceptor that wraps the
  * host app's ENTIRE OkHttp pipeline (classic fetch, XMLHttpRequest, axios, AND
  * expo/fetch all bottom out on RN's shared OkHttp client).

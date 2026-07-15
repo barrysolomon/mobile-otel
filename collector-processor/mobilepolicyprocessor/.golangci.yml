@@ -1,0 +1,37 @@
+version: "2"
+
+# Standard-but-not-pedantic lint set for the mobilepolicyprocessor Go module.
+# Deliberately avoids exotic/opinionated linters (revive with custom rules,
+# depguard, wsl, exhaustive, etc.) to keep the gate low-friction while still
+# catching real bugs (vet issues, ineffective assignments, unchecked errors,
+# dead code, staticcheck findings) and enforcing consistent formatting.
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - misspell
+
+  settings:
+    errcheck:
+      # Checking every fmt.Print* / defer Close() return would be pedantic
+      # noise for this small processor package; still flags unchecked errors
+      # everywhere else.
+      exclude-functions:
+        - (*os.File).Close
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt

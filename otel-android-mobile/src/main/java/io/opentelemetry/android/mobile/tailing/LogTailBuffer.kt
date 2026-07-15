@@ -97,21 +97,24 @@ class LogTailBuffer(
      * @return List of triggered actions
      */
     private fun evaluateTriggers(): List<LogTailTrigger> {
+        // Take an immutable snapshot under a brief read lock, then release the
+        // lock BEFORE evaluating any trigger. User code — TailPattern.CustomPredicate
+        // — must NEVER run while the buffer lock is held: it could re-enter a
+        // buffer method (cross-thread deadlock) or run arbitrarily long (priority
+        // inversion, blocking all concurrent writers). Evaluating over the
+        // snapshot lock-free keeps add()/clear() unblocked during evaluation.
+        val tail = lock.read { buffer.toList() }
+
         val matchedTriggers = mutableListOf<LogTailTrigger>()
+        for (trigger in triggers) {
+            if (!trigger.enabled) continue
 
-        lock.read {
-            val tail = buffer.toList()
+            // Get logs to analyze (last N logs)
+            val logsToAnalyze = tail.takeLast(trigger.lookbackCount)
 
-            for (trigger in triggers) {
-                if (!trigger.enabled) continue
-
-                // Get logs to analyze (last N logs)
-                val logsToAnalyze = tail.takeLast(trigger.lookbackCount)
-
-                // Evaluate pattern
-                if (evaluatePattern(trigger.pattern, logsToAnalyze)) {
-                    matchedTriggers.add(trigger)
-                }
+            // Evaluate pattern (lock-free — the buffer lock is not held here)
+            if (evaluatePattern(trigger.pattern, logsToAnalyze)) {
+                matchedTriggers.add(trigger)
             }
         }
 

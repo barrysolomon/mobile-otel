@@ -88,6 +88,9 @@ jobs:
       - name: Android lint
         working-directory: examples/demo-app
         run: ./gradlew :otel-android-mobile:lint
+      - name: Kotlin style (ktlint)
+        working-directory: examples/demo-app
+        run: ./gradlew ktlintCheck
 
   # The SDK's R8 gate: build the demo app (the reference consumer) with
   # minification ON. Proves consumer-rules.pro actually works in a minified
@@ -155,6 +158,11 @@ jobs:
       - name: Go vet
         working-directory: collector-processor/mobilepolicyprocessor
         run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: collector-processor/mobilepolicyprocessor
 
   symbol-upload-tool:
     runs-on: ubuntu-latest

@@ -140,7 +140,7 @@ class OfflineBudgetTest {
         // Enforce a very small budget — should evict events
         val evicted = kotlinx.coroutines.runBlocking {
             diskBuffer.enforceOfflineBudget(
-                maxBytes = 1024, // 1KB — way smaller than actual data
+                maxBytes = 100, // below the logical payload size (SR-015: enforcement keys on logical size, not filesystem length)
                 strategy = EvictionStrategy.OLDEST_FIRST
             )
         }
@@ -170,7 +170,7 @@ class OfflineBudgetTest {
         // Enforce budget with LOWEST_SEVERITY_FIRST
         kotlinx.coroutines.runBlocking {
             diskBuffer.enforceOfflineBudget(
-                maxBytes = 1024,
+                maxBytes = 100, // below the logical payload size (SR-015: enforcement keys on logical size, not filesystem length)
                 strategy = EvictionStrategy.LOWEST_SEVERITY_FIRST
             )
         }

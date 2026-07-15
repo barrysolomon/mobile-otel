@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 package com.dash0.mobile.reactnative
 
 import com.facebook.react.ReactPackage

@@ -192,4 +192,49 @@ struct DiskLogBufferTests {
         await secondBuffer.shutdown()
         DiskLogBuffer.removeTestFiles(at: path)
     }
+
+    // SR-015 parity: the offline budget must be enforced against the LOGICAL
+    // byte total (SUM of the `size_bytes` column) — the same accounting the
+    // insert path (`pruneIfOverBudgetInternal`) already uses — NOT the physical
+    // file size, which includes sqlite page slack / WAL / freelist overhead.
+    // Android's SR-015 fix keyed on logical bytes; iOS must match.
+    //
+    // This test drives logical bytes far above the physical file size using
+    // explicit `size_bytes` values decoupled from the (empty) blob. With the
+    // old `fileSizeBytes()` implementation the tiny physical file stays under
+    // budget and NOTHING is evicted; keying on the logical SUM correctly
+    // detects the over-budget condition and evicts.
+    @Test("enforceOfflineBudget keys on logical size, not filesystem slack")
+    func enforceOfflineBudgetKeysOnLogicalSize() async throws {
+        let (buffer, path) = try await makeBuffer()
+        // 4 rows, each declaring 100 KB logical size but storing a zero-length
+        // blob — logical total 400 KB, physical file only a few KB.
+        for i in 1...4 {
+            await buffer.insertRawForTesting(sequenceId: UInt64(i), sizeBytes: 100_000)
+        }
+
+        let logical = await buffer.totalSizeBytes()
+        let physical = await buffer.fileSizeBytes()
+        // Premise of the test: logical >> physical (the whole point of SR-015).
+        #expect(logical == 400_000)
+        #expect(physical < 200_000)
+
+        // Budget sits between the physical size and the logical total, and above
+        // the 64 KB config floor. Logical-keyed enforcement is over budget;
+        // filesystem-keyed enforcement is under budget.
+        let config = OfflineBudgetConfig(
+            maxOfflineDiskBytes: 200_000,
+            evictionStrategy: .oldestFirst,
+            enabled: true
+        )
+        await buffer.enforceOfflineBudget(config)
+
+        let rowsAfter = await buffer.rowCount()
+        // Logical keying → over budget → evicts oldest rows.
+        // (Old filesystem keying leaves all 4 rows in place → test fails.)
+        #expect(rowsAfter < 4)
+
+        await buffer.shutdown()
+        DiskLogBuffer.removeTestFiles(at: path)
+    }
 }

@@ -1,3 +1,7 @@
+/*
+ * Copyright 2025 Barry Solomon
+ * SPDX-License-Identifier: Apache-2.0
+ */
 // Note: PrivacyConfig lives in OTelMobileCore (not OTelMobileSDK/Config) because
 // InstrumentationContext references it. Keeping it in Core avoids a cyclic module dep.
 import Foundation
