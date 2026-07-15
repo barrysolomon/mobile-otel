@@ -1,0 +1,97 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-database",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-database-1.0.0.aar",
+          "url": "mobile-instrumentation-database-1.0.0.aar",
+          "size": 7891,
+          "sha512": "b7cef00713b8859ebbf6266a8db34a2307ffa444f6a49ad903131ae97db7f2eaa821c43a5d4b16e80560c799f2091eeb94beb895a112e78084399ca3532c93ab",
+          "sha256": "af009e75cc22b1625c674cab62e6931dcb7d73bebe158496f5d386374c286452",
+          "sha1": "5cd0683827ec576f2b2c1d4a3e1a89a80c6437f5",
+          "md5": "6ebab157913e6bef12a4694eb7807599"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.8.4"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-database-1.0.0.aar",
+          "url": "mobile-instrumentation-database-1.0.0.aar",
+          "size": 7891,
+          "sha512": "b7cef00713b8859ebbf6266a8db34a2307ffa444f6a49ad903131ae97db7f2eaa821c43a5d4b16e80560c799f2091eeb94beb895a112e78084399ca3532c93ab",
+          "sha256": "af009e75cc22b1625c674cab62e6931dcb7d73bebe158496f5d386374c286452",
+          "sha1": "5cd0683827ec576f2b2c1d4a3e1a89a80c6437f5",
+          "md5": "6ebab157913e6bef12a4694eb7807599"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-errors",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-vitals",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-errors-1.0.0.aar",
+          "url": "mobile-instrumentation-errors-1.0.0.aar",
+          "size": 23480,
+          "sha512": "38167b1cfc5c14b7425a9b42e02a301730fc051f7a432f6a9841ac00ca9f07e6dbf52c0ae48e62a574627a2aa086f770d859aa3b78ac0c8342ab3a217fc1501c",
+          "sha256": "9eed1a3efc6a103c623e950df783e35db33314876e2331d1ed224e376664e3ea",
+          "sha1": "1f717fa17ec2633a103044c84ebf71f92def46b0",
+          "md5": "3e34545fcffe02f1505313686b0ab38f"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-vitals",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-errors-1.0.0.aar",
+          "url": "mobile-instrumentation-errors-1.0.0.aar",
+          "size": 23480,
+          "sha512": "38167b1cfc5c14b7425a9b42e02a301730fc051f7a432f6a9841ac00ca9f07e6dbf52c0ae48e62a574627a2aa086f770d859aa3b78ac0c8342ab3a217fc1501c",
+          "sha256": "9eed1a3efc6a103c623e950df783e35db33314876e2331d1ed224e376664e3ea",
+          "sha1": "1f717fa17ec2633a103044c84ebf71f92def46b0",
+          "md5": "3e34545fcffe02f1505313686b0ab38f"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,536 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-lifecycle",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screen",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-scroll",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-text-input",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-back-press",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-freeze",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-tap",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-errors",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-network",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-vitals",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screenshot",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-wireframe",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-compose-click",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-compose-navigation",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screen-orientation",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-database",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-file-io",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-timber",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-system-events",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk-logs",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-1.0.0.aar",
+          "url": "mobile-1.0.0.aar",
+          "size": 601393,
+          "sha512": "83a7f3507ef389f57e9fd80b14ef2693b433c458b008c561c610b2fc695b2ec188317771be071986543869dd092286720830f9e868e019c653794a7a01fc9c0c",
+          "sha256": "5409fcceaa9b9fc9cf5a708443590bb901f6c36508a66b1f3c2edb01559a1f92",
+          "sha1": "97533a4a41f0780f549e10098a0bc79f91394cc1",
+          "md5": "3175187d2b6ddfa2e1547c832b2e30ef"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-exporter-otlp",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry.semconv",
+          "module": "opentelemetry-semconv",
+          "version": {
+            "requires": "1.39.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.8.4"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-ktx",
+          "version": {
+            "requires": "2.8.4"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.10.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.6.0"
+          }
+        },
+        {
+          "group": "androidx.core",
+          "module": "core-ktx",
+          "version": {
+            "requires": "1.17.0"
+          }
+        },
+        {
+          "group": "androidx.appcompat",
+          "module": "appcompat",
+          "version": {
+            "requires": "1.7.1"
+          }
+        },
+        {
+          "group": "androidx.recyclerview",
+          "module": "recyclerview",
+          "version": {
+            "requires": "1.4.0"
+          }
+        },
+        {
+          "group": "androidx.security",
+          "module": "security-crypto",
+          "version": {
+            "requires": "1.1.0-alpha06"
+          }
+        },
+        {
+          "group": "net.zetetic",
+          "module": "sqlcipher-android",
+          "version": {
+            "requires": "4.6.1"
+          }
+        },
+        {
+          "group": "androidx.sqlite",
+          "module": "sqlite-ktx",
+          "version": {
+            "requires": "2.6.2"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.12.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-lifecycle",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screen",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-scroll",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-text-input",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-back-press",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-freeze",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-tap",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-errors",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-network",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-vitals",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screenshot",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-wireframe",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-compose-click",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-compose-navigation",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-screen-orientation",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-database",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-file-io",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-timber",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-instrumentation-system-events",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-api",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "io.opentelemetry",
+          "module": "opentelemetry-sdk-logs",
+          "version": {
+            "requires": "1.58.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-1.0.0.aar",
+          "url": "mobile-1.0.0.aar",
+          "size": 601393,
+          "sha512": "83a7f3507ef389f57e9fd80b14ef2693b433c458b008c561c610b2fc695b2ec188317771be071986543869dd092286720830f9e868e019c653794a7a01fc9c0c",
+          "sha256": "5409fcceaa9b9fc9cf5a708443590bb901f6c36508a66b1f3c2edb01559a1f92",
+          "sha1": "97533a4a41f0780f549e10098a0bc79f91394cc1",
+          "md5": "3175187d2b6ddfa2e1547c832b2e30ef"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "mobile-1.0.0-sources.jar",
+          "url": "mobile-1.0.0-sources.jar",
+          "size": 195265,
+          "sha512": "9608da6e598d5793004eb05af4ddf9053a345499a52f190908f3ec5c92bed759ef658edf01ef706ced8cc5d85c66d85f917c45c549f5b509f980d80c5d92fa65",
+          "sha256": "ef94d505247bcefabfe285a71064dd0e61247959b7bce38be8b5d0407350df35",
+          "sha1": "b25a75f0193835d6c5d0a8307147c8bfb3bd036f",
+          "md5": "ec910eeb94644371c739b5a40a7623db"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseJavaDocPublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "mobile-1.0.0-javadoc.jar",
+          "url": "mobile-1.0.0-javadoc.jar",
+          "size": 859933,
+          "sha512": "6fd366e496828f4423a589a0e73c30d40312296a4fe9f2373f098c5bf6d9382de740ded432ca2437614bc8d5bb4db349f38f79520bb32dbba95a2edadb3b9002",
+          "sha256": "ab38e25cca12c3366d63fc5f08bdbc09c82e549a127bd58fceafcd63948abc84",
+          "sha1": "ad955efda6ef363237bf86257e5310648a52fc88",
+          "md5": "2082f769ddeb423588d3249d4a029539"
+        }
+      ]
+    }
+  ]
+}

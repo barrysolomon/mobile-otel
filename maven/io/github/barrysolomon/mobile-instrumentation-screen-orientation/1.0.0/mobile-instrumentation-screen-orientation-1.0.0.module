@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-screen-orientation",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-screen-orientation-1.0.0.aar",
+          "url": "mobile-instrumentation-screen-orientation-1.0.0.aar",
+          "size": 5816,
+          "sha512": "e2fe75574c9bdf8afd5f2248a8fedd39970391dd66a294db09fa96078d0567fe8c92d93fe571ee98b67b65832c3bf5b0fe46a7f2fd7d6bed9d6b7931a5a2aa99",
+          "sha256": "a54396c6d43b96c7a31934b915d0f318282d268a6432d5330907de253f19a90e",
+          "sha1": "b30f3dc8621a80d04e1bbc8d321c61ae701625dd",
+          "md5": "cca3fdde81e93e5324d2bd573b897920"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-screen-orientation-1.0.0.aar",
+          "url": "mobile-instrumentation-screen-orientation-1.0.0.aar",
+          "size": 5816,
+          "sha512": "e2fe75574c9bdf8afd5f2248a8fedd39970391dd66a294db09fa96078d0567fe8c92d93fe571ee98b67b65832c3bf5b0fe46a7f2fd7d6bed9d6b7931a5a2aa99",
+          "sha256": "a54396c6d43b96c7a31934b915d0f318282d268a6432d5330907de253f19a90e",
+          "sha1": "b30f3dc8621a80d04e1bbc8d321c61ae701625dd",
+          "md5": "cca3fdde81e93e5324d2bd573b897920"
+        }
+      ]
+    }
+  ]
+}

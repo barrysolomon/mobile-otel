@@ -1,0 +1,90 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.barrysolomon",
+    "module": "mobile-instrumentation-back-press",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.1.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-back-press-1.0.0.aar",
+          "url": "mobile-instrumentation-back-press-1.0.0.aar",
+          "size": 5001,
+          "sha512": "ada4c3b6dbcb334627b5d0f7d0c4144159d71289f6a3bd6c9eaf0c44c15fafa952bf599220ed034ea2bfb17aba641645e9bbf498b8e9c61bd4cfea01c5b91808",
+          "sha256": "bc423a8e10db666376028e931af364a911388f92d4d00b4f1588573ef998c49e",
+          "sha1": "912ff89598ba93fc0b3f74be4aacc0150e65bb97",
+          "md5": "76feb61980c80c27786aed46df0c0928"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.barrysolomon",
+          "module": "mobile-core",
+          "version": {
+            "requires": "1.0.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.2.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mobile-instrumentation-back-press-1.0.0.aar",
+          "url": "mobile-instrumentation-back-press-1.0.0.aar",
+          "size": 5001,
+          "sha512": "ada4c3b6dbcb334627b5d0f7d0c4144159d71289f6a3bd6c9eaf0c44c15fafa952bf599220ed034ea2bfb17aba641645e9bbf498b8e9c61bd4cfea01c5b91808",
+          "sha256": "bc423a8e10db666376028e931af364a911388f92d4d00b4f1588573ef998c49e",
+          "sha1": "912ff89598ba93fc0b3f74be4aacc0150e65bb97",
+          "md5": "76feb61980c80c27786aed46df0c0928"
+        }
+      ]
+    }
+  ]
+}
