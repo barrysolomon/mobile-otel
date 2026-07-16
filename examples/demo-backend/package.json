@@ -11,11 +11,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
-    "@opentelemetry/core": "^1.30.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.0",
-    "@opentelemetry/resources": "^1.30.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/core": "^2.9.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.220.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.5",
